@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(curl -s -X POST http://localhost:8000/sessions/b9744bfb-6fa7-4284-b565-92212435014a/step -H \"Content-Type: application/json\" -d '{\"\"\"\"student_reply\"\"\"\":\"\"\"\"5/8 is bigger than 3/8\"\"\"\"}')",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(uvicorn:*)",
+      "Read(//Users/manishjain/Desktop/test/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

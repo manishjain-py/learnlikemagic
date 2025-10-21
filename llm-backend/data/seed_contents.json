@@ -1,0 +1,42 @@
+[
+  {
+    "id": "c1",
+    "topic": "fractions_compare_like_denominators",
+    "grade": 3,
+    "skill": "compare_like_denominators",
+    "text": "When denominators are the same, the fraction with the larger numerator is greater. Example: 3/8 < 5/8.",
+    "tags": "definition,example"
+  },
+  {
+    "id": "c2",
+    "topic": "fractions_compare_like_denominators",
+    "grade": 3,
+    "skill": "visual_model",
+    "text": "Think of 8 equal slices of a pizza. 5/8 means 5 slices, 3/8 means 3 slices. 5 slices is more.",
+    "tags": "analogy,pizza"
+  },
+  {
+    "id": "c3",
+    "topic": "fractions_compare_like_denominators",
+    "grade": 3,
+    "skill": "common_misconception",
+    "text": "Misconception: thinking 3/8 > 5/8 because 3>5 is false; the denominator is the same, compare numerators.",
+    "tags": "misconception"
+  },
+  {
+    "id": "c4",
+    "topic": "fractions_compare_like_denominators",
+    "grade": 3,
+    "skill": "practice_problem",
+    "text": "Try this: Which is bigger, 2/5 or 4/5? Since both have 5 as the denominator, compare 2 and 4. 4 is bigger, so 4/5 is bigger.",
+    "tags": "example,practice"
+  },
+  {
+    "id": "c5",
+    "topic": "fractions_compare_like_denominators",
+    "grade": 3,
+    "skill": "real_world",
+    "text": "Real world example: If you and your friend each have chocolate bars divided into 6 pieces, and you eat 2/6 while your friend eats 5/6, who ate more? Your friend did!",
+    "tags": "analogy,real_world"
+  }
+]

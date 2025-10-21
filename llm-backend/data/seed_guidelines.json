@@ -1,0 +1,156 @@
+[
+  {
+    "id": "g1",
+    "country": "India",
+    "board": "CBSE",
+    "grade": 3,
+    "subject": "Mathematics",
+    "topic": "Fractions",
+    "subtopic": "Comparing Like Denominators",
+    "guideline": "Teaching Guidelines for Comparing Fractions with Like Denominators:\n\nOBJECTIVE: Students should be able to compare two or more fractions with the same denominator and identify which is larger, smaller, or equal.\n\nTEACHING APPROACH:\n1. START WITH CONCRETE: Use visual models (pizza slices, chocolate bars, pie charts) to show that when denominators are the same, the fraction with the larger numerator represents more parts.\n2. BUILD CONCEPTUAL UNDERSTANDING: Emphasize that the denominator tells us the SIZE of each piece (all pieces are equal), and the numerator tells us HOW MANY pieces we have.\n3. USE REAL-WORLD CONTEXTS: Relate to sharing food, dividing toys, or measuring ingredients.\n4. PROGRESS TO ABSTRACT: Once comfortable with visuals, move to comparing fractions symbolically (3/8 vs 5/8).\n\nDEPTH LEVEL: Basic to Intermediate\n- Focus on like denominators only (different denominators come later)\n- Work with denominators up to 10\n- Use simple whole number numerators\n\nCOMMON MISCONCEPTIONS:\n1. \"3/8 > 5/8 because 3 is at the top\" - Students confuse numerator comparison direction\n2. \"Bigger denominator means bigger fraction\" - Need to clarify denominator shows piece size, not quantity\n3. Comparing numerator and denominator across fractions (comparing 3 to 8 instead of 3 to 5)\n\nSCAFFOLDING STRATEGIES:\n- If student struggles: Use visual representations (draw circles/bars)\n- If student shows misconception: Revisit the meaning of numerator vs denominator\n- Use questions like: \"If both pizzas are cut into 8 slices, would you rather have 3 slices or 5 slices?\"\n\nASSESSMENT CRITERIA:\n- Mastery (90-100%): Correctly compares any like-denominator fractions and explains reasoning using numerators\n- Proficient (75-89%): Correctly compares most fractions but may need visual support\n- Developing (50-74%): Can compare with heavy scaffolding and visual aids\n- Beginning (<50%): Shows misconceptions or cannot compare even with support\n\nPACING:\n- Spend 3-5 interactions on concrete examples\n- Move to abstract comparison only after consistent success\n- Revisit with different contexts if student struggles",
+    "metadata": {
+      "learning_objectives": [
+        "Compare fractions with same denominators",
+        "Identify which fraction is larger or smaller",
+        "Explain reasoning using numerators"
+      ],
+      "depth_level": "basic",
+      "prerequisites": [
+        "Understanding what fractions represent",
+        "Identifying numerator and denominator"
+      ],
+      "common_misconceptions": [
+        "Thinking smaller numerator means larger fraction",
+        "Confusing numerator and denominator roles"
+      ],
+      "scaffolding_strategies": [
+        "Use visual models (pizza, chocolate bars)",
+        "Ask comparative questions about real-world scenarios",
+        "Highlight the numerator when comparing"
+      ],
+      "assessment_criteria": {
+        "mastery": "Correctly compares and explains using numerators",
+        "proficient": "Correctly compares with minimal support",
+        "developing": "Needs visual aids to compare",
+        "beginning": "Shows misconceptions or cannot compare"
+      }
+    }
+  },
+  {
+    "id": "g2",
+    "country": "India",
+    "board": "CBSE",
+    "grade": 3,
+    "subject": "Mathematics",
+    "topic": "Fractions",
+    "subtopic": "Adding Like Denominators",
+    "guideline": "Teaching Guidelines for Adding Fractions with Like Denominators:\n\nOBJECTIVE: Students should be able to add two fractions with the same denominator by adding numerators while keeping the denominator constant.\n\nTEACHING APPROACH:\n1. CONNECT TO PRIOR KNOWLEDGE: Start by reviewing that denominator represents the size of pieces (pizza cut into 8 slices means each piece is 1/8).\n2. USE CONCRETE MODELS: Show addition visually - \"If you eat 2 slices out of 8, then eat 3 more slices out of 8, how many slices did you eat in total?\"\n3. EMPHASIZE THE RULE: When denominators are the same, we ADD the numerators but KEEP the denominator the same because the piece size doesn't change.\n4. PRACTICE WITH PATTERNS: 1/5 + 2/5 = 3/5, 2/7 + 3/7 = 5/7 (help students see the pattern)\n\nDEPTH LEVEL: Basic\n- Only like denominators (denominators 2-10)\n- Sums that don't create improper fractions initially\n- Progress to sums that equal 1 (e.g., 3/8 + 5/8 = 8/8 = 1)\n\nCOMMON MISCONCEPTIONS:\n1. \"1/4 + 2/4 = 3/8\" - Adding both numerators AND denominators\n2. \"2/5 + 3/5 = 5/5 = 10\" - Confusion about what 5/5 means\n3. Not simplifying results (6/8 should become 3/4, but teach this later)\n\nSCAFFOLDING STRATEGIES:\n- Draw fraction bars or circles to show the addition visually\n- Use sentence frames: \"__ pieces out of __ plus __ pieces out of __ equals __ pieces out of __\"\n- Relate to combining groups: \"2 apples + 3 apples = 5 apples, so 2 eighths + 3 eighths = 5 eighths\"\n- If student adds denominators, ask: \"Did the pizza get cut into more pieces, or did we just eat more of the same-sized pieces?\"\n\nASSESSMENT CRITERIA:\n- Mastery (90-100%): Correctly adds like-denominator fractions and explains why denominator stays the same\n- Proficient (75-89%): Correctly adds most problems with occasional errors\n- Developing (50-74%): Adds numerators but sometimes adds denominators too\n- Beginning (<50%): Consistently adds both numerators and denominators\n\nPACING:\n- Start with visual models for 2-3 problems\n- Move to symbolic addition only after demonstrating understanding\n- Use real-world word problems to reinforce concepts",
+    "metadata": {
+      "learning_objectives": [
+        "Add fractions with same denominators",
+        "Understand that denominators stay constant",
+        "Explain why only numerators are added"
+      ],
+      "depth_level": "basic",
+      "prerequisites": [
+        "Understanding fractions as parts of a whole",
+        "Comparing fractions with like denominators",
+        "Basic addition of whole numbers"
+      ],
+      "common_misconceptions": [
+        "Adding both numerators and denominators",
+        "Confusion about what the sum represents"
+      ],
+      "scaffolding_strategies": [
+        "Use visual fraction models",
+        "Relate to combining like objects",
+        "Emphasize piece size stays constant"
+      ],
+      "assessment_criteria": {
+        "mastery": "Adds correctly and explains denominator constancy",
+        "proficient": "Adds correctly with minor errors",
+        "developing": "Understands concept but makes calculation errors",
+        "beginning": "Adds both numerators and denominators"
+      }
+    }
+  },
+  {
+    "id": "g3",
+    "country": "India",
+    "board": "CBSE",
+    "grade": 3,
+    "subject": "Mathematics",
+    "topic": "Multiplication",
+    "subtopic": "Times Tables 2-5",
+    "guideline": "Teaching Guidelines for Multiplication Tables (2, 3, 4, 5):\n\nOBJECTIVE: Students should fluently recall multiplication facts for 2, 3, 4, and 5 times tables and understand multiplication as repeated addition.\n\nTEACHING APPROACH:\n1. BUILD CONCEPTUAL FOUNDATION: Teach multiplication as repeated addition first (3 × 4 means \"3 groups of 4\" or \"4 + 4 + 4\").\n2. USE SKIP COUNTING: Practice skip counting by 2s, 3s, 4s, 5s to build number sense.\n3. VISUAL PATTERNS: Use arrays (rows and columns of objects) to show multiplication visually.\n4. REAL-WORLD CONTEXTS: Relate to everyday situations (2 hands with 5 fingers each = 2 × 5 = 10).\n5. BUILD TO FLUENCY: Move from conceptual understanding → skip counting → memorization through practice and games.\n\nDEPTH LEVEL: Basic to Intermediate\n- Focus on tables 2-5 (tables 6-10 come later)\n- Products up to 50 (5 × 10 = 50)\n- Emphasize commutative property (3 × 4 = 4 × 3)\n\nCOMMON MISCONCEPTIONS:\n1. Confusing addition and multiplication (3 × 4 = 7 instead of 12)\n2. Not understanding the meaning of multiplication (just memorizing without context)\n3. Difficulty with the 4 times table (seeing it as \"double the 2 times table\" helps)\n\nSCAFFOLDING STRATEGIES:\n- If student struggles with a fact, break it into repeated addition\n- Use arrays or groups of objects to visualize\n- Teach patterns:\n  * 2 times table: All even numbers\n  * 5 times table: All end in 0 or 5\n  * 4 times table: Double the 2 times table\n- Use mnemonics or songs for memorization\n- Practice with games (multiplication war, bingo, flashcards)\n\nASSESSMENT CRITERIA:\n- Mastery (90-100%): Quickly recalls facts within 3 seconds, understands multiplication concept\n- Proficient (75-89%): Recalls most facts, may use skip counting for some\n- Developing (50-74%): Knows some facts, needs to count or use fingers frequently\n- Beginning (<50%): Doesn't know facts, confuses with addition\n\nPACING:\n- Spend 2-3 sessions on each table\n- Focus on one table at a time, building on previous tables\n- Regular review and practice across multiple sessions\n- Encourage daily practice at home (5-10 minutes)",
+    "metadata": {
+      "learning_objectives": [
+        "Recall multiplication facts for 2, 3, 4, 5 times tables",
+        "Understand multiplication as repeated addition",
+        "Apply multiplication to solve word problems"
+      ],
+      "depth_level": "intermediate",
+      "prerequisites": [
+        "Understanding addition",
+        "Skip counting by 2s, 5s, 10s",
+        "Understanding groups and sets"
+      ],
+      "common_misconceptions": [
+        "Confusing multiplication with addition",
+        "Not understanding commutativity",
+        "Difficulty seeing patterns in tables"
+      ],
+      "scaffolding_strategies": [
+        "Use repeated addition to derive facts",
+        "Visual arrays and grouping",
+        "Highlight number patterns (2s are even, 5s end in 0 or 5)",
+        "Break difficult facts into easier ones (4×6 = 2×6 + 2×6)"
+      ],
+      "assessment_criteria": {
+        "mastery": "Quick recall (within 3 seconds) for all facts",
+        "proficient": "Recalls most facts, skip counts for some",
+        "developing": "Knows some facts, needs to calculate many",
+        "beginning": "Cannot recall facts, confuses with addition"
+      }
+    }
+  },
+  {
+    "id": "g4",
+    "country": "India",
+    "board": "CBSE",
+    "grade": 3,
+    "subject": "English",
+    "topic": "Grammar",
+    "subtopic": "Nouns and Pronouns",
+    "guideline": "Teaching Guidelines for Nouns and Pronouns:\n\nOBJECTIVE: Students should be able to identify nouns (common and proper), understand their function, and use pronouns correctly to replace nouns in sentences.\n\nTEACHING APPROACH:\n1. INTRODUCE NOUNS AS NAMING WORDS: Explain that nouns name people, places, things, or animals.\n2. DISTINGUISH COMMON VS PROPER NOUNS:\n   - Common nouns: general names (boy, city, dog)\n   - Proper nouns: specific names, always capitalized (Raj, Delhi, Fido)\n3. TEACH PRONOUNS AS REPLACEMENT WORDS: Show how pronouns (he, she, it, they) replace nouns to avoid repetition.\n4. PRACTICE WITH SENTENCES: Have students identify nouns, then replace them with appropriate pronouns.\n5. USE AUTHENTIC TEXTS: Find nouns and pronouns in storybooks or simple passages.\n\nDEPTH LEVEL: Basic\n- Focus on common and proper nouns\n- Basic pronouns: I, you, he, she, it, we, they\n- Subject pronouns only (object pronouns like him/her come later)\n- Agreement: singular nouns → singular pronouns, plural nouns → plural pronouns\n\nCOMMON MISCONCEPTIONS:\n1. Using \"it\" for people (\"Raj is my friend. It is kind.\" should be \"He is kind.\")\n2. Not capitalizing proper nouns\n3. Pronoun-antecedent disagreement (\"The boys is playing\" → \"The boys are playing\")\n4. Overusing pronouns without clear antecedents (\"He went there and got it\" - unclear who/what)\n\nSCAFFOLDING STRATEGIES:\n- Use color coding: Underline nouns in one color, pronouns in another\n- Create anchor charts showing noun types and corresponding pronouns\n- Practice with substitution exercises: \"The cat sleeps\" → \"It sleeps\"\n- Use student names and classroom objects for relatable examples\n- Ask questions: \"Is this a person, place, thing, or animal?\" to identify nouns\n\nASSESSMENT CRITERIA:\n- Mastery (90-100%): Correctly identifies all nouns and uses appropriate pronouns with proper agreement\n- Proficient (75-89%): Identifies most nouns, uses pronouns correctly most of the time\n- Developing (50-74%): Can identify obvious nouns, sometimes confuses pronoun usage\n- Beginning (<50%): Cannot reliably identify nouns or use pronouns correctly\n\nPACING:\n- Spend 2-3 sessions on nouns (common vs proper)\n- Spend 2-3 sessions on pronouns and noun-pronoun connection\n- Regular review in reading and writing activities",
+    "metadata": {
+      "learning_objectives": [
+        "Identify common and proper nouns in sentences",
+        "Use appropriate pronouns to replace nouns",
+        "Ensure pronoun-antecedent agreement"
+      ],
+      "depth_level": "basic",
+      "prerequisites": [
+        "Basic sentence structure understanding",
+        "Familiarity with people, places, things categories"
+      ],
+      "common_misconceptions": [
+        "Using 'it' for people",
+        "Not capitalizing proper nouns",
+        "Pronoun-antecedent disagreement"
+      ],
+      "scaffolding_strategies": [
+        "Use color coding for identification",
+        "Practice with substitution exercises",
+        "Use relatable examples from student's life",
+        "Create anchor charts"
+      ],
+      "assessment_criteria": {
+        "mastery": "Correctly identifies all nouns and uses pronouns with agreement",
+        "proficient": "Identifies most nouns and uses pronouns correctly",
+        "developing": "Can identify obvious nouns, pronoun usage inconsistent",
+        "beginning": "Cannot reliably identify nouns or use pronouns"
+      }
+    }
+  }
+]
