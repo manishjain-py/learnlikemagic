@@ -1,0 +1,19 @@
+# Copy this file to terraform.tfvars and fill in your values
+# terraform.tfvars is gitignored for security
+
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "production"
+
+# GitHub Configuration (for OIDC)
+github_org  = "your-github-username"  # e.g., "manishjain-py"
+github_repo = "learnlikemagic"
+
+# Database Configuration
+db_name     = "tutor"
+db_user     = "llmuser"
+db_password = "CHANGE_ME_STRONG_PASSWORD_HERE"
+
+# Application Configuration
+openai_api_key = "sk-your-openai-api-key-here"
+llm_model      = "gpt-4o-mini"
