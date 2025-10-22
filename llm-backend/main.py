@@ -17,7 +17,8 @@ from models import (
     TutorState,
     CurriculumResponse
 )
-from db import get_db, create_session_record, update_session_state, get_session_by_id, log_event, get_session_events
+from database import get_db, get_db_manager
+from db import create_session_record, update_session_state, get_session_by_id, log_event, get_session_events
 from graph.build_graph import get_graph
 from graph.state import tutor_state_to_graph_state, graph_state_to_tutor_state
 from guideline_repository import TeachingGuidelineRepository
@@ -47,6 +48,21 @@ def read_root():
         "service": "Adaptive Tutor API",
         "version": "0.1.0"
     }
+
+
+@app.get("/health/db")
+def database_health():
+    """Database health check endpoint."""
+    db_manager = get_db_manager()
+    is_healthy = db_manager.health_check()
+
+    if is_healthy:
+        return {
+            "status": "ok",
+            "database": "connected"
+        }
+    else:
+        raise HTTPException(status_code=503, detail="Database connection failed")
 
 
 @app.get("/curriculum", response_model=CurriculumResponse)

@@ -5,90 +5,34 @@ import json
 import sys
 import argparse
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session as DBSession
-from models import Base, Session, Event, Content
+from sqlalchemy.orm import Session as DBSession
+from models import Base, Session, Event, TeachingGuideline
+from database import get_db_manager
 import uuid
 
 
-DATABASE_URL = "sqlite:///./tutor.db"
-engine = create_engine(DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def get_db() -> DBSession:
-    """Dependency for FastAPI to get database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def create_fts_table(conn):
-    """Create FTS5 virtual table for full-text search."""
-    # Drop existing triggers if they exist
-    conn.execute(text("DROP TRIGGER IF EXISTS contents_ai"))
-    conn.execute(text("DROP TRIGGER IF EXISTS contents_ad"))
-    conn.execute(text("DROP TRIGGER IF EXISTS contents_au"))
-
-    # Drop existing FTS table if exists
-    conn.execute(text("DROP TABLE IF EXISTS contents_fts"))
-
-    # Create FTS5 virtual table
-    conn.execute(text("""
-        CREATE VIRTUAL TABLE contents_fts USING fts5(
-            id UNINDEXED,
-            topic,
-            grade UNINDEXED,
-            skill,
-            text,
-            tags,
-            content='contents',
-            content_rowid='rowid'
-        )
-    """))
-
-    # Create triggers to keep FTS in sync
-    conn.execute(text("""
-        CREATE TRIGGER contents_ai AFTER INSERT ON contents BEGIN
-            INSERT INTO contents_fts(rowid, id, topic, grade, skill, text, tags)
-            VALUES (new.rowid, new.id, new.topic, new.grade, new.skill, new.text, new.tags);
-        END
-    """))
-
-    conn.execute(text("""
-        CREATE TRIGGER contents_ad AFTER DELETE ON contents BEGIN
-            DELETE FROM contents_fts WHERE rowid = old.rowid;
-        END
-    """))
-
-    conn.execute(text("""
-        CREATE TRIGGER contents_au AFTER UPDATE ON contents BEGIN
-            DELETE FROM contents_fts WHERE rowid = old.rowid;
-            INSERT INTO contents_fts(rowid, id, topic, grade, skill, text, tags)
-            VALUES (new.rowid, new.id, new.topic, new.grade, new.skill, new.text, new.tags);
-        END
-    """))
-
-    conn.commit()
-    print("✓ FTS5 table and triggers created")
-
-
 def migrate():
-    """Create all tables."""
+    """Create all database tables."""
     print("Creating database tables...")
-    Base.metadata.create_all(bind=engine)
-    print("✓ Tables created")
+    db_manager = get_db_manager()
 
-    # Create FTS table
-    with engine.connect() as conn:
-        create_fts_table(conn)
+    try:
+        # Create all tables defined in models
+        Base.metadata.create_all(bind=db_manager.engine)
+        print("✓ Tables created")
+
+        # Create indexes for teaching_guidelines if needed
+        with db_manager.engine.connect() as conn:
+            conn.commit()
+
+    except Exception as e:
+        print(f"Error during migration: {e}")
+        raise
 
 
-def seed_contents(seed_file_path: str):
-    """Load seed data from JSON file into contents table."""
-    print(f"Loading seed data from {seed_file_path}...")
+def seed_guidelines(seed_file_path: str):
+    """Load teaching guidelines from JSON file into teaching_guidelines table."""
+    print(f"Loading teaching guidelines from {seed_file_path}...")
 
     path = Path(seed_file_path)
     if not path.exists():
@@ -96,36 +40,41 @@ def seed_contents(seed_file_path: str):
         return
 
     with open(path, 'r') as f:
-        contents = json.load(f)
+        guidelines_data = json.load(f)
 
-    db = SessionLocal()
+    db_manager = get_db_manager()
+    db = db_manager.get_session()
+
     try:
-        # Clear existing contents
-        db.query(Content).delete()
+        # Clear existing guidelines
+        db.query(TeachingGuideline).delete()
         db.commit()
 
-        # Insert new contents
-        for item in contents:
-            content = Content(
+        # Insert new guidelines
+        for item in guidelines_data:
+            # Convert metadata dict to JSON string
+            metadata_json = json.dumps(item.get("metadata", {})) if "metadata" in item else None
+
+            guideline = TeachingGuideline(
                 id=item["id"],
-                topic=item["topic"],
+                country=item["country"],
+                board=item["board"],
                 grade=item["grade"],
-                skill=item["skill"],
-                text=item["text"],
-                tags=item["tags"]
+                subject=item["subject"],
+                topic=item["topic"],
+                subtopic=item["subtopic"],
+                guideline=item["guideline"],
+                metadata_json=metadata_json
             )
-            db.add(content)
+            db.add(guideline)
 
         db.commit()
-        print(f"✓ Loaded {len(contents)} content items")
-
-        # Verify FTS index
-        result = db.execute(text("SELECT COUNT(*) FROM contents_fts")).scalar()
-        print(f"✓ FTS index contains {result} items")
+        print(f"✓ Loaded {len(guidelines_data)} teaching guidelines")
 
     except Exception as e:
-        print(f"Error seeding data: {e}")
+        print(f"Error seeding guidelines: {e}")
         db.rollback()
+        raise
     finally:
         db.close()
 
@@ -179,71 +128,19 @@ def get_session_events(db: DBSession, session_id: str):
     return db.query(Event).filter(Event.session_id == session_id).order_by(Event.created_at).all()
 
 
-def seed_guidelines(seed_file_path: str):
-    """Load teaching guidelines from JSON file into teaching_guidelines table."""
-    from models import TeachingGuideline
-
-    print(f"Loading teaching guidelines from {seed_file_path}...")
-
-    path = Path(seed_file_path)
-    if not path.exists():
-        print(f"Error: Seed file not found: {seed_file_path}")
-        return
-
-    with open(path, 'r') as f:
-        guidelines_data = json.load(f)
-
-    db = SessionLocal()
-    try:
-        # Clear existing guidelines
-        db.query(TeachingGuideline).delete()
-        db.commit()
-
-        # Insert new guidelines
-        for item in guidelines_data:
-            # Convert metadata dict to JSON string
-            metadata_json = json.dumps(item.get("metadata", {})) if "metadata" in item else None
-
-            guideline = TeachingGuideline(
-                id=item["id"],
-                country=item["country"],
-                board=item["board"],
-                grade=item["grade"],
-                subject=item["subject"],
-                topic=item["topic"],
-                subtopic=item["subtopic"],
-                guideline=item["guideline"],
-                metadata_json=metadata_json
-            )
-            db.add(guideline)
-
-        db.commit()
-        print(f"✓ Loaded {len(guidelines_data)} teaching guidelines")
-
-    except Exception as e:
-        print(f"Error seeding guidelines: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Database management CLI")
     parser.add_argument("--migrate", action="store_true", help="Create database tables")
-    parser.add_argument("--seed", type=str, help="Seed contents from JSON file")
     parser.add_argument("--seed-guidelines", type=str, help="Seed teaching guidelines from JSON file")
 
     args = parser.parse_args()
 
     if args.migrate:
         migrate()
-    elif args.seed:
-        seed_contents(args.seed)
     elif args.seed_guidelines:
         seed_guidelines(args.seed_guidelines)
     else:
         print("Usage:")
         print("  python db.py --migrate                      # Create tables")
-        print("  python db.py --seed <json_file>             # Load seed content data")
         print("  python db.py --seed-guidelines <json_file>  # Load teaching guidelines")
         sys.exit(1)

@@ -1,26 +1,47 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: learnlikemagic-postgres
+    environment:
+      POSTGRES_DB: tutor
+      POSTGRES_USER: llmuser
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmuser -d tutor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: ./llm-backend
       dockerfile: Dockerfile
+    container_name: learnlikemagic-api
     ports:
       - "8000:8000"
     volumes:
       - ./llm-backend:/app
       - ./llm-backend/data:/app/data
-      - tutor-db:/app/db
     environment:
-      - DATABASE_URL=sqlite:///./db/tutor.db
+      - DATABASE_URL=postgresql://llmuser:dev_password@postgres:5432/tutor
     env_file:
       - ./llm-backend/.env
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./llm-frontend
       dockerfile: Dockerfile
+    container_name: learnlikemagic-frontend
     ports:
       - "3000:3000"
     volumes:
@@ -29,6 +50,8 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000
     command: npm run dev -- --host
+    depends_on:
+      - api
 
 volumes:
-  tutor-db:
+  postgres-data:

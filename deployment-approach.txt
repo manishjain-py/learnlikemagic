@@ -1,0 +1,171 @@
+# Deployment Approach: Plan B (Fully Managed AWS Setup)
+
+## Overview
+This approach deploys the **LearnLikeMagic** app using fully managed AWS services, achieving automated, zero-maintenance deployment with GitHub → AWS integration via **OIDC**. Both frontend and backend are deployed automatically whenever you push to `main`.
+
+---
+
+## Architecture
+
+### Components
+1. **Frontend** – React + Vite app hosted on **S3** and served globally via **CloudFront**.
+2. **Backend** – FastAPI app containerized via Docker, deployed to **AWS App Runner** (managed service).
+3. **Database** – **Aurora Serverless v2 (PostgreSQL)** providing autoscaling and high availability.
+4. **Secrets** – Stored in **AWS Secrets Manager** (e.g., OpenAI API key).
+5. **CI/CD** – **GitHub Actions** pipelines using **AWS OIDC** (no static credentials).
+6. **Infrastructure as Code** – **Terraform** provisions everything (S3, CloudFront, RDS, ECR, App Runner, IAM roles).
+
+---
+
+## Flow Summary
+
+```
+GitHub Push (main)
+ ├── Frontend Workflow → Build → Upload to S3 → Invalidate CloudFront
+ └── Backend Workflow → Build Docker → Push to ECR → Trigger App Runner Deploy
+```
+
+---
+
+## Advantages
+
+✅  No EC2 or manual servers  
+✅  Automatic HTTPS and scaling  
+✅  No credential management (GitHub OIDC)  
+✅  Terraform reproducibility  
+✅  One-command provisioning & CI/CD setup  
+✅  Perfect for solo dev rapid iteration
+
+---
+
+## Folder Structure
+
+```
+learnlikemagic/
+ ├── llm-frontend/     # React + Vite frontend
+ ├── llm-backend/      # FastAPI backend
+ ├── infra/
+ │   └── terraform/    # Full infrastructure code
+ └── .github/workflows # CI/CD pipelines
+```
+
+---
+
+## Deployment Steps
+
+### Step 1. Provision Infrastructure
+
+Run these commands locally after installing Terraform, AWS CLI, and jq:
+
+```bash
+cd infra/terraform
+terraform init
+terraform apply   -var="db_user=llmuser"   -var="db_password=<strong-password>"   -var="openai_api_key=<your-openai-key>"
+```
+
+Terraform provisions:
+- Aurora Serverless PostgreSQL DB
+- App Runner for backend
+- ECR repository
+- S3 bucket for frontend
+- CloudFront distribution
+- IAM role for GitHub Actions (OIDC)
+
+---
+
+### Step 2. Export Terraform Outputs to GitHub Secrets
+
+Run:
+
+```bash
+make env-export
+make gh-secrets
+```
+
+This automatically populates secrets like:
+
+- `AWS_ROLE_ARN`
+- `CF_DISTRIBUTION_ID`
+- `FRONTEND_BUCKET`
+- `ECR_REPO`
+- `VITE_API_URL`
+
+---
+
+### Step 3. CI/CD Configuration
+
+**Frontend (deploy-frontend.yml):**
+- Builds React app using Vite
+- Uploads build to S3
+- Invalidates CloudFront cache
+
+**Backend (deploy-backend.yml):**
+- Builds Docker image from `llm-backend/Dockerfile`
+- Pushes to ECR
+- App Runner auto-deploys new image
+
+---
+
+### Step 4. Local Bootstrap Helper (Makefile)
+
+A `Makefile` simplifies all tasks:
+
+```make
+make tf-apply        # Provisions infra
+make tf-outputs      # View Terraform outputs
+make gh-secrets      # Auto-adds secrets to GitHub
+make fe-sync         # Manually sync frontend if needed
+make be-deploy       # Trigger backend redeploy manually
+```
+
+---
+
+## Runtime Configuration
+
+| Service | Configuration |
+|----------|----------------|
+| Backend | `DATABASE_URL` (auto-injected from Terraform)<br>`OPENAI_API_KEY` (from Secrets Manager) |
+| Frontend | `VITE_API_URL` = App Runner public URL (or custom domain) |
+| DB | Aurora Serverless Postgres v2 (scales 0.5–2 ACU) |
+
+---
+
+## Custom Domain Setup (Optional)
+
+**Frontend:**  
+- Add custom domain alias in CloudFront.
+- Use ACM (in `us-east-1`) for certificate.
+
+**Backend:**  
+- Add domain mapping in App Runner with ACM certificate.
+
+---
+
+## Costs
+
+| Component | Cost Estimate (per month) |
+|------------|---------------------------|
+| App Runner (0.5 vCPU / 1 GB) | ~$15–$25 |
+| Aurora Serverless v2 | ~$10–$20 (at low usage) |
+| CloudFront + S3 | <$5 |
+| Total | **≈ $30–$50/month** for a low-traffic personal app |
+
+---
+
+## Summary
+
+This setup gives you:
+- **Fully automated push-to-deploy**
+- **No manual AWS work**
+- **Scalable, serverless architecture**
+- **Fast iteration for solo development**
+
+To extend later:
+- Add CloudWatch alerts
+- Add staging environment (separate Terraform workspace)
+- Integrate backend health checks
+- Enable App Runner custom domains
+
+---
+
+**End of Document**

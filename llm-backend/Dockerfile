@@ -1,16 +1,8 @@
 FROM python:3.11-slim
-
 WORKDIR /app
-
-# Install dependencies
-COPY requirements.txt .
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Create db directory
-RUN mkdir -p db
-
-# Initialize database on startup
-CMD ["sh", "-c", "python db.py --migrate && python db.py --seed data/seed_contents.json && uvicorn main:app --host 0.0.0.0 --port 8000"]
+COPY . /app/
+ENV API_HOST=0.0.0.0 API_PORT=8000
+EXPOSE 8000
+CMD ["uvicorn","main:app","--host","0.0.0.0","--port","8000"]
