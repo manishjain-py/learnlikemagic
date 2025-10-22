@@ -67,7 +67,7 @@ resource "aws_iam_role_policy" "app_runner_secrets" {
 
 # App Runner Auto Scaling Configuration
 resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
-  auto_scaling_configuration_name = "${var.project_name}-backend-${var.environment}"
+  auto_scaling_configuration_name = "llm-autoscale-${var.environment}"
 
   max_concurrency = 100
   max_size        = 5
@@ -81,7 +81,7 @@ resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
 
 # App Runner Service
 resource "aws_apprunner_service" "backend" {
-  service_name = "${var.project_name}-backend-${var.environment}"
+  service_name = "llm-backend-prod"
 
   source_configuration {
     authentication_configuration {
