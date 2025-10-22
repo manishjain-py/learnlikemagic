@@ -1,0 +1,74 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'llm-backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and Deploy Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        working-directory: llm-backend
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building Docker image..."
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Push to ECR
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Pushing image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Deploy to App Runner
+        run: |
+          echo "Triggering App Runner deployment..."
+          aws apprunner start-deployment \
+            --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }}
+
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for App Runner deployment to complete..."
+          aws apprunner wait service-running \
+            --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }} \
+            || echo "⚠️ Deployment may still be in progress"
+
+      - name: Deployment summary
+        run: |
+          echo "✅ Backend deployed successfully!"
+          echo "🐳 Image: ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}"
+          echo "📦 ECR Repository: ${{ secrets.ECR_REPOSITORY }}"
+          echo "🚀 App Runner Service: $(basename ${{ secrets.APP_RUNNER_SERVICE_ARN }})"
