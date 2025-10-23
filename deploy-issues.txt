@@ -1,0 +1,351 @@
+# Learn Like Magic - AWS App Runner Deployment Issues
+
+## Date: October 23, 2025
+
+---
+
+## SUMMARY
+Attempting to deploy FastAPI backend to AWS App Runner via Terraform. The Docker image works perfectly locally but fails health checks in App Runner after ~27 seconds or hangs indefinitely with TCP health checks.
+
+---
+
+## INFRASTRUCTURE SETUP
+
+### What We've Deployed Successfully:
+✅ ECR Repository (learnlikemagic-backend-production)
+✅ RDS Aurora Serverless PostgreSQL Database
+   - Endpoint: learnlikemagic-production.cluster-cgp4ua06a7ei.us-east-1.rds.amazonaws.com
+   - Database: learnlikemagic
+   - User: llmuser
+   - Publicly accessible: YES
+   - Tables created: sessions, events, teaching_guidelines, contents
+   - Data seeded: 4 teaching guidelines
+✅ Secrets Manager (OpenAI API key stored)
+✅ IAM Roles for App Runner
+✅ S3 + CloudFront for frontend
+✅ GitHub OIDC for CI/CD
+
+### What's Failing:
+❌ AWS App Runner Service (backend API)
+
+---
+
+## DOCKER IMAGE STATUS
+
+### Current Image in ECR:
+- Digest: sha256:b840b5d975cd6b1d2cd304092d880f3f33e40fb5a96f97fb6cd761441816a18b
+- Pushed: 2025-10-23 08:53:34 IST
+- Tag: latest
+
+### Image Components:
+- Base: python:3.11-slim
+- Framework: FastAPI + Uvicorn
+- App entry point: main:app
+- Port: 8000
+- Entrypoint: bash /app/entrypoint.sh
+- Working directory: /app
+
+### Entrypoint Script (entrypoint.sh):
+```bash
+#!/bin/bash
+set -e
+
+echo "Starting application..."
+echo "Note: Database migrations should be run manually before first deployment"
+echo "Run: python db.py --migrate && python db.py --seed-guidelines data/seed_guidelines.json"
+
+exec uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+### Local Testing Results:
+✅ Image builds successfully
+✅ Container starts in ~5 seconds
+✅ Health endpoint (/) returns: {"status":"ok","service":"Adaptive Tutor API","version":"0.1.0"}
+✅ Tested with exact production environment variables
+✅ Database connections work from local Docker container
+
+---
+
+## ERRORS ENCOUNTERED
+
+### Error #1: Initial Deployment - Empty ECR Repository
+**Symptom:** App Runner failed to create service - no Docker image in ECR
+**Solution:** Built and pushed Docker image to ECR
+**Status:** RESOLVED
+
+### Error #2: Database Not Initialized
+**Symptom:** No tables in database, app would crash on startup
+**Solution:**
+- Ran migrations manually: `docker run ... python db.py --migrate`
+- Seeded data: `docker run ... python db.py --seed-guidelines data/seed_guidelines.json`
+**Status:** RESOLVED
+
+### Error #3: ImportError - SessionLocal
+**Symptom:** Container crashed with:
+```
+ImportError: cannot import name 'SessionLocal' from 'db' (/app/db.py)
+```
+**Root Cause:** graph/nodes.py had old SQLite code importing SessionLocal
+**Solution:**
+- Removed `from db import SessionLocal` import
+- Updated to use `from database import get_db_manager`
+- Changed session creation to use proper database manager
+**Status:** RESOLVED
+
+### Error #4: Health Check Failures (CURRENT ISSUE)
+**Symptom:** App Runner consistently fails with "Health check failed" after ~27 seconds
+**Observations:**
+- NO application logs in CloudWatch (only service logs)
+- Container appears to not be starting or crashing immediately
+- Local Docker works perfectly with same environment
+- TCP health checks: hangs for 6+ minutes without success/failure
+- HTTP health checks: fails in ~27 seconds
+
+---
+
+## ATTEMPTED FIXES
+
+### Fix #1: Database Migration Strategy
+- Initially tried running migrations in entrypoint.sh
+- Changed to manual migration approach (pre-deploy)
+- Database now fully initialized before App Runner deployment
+
+### Fix #2: Entrypoint Script Modifications
+- Started with migrations in entrypoint (failed - too slow)
+- Simplified to just start uvicorn
+- Changed CMD from direct script execution to: `CMD ["bash", "/app/entrypoint.sh"]`
+- Verified bash is available in python:3.11-slim image
+
+### Fix #3: Code Fixes
+- Fixed SessionLocal import error in graph/nodes.py
+- Updated database session handling
+
+### Fix #4: Manual CLI Deployment Test
+- Created App Runner service via AWS CLI (not Terraform)
+- Used direct environment variables instead of Secrets Manager reference
+- Used TCP health check instead of HTTP
+- Result: Still hanging after 6+ minutes (unusual - should fail or succeed faster)
+
+---
+
+## TERRAFORM CONFIGURATION
+
+### App Runner Module (modules/app-runner/main.tf):
+```hcl
+health_check_configuration {
+  protocol            = "HTTP"
+  path                = "/"
+  interval            = 10
+  timeout             = 5
+  healthy_threshold   = 1
+  unhealthy_threshold = 5
+}
+
+runtime_environment_variables = {
+  API_HOST     = "0.0.0.0"
+  API_PORT     = "8000"
+  DATABASE_URL = var.database_url
+  LLM_MODEL    = var.llm_model
+  ENVIRONMENT  = var.environment
+}
+
+runtime_environment_secrets = {
+  OPENAI_API_KEY = var.openai_secret_arn  # References Secrets Manager
+}
+```
+
+---
+
+## KEY OBSERVATIONS
+
+### Timing Analysis:
+- Local Docker: App ready in ~5 seconds
+- App Runner HTTP health check: Fails in ~27 seconds
+- App Runner TCP health check: Hangs indefinitely (6+ minutes)
+- Expected failure time with unhealthy_threshold=5, interval=10: ~50 seconds
+
+### The 27-second failure is FASTER than expected, suggesting:
+1. Container is crashing on startup (not health check timeout)
+2. App Runner gives up early for some reason
+3. There's a different error we're not seeing in logs
+
+### Missing Application Logs:
+- App Runner NEVER creates /aws/apprunner/.../application log group
+- Only /aws/apprunner/.../service log group exists
+- This suggests container never successfully starts to the point of logging
+
+### Differences Between Local and App Runner:
+1. **Secrets Manager**: Local uses direct env var, App Runner references secret ARN
+2. **Networking**: App Runner uses AWS VPC networking
+3. **IAM**: App Runner needs instance role to read secrets
+4. **Platform**: App Runner uses different Linux/container runtime
+
+---
+
+## CURRENT HYPOTHESIS
+
+### Most Likely Root Cause:
+**App Runner cannot fetch the OPENAI_API_KEY from Secrets Manager**
+
+**Evidence:**
+1. Terraform uses `runtime_environment_secrets` with Secret ARN
+2. Manual CLI test uses direct env var (still testing - inconclusive)
+3. IAM instance role may not have proper Secrets Manager permissions
+4. FastAPI/Pydantic requires OPENAI_API_KEY at startup (validates settings)
+5. If secret fetch fails, app crashes before any logs are written
+
+### IAM Permissions Check Needed:
+- Instance role: `learnlikemagic-apprunner-instance-production`
+- Should have: `secretsmanager:GetSecretValue` on the OpenAI secret
+- Current policy: modules/app-runner/main.tf line 52-66
+
+---
+
+## CURRENT STATUS
+
+### Active Deployments:
+1. Manual test service via CLI: `llm-backend-test` (Status: OPERATION_IN_PROGRESS, 6+ min)
+   - ARN: arn:aws:apprunner:us-east-1:926211191776:service/llm-backend-test/7a7692e576e541658fe1584629a27442
+   - Using: Direct OPENAI_API_KEY env var
+   - Health check: TCP on port 8000
+   - Purpose: Test if secrets manager is the issue
+
+### Database:
+- ✅ Fully initialized and accessible
+- ✅ Tables created
+- ✅ Data seeded
+- ✅ Connection string verified from local Docker
+
+### Docker Image:
+- ✅ Latest image in ECR
+- ✅ Tested and working locally
+- ✅ All code fixes applied (SessionLocal resolved)
+
+---
+
+## NEXT STEPS
+
+### Immediate Actions:
+1. **Wait for manual CLI test to complete** (currently running)
+   - If succeeds: Confirms secrets manager is the issue
+   - If fails: Different root cause
+
+2. **If Secrets Manager is the issue:**
+   - Review IAM instance role permissions
+   - Verify secret ARN format in Terraform
+   - Consider using direct env vars temporarily for testing
+
+3. **If manual CLI test also fails:**
+   - Check for platform-specific issues (ARM vs x86)
+   - Review App Runner service quotas/limits
+   - Consider ECS Fargate as alternative
+
+4. **Alternative Debugging Approaches:**
+   - Add explicit startup logging to entrypoint.sh
+   - Create minimal test image (just return OK, no DB/secrets)
+   - Contact AWS Support for App Runner service logs
+
+### Questions to Answer:
+- [ ] Does manual CLI service with direct env vars succeed?
+- [ ] Does IAM instance role have secretsmanager:GetSecretValue permission?
+- [ ] Is the secret ARN format correct?
+- [ ] Are there any VPC/security group issues blocking App Runner?
+- [ ] Is there a platform architecture mismatch (ARM64 vs AMD64)?
+
+---
+
+## TERRAFORM COMMANDS LOG
+
+```bash
+# All attempts failed at App Runner service creation
+cd infra/terraform
+make init    # ✅ Success
+make plan    # ✅ Success
+make apply   # ❌ Failed multiple times - health check failures
+```
+
+---
+
+## AWS CLI COMMANDS FOR DEBUGGING
+
+```bash
+# Check service status
+aws apprunner describe-service \
+  --service-arn <ARN> \
+  --region us-east-1
+
+# Watch logs
+aws logs tail \
+  /aws/apprunner/<service-name>/<service-id>/service \
+  --region us-east-1 \
+  --follow
+
+# List services
+aws apprunner list-services --region us-east-1
+
+# Delete failed service
+aws apprunner delete-service \
+  --service-arn <ARN> \
+  --region us-east-1
+```
+
+---
+
+## FILES MODIFIED
+
+1. `/Users/preethijain/manish/repos/learnlikemagic/llm-backend/Dockerfile`
+   - Updated CMD to use bash entrypoint
+
+2. `/Users/preethijain/manish/repos/learnlikemagic/llm-backend/entrypoint.sh`
+   - Removed database migrations (now done manually)
+   - Simplified to just start uvicorn
+
+3. `/Users/preethijain/manish/repos/learnlikemagic/llm-backend/graph/nodes.py`
+   - Fixed SessionLocal import error
+   - Updated to use proper database manager
+
+4. `/Users/preethijain/manish/repos/learnlikemagic/infra/terraform/Makefile`
+   - Fixed apply target to allow Terraform's native confirmation
+
+---
+
+## CONTACT/RESOURCES
+
+- Terraform Docs: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apprunner_service
+- App Runner Docs: https://docs.aws.amazon.com/apprunner/
+- GitHub Repo: manishjain-py/learnlikemagic
+- AWS Region: us-east-1
+- AWS Account: 926211191776
+
+---
+
+## TIMELINE
+
+- Initial deployment attempt: Multiple failures over several hours
+- Database setup: Completed manually
+- Code fixes: SessionLocal import resolved
+- Current: Testing manual CLI deployment to isolate root cause
+- Time spent: ~4-5 hours of debugging
+
+---
+
+## LESSONS LEARNED
+
+1. **Always initialize database separately before App Runner deployment**
+   - App Runner has 20-minute timeout - migrations can take longer
+   - Better to handle schema separately from application deployment
+
+2. **Test Docker images locally with EXACT production environment**
+   - Helped identify SessionLocal import error quickly
+
+3. **App Runner logging is limited during failures**
+   - Application logs only appear after successful startup
+   - Makes debugging startup crashes very difficult
+
+4. **Consider simpler deployment platforms for MVP**
+   - App Runner abstracts too much, making debugging hard
+   - ECS Fargate or even EC2 might be easier to debug
+
+---
+
+END OF DOCUMENT

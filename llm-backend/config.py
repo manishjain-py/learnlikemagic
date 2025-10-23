@@ -42,8 +42,8 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     openai_api_key: str = Field(
-        ...,
-        description="OpenAI API key (required)"
+        default="",
+        description="OpenAI API key (required at runtime)"
     )
     llm_model: str = Field(
         default="gpt-4o-mini",
@@ -89,3 +89,24 @@ def reset_settings():
     """Reset the global settings instance (useful for testing)."""
     global _settings
     _settings = None
+
+
+def validate_required_settings():
+    """
+    Validate that all required settings are present at runtime.
+
+    Should be called after settings are loaded but before application starts.
+    Raises ValueError if required settings are missing.
+    """
+    settings = get_settings()
+
+    if not settings.openai_api_key or settings.openai_api_key == "":
+        raise ValueError(
+            "OPENAI_API_KEY environment variable is required but not set. "
+            "Please ensure the secret is properly configured in App Runner or your environment."
+        )
+
+    if not settings.database_url:
+        raise ValueError("DATABASE_URL is required but not set")
+
+    return True

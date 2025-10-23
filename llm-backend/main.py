@@ -22,6 +22,7 @@ from db import create_session_record, update_session_state, get_session_by_id, l
 from graph.build_graph import get_graph
 from graph.state import tutor_state_to_graph_state, graph_state_to_tutor_state
 from guideline_repository import TeachingGuidelineRepository
+from config import validate_required_settings
 
 # Create FastAPI app
 app = FastAPI(
@@ -29,6 +30,17 @@ app = FastAPI(
     description="LangGraph-based adaptive tutoring system with RAG",
     version="0.1.0"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Validate configuration on startup."""
+    try:
+        validate_required_settings()
+        print("✓ Configuration validated successfully")
+    except ValueError as e:
+        print(f"✗ Configuration validation failed: {e}")
+        raise
 
 # CORS middleware for frontend
 app.add_middleware(
