@@ -1,0 +1,24 @@
+# Development and testing dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0  # For async test support
+pytest-cov>=4.1.0       # Coverage plugin
+pytest-mock>=3.11.1     # Mocking support
+
+# HTTP testing
+httpx>=0.24.1           # TestClient for FastAPI
+requests-mock>=1.11.0   # Mock HTTP requests
+
+# Database testing
+faker>=19.0.0           # Generate fake test data
+
+# Code quality
+black>=23.0.0           # Code formatter
+flake8>=6.0.0           # Linter
+mypy>=1.5.0             # Type checker
+isort>=5.12.0           # Import sorter
+
+# Development tools
+ipython>=8.14.0         # Better Python REPL

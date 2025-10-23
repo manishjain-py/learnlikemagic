@@ -1,0 +1,9 @@
+{
+  "llm_failure": {
+    "message": "Let's work on comparing fractions!",
+    "hints": ["Think about which numerator is bigger"],
+    "expected_answer_form": "short_text"
+  },
+  "session_not_found": "Session not found. Please create a new session.",
+  "guideline_not_found": "Teaching guideline not found. Using default teaching approach."
+}

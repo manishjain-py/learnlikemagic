@@ -6,36 +6,94 @@ FastAPI backend with LangGraph agent for adaptive tutoring.
 
 ```
 llm-backend/
+├── api/                           # API layer
+│   └── routes/                   # FastAPI route handlers
+│       ├── health.py             # Health check endpoints
+│       ├── curriculum.py         # Curriculum discovery
+│       └── sessions.py           # Session management
+├── services/                      # Business logic layer
+│   ├── session_service.py        # Session orchestration
+│   └── graph_service.py          # Graph execution
+├── repositories/                  # Data access layer
+│   ├── session_repository.py     # Session CRUD
+│   ├── event_repository.py       # Event logging
+│   └── guideline_repository.py   # Guideline queries
 ├── graph/                         # LangGraph agent
-│   ├── state.py                  # State definitions & prompts
-│   ├── nodes.py                  # Node implementations
+│   ├── state.py                  # State definitions
+│   ├── nodes.py                  # Node implementations (pure functions)
 │   └── build_graph.py            # Graph compilation
+├── prompts/                       # LLM prompt templates
+│   ├── templates/                # Template files
+│   │   ├── teaching_prompt.txt   # Teaching/present node
+│   │   ├── grading_prompt.txt    # Grading/check node
+│   │   └── remediation_prompt.txt # Remediation helper
+│   └── loader.py                 # PromptLoader class
+├── models/                        # Data models (separated by concern)
+│   ├── database.py               # SQLAlchemy ORM models
+│   ├── domain.py                 # Business logic models (Pydantic)
+│   └── schemas.py                # API request/response schemas
+├── utils/                         # Shared utilities
+│   ├── formatting.py             # History & response formatting
+│   ├── constants.py              # Centralized constants
+│   └── exceptions.py             # Custom exceptions
+├── tests/                         # Test suite
+│   ├── conftest.py               # Pytest fixtures
+│   ├── unit/                     # Unit tests
+│   └── integration/              # Integration tests
 ├── data/
 │   └── seed_guidelines.json      # Teaching guidelines
-├── main.py                        # FastAPI application
-├── models.py                      # Pydantic & SQLAlchemy models
-├── db.py                          # Database utilities & CLI
-├── guideline_repository.py        # Repository pattern for guidelines
+├── main.py                        # FastAPI app (66 lines, clean!)
+├── database.py                    # Database manager
+├── config.py                      # Configuration management
 ├── llm.py                         # OpenAI LLM abstraction
-├── requirements.txt               # Python dependencies
-├── Dockerfile                     # Container image
+├── requirements.txt               # Production dependencies
+├── requirements-dev.txt           # Development dependencies
+├── pytest.ini                     # Pytest configuration
+├── Dockerfile                     # Container image (Python 3.11)
 ├── .env                          # Environment configuration
 └── .env.example                  # Example configuration
 ```
 
+### Design Principles
+
+- **Single Responsibility Principle (SRP)**: Each module/function has one clear purpose
+- **Separation of Concerns**: API → Services → Repositories → Database
+- **Dependency Injection**: Pass dependencies as parameters for testability
+- **DRY**: No code duplication, shared utilities for common operations
+- **Pure Functions**: Graph nodes as state transformations without side effects
+- **External Templates**: Prompts stored as separate files for easy versioning
+
 ## Setup
+
+### Requirements
+
+- **Python 3.10+** (Production uses 3.11, local development supports 3.10-3.13)
+- **PostgreSQL** (Production) or **SQLite** (Development)
+- **OpenAI API Key**
 
 ### 1. Create Virtual Environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Use Python 3.11+ to match production (Docker uses 3.11)
+# Check your Python version first
+python3 --version
+
+# Create venv (use python3.11 or python3.13 if available)
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Verify Python version in venv
+python --version
 ```
 
 ### 2. Install Dependencies
 
 ```bash
+# Production dependencies
 pip install -r requirements.txt
+
+# Development dependencies (includes testing tools)
+pip install -r requirements-dev.txt
 ```
 
 ### 3. Configure Environment
@@ -305,7 +363,7 @@ API_HOST=0.0.0.0               # Optional
 API_PORT=8000                  # Optional
 ```
 
-### Testing
+### Manual API Testing
 
 ```bash
 # Check API health
@@ -328,6 +386,118 @@ curl -X POST http://localhost:8000/sessions \
   }'
 ```
 
+## Testing
+
+The project uses **pytest** for automated testing with coverage reporting.
+
+### Test Structure
+
+```
+tests/
+├── conftest.py          # Shared fixtures (db_session, sample data, mocks)
+├── unit/                # Fast, isolated tests (no external dependencies)
+│   └── test_formatting.py
+└── integration/         # Tests with database, external services
+```
+
+### Running Tests
+
+```bash
+# Activate virtual environment first
+source venv/bin/activate
+
+# Set dummy API key for tests (required for module imports)
+export OPENAI_API_KEY=sk-test-dummy-key
+
+# Run all tests with coverage
+pytest
+
+# Run specific test file
+pytest tests/unit/test_formatting.py
+
+# Run with verbose output
+pytest -v
+
+# Run only unit tests (fast)
+pytest -m unit
+
+# Run only integration tests
+pytest -m integration
+
+# Run tests matching a pattern
+pytest -k "test_format"
+
+# Show test coverage report
+pytest --cov=. --cov-report=term-missing
+
+# Generate HTML coverage report
+pytest --cov=. --cov-report=html
+# Open htmlcov/index.html in browser
+```
+
+### Test Markers
+
+Tests are organized with markers (defined in `pytest.ini`):
+
+- `@pytest.mark.unit` - Fast tests with no external dependencies
+- `@pytest.mark.integration` - Tests requiring database or external services
+- `@pytest.mark.slow` - Tests taking >1 second
+- `@pytest.mark.smoke` - Quick smoke tests for deployment verification
+
+### Writing Tests
+
+```python
+# tests/unit/test_example.py
+import pytest
+from utils.formatting import format_conversation_history
+
+class TestFormatting:
+    """Tests for conversation formatting."""
+
+    def test_format_empty_history(self):
+        """Test formatting empty history returns placeholder."""
+        result = format_conversation_history([])
+        assert result == "(First turn - no history yet)"
+
+    def test_format_multiple_entries(self, sample_tutor_state):
+        """Test formatting history with multiple entries."""
+        # Use fixtures from conftest.py
+        history = sample_tutor_state.history
+        result = format_conversation_history(history)
+        assert "Teacher:" in result
+        assert "Student:" in result
+```
+
+### Available Fixtures
+
+Defined in `tests/conftest.py`:
+
+- `db_session` - In-memory SQLite database session
+- `client` - FastAPI TestClient
+- `sample_student` - Student data model
+- `sample_goal` - Learning goal data
+- `sample_tutor_state` - Complete tutor state
+- `sample_grading_result` - Grading result data
+- `mock_llm_provider` - Mocked LLM for testing without API calls
+
+### Coverage Configuration
+
+Configured in `pytest.ini`:
+
+- **Target**: All modules except tests, migrations, old files
+- **Reports**: Terminal (missing lines) + HTML
+- **Threshold**: Aim for >80% coverage on new code
+
+### Test Best Practices
+
+1. **Arrange-Act-Assert**: Structure tests clearly
+2. **One assertion per test**: Keep tests focused
+3. **Use fixtures**: Leverage shared test data
+4. **Mock external services**: Use `mock_llm_provider` for LLM calls
+5. **Test edge cases**: Empty inputs, None values, errors
+6. **Descriptive names**: `test_format_empty_history` not `test1`
+7. **Docstrings**: Explain what the test verifies
+
 ## Deployment
 
 ### Docker
@@ -349,15 +519,33 @@ docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... llm-backend
 
 ## Dependencies
 
+### Production (`requirements.txt`)
+
 - **fastapi**: Web framework
-- **uvicorn**: ASGI server
-- **langgraph**: Agent orchestration
+- **uvicorn[standard]**: ASGI server with performance optimizations
+- **langgraph**: Agent orchestration framework
 - **langchain-core**: LangChain utilities
 - **openai**: OpenAI API client
-- **sqlalchemy**: ORM
-- **aiosqlite**: Async SQLite
-- **pydantic**: Data validation
-- **python-dotenv**: Environment configuration
+- **sqlalchemy**: ORM for database operations
+- **psycopg2-binary**: PostgreSQL adapter
+- **pydantic**: Data validation and settings
+- **pydantic-settings**: Environment configuration
+- **python-dotenv**: .env file support
+
+### Development (`requirements-dev.txt`)
+
+- **pytest**: Testing framework
+- **pytest-asyncio**: Async test support
+- **pytest-cov**: Coverage reporting
+- **pytest-mock**: Mocking utilities
+- **httpx**: TestClient for FastAPI
+- **requests-mock**: Mock HTTP requests
+- **faker**: Generate test data
+- **black**: Code formatter
+- **flake8**: Linter
+- **mypy**: Type checker
+- **isort**: Import sorter
+- **ipython**: Enhanced Python REPL
 
 ## Troubleshooting
 
@@ -381,8 +569,38 @@ python db.py --seed-guidelines data/seed_guidelines.json
 ### Import errors
 ```bash
 # Ensure virtual environment is activated
-source .venv/bin/activate
+source venv/bin/activate
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+### Test failures due to missing OPENAI_API_KEY
+```bash
+# Tests require the API key environment variable (even with a dummy value)
+export OPENAI_API_KEY=sk-test-dummy-key
+pytest
+```
+
+### Python version issues
+```bash
+# Check Python version (must be 3.10+)
+python --version
+
+# If using older Python, install 3.11+ and recreate venv
+# On macOS with Homebrew:
+brew install python@3.11
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt requirements-dev.txt
+```
+
+### Coverage reports not generating
+```bash
+# Ensure pytest-cov is installed
+pip install pytest-cov
+
+# Run with explicit coverage options
+pytest --cov=. --cov-report=html --cov-report=term-missing
 ```
 
 ## Support
@@ -395,5 +613,5 @@ For issues specific to the backend:
 
 ---
 
-**Backend Version**: 2.0
-**Last Updated**: 2025-10-21
+**Backend Version**: 2.1
+**Last Updated**: 2025-10-23

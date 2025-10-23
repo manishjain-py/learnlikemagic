@@ -2,6 +2,7 @@
 
 > **Guide for developers working on Learn Like Magic**
 > **Last Updated:** October 23, 2025
+> **Version:** 1.1 - Updated with refactored architecture and testing guide
 
 ## Table of Contents
 
@@ -40,15 +41,27 @@ cd learnlikemagic
 
 ### Backend Setup
 
+**Requirements:**
+- Python 3.10+ (Python 3.11+ recommended to match production)
+
 ```bash
 cd llm-backend
 
-# Create virtual environment
-python -m venv venv
+# Check Python version
+python3 --version  # Should be 3.10 or higher
+
+# Create virtual environment (use python3.11 or python3.13 if available)
+python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies
+# Verify venv Python version
+python --version
+
+# Install production dependencies
 pip install -r requirements.txt
+
+# Install development dependencies (testing, linting, etc.)
+pip install -r requirements-dev.txt
 
 # Create .env file
 cat > .env << EOF
@@ -182,25 +195,64 @@ After merging to `main`, deployments happen automatically via GitHub Actions.
 
 ```
 llm-backend/
-├── main.py              # FastAPI app entry point
-├── models.py            # Pydantic models
-├── config.py            # Configuration/settings
-├── database.py          # Database manager
-├── db.py                # Database operations
-├── graph/               # LangGraph implementation
-│   ├── build_graph.py
-│   ├── nodes.py
-│   └── state.py
-├── guideline_repository.py  # Teaching guidelines
-├── requirements.txt     # Python dependencies
-├── Dockerfile          # Container definition
-├── entrypoint.sh       # Container startup script
-└── Makefile           # Build automation
+├── api/                         # API layer
+│   └── routes/                 # FastAPI route handlers
+│       ├── health.py           # Health check endpoints
+│       ├── curriculum.py       # Curriculum discovery
+│       └── sessions.py         # Session management
+├── services/                    # Business logic layer
+│   ├── session_service.py      # Session orchestration
+│   └── graph_service.py        # Graph execution
+├── repositories/                # Data access layer
+│   ├── session_repository.py   # Session CRUD
+│   ├── event_repository.py     # Event logging
+│   └── guideline_repository.py # Guideline queries
+├── graph/                       # LangGraph agent
+│   ├── state.py                # State definitions
+│   ├── nodes.py                # Node implementations (pure functions)
+│   └── build_graph.py          # Graph compilation
+├── prompts/                     # LLM prompt templates
+│   ├── templates/              # Template files
+│   │   ├── teaching_prompt.txt
+│   │   ├── grading_prompt.txt
+│   │   └── remediation_prompt.txt
+│   └── loader.py               # PromptLoader class
+├── models/                      # Data models (separated by concern)
+│   ├── database.py             # SQLAlchemy ORM models
+│   ├── domain.py               # Business logic models (Pydantic)
+│   └── schemas.py              # API request/response schemas
+├── utils/                       # Shared utilities
+│   ├── formatting.py           # History & response formatting
+│   ├── constants.py            # Centralized constants
+│   └── exceptions.py           # Custom exceptions
+├── tests/                       # Test suite
+│   ├── conftest.py             # Pytest fixtures
+│   ├── unit/                   # Unit tests
+│   └── integration/            # Integration tests
+├── main.py                      # FastAPI app (66 lines, clean!)
+├── config.py                    # Configuration/settings
+├── database.py                  # Database manager
+├── db.py                        # Database operations CLI
+├── llm.py                       # OpenAI LLM abstraction
+├── requirements.txt             # Production dependencies
+├── requirements-dev.txt         # Development dependencies
+├── pytest.ini                   # Pytest configuration
+├── Dockerfile                   # Container definition (Python 3.11)
+├── entrypoint.sh               # Container startup script
+└── Makefile                    # Build automation
 ```
+
+**Key principles:**
+- **SRP (Single Responsibility)**: Each module has one clear purpose
+- **Layered architecture**: API → Services → Repositories → Database
+- **DRY**: No code duplication, shared utilities
+- **Testability**: Pure functions, dependency injection
 
 #### Adding a New API Endpoint
 
-1. **Define model in `models.py`:**
+Follow the layered architecture: API → Services → Repositories → Database
+
+1. **Define request/response schemas in `models/schemas.py`:**
 
 ```python
 from pydantic import BaseModel
@@ -211,24 +263,91 @@ class NewFeatureRequest(BaseModel):
 
 class NewFeatureResponse(BaseModel):
     result: str
+    status: str
 ```
 
-2. **Add endpoint in `main.py`:**
+2. **Add business logic in `services/` (if needed):**
 
 ```python
-@app.post("/new-feature", response_model=NewFeatureResponse)
-def new_feature(request: NewFeatureRequest, db: DBSession = Depends(get_db)):
-    """Your endpoint description."""
+# services/new_feature_service.py
+from sqlalchemy.orm import Session
+from models.schemas import NewFeatureRequest, NewFeatureResponse
+
+class NewFeatureService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def process_feature(self, request: NewFeatureRequest) -> NewFeatureResponse:
+        """Process the feature request."""
+        # Business logic here
+        return NewFeatureResponse(result="success", status="completed")
+```
+
+3. **Add endpoint in `api/routes/`:**
+
+```python
+# api/routes/new_feature.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from database import get_db
+from models.schemas import NewFeatureRequest, NewFeatureResponse
+from services.new_feature_service import NewFeatureService
+
+router = APIRouter(prefix="/new-feature", tags=["new-feature"])
+
+@router.post("", response_model=NewFeatureResponse)
+def create_new_feature(
+    request: NewFeatureRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Process new feature request.
+
+    Args:
+        request: Feature parameters
+        db: Database session
+
+    Returns:
+        NewFeatureResponse with result
+    """
     try:
-        # Your logic here
-        return NewFeatureResponse(result="success")
+        service = NewFeatureService(db)
+        return service.process_feature(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 ```
 
-3. **Test locally:**
+4. **Register router in `main.py`:**
+
+```python
+from api.routes import health, curriculum, sessions, new_feature
+
+app.include_router(new_feature.router)
+```
+
+5. **Add unit tests in `tests/unit/`:**
+
+```python
+# tests/unit/test_new_feature.py
+import pytest
+from services.new_feature_service import NewFeatureService
+from models.schemas import NewFeatureRequest
+
+def test_process_feature():
+    """Test new feature processing."""
+    request = NewFeatureRequest(param1="value", param2=123)
+    service = NewFeatureService(db=None)  # Or use db_session fixture
+    result = service.process_feature(request)
+    assert result.status == "completed"
+```
+
+6. **Test locally:**
 
 ```bash
+# Run unit tests
+pytest tests/unit/test_new_feature.py -v
+
+# Test API manually
 curl -X POST http://localhost:8000/new-feature \
   -H "Content-Type: application/json" \
   -d '{"param1": "value", "param2": 123}'
@@ -236,27 +355,64 @@ curl -X POST http://localhost:8000/new-feature \
 
 #### Adding Database Tables/Models
 
-1. **Define model in `db.py`:**
+1. **Define ORM model in `models/database.py`:**
 
 ```python
-from sqlalchemy import Column, String, Integer
+from sqlalchemy import Column, String, Integer, DateTime, func
+from models.database import Base
 
 class NewTable(Base):
+    """New table for storing feature data."""
     __tablename__ = "new_table"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 ```
 
-2. **Create migration function:**
+2. **Create migration in `db.py`:**
 
 ```python
+from models.database import Base, NewTable
+
 def migrate_new_table():
     """Create new_table."""
     Base.metadata.create_all(bind=engine, tables=[NewTable.__table__])
 ```
 
-3. **Run migration:**
+3. **Add repository in `repositories/`:**
+
+```python
+# repositories/new_table_repository.py
+from typing import Optional, List
+from sqlalchemy.orm import Session
+from models.database import NewTable
+
+class NewTableRepository:
+    """Repository for NewTable data access."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(self, name: str) -> NewTable:
+        """Create a new record."""
+        record = NewTable(name=name)
+        self.db.add(record)
+        self.db.commit()
+        self.db.refresh(record)
+        return record
+
+    def get_by_id(self, id: int) -> Optional[NewTable]:
+        """Get record by ID."""
+        return self.db.query(NewTable).filter(NewTable.id == id).first()
+
+    def get_all(self) -> List[NewTable]:
+        """Get all records."""
+        return self.db.query(NewTable).all()
+```
+
+4. **Run migration:**
 
 ```bash
 python db.py --migrate
@@ -343,20 +499,135 @@ export async function createSession(data: CreateSessionRequest) {
 
 ### Backend Testing
 
+The backend uses **pytest** for automated testing with coverage reporting.
+
+#### Test Structure
+
+```
+llm-backend/tests/
+├── conftest.py          # Shared fixtures (db_session, sample data, mocks)
+├── unit/                # Fast, isolated tests (no external dependencies)
+│   └── test_formatting.py
+└── integration/         # Tests with database, external services
+```
+
+#### Setting Up for Testing
+
 ```bash
 cd llm-backend
 
-# Run all tests
+# Ensure virtual environment is activated
+source venv/bin/activate
+
+# Install development dependencies (includes pytest)
+pip install -r requirements-dev.txt
+
+# Set dummy API key (required for module imports)
+export OPENAI_API_KEY=sk-test-dummy-key
+```
+
+#### Running Tests
+
+```bash
+# Run all tests with coverage (configured in pytest.ini)
 pytest
 
 # Run specific test file
-pytest tests/test_api.py
+pytest tests/unit/test_formatting.py
 
-# Run with coverage
+# Run with verbose output
+pytest -v
+
+# Run only unit tests (fast, no external dependencies)
+pytest -m unit
+
+# Run only integration tests
+pytest -m integration
+
+# Run tests matching a pattern
+pytest -k "test_format"
+
+# Show detailed coverage report
+pytest --cov=. --cov-report=term-missing
+
+# Generate HTML coverage report
 pytest --cov=. --cov-report=html
+# Then open: htmlcov/index.html
+```
 
+#### Test Markers
+
+Tests are organized with markers (defined in `pytest.ini`):
+
+- `@pytest.mark.unit` - Fast tests with no external dependencies
+- `@pytest.mark.integration` - Tests requiring database or external services
+- `@pytest.mark.slow` - Tests taking >1 second
+- `@pytest.mark.smoke` - Quick smoke tests for deployment verification
+
+#### Writing Tests
+
+```python
+# tests/unit/test_example.py
+import pytest
+from utils.formatting import format_conversation_history
+
+class TestFormatting:
+    """Tests for conversation formatting."""
+
+    def test_format_empty_history(self):
+        """Test formatting empty history returns placeholder."""
+        result = format_conversation_history([])
+        assert result == "(First turn - no history yet)"
+
+    def test_format_multiple_entries(self, sample_tutor_state):
+        """Test formatting history with multiple entries."""
+        # Use fixtures from conftest.py
+        history = sample_tutor_state.history
+        result = format_conversation_history(history)
+        assert "Teacher:" in result
+        assert "Student:" in result
+```
+
+#### Available Fixtures
+
+Defined in `tests/conftest.py`:
+
+- `db_session` - In-memory SQLite database session
+- `client` - FastAPI TestClient for API testing
+- `sample_student` - Student data model
+- `sample_goal` - Learning goal data
+- `sample_tutor_state` - Complete tutor state with history
+- `sample_grading_result` - Grading result data
+- `mock_llm_provider` - Mocked LLM provider (no API calls)
+
+#### Test Best Practices
+
+1. **Arrange-Act-Assert**: Structure tests clearly
+2. **One assertion per test**: Keep tests focused
+3. **Use fixtures**: Leverage shared test data from conftest.py
+4. **Mock external services**: Use `mock_llm_provider` for LLM calls
+5. **Test edge cases**: Empty inputs, None values, error conditions
+6. **Descriptive names**: `test_format_empty_history` not `test1`
+7. **Docstrings**: Explain what each test verifies
+
+#### Manual API Testing
+
+```bash
 # Test specific endpoint manually
 curl http://localhost:8000/health/db
+
+# Test session creation
+curl -X POST http://localhost:8000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": {"id": "s1", "grade": 3},
+    "goal": {
+      "topic": "Fractions",
+      "syllabus": "CBSE-G3",
+      "learning_objectives": ["Compare fractions"],
+      "guideline_id": "g1"
+    }
+  }'
 ```
 
 ### Frontend Testing
@@ -385,6 +656,7 @@ Before deploying:
 - [ ] Database health works: `GET /health/db`
 - [ ] Can create session: `POST /sessions`
 - [ ] Can submit step: `POST /sessions/{id}/step`
+- [ ] All unit tests pass: `pytest -m unit`
 - [ ] Frontend loads and connects to backend
 - [ ] Can complete a full tutoring session
 - [ ] No console errors in browser
@@ -1024,6 +1296,6 @@ git push origin feature/name    # Push
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** October 23, 2025
+**Document Version:** 1.1
+**Last Updated:** October 23, 2025 (Updated with refactored architecture and comprehensive testing guide)
 **Status:** ✅ Active

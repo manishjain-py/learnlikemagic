@@ -9,7 +9,10 @@
       "Read(//Users/manishjain/Desktop/test/**)",
       "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
       "Bash(aws apprunner list-services:*)",
-      "Bash(aws logs tail:*)"
+      "Bash(aws logs tail:*)",
+      "Bash(tree:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

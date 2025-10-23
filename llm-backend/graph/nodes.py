@@ -1,15 +1,24 @@
 """
 LangGraph node implementations for the adaptive tutor agent.
+
+All nodes are pure functions: state in → state out.
+Database access and data loading happens in the service layer.
 """
 import json
 from typing import Dict, Any
-from graph.state import (
-    GraphState,
-    PRESENT_SYSTEM_PROMPT,
-    CHECK_SYSTEM_PROMPT,
-    REMEDIATE_SYSTEM_PROMPT
-)
+
+from graph.state import GraphState
 from llm import get_llm_provider
+from prompts import get_teaching_prompt, get_grading_prompt, get_remediation_prompt
+from utils.formatting import format_conversation_history
+from utils.constants import (
+    DEFAULT_GUIDELINE,
+    MASTERY_EMA_ALPHA,
+    MASTERY_ADVANCE_THRESHOLD,
+    MIN_CONFIDENCE_FOR_ADVANCE,
+    MAX_STEPS,
+    MASTERY_COMPLETION_THRESHOLD
+)
 
 
 # Shared LLM provider instance
@@ -20,77 +29,55 @@ def present_node(state: GraphState) -> GraphState:
     """
     Present node: Compose teaching turn or pose a question using teaching guidelines.
 
+    Pure function: expects teaching_guideline to be pre-loaded in state by service layer.
+
     This node:
-    1. Retrieves teaching guideline for the topic
-    2. Uses LLM to compose an appropriate teaching message based on guideline
-    3. Adds the message to conversation history
+    1. Uses teaching guideline from state (no database access)
+    2. Formats conversation history using utility
+    3. Uses LLM to compose appropriate teaching message
+    4. Adds the message to conversation history
     """
-    print(f"[Present] Step {state['step_idx']}/10")
+    print(f"[Present] Step {state['step_idx']}/{MAX_STEPS}")
 
-    # Get guideline repository
-    from database import get_db_manager
-    from guideline_repository import TeachingGuidelineRepository
+    # Guideline should already be in state (loaded by service layer)
+    teaching_guideline = state.get("teaching_guideline", DEFAULT_GUIDELINE)
+    prefs = state["student"].get("prefs", {})
 
-    db_manager = get_db_manager()
-    db = db_manager.get_session()
-    try:
-        guideline_repo = TeachingGuidelineRepository(db)
+    # Format conversation history using utility
+    history_text = format_conversation_history(state["history"])
 
-        # Get teaching guideline if not already in state
-        if not state.get("teaching_guideline"):
-            guideline_id = state["goal"].get("guideline_id")
-            if guideline_id:
-                guideline_obj = guideline_repo.get_guideline_by_id(guideline_id)
-                if guideline_obj:
-                    state["teaching_guideline"] = guideline_obj.guideline
-                else:
-                    print(f"[Present] WARNING: Guideline {guideline_id} not found")
-                    state["teaching_guideline"] = "Teach this topic step by step using grade-appropriate language."
-            else:
-                print(f"[Present] WARNING: No guideline_id in goal")
-                state["teaching_guideline"] = "Teach this topic step by step using grade-appropriate language."
+    # Load and format system prompt from template
+    system_prompt = get_teaching_prompt(
+        grade=state["student"]["grade"],
+        topic=state["goal"]["topic"],
+        prefs=json.dumps(prefs),
+        step_idx=state["step_idx"]
+    )
 
-        prefs = state["student"].get("prefs", {})
+    # Build user prompt with context
+    user_prompt = json.dumps({
+        "topic": state["goal"]["topic"],
+        "grade": state["student"]["grade"],
+        "prefs": prefs,
+        "step_idx": state["step_idx"],
+        "teaching_guideline": teaching_guideline,
+        "conversation_history": history_text,
+        "last_grading": state.get("last_grading", {})
+    })
 
-        # Format conversation history for context
-        history_text = ""
-        for entry in state["history"]:
-            role = "Teacher" if entry["role"] == "teacher" else "Student"
-            history_text += f"{role}: {entry['msg']}\n"
+    # Generate response
+    response = llm_provider.generate(system_prompt, user_prompt)
 
-        system_prompt = PRESENT_SYSTEM_PROMPT.format(
-            grade=state["student"]["grade"],
-            topic=state["goal"]["topic"],
-            prefs=json.dumps(prefs),
-            step_idx=state["step_idx"]
-        )
+    # Add to history
+    state["history"].append({
+        "role": "teacher",
+        "msg": response["message"],
+        "meta": {
+            "hints": response.get("hints", [])
+        }
+    })
 
-        user_prompt = json.dumps({
-            "topic": state["goal"]["topic"],
-            "grade": state["student"]["grade"],
-            "prefs": prefs,
-            "step_idx": state["step_idx"],
-            "teaching_guideline": state["teaching_guideline"],
-            "conversation_history": history_text if history_text else "(First turn - no history yet)",
-            "last_grading": state.get("last_grading", {})
-        })
-
-        # Generate response
-        response = llm_provider.generate(system_prompt, user_prompt)
-
-        # Add to history
-        state["history"].append({
-            "role": "teacher",
-            "msg": response["message"],
-            "meta": {
-                "hints": response.get("hints", [])
-            }
-        })
-
-        print(f"[Present] Generated message: {response['message'][:60]}...")
-
-    finally:
-        db.close()
+    print(f"[Present] Generated message: {response['message'][:60]}...")
 
     return state
 
@@ -116,13 +103,11 @@ def check_node(state: GraphState) -> GraphState:
                 student_reply = entry["msg"]
                 break
 
-    # Format conversation history for context
-    history_text = ""
-    for entry in state["history"]:
-        role = "Teacher" if entry["role"] == "teacher" else "Student"
-        history_text += f"{role}: {entry['msg']}\n"
+    # Format conversation history using utility
+    history_text = format_conversation_history(state["history"])
 
-    system_prompt = CHECK_SYSTEM_PROMPT.format(
+    # Load and format system prompt from template
+    system_prompt = get_grading_prompt(
         grade=state["student"]["grade"],
         topic=state["goal"]["topic"],
         reply=student_reply
@@ -172,10 +157,9 @@ def diagnose_node(state: GraphState) -> GraphState:
     # Keep evidence list manageable (last 10 items)
     state["evidence"] = state["evidence"][-10:]
 
-    # Update mastery score using EMA (α = 0.4)
+    # Update mastery score using EMA (from constants)
     score = grading["score"]
-    alpha = 0.4
-    state["mastery_score"] = (1 - alpha) * state["mastery_score"] + alpha * score
+    state["mastery_score"] = (1 - MASTERY_EMA_ALPHA) * state["mastery_score"] + MASTERY_EMA_ALPHA * score
 
     print(f"[Diagnose] Mastery: {state['mastery_score']:.2f}, Evidence: {state['evidence']}")
 
@@ -195,7 +179,8 @@ def remediate_node(state: GraphState) -> GraphState:
 
     labels = state.get("last_grading", {}).get("labels", [])
 
-    system_prompt = REMEDIATE_SYSTEM_PROMPT.format(
+    # Load and format system prompt from template
+    system_prompt = get_remediation_prompt(
         grade=state["student"]["grade"],
         labels=json.dumps(labels)
     )
@@ -237,7 +222,7 @@ def advance_node(state: GraphState) -> GraphState:
 
     state["step_idx"] += 1
 
-    print(f"[Advance] Now at step {state['step_idx']}/10")
+    print(f"[Advance] Now at step {state['step_idx']}/{MAX_STEPS}")
 
     return state
 
@@ -257,8 +242,8 @@ def route_after_check(state: GraphState) -> str:
     score = state["last_grading"]["score"]
     confidence = state["last_grading"]["confidence"]
 
-    # Advance if score >= 0.8 AND confidence >= 0.6
-    if score >= 0.8 and confidence >= 0.6:
+    # Advance if score meets threshold AND confidence is high enough (using constants)
+    if score >= MASTERY_ADVANCE_THRESHOLD and confidence >= MIN_CONFIDENCE_FOR_ADVANCE:
         return "advance"
     else:
         return "remediate"
@@ -271,8 +256,8 @@ def route_after_advance(state: GraphState) -> str:
     Returns:
         "present" to continue, "end" to finish session
     """
-    # End if step_idx >= 10 OR mastery >= 0.85
-    if state["step_idx"] >= 10 or state["mastery_score"] >= 0.85:
+    # End if step_idx >= MAX_STEPS OR mastery >= threshold (using constants)
+    if state["step_idx"] >= MAX_STEPS or state["mastery_score"] >= MASTERY_COMPLETION_THRESHOLD:
         return "end"
     else:
         return "present"
