@@ -1,5 +1,8 @@
 .PHONY: help build build-local build-prod push test run clean db-migrate db-seed
 
+# Learn Like Magic Backend - Build & Deployment Automation
+# See docs/dev-workflow.md for complete development guide
+
 # Default target
 help:
 	@echo "Learn Like Magic Backend - Makefile Commands"
