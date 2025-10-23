@@ -35,13 +35,13 @@ plan:
 apply:
 	@echo "Applying Terraform configuration..."
 	@echo "⚠️  This will create AWS resources and incur costs!"
-	@read -p "Continue? [y/N] " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		terraform apply; \
-	else \
-		echo "Cancelled."; \
-	fi
+	terraform apply
+
+# Apply configuration with auto-approve (skip confirmation)
+apply-auto:
+	@echo "Applying Terraform configuration (auto-approve)..."
+	@echo "⚠️  This will create AWS resources and incur costs!"
+	terraform apply -auto-approve
 
 # Destroy all resources
 destroy:

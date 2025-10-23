@@ -5,4 +5,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 ENV API_HOST=0.0.0.0 API_PORT=8000
 EXPOSE 8000
-CMD ["uvicorn","main:app","--host","0.0.0.0","--port","8000"]
+# Copy and make entrypoint script executable
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+# Use bash to run the entrypoint script
+CMD ["bash", "/app/entrypoint.sh"]

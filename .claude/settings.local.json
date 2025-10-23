@@ -6,7 +6,10 @@
       "Bash(python:*)",
       "Bash(source:*)",
       "Bash(uvicorn:*)",
-      "Read(//Users/manishjain/Desktop/test/**)"
+      "Read(//Users/manishjain/Desktop/test/**)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
+      "Bash(aws apprunner list-services:*)",
+      "Bash(aws logs tail:*)"
     ],
     "deny": [],
     "ask": []

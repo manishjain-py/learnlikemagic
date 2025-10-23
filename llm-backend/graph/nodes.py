@@ -10,7 +10,6 @@ from graph.state import (
     REMEDIATE_SYSTEM_PROMPT
 )
 from llm import get_llm_provider
-from db import SessionLocal
 
 
 # Shared LLM provider instance
@@ -29,9 +28,12 @@ def present_node(state: GraphState) -> GraphState:
     print(f"[Present] Step {state['step_idx']}/10")
 
     # Get guideline repository
-    db = SessionLocal()
+    from database import get_db_manager
+    from guideline_repository import TeachingGuidelineRepository
+
+    db_manager = get_db_manager()
+    db = db_manager.get_session()
     try:
-        from guideline_repository import TeachingGuidelineRepository
         guideline_repo = TeachingGuidelineRepository(db)
 
         # Get teaching guideline if not already in state
