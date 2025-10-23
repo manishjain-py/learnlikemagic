@@ -223,34 +223,66 @@ runtime_environment_secrets = {
 
 ---
 
-## NEXT STEPS
+## ✅ RESOLUTION (October 23, 2025)
 
-### Immediate Actions:
-1. **Wait for manual CLI test to complete** (currently running)
-   - If succeeds: Confirms secrets manager is the issue
-   - If fails: Different root cause
+### Root Cause Identified:
+**PRIMARY ISSUE: Docker Image Architecture Mismatch**
+- Docker image was built on Apple Silicon Mac (ARM64 architecture)
+- AWS App Runner requires AMD64/x86_64 architecture
+- ARM64 container cannot run on App Runner's AMD64 infrastructure
 
-2. **If Secrets Manager is the issue:**
-   - Review IAM instance role permissions
-   - Verify secret ARN format in Terraform
-   - Consider using direct env vars temporarily for testing
+**SECONDARY ISSUE: Pydantic Configuration Validation**
+- `OPENAI_API_KEY` was marked as required (`...`) in config.py
+- Pydantic validated at module import time, before secrets were available
+- App crashed before uvicorn could start
 
-3. **If manual CLI test also fails:**
-   - Check for platform-specific issues (ARM vs x86)
-   - Review App Runner service quotas/limits
-   - Consider ECS Fargate as alternative
+### Final Solution:
 
-4. **Alternative Debugging Approaches:**
-   - Add explicit startup logging to entrypoint.sh
-   - Create minimal test image (just return OK, no DB/secrets)
-   - Contact AWS Support for App Runner service logs
+1. **Rebuild Docker Image for AMD64:**
+   ```bash
+   cd llm-backend
+   docker buildx build --platform linux/amd64 -t learnlikemagic-backend:amd64 .
+   docker tag learnlikemagic-backend:amd64 926211191776.dkr.ecr.us-east-1.amazonaws.com/learnlikemagic-backend-production:latest
+   docker push 926211191776.dkr.ecr.us-east-1.amazonaws.com/learnlikemagic-backend-production:latest
+   ```
 
-### Questions to Answer:
-- [ ] Does manual CLI service with direct env vars succeed?
-- [ ] Does IAM instance role have secretsmanager:GetSecretValue permission?
-- [ ] Is the secret ARN format correct?
-- [ ] Are there any VPC/security group issues blocking App Runner?
-- [ ] Is there a platform architecture mismatch (ARM64 vs AMD64)?
+2. **Code Fixes Applied:**
+   - config.py: Made `openai_api_key` optional, added runtime validation
+   - main.py: Added startup event to validate configuration
+   - entrypoint.sh: Enhanced with env var checks and logging
+
+3. **Permanent Fixes:**
+   - Updated GitHub Actions to explicitly build for `--platform linux/amd64`
+   - Created Makefile with `make build-prod` command for AMD64 builds
+   - Created comprehensive deployment documentation
+
+### Deployment Result:
+✅ **SUCCESS - Backend deployed and running**
+- Service URL: https://ypwbjbcmbd.us-east-1.awsapprunner.com
+- Status: RUNNING
+- Health Check: Passing
+- Database: Connected
+
+### Lessons Learned:
+1. **Always build for target architecture** - Mac M-series (ARM64) ≠ AWS (AMD64)
+2. **Use `docker buildx build --platform linux/amd64`** for AWS deployments
+3. **Validate configs at runtime, not import time** - allows container to start first
+4. **Add comprehensive logging** - helps debug startup issues
+5. **Test locally with exact production environment** - caught import errors early
+
+### Time to Resolution:
+- Initial attempts: ~5 hours (architecture issue not identified)
+- Deep investigation: 1 hour (identified ARM64 vs AMD64 mismatch)
+- Fix and deploy: 30 minutes
+- **Total:** ~6.5 hours
+
+### Files Modified:
+- llm-backend/config.py
+- llm-backend/main.py
+- llm-backend/entrypoint.sh
+- llm-backend/Makefile (created)
+- .github/workflows/deploy-backend.yml
+- docs/deployment.md (created)
 
 ---
 
