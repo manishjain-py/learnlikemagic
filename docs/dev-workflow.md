@@ -511,6 +511,171 @@ Expected: `"RUNNING"`
 
 ## Troubleshooting
 
+### Checking Logs
+
+#### Local Development Logs
+
+**Backend Logs:**
+
+```bash
+# When running with uvicorn (shows in terminal)
+cd llm-backend
+uvicorn main:app --reload --log-level debug
+
+# The logs will show:
+# - Request/response info
+# - LangGraph node execution ([Present], [Check], etc.)
+# - Database queries
+# - LLM API calls
+# - Any errors or exceptions
+```
+
+**Frontend Logs:**
+
+```bash
+# Browser console (F12 or Cmd+Option+I)
+# - Shows React errors
+# - API call responses
+# - Network tab shows all HTTP requests
+
+# Vite dev server logs (terminal)
+cd llm-frontend
+npm run dev
+# Shows build info and hot reload events
+```
+
+**Docker Logs (if running locally):**
+
+```bash
+# View logs from running container
+docker logs -f llm-backend
+
+# Or if using docker-compose
+docker-compose logs -f backend
+```
+
+#### Production Logs (AWS)
+
+**Finding the Current Log Group:**
+
+```bash
+# 1. Get the service ARN
+aws apprunner list-services --region us-east-1
+
+# 2. Extract service ID from ARN (last part after the last /)
+# Example: 3681f3cee2884f25842f6b15e9eacbfd
+
+# 3. List log groups
+aws logs describe-log-groups \
+  --region us-east-1 \
+  --log-group-name-prefix "/aws/apprunner" \
+  --query 'logGroups[*].logGroupName'
+```
+
+**Viewing Application Logs:**
+
+```bash
+# Real-time log streaming (last 30 minutes)
+aws logs tail /aws/apprunner/llm-backend-prod/YOUR-SERVICE-ID/application \
+  --region us-east-1 \
+  --since 30m \
+  --follow
+
+# Get recent logs (last 1 hour)
+aws logs tail /aws/apprunner/llm-backend-prod/YOUR-SERVICE-ID/application \
+  --region us-east-1 \
+  --since 1h
+
+# Filter logs by pattern
+aws logs filter-log-events \
+  --log-group-name "/aws/apprunner/llm-backend-prod/YOUR-SERVICE-ID/application" \
+  --region us-east-1 \
+  --filter-pattern "ERROR" \
+  --start-time $(date -v-1H +%s)000  # Last hour (macOS)
+
+# Search for specific session or endpoint
+aws logs filter-log-events \
+  --log-group-name "/aws/apprunner/llm-backend-prod/YOUR-SERVICE-ID/application" \
+  --region us-east-1 \
+  --filter-pattern "/sessions" \
+  --start-time $(date -v-30M +%s)000
+```
+
+**Current Production Service ID:** `3681f3cee2884f25842f6b15e9eacbfd`
+
+**Quick Commands:**
+
+```bash
+# View last 50 log entries
+aws logs filter-log-events \
+  --log-group-name "/aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/application" \
+  --region us-east-1 \
+  --start-time $(($(date +%s) * 1000 - 1800000)) \
+  --limit 50 \
+  --query 'events[*].message' \
+  --output text
+
+# Follow logs in real-time
+aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/application \
+  --region us-east-1 \
+  --follow
+```
+
+**Viewing Service Logs (Infrastructure):**
+
+```bash
+# Service-level logs (deployments, health checks, etc.)
+aws logs tail /aws/apprunner/llm-backend-prod/YOUR-SERVICE-ID/service \
+  --region us-east-1 \
+  --since 1h
+```
+
+**Using CloudWatch Console:**
+
+1. Go to: https://console.aws.amazon.com/cloudwatch/
+2. Navigate to: **Logs** → **Log groups**
+3. Filter by: `/aws/apprunner/llm-backend-prod`
+4. Select the application log group (ends with `/application`)
+5. Click "Search log group" to query logs
+
+**Common Log Patterns to Search:**
+
+```bash
+# API endpoint calls
+/sessions
+
+# Errors
+ERROR
+
+# LangGraph execution
+[Present]
+[Check]
+[Remediate]
+
+# Student responses
+student_reply
+
+# Database issues
+database
+psycopg2
+
+# OpenAI API calls
+openai
+gpt-4o-mini
+```
+
+**Frontend Logs (CloudFront/S3):**
+
+```bash
+# CloudFront access logs (if enabled)
+aws s3 ls s3://your-cloudfront-logs-bucket/
+
+# For debugging frontend issues, use browser DevTools:
+# - Console tab: JavaScript errors
+# - Network tab: API calls and responses
+# - Application tab: Local storage, session data
+```
+
 ### Common Issues
 
 #### 1. **Backend not starting locally**
