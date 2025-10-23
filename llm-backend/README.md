@@ -98,16 +98,42 @@ pip install -r requirements-dev.txt
 
 ### 3. Configure Environment
 
+**Option A: Automated Setup (Recommended for team members)**
+
+If you have access to `infra/terraform/terraform.tfvars`:
 ```bash
-cp .env.example .env
+# Run setup script to auto-generate .env from terraform config
+./scripts/setup-env.sh
 ```
 
-Edit `.env` and add your OpenAI API key:
+This will automatically populate `.env` with production database credentials and API keys.
+
+**Option B: Manual Setup**
+
 ```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your values
+nano .env
+```
+
+Required environment variables:
+```bash
+# LLM Configuration
 OPENAI_API_KEY=sk-your-key-here
 LLM_MODEL=gpt-4o-mini
-DATABASE_URL=sqlite:///./tutor.db
+
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/database
+# Or for local SQLite: sqlite:///./tutor.db
+
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
 ```
+
+⚠️ **Security Note**: The `.env` file is gitignored and will never be committed. Each developer must set it up locally.
 
 ### 4. Initialize Database
 

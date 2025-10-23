@@ -63,15 +63,14 @@ pip install -r requirements.txt
 # Install development dependencies (testing, linting, etc.)
 pip install -r requirements-dev.txt
 
-# Create .env file
-cat > .env << EOF
-DATABASE_URL=postgresql://llmuser:password@localhost:5432/tutor
-OPENAI_API_KEY=sk-your-key-here
-LLM_MODEL=gpt-4o-mini
-ENVIRONMENT=development
-API_HOST=0.0.0.0
-API_PORT=8000
-EOF
+# Create .env file - Option 1: Automated (recommended)
+./scripts/setup-env.sh
+
+# Or Option 2: Manual setup
+cp .env.example .env
+# Then edit .env with your credentials
+
+# Note: .env is gitignored - never committed to repo
 ```
 
 ### Frontend Setup
