@@ -1,0 +1,205 @@
+# Learn Like Magic – Curriculum Reference & Book Ingestion Requirements (Updated)
+
+## 1. Overview
+
+The goal of this feature is to enable the Learn Like Magic platform to build a structured and curriculum-aligned reference system that the AI Tutor can use as a teaching baseline. This system allows the platform to understand what topics, subtopics, and teaching depth are expected for each grade, subject, and education board, serving as a foundation for generating and delivering personalized lessons.
+
+The overall setup has two key components:
+1. **Book Ingestion & Curriculum Reference Builder**
+2. **AI Tutor Reference Retrieval & Guideline Usage**
+
+This document defines the requirements for the first component: scanning, processing, and organizing educational books into structured, human-verified teaching guidelines.
+
+---
+
+## 2. Objectives
+
+- To convert physical or digital textbooks into a structured, searchable, and reviewable reference dataset.
+- To ensure AI-generated educational content is aligned with real-world curriculum standards.
+- To provide flexibility in merging and aggregating content from multiple books across boards, grades, and subjects.
+- To ensure all derived content is original, synthesized, and compliant with copyright rules.
+
+---
+
+## 3. Roles & Actors
+
+1. **Admin / Content Curator**
+   - Uploads new textbooks (as image pages or PDFs).
+   - Reviews OCR outputs before final approval.
+   - Reviews and validates automatically generated teaching guidelines.
+   - Can approve, edit, or retry guideline generation with modified parameters.
+
+2. **System / AI Pipeline**
+   - Converts images into text using OpenAI Vision APIs.
+   - Stores text and metadata in cloud storage (AWS S3).
+   - Processes all book content to infer topics, subtopics, and learning guidelines using an orchestrated AI pipeline (e.g., LangGraph).
+   - Generates JSON-based guideline summaries at book and merged levels.
+
+3. **AI Tutor Agent**
+   - References these generated guidelines as context while teaching or generating new educational content.
+
+---
+
+## 4. Core Functional Requirements
+
+### 4.1 Book Upload & Management
+- Admins can upload scanned book pages as image files.
+- System converts each page to text using Vision APIs.
+- Each page is reviewed by the admin for correctness before being saved permanently.
+- Every book will have a unique `book_id`, which links to its associated metadata and pages.
+- Admin can create multiple versions of the same book (e.g., new editions or revised scans).
+- Each version is tracked with its metadata, creation date, and approval status.
+
+### 4.2 Storage Structure
+The system will use a combination of **AWS S3** and a **relational database** to manage books, pages, and guidelines.
+
+#### S3 Layout
+The S3 layout will be organized as follows:
+```
+s3://learn-like-magic/books/{book_id}/
+  metadata.json
+  1.png
+  1.txt
+  2.png
+  2.txt
+  ...
+  guideline.json
+```
+- The `metadata.json` file will contain an **ordered list of pages** (e.g., `1.png`, `2.png`, `3.png`) representing the correct reading order.
+- Each page will have a corresponding `.txt` file generated from OCR (e.g., `1.txt` for `1.png`).
+- The `guideline.json` file represents the AI-generated guideline for that book, which can be reviewed and updated by the admin.
+
+#### Relational Database
+- The relational database will store information about all uploaded books and versions.
+- The **books** table will include details such as:
+  - `book_id`
+  - `grade`
+  - `board`
+  - `subject`
+  - `author`
+  - `version`
+  - `country`
+  - `edition_year`
+  - `s3_location`
+- The relational database will act as the index that maps book metadata to its corresponding S3 location.
+- Each version of a book will be stored as a separate record in the table.
+
+### 4.3 Metadata Management
+- Each uploaded book will include metadata such as:
+  - Book title, author, edition, and year.
+  - Associated grade, subject, country, and education board.
+  - Ordered sequence of pages and their OCR approval status.
+  - Version and historical data.
+
+### 4.4 Text Review & Approval
+- Admins can review OCR text for each page and approve or reject it.
+- Rejected pages can be reprocessed using updated Vision parameters or re-uploaded images.
+- Once all pages are approved, the book becomes ready for guideline generation.
+
+### 4.5 Guideline Generation
+- The AI pipeline processes approved text pages to create **teaching guidelines**.
+- Each guideline represents structured information derived from the book, such as:
+  - Topics and subtopics hierarchy.
+  - Learning objectives.
+  - Expected difficulty and scope of teaching.
+  - Key terms and simplified definitions.
+  - Prerequisites for each concept.
+  - Common misconceptions.
+  - Example problems and assessment outlines.
+- The generated guideline is stored as a **`guideline.json`** file in the same S3 folder as the book.
+- The admin can review, edit, or retry the generation process.
+- Once approved, this guideline becomes the canonical reference for that book version.
+
+### 4.6 Aggregated (Merged) Guidelines
+- The system can combine multiple book-level guidelines into merged or composite guidelines at higher scopes, such as:
+  - Country + Board + Subject level
+  - Board + Grade + Subject level
+- Merged guidelines consolidate information from multiple books, identifying overlapping or similar topics.
+- Topic names and synonyms are reconciled to build a standardized canonical structure.
+- These aggregated guidelines are versioned and used by the AI tutor as the default baseline for that scope.
+
+### 4.7 Data Access & Lookup
+- The system should support querying of guidelines based on combinations like:
+  - Country + Board + Subject + Grade
+  - Board + Subject + Topic
+  - Grade + Subject + Subtopic
+- Returned results should provide structured teaching guidelines, along with provenance (i.e., which books contributed).
+
+### 4.8 Versioning & History
+- Each book can have multiple versions, and each version can have its own guideline.
+- Book versions include metadata such as creation date, edition number, and author.
+- Version control ensures that historical data is preserved and comparisons can be made across versions.
+
+### 4.9 Review Workflows
+- OCR and guideline generation both have admin review workflows.
+- States include: Draft → Pending Review → Approved → Rejected.
+- Admins can see change diffs, provide comments, and request regeneration.
+- A retry mechanism allows running the guideline generator again with updated parameters or selected pages.
+
+### 4.10 Data Privacy & Copyright Compliance
+- The system must **not** reproduce or distribute verbatim book content.
+- Only summarized or inferred guidelines are used as outputs.
+- Guidelines must represent **AI-synthesized interpretations** and **not copies** of the book text.
+- All books processed must be publicly available or approved for internal educational use.
+
+### 4.11 Quality Evaluation & Monitoring
+- The system should track and measure key quality metrics such as:
+  - OCR accuracy (percentage of pages approved without manual edits).
+  - Guideline synthesis accuracy (admin-approved vs. auto-generated text).
+  - Retrieval precision (accuracy of topic-based queries).
+  - Average admin review turnaround time.
+- A feedback loop should exist for continuous model and process improvement.
+
+---
+
+## 5. Key Open Challenges
+
+1. **Topic Synonyms and Mapping**  
+   Different textbooks may use slightly different names for the same concept (e.g., “Fractions” vs. “Parts of a Whole”).  
+   → Need a canonical topic ontology or automated synonym resolver.
+
+2. **Guideline Merging Logic**  
+   Defining the right merging strategy for overlapping or conflicting topic representations.
+
+3. **Quality Assurance for AI Outputs**  
+   Ensuring the generated guidelines are pedagogically sound, age-appropriate, and aligned with educational goals.
+
+4. **Continuous Version Alignment**  
+   Managing drift when boards or publishers release updated editions.
+
+5. **Evaluation System**  
+   Defining robust evaluation metrics and feedback loops to measure OCR and guideline quality over time.
+
+---
+
+## 6. MVP Scope
+
+The MVP will focus on a single subject and grade to validate the process end-to-end.
+
+**Example MVP Scope**
+- Board: CBSE  
+- Country: India  
+- Grade: 3  
+- Subject: Mathematics  
+- Sample Book: “Math Magic (NCERT)”  
+
+**MVP Deliverables**
+- Book ingestion and OCR workflow with admin review.  
+- Guideline generation pipeline for one book.  
+- Admin review and approval interface for guideline validation.  
+- Basic search and retrieval of generated guidelines.  
+- Evaluation metrics for OCR and guideline quality.
+
+---
+
+## 7. Future Enhancements
+
+1. **Guideline Merging Enhancements**  
+   - Enhance logic for merging guidelines from multiple books to form unified curriculum references.
+
+2. **Topic Synonym Resolution**  
+   - Build and maintain a canonical topic dictionary to automatically map equivalent terms across different books and boards.
+
+---
+
+*Document updated on 2025-10-24 05:06:10*
