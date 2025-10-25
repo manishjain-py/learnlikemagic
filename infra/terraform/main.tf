@@ -105,9 +105,11 @@ module "app_runner" {
 module "frontend" {
   source = "./modules/frontend"
 
-  project_name     = var.project_name
-  environment      = var.environment
-  api_endpoint_url = module.app_runner.service_url
+  project_name        = var.project_name
+  environment         = var.environment
+  api_endpoint_url    = module.app_runner.service_url
+  domain_names        = var.domain_names
+  acm_certificate_arn = var.acm_certificate_arn
 
   depends_on = [module.app_runner]
 }
