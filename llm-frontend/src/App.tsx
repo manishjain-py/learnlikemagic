@@ -213,7 +213,7 @@ function App() {
     return (
       <div className="app">
         <header className="header">
-          <h1>Adaptive Tutor</h1>
+          <h1>Learn Like Magic</h1>
           <p className="subtitle">
             {BOARD} • Grade {GRADE} • {COUNTRY}
           </p>
@@ -299,7 +299,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Adaptive Tutor</h1>
+        <h1>Learn Like Magic</h1>
         <p className="subtitle">
           Grade {GRADE} • {selectedSubject} • {selectedTopic} • {selectedSubtopic?.subtopic}
         </p>
