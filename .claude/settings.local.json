@@ -12,7 +12,11 @@
       "Bash(aws logs tail:*)",
       "Bash(tree:*)",
       "Bash(curl:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd OpenAI Vision API implementation details\n\nUpdated documentation with complete Vision API implementation:\n- Model: gpt-4o-mini (4096 max tokens)\n- Complete OCR service implementation with base64 encoding\n- Detailed interpretation prompt for comprehensive text extraction\n- Marked all blockers as RESOLVED ✅\n\nAll dependencies now ready:\n✅ AWS credentials (in ~/.aws/credentials)\n✅ OpenAI API key (in .env)\n✅ Database connection (PostgreSQL production)\n✅ Vision API reference code (implemented)\n✅ Complete PRD and implementation plan\n\nStatus: Ready to start implementation across all 7 phases!\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

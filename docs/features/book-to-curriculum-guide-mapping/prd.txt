@@ -394,13 +394,16 @@ Merged guidelines would consolidate information from multiple books, identifying
   - `Pillow` - Image processing (validation, format conversion)
 
 ### 5.3 OpenAI Vision API Integration
-- **Model:** Latest vision-capable model (gpt-4o or gpt-4o-mini)
+- **Model:** `gpt-4o-mini` (vision-capable, cost-effective)
+- **Max Tokens:** 4096 per request
+- **Encoding:** Base64 image encoding
 - **Usage:**
   - Book cover metadata extraction
-  - Page OCR (text extraction)
+  - Page OCR (comprehensive text extraction including drawings, formulas, captions)
 - **Processing Mode:** Synchronous, one page at a time
+- **Prompt Strategy:** Detailed interpretation prompt requesting all visual elements
 - **Error Handling:** Retry on API failures, allow admin to re-upload on poor OCR quality
-- **Reference Code:** To be provided separately
+- **API Key:** From environment variable (OPENAI_API_KEY already configured)
 
 ### 5.4 Frontend Architecture
 - **Framework:** React + TypeScript (existing `llm-frontend`)

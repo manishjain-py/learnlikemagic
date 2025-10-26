@@ -131,10 +131,10 @@ PUT    /admin/books/{book_id}/status   - Update book status
 
 ---
 
-### Phase 4: OCR & Page Upload (Blocked: OpenAI Vision API reference code)
+### Phase 4: OCR & Page Upload
 **Duration:** 2-3 days
 **Dependencies:** Phase 2, Phase 3
-**Blockers:** OpenAI Vision API reference code
+**Blockers:** None (Vision API reference code received)
 
 **Tasks:**
 1. Create `services/ocr_service.py` with Vision API integration
@@ -207,18 +207,74 @@ GET    /admin/books/{book_id}/pages/{page_num}         - Get page details + pres
 
 ```python
 # services/ocr_service.py
+import base64
+from pathlib import Path
+from openai import OpenAI
+from config import get_settings
+
 class OCRService:
     def __init__(self):
+        settings = get_settings()
         self.client = OpenAI(api_key=settings.openai_api_key)
+        self.model = "gpt-4o-mini"
+        self.max_tokens = 4096
+
+    def encode_image_to_base64(self, image_path: str) -> str:
+        """Encode image to base64."""
+        with open(image_path, 'rb') as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
 
     def extract_text_from_image(self, image_path: str) -> str:
         """
-        Use OpenAI Vision API to extract text from textbook page.
+        Use OpenAI Vision API to extract complete text from textbook page.
 
-        Reference code to be provided by user.
+        Extracts all text, drawings, images, formulas, captions, and visual elements.
+
+        Args:
+            image_path: Path to the book page image
+
+        Returns:
+            Complete interpretation of the book page as text
         """
-        # Implementation based on reference code
-        pass
+        # Encode the image
+        base64_image = self.encode_image_to_base64(image_path)
+
+        # Detailed interpretation prompt
+        prompt_text = """I have a book page image that I need you to interpret completely.
+
+Please read this image and give me each and everything that's present in this book page image.
+Give the complete interpretation in form of text - even the drawings and any images in this book page.
+
+Please provide:
+- All titles and headings
+- All body text and paragraphs
+- Descriptions of all images, diagrams, and illustrations
+- Labels and captions
+- Any equations, formulas, or special formatting
+- Page numbers and footers
+- Any other visual elements
+
+Format the output clearly with appropriate structure and formatting."""
+
+        # Create the API request
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_image}"
+                        }
+                    },
+                ],
+            }],
+            max_tokens=self.max_tokens
+        )
+
+        return response.choices[0].message.content
 ```
 
 **Deliverables:**
@@ -1299,16 +1355,19 @@ export default function PageUploadPanel({ bookId, onPageApproved }) {
 
 ### 7.1 Current Blockers
 
+**ALL BLOCKERS RESOLVED ✅**
+
 1. **AWS Credentials** ✅ RESOLVED
    - **Status:** Configured in `~/.aws/credentials`
    - **Region:** `us-east-1`
    - **boto3 auto-detection:** Credentials automatically picked up from default AWS credential chain
-   - **No action needed:** Terraform already successfully using these credentials
+   - **Action:** None needed - Terraform already successfully using these credentials
 
-2. **OpenAI Vision API Reference Code** ⛔ PENDING
-   - Required for: Phase 4 (OCR integration)
-   - Action: Awaiting reference implementation from user
-   - Expected format: Python function using openai library
+2. **OpenAI Vision API Reference Code** ✅ RESOLVED
+   - **Status:** Reference implementation received
+   - **Model:** `gpt-4o-mini` with 4096 max tokens
+   - **Implementation:** Complete OCR service code defined in Phase 4
+   - **Action:** Ready to implement
 
 ### 7.2 New Dependencies
 
@@ -1491,14 +1550,27 @@ For production, use IAM role with these permissions:
 
 ## 13. Next Steps
 
+**🎉 ALL DEPENDENCIES RESOLVED - READY TO START IMPLEMENTATION! 🎉**
+
 1. ✅ **AWS Credentials:** Configured in `~/.aws/credentials` (auto-detected by boto3)
-2. ⏸️ **Awaiting:** OpenAI Vision API reference code
-3. **Week 1:** Complete Phase 1 (Database) + Phase 2 (S3) + Phase 3 (APIs)
-4. **Week 2:** Complete Phase 4 (OCR) + Phase 5 (Frontend)
-5. **Week 3:** Complete Phase 6 (LangGraph) + Phase 7 (Testing)
-6. **Deploy:** Run migrations, deploy to production, test with real book
+2. ✅ **OpenAI Vision API:** Reference code received, implementation defined
+3. ✅ **Database Connection:** PostgreSQL production DB configured
+4. ✅ **OpenAI API Key:** Already configured in `.env`
+5. ✅ **Documentation:** PRD and implementation plan complete
+
+**Implementation Timeline:**
+- **Week 1:** Phase 1 (Database) + Phase 2 (S3) + Phase 3 (Book APIs)
+- **Week 2:** Phase 4 (OCR) + Phase 5 (Frontend)
+- **Week 3:** Phase 6 (LangGraph) + Phase 7 (Testing)
+- **Deploy:** Run migrations, deploy to production, test with real NCERT Math Magic book
+
+**Ready to Begin:**
+✅ All blockers resolved
+✅ All dependencies available
+✅ Clear implementation plan
+✅ Target: Grade 3 CBSE Mathematics MVP
 
 ---
 
 *Document last updated: 2025-10-25*
-*Status: Ready to start Phase 1 & 2. Awaiting OpenAI Vision reference for Phase 4.*
+*Status: 🚀 READY TO START IMPLEMENTATION - All dependencies resolved!*
