@@ -60,6 +60,17 @@ class Settings(BaseSettings):
         description="Environment: development, staging, production"
     )
 
+    # AWS Configuration (for book ingestion feature)
+    aws_region: str = Field(
+        default="us-east-1",
+        description="AWS region for S3 bucket"
+    )
+    aws_s3_bucket: str = Field(
+        default="learnlikemagic-books",
+        description="S3 bucket name for book storage"
+    )
+    # AWS credentials are auto-detected from ~/.aws/credentials or environment
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
