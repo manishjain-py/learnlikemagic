@@ -12,9 +12,11 @@ A complete, production-ready book ingestion system that allows admins to:
 1. Upload textbook pages as images
 2. Extract text using AI-powered OCR (OpenAI Vision API)
 3. Review and approve OCR output side-by-side
-4. Manage books with proper status tracking
-5. *(Phase 6)* Generate teaching guidelines from book content
-6. *(Phase 6)* Auto-populate the teaching_guidelines table
+4. View approved pages with image and OCR text display
+5. Replace or delete approved pages with automatic renumbering
+6. Manage books with proper status tracking
+7. *(Phase 6)* Generate teaching guidelines from book content
+8. *(Phase 6)* Auto-populate the teaching_guidelines table
 
 ---
 
@@ -52,6 +54,10 @@ A complete, production-ready book ingestion system that allows admins to:
 - ✅ Drag-and-drop image upload
 - ✅ Side-by-side OCR review
 - ✅ Real-time status tracking
+- ✅ **NEW:** Approved page viewing with image and OCR text display
+- ✅ **NEW:** Replace page functionality (delete and upload new)
+- ✅ **NEW:** Delete page with automatic renumbering
+- ✅ **NEW:** Three-mode interface (upload/view/replace)
 
 ---
 
@@ -85,6 +91,7 @@ A complete, production-ready book ingestion system that allows admins to:
 ├── components/
 │   ├── BookStatusBadge.tsx
 │   ├── PageUploadPanel.tsx
+│   ├── PageViewPanel.tsx         # NEW: View approved pages
 │   └── PagesSidebar.tsx
 └── pages/
     ├── BooksDashboard.tsx
@@ -140,6 +147,25 @@ Frontend runs at: http://localhost:5173
 5. Click "Approve Page" or "Reject & Re-upload"
 6. Repeat for multiple pages
 
+#### View Approved Pages
+1. Click on any approved page in the right sidebar
+2. View page image and OCR text side-by-side
+3. Click "Back" to return to upload mode
+
+#### Replace a Page
+1. Click on an approved page in the sidebar
+2. Click "Replace Page" button
+3. Confirm deletion
+4. Upload new image and review
+5. New page is added at the end of the book
+
+#### Delete a Page
+1. Click on an approved page in the sidebar
+2. Click "Delete Page" button
+3. Confirm deletion
+4. All subsequent pages automatically renumber
+   - Example: Delete page 2 from [1,2,3,4,5] → Result: [1,2,3,4]
+
 #### Mark Complete
 1. After uploading pages
 2. Click "Mark Book Complete"
@@ -170,8 +196,8 @@ DELETE /admin/books/{id}               - Delete book
 ```
 POST   /admin/books/{id}/pages                 - Upload page
 PUT    /admin/books/{id}/pages/{num}/approve   - Approve page
-DELETE /admin/books/{id}/pages/{num}           - Delete page
-GET    /admin/books/{id}/pages/{num}           - Get page details
+DELETE /admin/books/{id}/pages/{num}           - Delete page (auto-renumbers)
+GET    /admin/books/{id}/pages/{num}           - Get page details with URLs
 ```
 
 ### Coming in Phase 6
@@ -209,6 +235,10 @@ PUT    /admin/books/{id}/guidelines/reject     - Reject guidelines
 - Page upload with drag-and-drop working
 - Side-by-side review functional
 - Status updates in real-time
+- **NEW:** Page viewing with image and OCR text display
+- **NEW:** Replace page workflow (delete + upload)
+- **NEW:** Delete page with automatic renumbering
+- **NEW:** Three-mode interface working (upload/view/replace)
 
 ---
 
@@ -386,12 +416,31 @@ python -m features.book_ingestion.migrations --rollback
 
 ---
 
+## 🆕 Recent Updates (October 26, 2025)
+
+### Approved Page Management Enhancement
+- ✅ Added PageViewPanel component for viewing approved pages
+- ✅ Implemented side-by-side display of page image and OCR text
+- ✅ Added Replace Page functionality (delete + upload workflow)
+- ✅ Added Delete Page with automatic sequential renumbering
+- ✅ Implemented three-mode interface: upload/view/replace
+- ✅ Updated PageService to renumber pages after deletion
+
+**User Impact:**
+- Admins can now click any approved page to view it
+- Pages can be replaced if OCR quality is poor
+- Pages can be deleted with automatic renumbering (no gaps)
+- Better page management and quality control
+
+---
+
 ## 🤝 Next Steps
 
 ### Immediate
-1. Review and test the current implementation
-2. Plan Phase 6 (LangGraph guideline extraction)
-3. Design prompt templates for extraction nodes
+1. ✅ ~~Review and test the current implementation~~ - DONE
+2. ✅ ~~Add approved page viewing and management~~ - DONE
+3. Plan Phase 6 (LangGraph guideline extraction)
+4. Design prompt templates for extraction nodes
 
 ### Short-term (Phase 6)
 1. Implement LangGraph workflow
@@ -409,12 +458,13 @@ python -m features.book_ingestion.migrations --rollback
 ## ✨ Achievements
 
 ✅ **71% Complete** (5/7 phases)
-✅ **Backend Fully Functional** - All APIs working
-✅ **Frontend Complete** - Full admin interface
+✅ **Backend Fully Functional** - All APIs working, auto-renumbering
+✅ **Frontend Complete** - Full admin interface with page management
 ✅ **Zero Breaking Changes** - Existing code untouched
 ✅ **Production-Ready Code** - Error handling, validation, logging
 ✅ **Type-Safe** - TypeScript + Pydantic
 ✅ **Tested** - Automated tests passing
+✅ **NEW: Page Management** - View, replace, delete with auto-renumbering
 
 ---
 
