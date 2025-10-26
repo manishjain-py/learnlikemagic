@@ -107,9 +107,25 @@ The database will store book metadata and track the workflow state. **No separat
 - INDEX: `idx_book_guidelines_book` on (book_id)
 
 **Table: teaching_guidelines (existing, modified)**
-- **NEW COLUMN:** `book_id` (VARCHAR, FOREIGN KEY → books.id) - Tracks which book this guideline came from
-- **NEW COLUMN:** `source_pages` (VARCHAR) - JSON array of page numbers (e.g., "[15, 16, 17]")
+- **NEW COLUMN (Phase 1):** `book_id` (VARCHAR, FOREIGN KEY → books.id) - Tracks which book this guideline came from
+- **NEW COLUMN (Phase 1):** `source_pages` (VARCHAR) - JSON array of page numbers (e.g., "[15, 16, 17]")
+- **NEW COLUMNS (Phase 6 - See design doc for details):**
+  - `topic_key` (VARCHAR) - Slugified topic identifier (e.g., "fractions")
+  - `subtopic_key` (VARCHAR) - Slugified subtopic identifier (e.g., "adding-like-fractions")
+  - `objectives_json` (TEXT) - JSON array of learning objectives
+  - `examples_json` (TEXT) - JSON array of worked examples
+  - `misconceptions_json` (TEXT) - JSON array of common misconceptions
+  - `assessments_json` (TEXT) - JSON array of assessment items
+  - `teaching_description` (TEXT, required) - Core 3-6 line teaching instructions
+  - `source_page_start`, `source_page_end` (INTEGER) - Page range
+  - `evidence_summary` (TEXT) - Brief content summary
+  - `status` (VARCHAR) - draft|final
+  - `confidence` (FLOAT) - Boundary detection confidence (0.0-1.0)
+  - `version` (INTEGER) - Version tracking
 - Existing columns: id, country, board, grade, subject, topic, subtopic, guideline, metadata_json, created_at
+
+**NOTE:** Complete Phase 6 database schema and rationale documented in:
+`docs/features/book-to-curriculum-guide-mapping/phase6-guideline-extraction-design.md` (Section 10)
 
 **Key Design Decision:** Teaching guidelines maintain **subtopic-level granularity**. When a book's guideline.json is approved, the system automatically creates **multiple rows** in the `teaching_guidelines` table - one for each subtopic extracted from the book.
 
@@ -512,5 +528,9 @@ The MVP will focus on a **single subject and grade** to validate the process end
 
 ---
 
-*Document last updated: 2025-10-25*
-*Updated with technical implementation details and MVP clarifications*
+---
+
+## Document History
+
+- **2025-10-27**: Updated with Phase 6 database schema changes (teaching_guidelines table extended with topic_key, subtopic_key, teaching_description, and structured metadata columns). See phase6-guideline-extraction-design.md for complete Phase 6 architecture and implementation details.
+- **2025-10-25**: Initial PRD with technical implementation details and MVP clarifications

@@ -1,8 +1,9 @@
 # Book Ingestion Feature - Implementation Summary
 
-**Date:** October 26, 2025
-**Status:** 71% Complete (Phases 1-5 ✅)
-**Next Phase:** Phase 6 - LangGraph Guideline Extraction
+**Date:** October 27, 2025
+**Status:** 71% Complete (Phases 1-5 ✅), Phase 6 Design Complete ✅
+**Current Phase:** Ready to Start Phase 6 Implementation (MVP v1)
+**Estimated Completion:** Phases 6-7 remaining (~16 hours total)
 
 ---
 
@@ -262,11 +263,46 @@ status, generated_at, reviewed_at, reviewed_by, version
 
 ### Modified Tables
 
-**teaching_guidelines** (added columns)
+**teaching_guidelines** (Phases 1-5 additions)
 ```sql
 book_id           # Reference to source book
 source_pages      # JSON array: [15, 16, 17]
 ```
+
+**teaching_guidelines** (Phase 6 additions - NEW SCHEMA)
+```sql
+-- Key identifiers (slugified for programmatic access)
+topic_key VARCHAR NOT NULL          -- e.g., "fractions"
+subtopic_key VARCHAR NOT NULL       -- e.g., "adding-like-fractions"
+
+-- Structured metadata (separate JSON columns)
+objectives_json TEXT                -- JSON array of learning objectives
+examples_json TEXT                  -- JSON array of worked examples
+misconceptions_json TEXT            -- JSON array of common errors
+assessments_json TEXT               -- JSON array of assessment items
+
+-- Core teaching field (NEW: first-class field)
+teaching_description TEXT NOT NULL  -- 3-6 lines, complete teaching approach
+
+-- Source tracking (enhanced)
+source_page_start INTEGER           -- First page of subtopic
+source_page_end INTEGER             -- Last page of subtopic
+evidence_summary TEXT               -- Brief content summary
+
+-- Metadata
+status VARCHAR DEFAULT 'draft'      -- draft|final
+confidence FLOAT                    -- 0.0-1.0 (boundary detection confidence)
+version INTEGER DEFAULT 1           -- For tracking updates
+
+-- New indices
+CREATE INDEX idx_teaching_guidelines_keys ON teaching_guidelines(topic_key, subtopic_key);
+```
+
+**Rationale for New Schema:**
+- `topic_key`/`subtopic_key`: Slugified keys enable programmatic lookups
+- Separate JSON columns: Easier to query specific metadata types
+- `teaching_description`: Single field AI tutor can read without parsing nested structure
+- Enhanced source tracking: Know exact page ranges for provenance
 
 ---
 
@@ -307,25 +343,53 @@ approved
 
 ## ⏳ Remaining Work
 
-### Phase 6: LangGraph Guideline Extraction (~4 hours)
-- [ ] Design LangGraph state machine
-- [ ] Implement extraction nodes:
-  - [ ] `extract_topics_node`
-  - [ ] `extract_subtopics_node`
-  - [ ] `extract_learning_objectives_node`
-  - [ ] `identify_misconceptions_node`
-  - [ ] `extract_assessment_criteria_node`
-  - [ ] `synthesize_guideline_node`
-- [ ] Write prompts for each node
-- [ ] Add API endpoints for guideline generation
-- [ ] Build guideline review UI
-- [ ] Implement auto-population logic to teaching_guidelines
+### Phase 6: Guideline Extraction (Sharded, Incremental Pipeline) (~14 hours)
+
+**IMPORTANT:** Comprehensive design document available at:
+`docs/features/book-to-curriculum-guide-mapping/phase6-guideline-extraction-design.md`
+
+**Approach:** MVP v1 (Simplified, Core Features Only)
+
+The design has evolved from a simple LangGraph sequential pipeline to a sophisticated sharded, incremental architecture with:
+- ✅ Per-subtopic sharded storage (`.latest.json` files)
+- ✅ Context Pack for token efficiency (98% reduction)
+- ✅ Teaching description as first-class field
+- ✅ Boundary detection with hysteresis
+- ❌ No reconciliation window (deferred to v2)
+- ❌ No event sourcing (deferred to v2)
+- ❌ No embeddings (LLM-only sufficient for MVP)
+
+**Phase 6a: Core Pipeline** (~6 hours)
+- [ ] Data model schemas (JSON) - 0.5 hours
+- [ ] S3 layout setup - 0.5 hours
+- [ ] Minisummary generator - 1 hour
+- [ ] Context Pack builder - 1.5 hours
+- [ ] Boundary detector (LLM-only) - 1.5 hours
+- [ ] Facts extractor - 1 hour
+
+**Phase 6b: State Management** (~3 hours)
+- [ ] Reducer (deterministic merge) - 1.5 hours
+- [ ] Stability detector - 0.5 hours
+- [ ] Index management (index.json, page_index.json) - 1 hour
+
+**Phase 6c: Quality & Sync** (~2 hours)
+- [ ] Teaching description generator - 1 hour
+- [ ] Quality gates - 0.5 hours
+- [ ] DB sync with new schema - 0.5 hours
+
+**Phase 6d: Admin UI** (~3 hours)
+- [ ] Guideline review page - 1.5 hours
+- [ ] Progress indicator - 0.5 hours
+- [ ] Approve/regenerate controls - 1 hour
 
 ### Phase 7: Testing & Integration (~2 hours)
-- [ ] End-to-end test with real NCERT Math Magic book
-- [ ] Verify complete workflow
+- [ ] Unit tests for all 9 components
+- [ ] Integration test with 10-page sample book
+- [ ] End-to-end test with real NCERT Math Magic book (50+ pages)
+- [ ] Verify complete workflow (upload → OCR → guidelines → DB)
 - [ ] Test AI tutor integration with new guidelines
-- [ ] Performance testing
+- [ ] Performance testing (< 10 minutes, < $0.05 cost)
+- [ ] Quality metrics (> 85% boundary accuracy, > 90% quality gate pass rate)
 - [ ] Bug fixes
 
 ---
@@ -416,9 +480,54 @@ python -m features.book_ingestion.migrations --rollback
 
 ---
 
-## 🆕 Recent Updates (October 26, 2025)
+## 🆕 Recent Updates
 
-### Approved Page Management Enhancement
+### October 27, 2025: Phase 6 Design Complete
+
+**Major design evolution:** From simple sequential pipeline to sophisticated sharded architecture
+
+**Key Innovations:**
+
+1. **Sharded Storage Architecture**
+   - One `.latest.json` file per subtopic (not one giant guideline.json)
+   - Enables per-subtopic concurrency (future)
+   - Smaller files = faster reads/writes, easier debugging
+   - Storage structure: `guidelines/topics/{topic}/subtopics/{subtopic}.latest.json`
+
+2. **Context Pack: 98% Token Reduction**
+   - Problem: Processing page 50 requires 24,500 tokens (all previous pages)
+   - Solution: Distill history into ~300 token Context Pack
+   - Contains: open subtopics summary + last 2 page summaries + ToC hints
+   - Result: 50x cheaper and faster LLM calls
+
+3. **Teaching Description as First-Class Field**
+   - Instead of nested metadata, generate single 3-6 line field
+   - Contains everything needed to teach: concept, sequence, misconceptions, checks
+   - AI tutor reads ONE field instead of parsing complex structure
+   - Generated when subtopic stabilizes
+
+4. **Boundary Detection with Hysteresis**
+   - Prevents "boundary flapping" (rapid switching between continue/new)
+   - Hysteresis zone (0.6-0.75) for ambiguous cases
+   - LLM-only for MVP v1 (embeddings deferred to v2)
+
+5. **Database Schema Adoption**
+   - Decided to adopt new schema with topic_key/subtopic_key
+   - Separate JSON columns for objectives/examples/misconceptions/assessments
+   - Enhanced source tracking (page ranges, evidence summary)
+
+**MVP v1 Scope Decision:**
+- ✅ Include: Sharded storage, Context Pack, teaching descriptions, hysteresis
+- ❌ Defer to v2: Reconciliation window, event sourcing, embeddings
+- Target: 14 hours implementation, <10 min processing time, <$0.05 cost per book
+
+**Documentation:**
+- Created comprehensive Phase 6 design document (75+ pages)
+- Updated implementation-plan.txt with new approach
+- Updated IMPLEMENTATION_SUMMARY.md with Phase 6 details
+
+### October 26, 2025: Approved Page Management Enhancement
+
 - ✅ Added PageViewPanel component for viewing approved pages
 - ✅ Implemented side-by-side display of page image and OCR text
 - ✅ Added Replace Page functionality (delete + upload workflow)

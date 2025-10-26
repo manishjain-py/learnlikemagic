@@ -428,275 +428,274 @@ const handleApprovePage = async () => {
 
 ---
 
-### Phase 6: Guideline Generation (LangGraph Workflow)
-**Duration:** 3-4 days
+### Phase 6: Guideline Generation (Sharded, Incremental Pipeline)
+**Duration:** 10-14 hours (MVP v1)
 **Dependencies:** Phase 4 (need approved pages)
 **Blockers:** None
 
-**Tasks:**
-1. Design LangGraph state schema for guideline extraction
-2. Create graph nodes for each extraction step
-3. Create prompts for each node
-4. Implement incremental page processing with context
-5. Add guideline generation endpoint
-6. Implement guideline approval endpoint with auto-population logic
+**IMPORTANT:** Detailed design document available at:
+`docs/features/book-to-curriculum-guide-mapping/phase6-guideline-extraction-design.md`
 
-**LangGraph Architecture:**
+This section provides a high-level summary. For complete architecture, data models, prompts, and implementation details, see the design document above.
+
+---
+
+**Design Approach: MVP v1 (Simplified)**
+
+The original plan used a LangGraph state machine with sequential batch processing. The new design uses a **sharded, incremental architecture** that processes pages one-by-one and maintains per-subtopic state in separate files.
+
+**Key Innovations:**
+
+1. **Sharded Storage**: One `.latest.json` file per subtopic (not one giant guideline.json)
+   - Enables per-subtopic concurrency (future)
+   - Smaller files = faster reads/writes
+   - Easy debugging
+
+2. **Context Pack**: Instead of passing all previous pages to LLM (token explosion), distill history into compact summary (~300 tokens)
+   - 98% token reduction (24,500 → 300 tokens)
+   - Maintains continuity without cost explosion
+
+3. **Teaching Description**: New first-class field containing complete teaching approach in 3-6 lines
+   - AI tutor reads ONE field instead of parsing nested metadata
+   - Generated when subtopic stabilizes
+
+4. **Boundary Detection with Hysteresis**: Prevent "boundary flapping" between continue/new decisions
+   - LLM-only for MVP v1 (embeddings deferred to v2)
+   - Reconciliation window deferred to v2
+
+**MVP v1 Scope:**
+- ✅ Sharded storage
+- ✅ Context Pack
+- ✅ Teaching description generation
+- ✅ LLM-based boundary detection (simple hysteresis)
+- ✅ Quality gates
+- ❌ No reconciliation (accept ~5-10% boundary errors)
+- ❌ No event sourcing (add in v2)
+- ❌ No embeddings (LLM-only sufficient)
+
+---
+
+**S3 Storage Layout:**
 
 ```
-graph/
-├── guideline_extraction/
-│   ├── state.py                 - GuidelineState definition
-│   ├── nodes.py                 - All node implementations
-│   ├── build_graph.py           - Graph compilation
-│   └── utils.py                 - Helper functions
-└── prompts/
-    └── guideline_extraction/
-        ├── extract_topics.txt
-        ├── extract_subtopics.txt
-        ├── extract_objectives.txt
-        ├── identify_misconceptions.txt
-        └── synthesize_guideline.txt
+books/{book_id}/
+  # Existing (Phases 1-5):
+  metadata.json, 1.png, 1.txt, 2.png, 2.txt, ...
+
+  # New (Phase 6):
+  pages/
+    001.page_guideline.json      # Provisional, page-scoped facts
+    002.page_guideline.json
+    ...
+
+  guidelines/
+    index.json                   # Registry of topics/subtopics
+    page_index.json              # Page → subtopic mapping
+
+    topics/
+      fractions/
+        subtopics/
+          adding-like-fractions.latest.json       # Authoritative shard
+          subtracting-like-fractions.latest.json
+      multiplication/
+        subtopics/
+          single-digit.latest.json
 ```
 
-**State Schema:**
+---
 
-```python
-# graph/guideline_extraction/state.py
-from typing import TypedDict, List, Dict, Any
+**Pipeline Components:**
 
-class GuidelineState(TypedDict):
-    book_id: str
-    book_metadata: Dict[str, Any]
-    pages: List[Dict[str, Any]]  # [{"page_num": 1, "text": "..."}]
-    current_page_idx: int
-
-    # Accumulated extractions
-    topics: List[Dict[str, Any]]  # [{"topic": "Fractions", "subtopics": [...]}]
-    current_topic: str
-    context_from_previous_page: str
-
-    # Final output
-    guideline_json: Dict[str, Any]
-    error: str | None
+```
+┌─────────────────────┐
+│ 1. Minisummary      │  60-word extractive summary per page
+│    Generator        │
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 2. Context Pack     │  Build ~300 token context from current state
+│    Builder          │  (open subtopics + recent summaries)
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 3. Boundary         │  LLM decides: continue vs new subtopic
+│    Detector         │  With hysteresis (0.6-0.75 ambiguous zone)
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 4. Facts            │  Extract objectives, examples, misconceptions,
+│    Extractor        │  assessments
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 5. Reducer          │  Merge page facts into subtopic shard
+│                     │  Deterministic, idempotent
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 6. Stability        │  Mark subtopic stable after K pages
+│    Detector         │
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 7. Teaching Desc    │  Generate 3-6 line teaching description
+│    Generator        │
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 8. Quality Gates    │  Validate: ≥2 objectives, ≥1 misconception
+│                     │  Mark needs_review if fails
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│ 9. DB Sync          │  Upsert to teaching_guidelines table
+└─────────────────────┘
 ```
 
-**Graph Nodes:**
+---
 
-```python
-# graph/guideline_extraction/nodes.py
+**Database Schema Changes:**
 
-def extract_topics_node(state: GuidelineState) -> GuidelineState:
-    """
-    Analyze all page texts to identify main topics/chapters.
+**Extended `teaching_guidelines` table:**
 
-    Input: All page texts
-    Output: List of topic names
-    """
-    all_text = "\n\n".join([p["text"] for p in state["pages"]])
+```sql
+-- NEW COLUMNS (Phase 6):
+topic_key VARCHAR NOT NULL          -- Slugified: "fractions"
+subtopic_key VARCHAR NOT NULL       -- Slugified: "adding-like-fractions"
 
-    prompt = load_prompt("extract_topics")
-    response = llm.invoke(prompt.format(
-        book_metadata=state["book_metadata"],
-        all_text=all_text
-    ))
+objectives_json TEXT                -- JSON array of objectives
+examples_json TEXT                  -- JSON array of examples
+misconceptions_json TEXT            -- JSON array of misconceptions
+assessments_json TEXT               -- JSON array of assessments
 
-    topics = parse_topics_from_response(response)
-    state["topics"] = topics
-    return state
+teaching_description TEXT NOT NULL  -- Core teaching field (3-6 lines)
 
+source_page_start INTEGER           -- First page of subtopic
+source_page_end INTEGER             -- Last page of subtopic
+evidence_summary TEXT               -- Brief content summary
 
-def extract_subtopics_node(state: GuidelineState) -> GuidelineState:
-    """
-    For each topic, extract subtopics incrementally page-by-page.
+status VARCHAR DEFAULT 'draft'      -- draft|final
+confidence FLOAT                    -- 0.0-1.0
+version INTEGER DEFAULT 1           -- For tracking updates
 
-    Uses context from previous pages to detect:
-    - Topic continuation
-    - New subtopic start
-    - Topic end
-    """
-    # Process pages sequentially
-    for page_idx, page in enumerate(state["pages"]):
-        context = state.get("context_from_previous_page", "")
-
-        prompt = load_prompt("extract_subtopics")
-        response = llm.invoke(prompt.format(
-            current_page_text=page["text"],
-            previous_context=context,
-            identified_topics=state["topics"],
-            page_number=page["page_num"]
-        ))
-
-        # Update topics with new subtopics
-        updated_topics = parse_subtopics_from_response(response)
-        state["topics"] = merge_topics(state["topics"], updated_topics)
-
-        # Store context for next page
-        state["context_from_previous_page"] = generate_context_summary(
-            page["text"],
-            updated_topics
-        )
-
-    return state
-
-
-def extract_learning_objectives_node(state: GuidelineState) -> GuidelineState:
-    """
-    For each subtopic, determine learning objectives.
-    """
-    for topic in state["topics"]:
-        for subtopic in topic["subtopics"]:
-            # Get relevant page texts for this subtopic
-            relevant_text = get_text_for_pages(
-                state["pages"],
-                subtopic["source_pages"]
-            )
-
-            prompt = load_prompt("extract_objectives")
-            response = llm.invoke(prompt.format(
-                topic=topic["topic"],
-                subtopic=subtopic["subtopic"],
-                content=relevant_text,
-                grade=state["book_metadata"]["grade"]
-            ))
-
-            objectives = parse_objectives_from_response(response)
-            subtopic["metadata"]["learning_objectives"] = objectives
-
-    return state
-
-
-def identify_misconceptions_node(state: GuidelineState) -> GuidelineState:
-    """
-    Identify common misconceptions for each subtopic.
-    """
-    for topic in state["topics"]:
-        for subtopic in topic["subtopics"]:
-            relevant_text = get_text_for_pages(
-                state["pages"],
-                subtopic["source_pages"]
-            )
-
-            prompt = load_prompt("identify_misconceptions")
-            response = llm.invoke(prompt.format(
-                topic=topic["topic"],
-                subtopic=subtopic["subtopic"],
-                content=relevant_text
-            ))
-
-            misconceptions = parse_misconceptions_from_response(response)
-            subtopic["metadata"]["common_misconceptions"] = misconceptions
-
-    return state
-
-
-def extract_assessment_criteria_node(state: GuidelineState) -> GuidelineState:
-    """
-    Generate assessment criteria and example problems.
-    """
-    # Similar pattern to above nodes
-    pass
-
-
-def synthesize_guideline_node(state: GuidelineState) -> GuidelineState:
-    """
-    Combine all extracted data into final guideline.json structure.
-    """
-    guideline_json = {
-        "book_id": state["book_id"],
-        "book_metadata": state["book_metadata"],
-        "topics": state["topics"]
-    }
-
-    state["guideline_json"] = guideline_json
-    return state
+-- NEW INDICES:
+CREATE INDEX idx_teaching_guidelines_keys ON teaching_guidelines(topic_key, subtopic_key);
 ```
 
-**Graph Compilation:**
-
-```python
-# graph/guideline_extraction/build_graph.py
-from langgraph.graph import StateGraph, END
-
-def build_guideline_extraction_graph():
-    workflow = StateGraph(GuidelineState)
-
-    # Add nodes
-    workflow.add_node("extract_topics", extract_topics_node)
-    workflow.add_node("extract_subtopics", extract_subtopics_node)
-    workflow.add_node("extract_objectives", extract_learning_objectives_node)
-    workflow.add_node("identify_misconceptions", identify_misconceptions_node)
-    workflow.add_node("extract_assessment", extract_assessment_criteria_node)
-    workflow.add_node("synthesize", synthesize_guideline_node)
-
-    # Define flow
-    workflow.set_entry_point("extract_topics")
-    workflow.add_edge("extract_topics", "extract_subtopics")
-    workflow.add_edge("extract_subtopics", "extract_objectives")
-    workflow.add_edge("extract_objectives", "identify_misconceptions")
-    workflow.add_edge("identify_misconceptions", "extract_assessment")
-    workflow.add_edge("extract_assessment", "synthesize")
-    workflow.add_edge("synthesize", END)
-
-    return workflow.compile()
-```
+---
 
 **API Endpoints:**
 
 ```
 POST   /admin/books/{book_id}/generate-guidelines   - Trigger guideline generation
-GET    /admin/books/{book_id}/guidelines            - Get generated guideline.json
-PUT    /admin/books/{book_id}/guidelines/approve    - Approve & populate teaching_guidelines
+GET    /admin/books/{book_id}/guidelines            - Get all subtopic shards
+GET    /admin/books/{book_id}/guidelines/{topic}/{subtopic}  - Get specific shard
+PUT    /admin/books/{book_id}/guidelines/approve    - Approve & sync to DB
 PUT    /admin/books/{book_id}/guidelines/reject     - Reject & allow retry
 ```
 
-**Guideline Approval Logic:**
+---
 
-```python
-# services/book_service.py
-def approve_guideline(book_id: str) -> bool:
-    """
-    Approve guideline and populate teaching_guidelines table.
-    """
-    # 1. Load guideline.json from S3
-    guideline_json = s3_client.get_json(f"books/{book_id}/guideline.json")
+**Implementation Breakdown:**
 
-    # 2. Parse and create teaching_guideline rows
-    book = book_repo.get_by_id(book_id)
+**Phase 6a: Core Pipeline** (~6 hours)
+1. Data model schemas (JSON) - 0.5 hours
+2. S3 layout setup - 0.5 hours
+3. Minisummary generator - 1 hour
+4. Context Pack builder - 1.5 hours
+5. Boundary detector (LLM-only) - 1.5 hours
+6. Facts extractor - 1 hour
 
-    for topic in guideline_json["topics"]:
-        for subtopic_data in topic["subtopics"]:
-            teaching_guideline = TeachingGuideline(
-                id=generate_id(),
-                country=book.country,
-                board=book.board,
-                grade=book.grade,
-                subject=book.subject,
-                topic=topic["topic"],
-                subtopic=subtopic_data["subtopic"],
-                guideline=subtopic_data["guideline"],
-                metadata_json=json.dumps(subtopic_data["metadata"]),
-                book_id=book_id,
-                source_pages=json.dumps(subtopic_data["source_pages"])
-            )
-            guideline_repo.create(teaching_guideline)
+**Phase 6b: State Management** (~3 hours)
+7. Reducer (deterministic merge) - 1.5 hours
+8. Stability detector - 0.5 hours
+9. Index management (index.json, page_index.json) - 1 hour
 
-    # 3. Update book status
-    book_repo.update_status(book_id, "approved")
+**Phase 6c: Quality & Sync** (~2 hours)
+10. Teaching description generator - 1 hour
+11. Quality gates - 0.5 hours
+12. DB sync - 0.5 hours
 
-    # 4. Update book_guidelines status
-    book_guideline_repo.update_status(book_id, "approved")
+**Phase 6d: Admin UI** (~3 hours)
+13. Guideline review page - 1.5 hours
+14. Progress indicator - 0.5 hours
+15. Approve/regenerate controls - 1 hour
 
-    return True
+**Total: 14 hours** (includes buffer)
+
+---
+
+**Code Structure:**
+
+```
+llm-backend/features/book_ingestion/
+├── services/
+│   ├── guideline_extraction_service.py     # Main orchestrator
+│   ├── minisummary_service.py
+│   ├── context_pack_service.py
+│   ├── boundary_detection_service.py
+│   ├── facts_extraction_service.py
+│   ├── reducer_service.py
+│   ├── stability_service.py
+│   ├── teaching_description_service.py
+│   └── quality_gates_service.py
+│
+├── models/
+│   └── guideline_models.py                 # Pydantic models for all JSON schemas
+│
+├── prompts/
+│   ├── minisummary.txt
+│   ├── boundary_detection.txt
+│   ├── facts_extraction.txt
+│   └── teaching_description.txt
+│
+└── migrations.py                           # Add Phase 6 schema migration
 ```
 
+---
+
+**Testing Strategy:**
+
+1. **Unit Tests**: Each component tested individually
+2. **Integration Tests**: 10-page sample book end-to-end
+3. **E2E Test**: Full 50-page NCERT Math Magic book
+4. **Quality Metrics**:
+   - Processing time < 10 minutes
+   - Token cost < $0.05 per book
+   - Boundary accuracy > 85%
+   - Quality gate pass rate > 90%
+
+---
+
+**Success Criteria:**
+
+✅ Admin can generate guidelines for 50-page book
+✅ Pipeline completes in < 10 minutes
+✅ Sharded storage created correctly
+✅ Teaching descriptions generated for all stable subtopics
+✅ > 90% pass quality gates
+✅ Subtopics synced to teaching_guidelines table
+✅ AI tutor can use new guidelines
+
+---
+
 **Deliverables:**
-- Complete LangGraph workflow
-- All node implementations with prompts
-- Guideline generation API endpoint
-- Approval logic with auto-population
-- Tests for graph execution
-- Integration test with sample book
+- Complete guideline extraction pipeline (9 components)
+- All service implementations with prompts
+- Database migration for new schema
+- Admin UI for review and approval
+- Unit and integration tests
+- E2E test with NCERT book
+- Updated documentation
+
+---
+
+**Future Enhancements (v2/v3):**
+- Reconciliation window (reassign last M pages if boundary unclear)
+- Event sourcing (.log.jsonl audit logs)
+- Embedding-based boundary signals
+- ETag-based optimistic concurrency control
+- Advanced ToC extraction
 
 ---
 
