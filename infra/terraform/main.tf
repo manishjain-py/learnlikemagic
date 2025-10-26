@@ -44,8 +44,8 @@ data "aws_subnets" "default" {
 module "secrets" {
   source = "./modules/secrets"
 
-  project_name  = var.project_name
-  environment   = var.environment
+  project_name   = var.project_name
+  environment    = var.environment
   openai_api_key = var.openai_api_key
   db_password    = var.db_password
 }
@@ -57,13 +57,13 @@ module "secrets" {
 module "database" {
   source = "./modules/database"
 
-  project_name    = var.project_name
-  environment     = var.environment
-  db_name         = var.db_name
-  db_user         = var.db_user
-  db_password     = var.db_password
-  vpc_id          = data.aws_vpc.default.id
-  subnet_ids      = data.aws_subnets.default.ids
+  project_name = var.project_name
+  environment  = var.environment
+  db_name      = var.db_name
+  db_user      = var.db_user
+  db_password  = var.db_password
+  vpc_id       = data.aws_vpc.default.id
+  subnet_ids   = data.aws_subnets.default.ids
 }
 
 #############################################################################
@@ -90,6 +90,7 @@ module "app_runner" {
   database_url       = module.database.database_url
   openai_secret_arn  = module.secrets.openai_api_key_secret_arn
   llm_model          = var.llm_model
+  s3_books_bucket    = "learnlikemagic-books"
 
   depends_on = [
     module.database,
@@ -121,12 +122,12 @@ module "frontend" {
 module "github_oidc" {
   source = "./modules/github-oidc"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  github_org            = var.github_org
-  github_repo           = var.github_repo
-  ecr_repository_arn    = module.ecr.repository_arn
-  s3_bucket_arn         = module.frontend.s3_bucket_arn
+  project_name               = var.project_name
+  environment                = var.environment
+  github_org                 = var.github_org
+  github_repo                = var.github_repo
+  ecr_repository_arn         = module.ecr.repository_arn
+  s3_bucket_arn              = module.frontend.s3_bucket_arn
   cloudfront_distribution_id = module.frontend.cloudfront_distribution_id
-  app_runner_service_arn = module.app_runner.service_arn
+  app_runner_service_arn     = module.app_runner.service_arn
 }

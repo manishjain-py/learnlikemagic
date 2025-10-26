@@ -11,7 +11,7 @@ resource "aws_security_group" "database" {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # In production, restrict to App Runner security group
+    cidr_blocks = ["0.0.0.0/0"] # In production, restrict to App Runner security group
   }
 
   egress {
@@ -70,13 +70,13 @@ resource "aws_db_parameter_group" "database" {
 
 # Aurora Serverless v2 Cluster
 resource "aws_rds_cluster" "database" {
-  cluster_identifier     = "${var.project_name}-${var.environment}"
-  engine                 = "aurora-postgresql"
-  engine_mode            = "provisioned"
-  engine_version         = "15.10"
-  database_name          = var.db_name
-  master_username        = var.db_user
-  master_password        = var.db_password
+  cluster_identifier = "${var.project_name}-${var.environment}"
+  engine             = "aurora-postgresql"
+  engine_mode        = "provisioned"
+  engine_version     = "15.10"
+  database_name      = var.db_name
+  master_username    = var.db_user
+  master_password    = var.db_password
 
   db_subnet_group_name            = aws_db_subnet_group.database.name
   db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.database.name
@@ -84,18 +84,18 @@ resource "aws_rds_cluster" "database" {
 
   # Serverless v2 scaling configuration
   serverlessv2_scaling_configuration {
-    max_capacity = 2.0  # 2 ACUs
-    min_capacity = 0.5  # 0.5 ACUs (minimum)
+    max_capacity = 2.0 # 2 ACUs
+    min_capacity = 0.5 # 0.5 ACUs (minimum)
   }
 
   # Backup and maintenance
-  backup_retention_period = 7
-  preferred_backup_window = "03:00-04:00"
+  backup_retention_period      = 7
+  preferred_backup_window      = "03:00-04:00"
   preferred_maintenance_window = "mon:04:00-mon:05:00"
 
   # Deletion protection (set to true in production)
   deletion_protection = false
-  skip_final_snapshot = true  # Set to false in production
+  skip_final_snapshot = true # Set to false in production
   # final_snapshot_identifier = "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
   enabled_cloudwatch_logs_exports = ["postgresql"]
@@ -115,7 +115,7 @@ resource "aws_rds_cluster_instance" "database" {
   engine_version          = aws_rds_cluster.database.engine_version
   db_parameter_group_name = aws_db_parameter_group.database.name
 
-  publicly_accessible = true  # Set to false in production with VPC peering
+  publicly_accessible = true # Set to false in production with VPC peering
 
   tags = {
     Name        = "${var.project_name}-aurora-instance"

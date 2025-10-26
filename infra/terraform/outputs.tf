@@ -92,13 +92,13 @@ output "github_secrets" {
   description = "Environment variables to set as GitHub secrets"
   value = {
     AWS_REGION                 = var.aws_region
-    AWS_ROLE_ARN              = module.github_oidc.role_arn
-    ECR_REPOSITORY            = module.ecr.repository_name
-    ECR_REGISTRY              = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
-    APP_RUNNER_SERVICE_ARN    = module.app_runner.service_arn
-    FRONTEND_BUCKET           = module.frontend.s3_bucket_name
+    AWS_ROLE_ARN               = module.github_oidc.role_arn
+    ECR_REPOSITORY             = module.ecr.repository_name
+    ECR_REGISTRY               = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+    APP_RUNNER_SERVICE_ARN     = module.app_runner.service_arn
+    FRONTEND_BUCKET            = module.frontend.s3_bucket_name
     CLOUDFRONT_DISTRIBUTION_ID = module.frontend.cloudfront_distribution_id
-    VITE_API_URL              = module.app_runner.service_url
+    VITE_API_URL               = module.app_runner.service_url
   }
 }
 
@@ -108,7 +108,7 @@ output "github_secrets" {
 
 output "deployment_summary" {
   description = "Deployment summary"
-  value = <<-EOT
+  value       = <<-EOT
 
     ========================================
     Learn Like Magic - Deployment Summary

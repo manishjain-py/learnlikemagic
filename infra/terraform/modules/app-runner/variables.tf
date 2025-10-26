@@ -29,3 +29,9 @@ variable "llm_model" {
   type        = string
   default     = "gpt-4o-mini"
 }
+
+variable "s3_books_bucket" {
+  description = "S3 bucket name for book ingestion storage"
+  type        = string
+  default     = "learnlikemagic-books"
+}

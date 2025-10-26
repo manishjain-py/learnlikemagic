@@ -4,7 +4,7 @@ resource "aws_secretsmanager_secret" "openai_api_key" {
   name        = "${var.project_name}-${var.environment}-openai-api-key"
   description = "OpenAI API key for LLM integration"
 
-  recovery_window_in_days = 7  # Allow recovery within 7 days if deleted
+  recovery_window_in_days = 7 # Allow recovery within 7 days if deleted
 
   tags = {
     Name        = "${var.project_name}-openai-api-key"

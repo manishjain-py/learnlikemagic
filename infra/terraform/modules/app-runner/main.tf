@@ -65,6 +65,29 @@ resource "aws_iam_role_policy" "app_runner_secrets" {
   })
 }
 
+# Policy to allow App Runner to access S3 for book ingestion
+resource "aws_iam_role_policy" "app_runner_s3_books" {
+  name = "s3-books-access"
+  role = aws_iam_role.app_runner_instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ]
+      Resource = [
+        "arn:aws:s3:::${var.s3_books_bucket}",
+        "arn:aws:s3:::${var.s3_books_bucket}/*"
+      ]
+    }]
+  })
+}
+
 # App Runner Auto Scaling Configuration
 resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
   auto_scaling_configuration_name = "llm-autoscale-${var.environment}"
@@ -109,7 +132,7 @@ resource "aws_apprunner_service" "backend" {
       }
     }
 
-    auto_deployments_enabled = false  # Manual deployments via GitHub Actions
+    auto_deployments_enabled = false # Manual deployments via GitHub Actions
   }
 
   instance_configuration {

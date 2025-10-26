@@ -74,7 +74,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  price_class         = "PriceClass_100"  # Use only North America and Europe
+  price_class         = "PriceClass_100" # Use only North America and Europe
   comment             = "${var.project_name} frontend distribution"
   aliases             = length(var.domain_names) > 0 ? var.domain_names : null
 
