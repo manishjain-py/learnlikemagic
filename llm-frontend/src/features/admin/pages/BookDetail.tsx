@@ -4,11 +4,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getBook, updateBookStatus } from '../api/adminApi';
+import { getBook, updateBookStatus, deletePage } from '../api/adminApi';
 import { BookDetail as BookDetailType } from '../types';
 import BookStatusBadge from '../components/BookStatusBadge';
 import PageUploadPanel from '../components/PageUploadPanel';
 import PagesSidebar from '../components/PagesSidebar';
+import PageViewPanel from '../components/PageViewPanel';
 
 const BookDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ const BookDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showUploadAfterReplace, setShowUploadAfterReplace] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -53,6 +55,47 @@ const BookDetail: React.FC = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handlePageClick = (pageNum: number) => {
+    setSelectedPage(pageNum);
+    setShowUploadAfterReplace(false);
+  };
+
+  const handleClosePageView = () => {
+    setSelectedPage(null);
+    setShowUploadAfterReplace(false);
+  };
+
+  const handleReplacePage = async () => {
+    if (!id || !selectedPage) return;
+
+    if (!confirm(`Delete page ${selectedPage} and upload a replacement? The new page will be added at the end.`)) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await deletePage(id, selectedPage);
+      await loadBook();
+      setSelectedPage(null);
+      setShowUploadAfterReplace(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete page');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePageDeleted = async () => {
+    await loadBook();
+    setSelectedPage(null);
+    setShowUploadAfterReplace(false);
+  };
+
+  const handlePageProcessed = async () => {
+    await loadBook();
+    setShowUploadAfterReplace(false);
   };
 
   if (loading) {
@@ -163,14 +206,39 @@ const BookDetail: React.FC = () => {
 
       {/* Main Content - Two Column Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-        {/* Left: Page Upload */}
+        {/* Left: Dynamic Panel - Upload or View */}
         <div>
-          {canUploadPages ? (
-            <PageUploadPanel
+          {selectedPage !== null && !showUploadAfterReplace ? (
+            // Show page view when a page is selected
+            <PageViewPanel
               bookId={book.id}
-              onPageProcessed={loadBook}
+              pageNum={selectedPage}
+              onClose={handleClosePageView}
+              onReplace={handleReplacePage}
+              onPageDeleted={handlePageDeleted}
             />
+          ) : (canUploadPages || showUploadAfterReplace) ? (
+            // Show upload panel when allowed or after replace
+            <div>
+              {showUploadAfterReplace && (
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: '#DBEAFE',
+                  color: '#1E40AF',
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  fontSize: '14px'
+                }}>
+                  Upload a replacement page below. The new page will be added at the end of the book.
+                </div>
+              )}
+              <PageUploadPanel
+                bookId={book.id}
+                onPageProcessed={handlePageProcessed}
+              />
+            </div>
           ) : (
+            // Show disabled message
             <div style={{
               padding: '40px',
               backgroundColor: '#F9FAFB',
@@ -193,7 +261,7 @@ const BookDetail: React.FC = () => {
           <PagesSidebar
             pages={book.pages}
             selectedPage={selectedPage}
-            onSelectPage={setSelectedPage}
+            onSelectPage={handlePageClick}
           />
         </div>
       </div>

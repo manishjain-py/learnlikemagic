@@ -203,7 +203,7 @@ class PageService:
 
     def delete_page(self, book_id: str, page_num: int) -> bool:
         """
-        Delete a page (reject), allowing re-upload.
+        Delete a page and renumber subsequent pages.
 
         Args:
             book_id: Book identifier
@@ -239,12 +239,18 @@ class PageService:
 
         # Remove from metadata
         metadata["pages"] = [p for p in metadata["pages"] if p["page_num"] != page_num]
+
+        # Renumber subsequent pages
+        metadata["pages"].sort(key=lambda p: p["page_num"])
+        for idx, page in enumerate(metadata["pages"], start=1):
+            page["page_num"] = idx
+
         metadata["total_pages"] = len(metadata["pages"])
         metadata["last_updated"] = datetime.utcnow().isoformat()
 
         self.s3_client.update_metadata_json(book_id, metadata)
 
-        logger.info(f"Deleted page {page_num} for book {book_id}")
+        logger.info(f"Deleted page {page_num} and renumbered remaining pages for book {book_id}")
         return True
 
     def get_pages(self, book_id: str) -> List[PageInfo]:
