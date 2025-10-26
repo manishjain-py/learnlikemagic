@@ -374,9 +374,10 @@ Merged guidelines would consolidate information from multiple books, identifying
 
 ### 5.1 AWS Infrastructure
 - **S3 Bucket:** `learnlikemagic-books` (shared across dev/staging/production environments)
+- **Region:** `us-east-1`
 - **Folder Structure:** `books/{book_id}/` for each book
 - **Access Pattern:** Backend has direct S3 access via AWS SDK (boto3)
-- **Authentication:** AWS credentials stored in `.env` file for local development, IAM roles for production
+- **Authentication:** AWS credentials in `~/.aws/credentials` (automatically detected by boto3)
 - **Required AWS Permissions:**
   - `s3:PutObject` - Upload images, text files, metadata
   - `s3:GetObject` - Read images, text files, guidelines

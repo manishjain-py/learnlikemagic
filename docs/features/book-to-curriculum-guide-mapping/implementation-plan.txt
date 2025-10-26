@@ -50,13 +50,13 @@ This implementation plan details the technical approach to build the Book Ingest
 
 ---
 
-### Phase 2: AWS S3 Infrastructure (Blocked: AWS credentials needed)
+### Phase 2: AWS S3 Infrastructure
 **Duration:** 1 day
-**Blockers:** AWS credentials in .env
+**Blockers:** None (AWS credentials in ~/.aws/credentials)
 
 **Tasks:**
 1. Add `boto3` and `Pillow` to `requirements.txt`
-2. Add AWS config to `config.py` (keys, region, bucket name)
+2. Add AWS config to `config.py` (region, bucket name - credentials auto-detected)
 3. Create `utils/s3_client.py` with S3 operations:
    - `upload_file(local_path, s3_key)` → S3 URL
    - `download_file(s3_key, local_path)` → file
@@ -1299,20 +1299,15 @@ export default function PageUploadPanel({ bookId, onPageApproved }) {
 
 ### 7.1 Current Blockers
 
-1. **AWS Credentials** ⛔
-   - Required for: Phase 2 (S3 setup)
-   - Action: Add to `.env` file
-   - Format:
-     ```
-     AWS_ACCESS_KEY_ID=...
-     AWS_SECRET_ACCESS_KEY=...
-     AWS_REGION=us-east-1
-     AWS_S3_BUCKET=learnlikemagic-books
-     ```
+1. **AWS Credentials** ✅ RESOLVED
+   - **Status:** Configured in `~/.aws/credentials`
+   - **Region:** `us-east-1`
+   - **boto3 auto-detection:** Credentials automatically picked up from default AWS credential chain
+   - **No action needed:** Terraform already successfully using these credentials
 
-2. **OpenAI Vision API Reference Code** ⛔
+2. **OpenAI Vision API Reference Code** ⛔ PENDING
    - Required for: Phase 4 (OCR integration)
-   - Action: Provide reference implementation
+   - Action: Awaiting reference implementation from user
    - Expected format: Python function using openai library
 
 ### 7.2 New Dependencies
@@ -1396,10 +1391,9 @@ Phase 1 → Phase 2 → Phase 4 → Phase 6 → Phase 7
 ## 10. Deployment Considerations
 
 ### 10.1 Environment Variables
-Add to production `.env`:
+Add to `.env` (AWS credentials auto-detected from `~/.aws/credentials`):
 ```
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
+# AWS Configuration (credentials in ~/.aws/credentials)
 AWS_REGION=us-east-1
 AWS_S3_BUCKET=learnlikemagic-books
 ```
@@ -1497,13 +1491,14 @@ For production, use IAM role with these permissions:
 
 ## 13. Next Steps
 
-1. **Immediate:** Await AWS credentials and OpenAI Vision reference code
-2. **Week 1:** Complete Phase 1 (Database) + Phase 2 (S3) + Phase 3 (APIs)
-3. **Week 2:** Complete Phase 4 (OCR) + Phase 5 (Frontend)
-4. **Week 3:** Complete Phase 6 (LangGraph) + Phase 7 (Testing)
-5. **Deploy:** Run migrations, deploy to production, test with real book
+1. ✅ **AWS Credentials:** Configured in `~/.aws/credentials` (auto-detected by boto3)
+2. ⏸️ **Awaiting:** OpenAI Vision API reference code
+3. **Week 1:** Complete Phase 1 (Database) + Phase 2 (S3) + Phase 3 (APIs)
+4. **Week 2:** Complete Phase 4 (OCR) + Phase 5 (Frontend)
+5. **Week 3:** Complete Phase 6 (LangGraph) + Phase 7 (Testing)
+6. **Deploy:** Run migrations, deploy to production, test with real book
 
 ---
 
 *Document last updated: 2025-10-25*
-*Status: Ready for implementation pending dependencies*
+*Status: Ready to start Phase 1 & 2. Awaiting OpenAI Vision reference for Phase 4.*
