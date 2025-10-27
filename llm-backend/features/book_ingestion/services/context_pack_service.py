@@ -117,7 +117,7 @@ class ContextPackService:
         index_key = f"books/{book_id}/guidelines/index.json"
 
         try:
-            index_data = self.s3.get_json(index_key)
+            index_data = self.s3.download_json(index_key)
             return GuidelinesIndex(**index_data)
         except Exception as e:
             logger.error(f"Failed to load index from {index_key}: {str(e)}")
@@ -194,7 +194,7 @@ class ContextPackService:
         )
 
         try:
-            shard_data = self.s3.get_json(shard_key)
+            shard_data = self.s3.download_json(shard_key)
             return SubtopicShard(**shard_data)
         except Exception as e:
             logger.error(f"Failed to load shard from {shard_key}: {str(e)}")
@@ -245,7 +245,7 @@ class ContextPackService:
             try:
                 # Load page guideline
                 page_key = f"books/{book_id}/pages/{page_num:03d}.page_guideline.json"
-                page_data = self.s3.get_json(page_key)
+                page_data = self.s3.download_json(page_key)
 
                 recent_summaries.append(
                     RecentPageSummary(

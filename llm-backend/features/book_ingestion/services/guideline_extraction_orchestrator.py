@@ -276,7 +276,9 @@ class GuidelineExtractionOrchestrator:
             subtopic_title=subtopic_title,
             page_num=page_num,
             confidence=confidence,
-            status=shard.status
+            status=shard.status,
+            source_page_start=shard.source_page_start,
+            source_page_end=shard.source_page_end
         )
 
         # Step 9: Save page guideline
@@ -294,7 +296,8 @@ class GuidelineExtractionOrchestrator:
             decision_metadata=DecisionMetadata(
                 decision=decision,
                 continue_score=0.0,  # Not stored in MVP v1
-                new_score=0.0
+                new_score=0.0,
+                reasoning="Decision based on boundary detection analysis"
             )
         )
         self._save_page_guideline(page_guideline)
@@ -426,10 +429,12 @@ class GuidelineExtractionOrchestrator:
 
     def _load_page_text(self, book_id: str, page_num: int) -> str:
         """Load page OCR text from S3"""
-        page_key = f"books/{book_id}/pages/{page_num:03d}.ocr.txt"
+        # OCR text files are stored as books/{book_id}/{page_num}.txt
+        page_key = f"books/{book_id}/{page_num}.txt"
 
         try:
-            page_text = self.s3.get_text(page_key)
+            page_text_bytes = self.s3.download_bytes(page_key)
+            page_text = page_text_bytes.decode('utf-8')
             logger.debug(f"Loaded page text from {page_key}: {len(page_text)} chars")
             return page_text
         except Exception as e:
@@ -474,7 +479,7 @@ class GuidelineExtractionOrchestrator:
         )
 
         try:
-            shard_data = self.s3.get_json(shard_key)
+            shard_data = self.s3.download_json(shard_key)
             return SubtopicShard(**shard_data)
         except Exception as e:
             raise FileNotFoundError(f"Shard not found: {shard_key}")
@@ -487,7 +492,7 @@ class GuidelineExtractionOrchestrator:
         )
 
         try:
-            self.s3.put_json(shard_key, shard.model_dump())
+            self.s3.upload_json(data=shard.model_dump(), s3_key=shard_key)
             logger.debug(f"Saved shard to {shard_key}: version {shard.version}")
         except Exception as e:
             logger.error(f"Failed to save shard to {shard_key}: {str(e)}")
@@ -501,7 +506,7 @@ class GuidelineExtractionOrchestrator:
         )
 
         try:
-            self.s3.put_json(page_key, page_guideline.model_dump())
+            self.s3.upload_json(data=page_guideline.model_dump(), s3_key=page_key)
             logger.debug(f"Saved page guideline to {page_key}")
         except Exception as e:
             logger.error(f"Failed to save page guideline to {page_key}: {str(e)}")
@@ -516,9 +521,14 @@ class GuidelineExtractionOrchestrator:
         subtopic_title: str,
         page_num: int,
         confidence: float,
-        status: str
+        status: str,
+        source_page_start: int,
+        source_page_end: int
     ) -> None:
         """Update index.json and page_index.json"""
+        # Calculate page range
+        page_range = f"{source_page_start}-{source_page_end}"
+
         # Update main index
         index = self.index_manager.get_or_create_index(book_id)
         index = self.index_manager.add_or_update_subtopic(
@@ -527,6 +537,7 @@ class GuidelineExtractionOrchestrator:
             topic_title=topic_title,
             subtopic_key=subtopic_key,
             subtopic_title=subtopic_title,
+            page_range=page_range,
             status=status
         )
         self.index_manager.save_index(index, create_snapshot=False)

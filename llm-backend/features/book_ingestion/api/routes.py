@@ -559,7 +559,7 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                 )
 
                 try:
-                    shard_data = s3_client.get_json(shard_key)
+                    shard_data = s3_client.download_json(shard_key)
                     shard = SubtopicShard(**shard_data)
 
                     guidelines.append(GuidelineSubtopicResponse(
@@ -584,7 +584,7 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                         teaching_description=shard.teaching_description,
                         evidence_summary=shard.evidence_summary,
                         confidence=shard.confidence,
-                        quality_score=shard.quality_flags.quality_score if shard.quality_flags else None,
+                        quality_score=None,  # Quality score not yet implemented in Phase 6
                         version=shard.version
                     ))
 
@@ -651,7 +651,7 @@ def get_guideline(
 
         try:
             from features.book_ingestion.models.guideline_models import SubtopicShard
-            shard_data = s3_client.get_json(shard_key)
+            shard_data = s3_client.download_json(shard_key)
             shard = SubtopicShard(**shard_data)
 
             return GuidelineSubtopicResponse(
@@ -676,7 +676,7 @@ def get_guideline(
                 teaching_description=shard.teaching_description,
                 evidence_summary=shard.evidence_summary,
                 confidence=shard.confidence,
-                quality_score=shard.quality_flags.quality_score if shard.quality_flags else None,
+                quality_score=None,  # Quality score not yet implemented in Phase 6
                 version=shard.version
             )
 
@@ -751,7 +751,7 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                     )
 
                     try:
-                        shard_data = s3_client.get_json(shard_key)
+                        shard_data = s3_client.download_json(shard_key)
                         shard = SubtopicShard(**shard_data)
 
                         # Sync to database

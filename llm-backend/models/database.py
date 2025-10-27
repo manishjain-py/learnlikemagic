@@ -72,6 +72,25 @@ class TeachingGuideline(Base):
     metadata_json = Column(Text, nullable=True)  # JSON: objectives, depth, misconceptions, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Phase 6 columns
+    topic_key = Column(String, nullable=True)  # Slugified topic
+    subtopic_key = Column(String, nullable=True)  # Slugified subtopic
+    topic_title = Column(String, nullable=True)  # Human-readable topic
+    subtopic_title = Column(String, nullable=True)  # Human-readable subtopic
+    objectives_json = Column(Text, nullable=True)  # JSON array
+    examples_json = Column(Text, nullable=True)  # JSON array
+    misconceptions_json = Column(Text, nullable=True)  # JSON array
+    assessments_json = Column(Text, nullable=True)  # JSON array
+    teaching_description = Column(Text, nullable=True)  # 3-6 line teaching instructions
+    book_id = Column(String, nullable=True)  # Reference to books table
+    source_page_start = Column(Integer, nullable=True)
+    source_page_end = Column(Integer, nullable=True)
+    source_pages = Column(String, nullable=True)  # JSON array as string
+    evidence_summary = Column(Text, nullable=True)
+    status = Column(String, default='draft')
+    confidence = Column(Float, nullable=True)
+    version = Column(Integer, default=1)
+
     __table_args__ = (
         Index("idx_curriculum", "country", "board", "grade", "subject", "topic"),
     )

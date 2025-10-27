@@ -20,10 +20,10 @@ from datetime import datetime
 
 from ..models.guideline_models import (
     GuidelinesIndex,
-    TopicEntry,
-    SubtopicEntry,
+    TopicIndexEntry,
+    SubtopicIndexEntry,
     PageIndex,
-    PageIndexEntry
+    PageAssignment
 )
 from ..utils.s3_client import S3Client
 
@@ -89,7 +89,7 @@ class IndexManagementService:
         index_key = f"books/{book_id}/guidelines/index.json"
 
         try:
-            index_data = self.s3.get_json(index_key)
+            index_data = self.s3.download_json(index_key)
             index = GuidelinesIndex(**index_data)
             logger.debug(f"Loaded index for book {book_id}: version {index.version}")
             return index
@@ -124,7 +124,7 @@ class IndexManagementService:
                     f"books/{book_id}/guidelines/snapshots/"
                     f"index.v{old_index.version}.json"
                 )
-                self.s3.put_json(snapshot_key, old_index.model_dump())
+                self.s3.upload_json(data=old_index.model_dump(), s3_key=snapshot_key)
                 logger.info(f"Created index snapshot: {snapshot_key}")
             except FileNotFoundError:
                 # First save - no snapshot needed
@@ -136,7 +136,7 @@ class IndexManagementService:
         index.last_updated = datetime.utcnow().isoformat()
 
         try:
-            self.s3.put_json(index_key, index.model_dump())
+            self.s3.upload_json(data=index.model_dump(), s3_key=index_key)
             logger.info(
                 f"Saved index for book {book_id}: version {index.version}, "
                 f"{len(index.topics)} topics"
@@ -152,6 +152,7 @@ class IndexManagementService:
         topic_title: str,
         subtopic_key: str,
         subtopic_title: str,
+        page_range: str,
         status: str = "open"
     ) -> GuidelinesIndex:
         """
@@ -163,6 +164,7 @@ class IndexManagementService:
             topic_title: Human-readable topic name
             subtopic_key: Subtopic identifier (slugified)
             subtopic_title: Human-readable subtopic name
+            page_range: Page range for the subtopic (e.g., "2-6" or "7-?")
             status: Subtopic status (open, stable, final, needs_review)
 
         Returns:
@@ -184,7 +186,7 @@ class IndexManagementService:
 
         if not topic_entry:
             # Create new topic
-            topic_entry = TopicEntry(
+            topic_entry = TopicIndexEntry(
                 topic_key=topic_key,
                 topic_title=topic_title,
                 subtopics=[]
@@ -203,15 +205,17 @@ class IndexManagementService:
             # Update existing subtopic
             old_status = subtopic_entry.status
             subtopic_entry.status = status
+            subtopic_entry.page_range = page_range  # Update page range
             logger.info(
                 f"Updated subtopic {topic_key}/{subtopic_key}: "
-                f"{old_status} → {status}"
+                f"{old_status} → {status}, page_range={page_range}"
             )
         else:
             # Create new subtopic
-            subtopic_entry = SubtopicEntry(
+            subtopic_entry = SubtopicIndexEntry(
                 subtopic_key=subtopic_key,
                 subtopic_title=subtopic_title,
+                page_range=page_range,
                 status=status
             )
             topic_entry.subtopics.append(subtopic_entry)
@@ -307,7 +311,7 @@ class IndexManagementService:
         page_index_key = f"books/{book_id}/guidelines/page_index.json"
 
         try:
-            page_index_data = self.s3.get_json(page_index_key)
+            page_index_data = self.s3.download_json(page_index_key)
 
             # Convert string keys to integers (JSON stores dict keys as strings)
             if "pages" in page_index_data:
@@ -357,7 +361,7 @@ class IndexManagementService:
                 snapshot_data["pages"] = {
                     str(k): v for k, v in snapshot_data["pages"].items()
                 }
-                self.s3.put_json(snapshot_key, snapshot_data)
+                self.s3.upload_json(data=snapshot_data, s3_key=snapshot_key)
                 logger.info(f"Created page index snapshot: {snapshot_key}")
             except FileNotFoundError:
                 # First save - no snapshot needed
@@ -375,7 +379,7 @@ class IndexManagementService:
                 str(k): v for k, v in save_data["pages"].items()
             }
 
-            self.s3.put_json(page_index_key, save_data)
+            self.s3.upload_json(data=save_data, s3_key=page_index_key)
             logger.info(
                 f"Saved page index for book {book_id}: version {page_index.version}, "
                 f"{len(page_index.pages)} pages"
@@ -415,7 +419,7 @@ class IndexManagementService:
         updated_page_index = deepcopy(page_index)
 
         # Create page entry
-        page_entry = PageIndexEntry(
+        page_entry = PageAssignment(
             topic_key=topic_key,
             subtopic_key=subtopic_key,
             confidence=confidence,
@@ -445,7 +449,7 @@ class IndexManagementService:
         self,
         page_index: PageIndex,
         page_num: int
-    ) -> Optional[PageIndexEntry]:
+    ) -> Optional[PageAssignment]:
         """
         Get page assignment.
 
@@ -454,7 +458,7 @@ class IndexManagementService:
             page_num: Page number
 
         Returns:
-            PageIndexEntry if found, None otherwise
+            PageAssignment if found, None otherwise
         """
         return page_index.pages.get(page_num)
 

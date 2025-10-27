@@ -12,6 +12,7 @@ from config import get_settings, validate_required_settings
 from database import get_db_manager
 from api.routes import health, curriculum, sessions
 from features.book_ingestion.api import routes as admin_routes
+from routers import admin_guidelines
 
 # Validate configuration on startup
 validate_required_settings()
@@ -39,6 +40,7 @@ app.include_router(health.router)
 app.include_router(curriculum.router)
 app.include_router(sessions.router)
 app.include_router(admin_routes.router)  # Book ingestion admin routes
+app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
 
 
 @app.on_event("startup")

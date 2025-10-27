@@ -78,15 +78,34 @@ class S3Client:
 
         Raises:
             ClientError: If upload fails
+            TypeError: If arguments are wrong types
         """
-        try:
-            extra_args = {'ContentType': content_type} if content_type else {}
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=s3_key,
-                Body=data,
-                **extra_args
+        # Type guards to prevent argument order mistakes
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                f"data must be bytes-like, got {type(data).__name__}. "
+                f"Did you swap the arguments? upload_bytes(data, s3_key)"
             )
+        if not isinstance(s3_key, str):
+            raise TypeError(
+                f"s3_key must be str, got {type(s3_key).__name__}. "
+                f"Did you swap the arguments? upload_bytes(data, s3_key)"
+            )
+
+        try:
+            if content_type:
+                self.s3_client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=s3_key,
+                    Body=data,
+                    ContentType=content_type
+                )
+            else:
+                self.s3_client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=s3_key,
+                    Body=data
+                )
             logger.info(f"Uploaded bytes to s3://{self.bucket_name}/{s3_key}")
             return f"s3://{self.bucket_name}/{s3_key}"
         except ClientError as e:
@@ -256,7 +275,20 @@ class S3Client:
 
         Raises:
             ClientError: If upload fails
+            TypeError: If arguments are wrong types
         """
+        # Type guards to prevent argument order mistakes
+        if not isinstance(data, dict):
+            raise TypeError(
+                f"data must be dict, got {type(data).__name__}. "
+                f"Did you swap the arguments? upload_json(data, s3_key)"
+            )
+        if not isinstance(s3_key, str):
+            raise TypeError(
+                f"s3_key must be str, got {type(s3_key).__name__}. "
+                f"Did you swap the arguments? upload_json(data, s3_key)"
+            )
+
         json_str = json.dumps(data, indent=2)
         json_bytes = json_str.encode('utf-8')
         return self.upload_bytes(json_bytes, s3_key, content_type='application/json')

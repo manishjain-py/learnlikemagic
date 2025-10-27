@@ -203,6 +203,8 @@ class SubtopicShard(BaseModel):
 
 class SubtopicIndexEntry(BaseModel):
     """Single subtopic entry in the index"""
+    model_config = {"validate_assignment": False}
+
     subtopic_key: str
     subtopic_title: str
     status: Literal["open", "stable", "final", "needs_review"]
@@ -218,8 +220,11 @@ class TopicIndexEntry(BaseModel):
 
 class GuidelinesIndex(BaseModel):
     """Central index of all topics and subtopics"""
+    model_config = {"validate_assignment": False}
+
     book_id: str
     topics: List[TopicIndexEntry] = Field(default_factory=list)
+    version: int = 1
     last_updated: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -232,10 +237,15 @@ class PageAssignment(BaseModel):
 
 class PageIndex(BaseModel):
     """Mapping of pages to their assigned subtopics"""
-    assignments: Dict[str, PageAssignment] = Field(
+    model_config = {"validate_assignment": False}
+
+    book_id: str
+    pages: Dict[int, PageAssignment] = Field(
         default_factory=dict,
-        description="Page number (as string) → assignment"
+        description="Page number → assignment"
     )
+    version: int = 1
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
 
 
 # ============================================================================
