@@ -1,0 +1,2145 @@
+================================================================================
+COMPREHENSIVE INTEGRATION TESTS PLAN
+LearnLikeMagic LLM Backend
+================================================================================
+
+Last Updated: 2025-10-27
+Status: DETAILED PLAN - READY FOR IMPLEMENTATION
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1. OVERVIEW & PRINCIPLES
+2. TEST INFRASTRUCTURE SETUP
+3. TESTING STRATEGY BY API GROUP
+4. DETAILED TEST CASES FOR ALL ENDPOINTS
+5. CLEANUP STRATEGIES
+6. IMPLEMENTATION PHASES
+7. CI/CD INTEGRATION
+8. SUCCESS METRICS
+
+================================================================================
+1. OVERVIEW & PRINCIPLES
+================================================================================
+
+1.1 TESTING PHILOSOPHY
+----------------------
+- Integration tests will use PRODUCTION resources (PostgreSQL, S3, OpenAI API)
+- Tests will be SELF-CONTAINED with proper setup and teardown
+- Tests will be DETERMINISTIC with predictable data and outcomes
+- Tests will be ISOLATED - no test depends on another
+- Tests will CLEAN UP after themselves (database records, S3 files)
+- Tests will be TAGGED for selective execution (smoke, slow, critical)
+
+1.2 WHAT WE'RE TESTING
+----------------------
+- Complete HTTP request → response cycles for all API endpoints
+- Database persistence and retrieval with real PostgreSQL
+- S3 operations (upload, download, delete) with real AWS S3
+- OpenAI API integration for LLM and Vision endpoints
+- LangGraph workflow execution for tutoring sessions
+- Error handling and edge cases
+- Authentication/authorization (if applicable)
+- Request validation and response schemas
+
+1.3 WHAT WE'RE NOT TESTING (Unit Test Territory)
+------------------------------------------------
+- Individual function logic (domain models, utilities)
+- Mocked external dependencies
+- Pure business logic without I/O
+
+1.4 KEY TECHNOLOGIES
+--------------------
+Framework: pytest
+HTTP Client: httpx (via FastAPI TestClient)
+Database: PostgreSQL (production instance)
+Storage: AWS S3 (production bucket)
+LLM: OpenAI API (production endpoint)
+Coverage Tool: pytest-cov
+Mocking: pytest-mock (minimal use - only for cost/time optimization)
+
+================================================================================
+2. TEST INFRASTRUCTURE SETUP
+================================================================================
+
+2.1 DIRECTORY STRUCTURE
+-----------------------
+tests/
+├── __init__.py
+├── conftest.py                           # Shared fixtures & configuration
+├── integration/
+│   ├── __init__.py
+│   ├── test_health_endpoints.py          # Health check APIs
+│   ├── test_curriculum_endpoints.py      # Curriculum discovery APIs
+│   ├── test_session_endpoints.py         # Session management APIs
+│   ├── test_session_workflow_e2e.py      # Full tutor workflow
+│   ├── test_book_crud_endpoints.py       # Book CRUD APIs
+│   ├── test_page_management_endpoints.py # Page upload/OCR APIs
+│   ├── test_guideline_generation_endpoints.py  # Guideline generation
+│   ├── test_admin_guidelines_endpoints.py      # Admin review UI APIs
+│   └── helpers/
+│       ├── __init__.py
+│       ├── database_helpers.py           # DB setup/cleanup utilities
+│       ├── s3_helpers.py                 # S3 cleanup utilities
+│       ├── test_data_generators.py       # Fake data generation
+│       └── assertion_helpers.py          # Custom assertions
+├── fixtures/
+│   ├── __init__.py
+│   ├── api_fixtures.py                   # TestClient, app setup
+│   ├── database_fixtures.py              # DB session, cleanup
+│   ├── s3_fixtures.py                    # S3 client, bucket cleanup
+│   ├── sample_data.py                    # Sample books, students, goals
+│   └── test_images.py                    # Sample page images for OCR
+└── pytest.ini                            # Pytest configuration
+
+2.2 CONFIGURATION FILE (pytest.ini)
+-----------------------------------
+[pytest]
+testpaths = tests/integration
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+
+markers =
+    integration: Integration tests using production resources
+    slow: Tests taking >5 seconds (e.g., LLM calls)
+    smoke: Quick smoke tests for deployment verification
+    critical: Critical path tests that must pass
+    s3: Tests requiring S3 access
+    db: Tests requiring database access
+    llm: Tests requiring OpenAI API calls
+    phase6: Tests for Phase 6 guideline extraction
+
+addopts =
+    -v
+    --strict-markers
+    --tb=short
+    --cov=.
+    --cov-report=html
+    --cov-report=term-missing
+    --cov-fail-under=80
+
+env =
+    TESTING=true
+    DATABASE_URL=postgresql://user:pass@localhost:5432/learnlikemagic_test
+    AWS_S3_BUCKET=learnlikemagic-books-test
+    OPENAI_API_KEY=${OPENAI_API_KEY}
+
+2.3 CORE FIXTURES (conftest.py)
+--------------------------------
+
+@pytest.fixture(scope="session")
+def test_config():
+    """Load test-specific configuration"""
+    return {
+        "database_url": os.getenv("TEST_DATABASE_URL"),
+        "s3_bucket": "learnlikemagic-books-test",
+        "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "test_prefix": f"test_{uuid.uuid4().hex[:8]}_"
+    }
+
+@pytest.fixture(scope="session")
+def app():
+    """FastAPI application instance"""
+    from main import app
+    return app
+
+@pytest.fixture
+def client(app):
+    """HTTP test client for API calls"""
+    from fastapi.testclient import TestClient
+    return TestClient(app)
+
+@pytest.fixture
+def db_session(test_config):
+    """Database session with automatic cleanup"""
+    from database import DatabaseManager
+    db_manager = DatabaseManager(test_config["database_url"])
+    session = db_manager.get_session()
+
+    # Track created records for cleanup
+    created_sessions = []
+    created_books = []
+
+    yield session, created_sessions, created_books
+
+    # Cleanup
+    for session_id in created_sessions:
+        session.query(Session).filter_by(id=session_id).delete()
+    for book_id in created_books:
+        session.query(Book).filter_by(id=book_id).delete()
+    session.commit()
+    session.close()
+
+@pytest.fixture
+def s3_client(test_config):
+    """S3 client with automatic cleanup"""
+    from features.book_ingestion.utils.s3_client import S3Client
+    s3 = S3Client(bucket_name=test_config["s3_bucket"])
+
+    # Track uploaded objects
+    uploaded_keys = []
+
+    yield s3, uploaded_keys
+
+    # Cleanup
+    for key in uploaded_keys:
+        try:
+            s3.client.delete_object(Bucket=s3.bucket_name, Key=key)
+        except Exception as e:
+            print(f"Failed to cleanup S3 key {key}: {e}")
+
+@pytest.fixture
+def sample_student():
+    """Generate sample student data"""
+    return {
+        "student_id": f"test_student_{uuid.uuid4().hex[:8]}",
+        "name": "Test Student",
+        "grade": 8,
+        "country": "India",
+        "board": "CBSE"
+    }
+
+@pytest.fixture
+def sample_goal():
+    """Generate sample learning goal"""
+    return {
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "topic": "Algebra",
+        "subtopic": "Linear Equations"
+    }
+
+@pytest.fixture
+def sample_book_data(test_config):
+    """Generate sample book metadata"""
+    return {
+        "title": f"Test Book {uuid.uuid4().hex[:8]}",
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "publisher": "Test Publisher",
+        "year": 2024
+    }
+
+@pytest.fixture
+def sample_page_image():
+    """Generate a sample page image for OCR testing"""
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+
+    # Create a simple test image with text
+    img = Image.new('RGB', (800, 1000), color='white')
+    draw = ImageDraw.Draw(img)
+
+    # Add some text
+    text = "Linear Equations\n\nA linear equation is an equation of the form ax + b = c"
+    draw.text((50, 50), text, fill='black')
+
+    # Convert to bytes
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+@pytest.fixture
+def cleanup_tracker():
+    """Track resources created during tests for cleanup"""
+    tracker = {
+        "session_ids": [],
+        "book_ids": [],
+        "s3_keys": []
+    }
+    yield tracker
+    # Cleanup happens in individual fixtures
+
+2.4 HELPER UTILITIES
+--------------------
+
+# tests/integration/helpers/database_helpers.py
+
+def cleanup_sessions(db_session, session_ids):
+    """Clean up test sessions and related events"""
+    from models.database import Session, Event
+    db_session.query(Event).filter(Event.session_id.in_(session_ids)).delete()
+    db_session.query(Session).filter(Session.id.in_(session_ids)).delete()
+    db_session.commit()
+
+def cleanup_books(db_session, book_ids):
+    """Clean up test books and related guidelines"""
+    from features.book_ingestion.models.database import Book, BookGuideline
+    db_session.query(BookGuideline).filter(BookGuideline.book_id.in_(book_ids)).delete()
+    db_session.query(Book).filter(Book.id.in_(book_ids)).delete()
+    db_session.commit()
+
+def verify_session_in_db(db_session, session_id):
+    """Verify a session exists in the database"""
+    from models.database import Session
+    session = db_session.query(Session).filter_by(id=session_id).first()
+    assert session is not None, f"Session {session_id} not found in database"
+    return session
+
+# tests/integration/helpers/s3_helpers.py
+
+def cleanup_s3_prefix(s3_client, prefix):
+    """Delete all objects under a given prefix"""
+    response = s3_client.client.list_objects_v2(
+        Bucket=s3_client.bucket_name,
+        Prefix=prefix
+    )
+    if 'Contents' in response:
+        for obj in response['Contents']:
+            s3_client.client.delete_object(
+                Bucket=s3_client.bucket_name,
+                Key=obj['Key']
+            )
+
+def verify_s3_object_exists(s3_client, key):
+    """Verify an S3 object exists"""
+    try:
+        s3_client.client.head_object(Bucket=s3_client.bucket_name, Key=key)
+        return True
+    except:
+        return False
+
+# tests/integration/helpers/test_data_generators.py
+
+def generate_test_book_with_pages(num_pages=5):
+    """Generate a complete test book with pages"""
+    book_data = {
+        "title": f"Test Book {uuid.uuid4().hex[:8]}",
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics"
+    }
+    pages = [generate_sample_page_image(i) for i in range(1, num_pages + 1)]
+    return book_data, pages
+
+def generate_sample_page_image(page_num):
+    """Generate a sample page image with specific content"""
+    # Similar to sample_page_image fixture but parameterized
+
+# tests/integration/helpers/assertion_helpers.py
+
+def assert_session_response_valid(response_data):
+    """Validate session response structure"""
+    assert "session_id" in response_data
+    assert "first_turn" in response_data
+    assert isinstance(response_data["first_turn"], dict)
+
+def assert_guideline_structure_valid(guideline_data):
+    """Validate guideline data structure"""
+    assert "subtopic_shard" in guideline_data
+    assert "teaching_description" in guideline_data
+    assert "sorted_facts" in guideline_data
+
+================================================================================
+3. TESTING STRATEGY BY API GROUP
+================================================================================
+
+3.1 HEALTH CHECK ENDPOINTS
+--------------------------
+Purpose: Verify service health and dependencies
+Endpoints: /, /health/db
+Strategy:
+  - Smoke tests (fast, run on every deployment)
+  - Verify database connectivity
+  - No cleanup needed (read-only)
+Priority: CRITICAL
+Tags: @pytest.mark.smoke, @pytest.mark.critical
+
+3.2 CURRICULUM DISCOVERY ENDPOINTS
+-----------------------------------
+Purpose: Test curriculum hierarchy navigation
+Endpoints: GET /curriculum
+Strategy:
+  - Test with real teaching guidelines in database
+  - Seed test data before test run (or use existing prod data)
+  - Test various query parameter combinations
+  - Verify response structure matches schema
+  - No cleanup needed (read-only)
+Priority: HIGH
+Tags: @pytest.mark.integration, @pytest.mark.db
+
+3.3 SESSION MANAGEMENT ENDPOINTS
+--------------------------------
+Purpose: Test adaptive tutoring session lifecycle
+Endpoints:
+  - POST /sessions (create)
+  - POST /sessions/{id}/step (submit answer)
+  - GET /sessions/{id}/summary (get summary)
+  - GET /sessions/{id} (get state)
+
+Strategy:
+  - Create real sessions in database
+  - Test LangGraph workflow execution
+  - Use REAL OpenAI API calls (mark as @slow)
+  - Verify session state persistence
+  - Cleanup: Delete sessions + events after test
+Priority: CRITICAL
+Tags: @pytest.mark.integration, @pytest.mark.db, @pytest.mark.llm, @pytest.mark.slow
+
+3.4 BOOK CRUD ENDPOINTS
+-----------------------
+Purpose: Test book metadata management
+Endpoints:
+  - POST /admin/books (create)
+  - GET /admin/books (list with filters)
+  - GET /admin/books/{id} (get details)
+  - PUT /admin/books/{id}/status (update status)
+  - DELETE /admin/books/{id} (delete)
+
+Strategy:
+  - Create test books in database
+  - Test filtering and pagination
+  - Verify status transitions
+  - Cleanup: Delete books after test
+Priority: HIGH
+Tags: @pytest.mark.integration, @pytest.mark.db
+
+3.5 PAGE MANAGEMENT ENDPOINTS
+------------------------------
+Purpose: Test page upload and OCR processing
+Endpoints:
+  - POST /admin/books/{id}/pages (upload)
+  - GET /admin/books/{id}/pages/{page_num} (get page)
+  - PUT /admin/books/{id}/pages/{page_num}/approve (approve)
+  - DELETE /admin/books/{id}/pages/{page_num} (delete)
+
+Strategy:
+  - Upload real images to S3
+  - Use REAL OpenAI Vision API for OCR (mark as @slow)
+  - Verify S3 storage and presigned URLs
+  - Cleanup: Delete S3 objects + database records
+Priority: HIGH
+Tags: @pytest.mark.integration, @pytest.mark.s3, @pytest.mark.llm, @pytest.mark.slow
+
+3.6 GUIDELINE GENERATION ENDPOINTS
+-----------------------------------
+Purpose: Test Phase 6 pipeline end-to-end
+Endpoints:
+  - POST /admin/books/{id}/generate-guidelines
+  - GET /admin/books/{id}/guidelines
+  - GET /admin/books/{id}/guidelines/{topic}/{subtopic}
+  - PUT /admin/books/{id}/guidelines/approve
+  - DELETE /admin/books/{id}/guidelines
+
+Strategy:
+  - Create book with pages (use uploaded test pages)
+  - Trigger guideline extraction (REAL LLM calls - very slow)
+  - Verify S3 guideline storage (index.json, subtopic shards)
+  - Test approve/reject workflows
+  - Cleanup: Delete S3 guidelines + database records
+Priority: HIGH
+Tags: @pytest.mark.integration, @pytest.mark.phase6, @pytest.mark.s3, @pytest.mark.llm, @pytest.mark.slow
+
+3.7 ADMIN GUIDELINES REVIEW ENDPOINTS
+--------------------------------------
+Purpose: Test admin UI backend for guideline review
+Endpoints:
+  - GET /admin/guidelines/books
+  - GET /admin/guidelines/books/{id}/topics
+  - GET /admin/guidelines/books/{id}/subtopics/{key}
+  - PUT /admin/guidelines/books/{id}/subtopics/{key}
+  - POST /admin/guidelines/books/{id}/subtopics/{key}/approve
+  - GET /admin/guidelines/books/{id}/page-assignments
+  - POST /admin/guidelines/books/{id}/sync-to-database
+
+Strategy:
+  - Use pre-generated guidelines (from previous test or seeded data)
+  - Test retrieval, editing, approval workflows
+  - Test database sync functionality
+  - Cleanup: Delete synced guidelines from database
+Priority: MEDIUM
+Tags: @pytest.mark.integration, @pytest.mark.phase6, @pytest.mark.db
+
+================================================================================
+4. DETAILED TEST CASES FOR ALL ENDPOINTS
+================================================================================
+
+4.1 HEALTH CHECK ENDPOINTS
+---------------------------
+
+FILE: tests/integration/test_health_endpoints.py
+
+import pytest
+
+@pytest.mark.smoke
+@pytest.mark.critical
+def test_root_health_check(client):
+    """Test root endpoint returns service status"""
+    response = client.get("/")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "service" in data
+    assert "version" in data
+
+@pytest.mark.smoke
+@pytest.mark.critical
+@pytest.mark.db
+def test_database_health_check(client):
+    """Test database health check endpoint"""
+    response = client.get("/health/db")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["database"] == "connected"
+
+@pytest.mark.smoke
+def test_health_check_when_db_unavailable(client, monkeypatch):
+    """Test health check returns error when DB is down"""
+    # Note: This might require mocking the database connection
+    # or temporarily breaking the connection
+    # Implementation depends on your database manager design
+
+4.2 CURRICULUM DISCOVERY ENDPOINTS
+-----------------------------------
+
+FILE: tests/integration/test_curriculum_endpoints.py
+
+import pytest
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_get_subjects_for_curriculum(client, db_session):
+    """Test fetching subjects for a given country/board/grade"""
+    # Ensure test data exists
+    seed_test_guideline(db_session, {
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "topic": "Algebra",
+        "subtopic": "Linear Equations"
+    })
+
+    response = client.get("/curriculum", params={
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "subjects" in data
+    assert "Mathematics" in data["subjects"]
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_get_topics_for_subject(client, db_session):
+    """Test fetching topics for a given subject"""
+    seed_test_guideline(db_session, {
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "topic": "Algebra",
+        "subtopic": "Linear Equations"
+    })
+
+    response = client.get("/curriculum", params={
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics"
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "topics" in data
+    assert "Algebra" in data["topics"]
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_get_subtopics_for_topic(client, db_session):
+    """Test fetching subtopics for a given topic"""
+    seed_test_guideline(db_session, {
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "topic": "Algebra",
+        "subtopic": "Linear Equations"
+    })
+
+    response = client.get("/curriculum", params={
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "topic": "Algebra"
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "subtopics" in data
+    assert any(s["name"] == "Linear Equations" for s in data["subtopics"])
+
+@pytest.mark.integration
+def test_curriculum_with_invalid_parameters(client):
+    """Test curriculum endpoint with invalid parameters"""
+    response = client.get("/curriculum", params={
+        "country": "InvalidCountry",
+        "board": "InvalidBoard",
+        "grade": 999
+    })
+
+    # Should return empty results, not error
+    assert response.status_code == 200
+    data = response.json()
+    # Verify appropriate empty response structure
+
+@pytest.mark.integration
+def test_curriculum_missing_required_params(client):
+    """Test curriculum endpoint without required parameters"""
+    response = client.get("/curriculum")
+
+    # Should return validation error
+    assert response.status_code == 422
+
+def seed_test_guideline(db_session, guideline_data):
+    """Helper to seed test guideline data"""
+    from models.database import TeachingGuideline
+    guideline = TeachingGuideline(**guideline_data)
+    db_session.add(guideline)
+    db_session.commit()
+
+4.3 SESSION MANAGEMENT ENDPOINTS
+--------------------------------
+
+FILE: tests/integration/test_session_endpoints.py
+
+import pytest
+import uuid
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.llm
+@pytest.mark.slow
+@pytest.mark.critical
+def test_create_session_success(client, db_session, sample_student, sample_goal, cleanup_tracker):
+    """Test creating a new tutoring session"""
+    request_data = {
+        "student": sample_student,
+        "goal": sample_goal
+    }
+
+    response = client.post("/sessions", json=request_data)
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert "session_id" in data
+    assert "first_turn" in data
+    assert isinstance(data["first_turn"], dict)
+
+    session_id = data["session_id"]
+    cleanup_tracker["session_ids"].append(session_id)
+
+    # Verify session persisted to database
+    from tests.integration.helpers.database_helpers import verify_session_in_db
+    db_record = verify_session_in_db(db_session, session_id)
+    assert db_record.student_id == sample_student["student_id"]
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.llm
+@pytest.mark.slow
+def test_submit_step_correct_answer(client, db_session, sample_student, sample_goal, cleanup_tracker):
+    """Test submitting a correct answer and receiving next turn"""
+    # Create session first
+    create_response = client.post("/sessions", json={
+        "student": sample_student,
+        "goal": sample_goal
+    })
+    session_id = create_response.json()["session_id"]
+    cleanup_tracker["session_ids"].append(session_id)
+
+    # Submit a step
+    step_response = client.post(f"/sessions/{session_id}/step", json={
+        "student_reply": "5/8 is bigger than 3/8"
+    })
+
+    assert step_response.status_code == 200
+    data = step_response.json()
+
+    # Verify response structure
+    assert "next_turn" in data
+    assert "routing" in data
+    assert "last_grading" in data
+
+    # Verify grading result
+    grading = data["last_grading"]
+    assert grading["is_correct"] in [True, False]
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.llm
+@pytest.mark.slow
+def test_submit_step_incorrect_answer(client, db_session, sample_student, sample_goal, cleanup_tracker):
+    """Test submitting an incorrect answer triggers remediation"""
+    # Create session
+    create_response = client.post("/sessions", json={
+        "student": sample_student,
+        "goal": sample_goal
+    })
+    session_id = create_response.json()["session_id"]
+    cleanup_tracker["session_ids"].append(session_id)
+
+    # Submit incorrect answer
+    step_response = client.post(f"/sessions/{session_id}/step", json={
+        "student_reply": "3/8 is bigger than 5/8"  # Intentionally wrong
+    })
+
+    assert step_response.status_code == 200
+    data = step_response.json()
+
+    # Verify remediation routing
+    assert data["routing"] in ["remediate", "diagnose"]
+    assert data["last_grading"]["is_correct"] == False
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_get_session_summary(client, db_session, sample_student, sample_goal, cleanup_tracker):
+    """Test fetching session summary after multiple steps"""
+    # Create session and submit a few steps
+    create_response = client.post("/sessions", json={
+        "student": sample_student,
+        "goal": sample_goal
+    })
+    session_id = create_response.json()["session_id"]
+    cleanup_tracker["session_ids"].append(session_id)
+
+    # Submit multiple steps (mock or real)
+    # ...
+
+    # Get summary
+    summary_response = client.get(f"/sessions/{session_id}/summary")
+
+    assert summary_response.status_code == 200
+    data = summary_response.json()
+
+    # Verify summary structure
+    assert "steps_completed" in data
+    assert "mastery_score" in data
+    assert "misconceptions_seen" in data
+    assert "suggestions" in data
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_get_session_state(client, db_session, sample_student, sample_goal, cleanup_tracker):
+    """Test fetching full session state (debug endpoint)"""
+    # Create session
+    create_response = client.post("/sessions", json={
+        "student": sample_student,
+        "goal": sample_goal
+    })
+    session_id = create_response.json()["session_id"]
+    cleanup_tracker["session_ids"].append(session_id)
+
+    # Get full state
+    state_response = client.get(f"/sessions/{session_id}")
+
+    assert state_response.status_code == 200
+    data = state_response.json()
+
+    # Verify state contains expected fields
+    assert "session_id" in data or "id" in data
+    assert "tutor_state" in data or "state" in data
+
+@pytest.mark.integration
+def test_create_session_invalid_student_data(client):
+    """Test creating session with invalid student data"""
+    request_data = {
+        "student": {"invalid": "data"},
+        "goal": {"country": "India", "board": "CBSE"}
+    }
+
+    response = client.post("/sessions", json=request_data)
+
+    # Should return validation error
+    assert response.status_code == 422
+
+@pytest.mark.integration
+def test_submit_step_nonexistent_session(client):
+    """Test submitting step to non-existent session"""
+    fake_session_id = str(uuid.uuid4())
+
+    response = client.post(f"/sessions/{fake_session_id}/step", json={
+        "student_reply": "test answer"
+    })
+
+    # Should return 404 or appropriate error
+    assert response.status_code in [404, 400]
+
+# Cleanup fixture usage
+@pytest.fixture(autouse=True)
+def cleanup_sessions_after_test(db_session, cleanup_tracker):
+    """Cleanup sessions after each test"""
+    yield
+    from tests.integration.helpers.database_helpers import cleanup_sessions
+    if cleanup_tracker["session_ids"]:
+        cleanup_sessions(db_session, cleanup_tracker["session_ids"])
+
+4.4 BOOK CRUD ENDPOINTS
+-----------------------
+
+FILE: tests/integration/test_book_crud_endpoints.py
+
+import pytest
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_create_book_success(client, db_session, sample_book_data, cleanup_tracker):
+    """Test creating a new book"""
+    response = client.post("/admin/books", json=sample_book_data)
+
+    assert response.status_code == 201
+    data = response.json()
+
+    # Verify response structure
+    assert "book_id" in data
+    assert data["title"] == sample_book_data["title"]
+    assert data["status"] == "draft"
+
+    cleanup_tracker["book_ids"].append(data["book_id"])
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_list_books_with_filters(client, db_session, sample_book_data, cleanup_tracker):
+    """Test listing books with various filters"""
+    # Create test books
+    book1 = client.post("/admin/books", json=sample_book_data).json()
+    cleanup_tracker["book_ids"].append(book1["book_id"])
+
+    # List with filters
+    response = client.get("/admin/books", params={
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert "books" in data
+    assert "total" in data
+    assert isinstance(data["books"], list)
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_get_book_details(client, db_session, sample_book_data, cleanup_tracker):
+    """Test fetching book details"""
+    # Create book
+    create_response = client.post("/admin/books", json=sample_book_data)
+    book_id = create_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Get details
+    response = client.get(f"/admin/books/{book_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify book data
+    assert data["book_id"] == book_id
+    assert data["title"] == sample_book_data["title"]
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_update_book_status(client, db_session, sample_book_data, cleanup_tracker):
+    """Test updating book status"""
+    # Create book
+    create_response = client.post("/admin/books", json=sample_book_data)
+    book_id = create_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Update status
+    response = client.put(f"/admin/books/{book_id}/status", json={
+        "status": "processing"
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "processing"
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_delete_book(client, db_session, sample_book_data):
+    """Test deleting a book"""
+    # Create book
+    create_response = client.post("/admin/books", json=sample_book_data)
+    book_id = create_response.json()["book_id"]
+
+    # Delete book
+    response = client.delete(f"/admin/books/{book_id}")
+
+    assert response.status_code == 204
+
+    # Verify book is deleted
+    get_response = client.get(f"/admin/books/{book_id}")
+    assert get_response.status_code == 404
+
+@pytest.mark.integration
+def test_create_book_invalid_data(client):
+    """Test creating book with invalid data"""
+    invalid_data = {
+        "title": "",  # Empty title
+        "grade": "invalid"  # Invalid grade type
+    }
+
+    response = client.post("/admin/books", json=invalid_data)
+
+    assert response.status_code == 422
+
+@pytest.mark.integration
+def test_get_nonexistent_book(client):
+    """Test fetching non-existent book"""
+    fake_book_id = str(uuid.uuid4())
+
+    response = client.get(f"/admin/books/{fake_book_id}")
+
+    assert response.status_code == 404
+
+# Cleanup fixture
+@pytest.fixture(autouse=True)
+def cleanup_books_after_test(db_session, cleanup_tracker):
+    """Cleanup books after each test"""
+    yield
+    from tests.integration.helpers.database_helpers import cleanup_books
+    if cleanup_tracker["book_ids"]:
+        cleanup_books(db_session, cleanup_tracker["book_ids"])
+
+4.5 PAGE MANAGEMENT ENDPOINTS
+------------------------------
+
+FILE: tests/integration/test_page_management_endpoints.py
+
+import pytest
+import io
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.llm
+@pytest.mark.slow
+def test_upload_page_with_ocr(client, db_session, s3_client, sample_book_data, sample_page_image, cleanup_tracker):
+    """Test uploading a page image and triggering OCR"""
+    # Create book first
+    book_response = client.post("/admin/books", json=sample_book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Upload page
+    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    response = client.post(f"/admin/books/{book_id}/pages", files=files)
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert "page_number" in data
+    assert "ocr_text" in data
+    assert "image_url" in data
+    assert data["status"] == "pending_approval"
+
+    # Verify S3 storage
+    page_num = data["page_number"]
+    s3_key = f"books/{book_id}/pages/{page_num}.png"
+    cleanup_tracker["s3_keys"].append(s3_key)
+
+    from tests.integration.helpers.s3_helpers import verify_s3_object_exists
+    assert verify_s3_object_exists(s3_client[0], s3_key)
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+def test_get_page_with_presigned_url(client, db_session, s3_client, sample_book_data, sample_page_image, cleanup_tracker):
+    """Test fetching page details with presigned URL"""
+    # Create book and upload page
+    book_response = client.post("/admin/books", json=sample_book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    upload_response = client.post(f"/admin/books/{book_id}/pages", files=files)
+    page_num = upload_response.json()["page_number"]
+
+    # Get page details
+    response = client.get(f"/admin/books/{book_id}/pages/{page_num}")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify presigned URL
+    assert "image_url" in data
+    assert data["image_url"].startswith("https://")
+
+    # Verify URL is accessible (optional - makes external HTTP call)
+    # import requests
+    # url_response = requests.get(data["image_url"])
+    # assert url_response.status_code == 200
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+def test_approve_page(client, db_session, sample_book_data, sample_page_image, cleanup_tracker):
+    """Test approving a page after OCR review"""
+    # Create book and upload page
+    book_response = client.post("/admin/books", json=sample_book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    upload_response = client.post(f"/admin/books/{book_id}/pages", files=files)
+    page_num = upload_response.json()["page_number"]
+
+    # Approve page
+    response = client.put(f"/admin/books/{book_id}/pages/{page_num}/approve")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "approved"
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+def test_delete_page(client, db_session, s3_client, sample_book_data, sample_page_image, cleanup_tracker):
+    """Test deleting/rejecting a page"""
+    # Create book and upload page
+    book_response = client.post("/admin/books", json=sample_book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    upload_response = client.post(f"/admin/books/{book_id}/pages", files=files)
+    page_num = upload_response.json()["page_number"]
+
+    s3_key = f"books/{book_id}/pages/{page_num}.png"
+
+    # Delete page
+    response = client.delete(f"/admin/books/{book_id}/pages/{page_num}")
+
+    assert response.status_code == 204
+
+    # Verify S3 object deleted
+    from tests.integration.helpers.s3_helpers import verify_s3_object_exists
+    assert not verify_s3_object_exists(s3_client[0], s3_key)
+
+@pytest.mark.integration
+def test_upload_page_invalid_format(client, sample_book_data, cleanup_tracker):
+    """Test uploading page with invalid image format"""
+    # Create book
+    book_response = client.post("/admin/books", json=sample_book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Upload invalid file
+    invalid_file = io.BytesIO(b"not an image")
+    files = {"file": ("page.txt", invalid_file, "text/plain")}
+    response = client.post(f"/admin/books/{book_id}/pages", files=files)
+
+    assert response.status_code == 400
+
+@pytest.mark.integration
+def test_upload_page_to_nonexistent_book(client, sample_page_image):
+    """Test uploading page to non-existent book"""
+    fake_book_id = str(uuid.uuid4())
+
+    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    response = client.post(f"/admin/books/{fake_book_id}/pages", files=files)
+
+    assert response.status_code == 404
+
+# Cleanup fixtures
+@pytest.fixture(autouse=True)
+def cleanup_pages_after_test(db_session, s3_client, cleanup_tracker):
+    """Cleanup pages after each test"""
+    yield
+
+    # Cleanup S3 objects
+    from tests.integration.helpers.s3_helpers import cleanup_s3_prefix
+    for book_id in cleanup_tracker["book_ids"]:
+        cleanup_s3_prefix(s3_client[0], f"books/{book_id}/")
+
+    # Cleanup database
+    from tests.integration.helpers.database_helpers import cleanup_books
+    if cleanup_tracker["book_ids"]:
+        cleanup_books(db_session, cleanup_tracker["book_ids"])
+
+4.6 GUIDELINE GENERATION ENDPOINTS
+-----------------------------------
+
+FILE: tests/integration/test_guideline_generation_endpoints.py
+
+import pytest
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.llm
+@pytest.mark.slow
+@pytest.mark.phase6
+def test_generate_guidelines_success(client, db_session, s3_client, cleanup_tracker):
+    """Test end-to-end guideline generation (Phase 6 pipeline)"""
+    # Create book with approved pages
+    book_data = {
+        "title": "Test Math Book",
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics"
+    }
+    book_response = client.post("/admin/books", json=book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Upload and approve multiple pages (at least 3-5)
+    for i in range(1, 6):
+        page_image = generate_sample_page_image(i)
+        files = {"file": (f"page_{i}.png", page_image, "image/png")}
+        upload_resp = client.post(f"/admin/books/{book_id}/pages", files=files)
+        page_num = upload_resp.json()["page_number"]
+        client.put(f"/admin/books/{book_id}/pages/{page_num}/approve")
+
+    # Trigger guideline generation
+    response = client.post(f"/admin/books/{book_id}/generate-guidelines", json={
+        "force_regenerate": False
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert "job_id" in data or "status" in data
+    assert data.get("status") in ["processing", "completed"]
+
+    # If synchronous, verify guidelines generated
+    if data.get("status") == "completed":
+        assert "topics_extracted" in data
+        assert len(data["topics_extracted"]) > 0
+
+    # Verify S3 storage of guidelines
+    from tests.integration.helpers.s3_helpers import verify_s3_object_exists
+    index_key = f"books/{book_id}/guidelines/index.json"
+    assert verify_s3_object_exists(s3_client[0], index_key)
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_get_all_guidelines(client, db_session, cleanup_tracker):
+    """Test fetching all guidelines for a book"""
+    # Use book with generated guidelines (from previous test or seeded)
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    response = client.get(f"/admin/books/{book_id}/guidelines")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert "topics" in data
+    assert isinstance(data["topics"], list)
+    for topic in data["topics"]:
+        assert "topic_key" in topic
+        assert "subtopics" in topic
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_get_specific_guideline(client, db_session, cleanup_tracker):
+    """Test fetching a specific subtopic guideline"""
+    # Use book with generated guidelines
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Get guidelines to find a topic/subtopic
+    guidelines_resp = client.get(f"/admin/books/{book_id}/guidelines")
+    topics = guidelines_resp.json()["topics"]
+    topic_key = topics[0]["topic_key"]
+    subtopic_key = topics[0]["subtopics"][0]["subtopic_key"]
+
+    # Get specific guideline
+    response = client.get(
+        f"/admin/books/{book_id}/guidelines/{topic_key}/{subtopic_key}"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify guideline structure
+    assert "subtopic_shard" in data
+    assert "teaching_description" in data
+    assert "sorted_facts" in data
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_approve_guidelines(client, db_session, cleanup_tracker):
+    """Test approving and syncing guidelines to database"""
+    # Use book with generated guidelines
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Approve and sync
+    response = client.put(f"/admin/books/{book_id}/guidelines/approve")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify sync results
+    assert "approved_count" in data
+    assert "synced_count" in data
+    assert data["approved_count"] > 0
+
+    # Verify guidelines in database
+    from models.database import TeachingGuideline
+    guidelines = db_session.query(TeachingGuideline).filter_by(
+        book_id=book_id
+    ).all()
+    assert len(guidelines) > 0
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_delete_guidelines(client, db_session, s3_client, cleanup_tracker):
+    """Test rejecting/deleting all guidelines"""
+    # Use book with generated guidelines
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Delete guidelines
+    response = client.delete(f"/admin/books/{book_id}/guidelines")
+
+    assert response.status_code == 204
+
+    # Verify S3 cleanup
+    from tests.integration.helpers.s3_helpers import verify_s3_object_exists
+    index_key = f"books/{book_id}/guidelines/index.json"
+    assert not verify_s3_object_exists(s3_client[0], index_key)
+
+@pytest.mark.integration
+@pytest.mark.phase6
+def test_generate_guidelines_no_pages(client, sample_book_data, cleanup_tracker):
+    """Test guideline generation fails when book has no approved pages"""
+    book_response = client.post("/admin/books", json=sample_book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Try to generate without pages
+    response = client.post(f"/admin/books/{book_id}/generate-guidelines", json={})
+
+    assert response.status_code == 400
+    assert "no approved pages" in response.json()["detail"].lower()
+
+def create_book_with_guidelines(client, cleanup_tracker):
+    """Helper to create a book with pre-generated guidelines"""
+    # Simplified version - create book, upload pages, generate guidelines
+    book_data = {
+        "title": "Test Book with Guidelines",
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics"
+    }
+    book_response = client.post("/admin/books", json=book_data)
+    book_id = book_response.json()["book_id"]
+    cleanup_tracker["book_ids"].append(book_id)
+
+    # Upload and approve pages
+    for i in range(1, 4):
+        page_image = generate_sample_page_image(i)
+        files = {"file": (f"page_{i}.png", page_image, "image/png")}
+        upload_resp = client.post(f"/admin/books/{book_id}/pages", files=files)
+        page_num = upload_resp.json()["page_number"]
+        client.put(f"/admin/books/{book_id}/pages/{page_num}/approve")
+
+    # Generate guidelines
+    client.post(f"/admin/books/{book_id}/generate-guidelines", json={})
+
+    return book_id
+
+4.7 ADMIN GUIDELINES REVIEW ENDPOINTS
+--------------------------------------
+
+FILE: tests/integration/test_admin_guidelines_endpoints.py
+
+import pytest
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.phase6
+def test_list_books_with_guideline_status(client, db_session, cleanup_tracker):
+    """Test listing books with guideline extraction status"""
+    # Create book with guidelines
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    response = client.get("/admin/guidelines/books")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response structure
+    assert isinstance(data, list)
+    book_found = False
+    for book in data:
+        if book["book_id"] == book_id:
+            book_found = True
+            assert "guideline_status" in book
+            assert "total_subtopics" in book
+            break
+    assert book_found
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.phase6
+def test_get_topics_for_book(client, db_session, cleanup_tracker):
+    """Test fetching topics and subtopics for a book"""
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    response = client.get(f"/admin/guidelines/books/{book_id}/topics")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify structure
+    assert isinstance(data, list)
+    for topic in data:
+        assert "topic_key" in topic
+        assert "topic_name" in topic
+        assert "subtopics" in topic
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_get_subtopic_guideline(client, db_session, cleanup_tracker):
+    """Test fetching complete guideline for a subtopic"""
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Get topics to find subtopic
+    topics_resp = client.get(f"/admin/guidelines/books/{book_id}/topics")
+    topics = topics_resp.json()
+    subtopic_key = topics[0]["subtopics"][0]["subtopic_key"]
+
+    response = client.get(
+        f"/admin/guidelines/books/{book_id}/subtopics/{subtopic_key}"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify guideline structure
+    assert "guideline" in data
+    assert "metadata" in data
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_update_subtopic_guideline(client, db_session, cleanup_tracker):
+    """Test updating a subtopic guideline"""
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Get subtopic
+    topics_resp = client.get(f"/admin/guidelines/books/{book_id}/topics")
+    topics = topics_resp.json()
+    subtopic_key = topics[0]["subtopics"][0]["subtopic_key"]
+
+    # Update guideline
+    updated_data = {
+        "teaching_description": "Updated teaching description",
+        "sorted_facts": ["Updated fact 1", "Updated fact 2"]
+    }
+
+    response = client.put(
+        f"/admin/guidelines/books/{book_id}/subtopics/{subtopic_key}",
+        json=updated_data
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify update
+    assert data["teaching_description"] == "Updated teaching description"
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.phase6
+def test_approve_subtopic_guideline(client, db_session, cleanup_tracker):
+    """Test approving/rejecting a subtopic guideline"""
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Get subtopic
+    topics_resp = client.get(f"/admin/guidelines/books/{book_id}/topics")
+    topics = topics_resp.json()
+    subtopic_key = topics[0]["subtopics"][0]["subtopic_key"]
+
+    # Approve
+    response = client.post(
+        f"/admin/guidelines/books/{book_id}/subtopics/{subtopic_key}/approve",
+        json={"approved": True}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "approved"
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.s3
+@pytest.mark.phase6
+def test_get_page_assignments(client, db_session, cleanup_tracker):
+    """Test fetching page-to-subtopic assignments"""
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    response = client.get(f"/admin/guidelines/books/{book_id}/page-assignments")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify structure
+    assert isinstance(data, dict)
+    # Keys should be page numbers or ranges
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.phase6
+def test_sync_guidelines_to_database(client, db_session, cleanup_tracker):
+    """Test syncing approved guidelines to database"""
+    book_id = create_book_with_guidelines(client, cleanup_tracker)
+
+    # Approve some guidelines first
+    # ...
+
+    # Sync to database
+    response = client.post(
+        f"/admin/guidelines/books/{book_id}/sync-to-database",
+        params={"status_filter": "approved"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify sync results
+    assert "synced_count" in data
+    assert data["synced_count"] > 0
+
+4.8 END-TO-END WORKFLOW TEST
+----------------------------
+
+FILE: tests/integration/test_session_workflow_e2e.py
+
+import pytest
+
+@pytest.mark.integration
+@pytest.mark.db
+@pytest.mark.llm
+@pytest.mark.slow
+@pytest.mark.critical
+def test_complete_tutoring_session_workflow(client, db_session, cleanup_tracker):
+    """
+    Test complete end-to-end tutoring session workflow:
+    1. Create session
+    2. Present concept
+    3. Student answers correctly
+    4. Check understanding
+    5. Student answers incorrectly
+    6. Remediate misconception
+    7. Advance to next subtopic
+    8. Get session summary
+    """
+
+    # Step 1: Create session
+    student = {
+        "student_id": f"e2e_test_student_{uuid.uuid4().hex[:8]}",
+        "name": "E2E Test Student",
+        "grade": 8,
+        "country": "India",
+        "board": "CBSE"
+    }
+    goal = {
+        "country": "India",
+        "board": "CBSE",
+        "grade": 8,
+        "subject": "Mathematics",
+        "topic": "Algebra",
+        "subtopic": "Linear Equations"
+    }
+
+    create_response = client.post("/sessions", json={
+        "student": student,
+        "goal": goal
+    })
+    assert create_response.status_code == 200
+    session_id = create_response.json()["session_id"]
+    cleanup_tracker["session_ids"].append(session_id)
+
+    first_turn = create_response.json()["first_turn"]
+    assert "message" in first_turn
+
+    # Step 2: Submit correct answer
+    step1_response = client.post(f"/sessions/{session_id}/step", json={
+        "student_reply": "A linear equation has one variable with degree 1"
+    })
+    assert step1_response.status_code == 200
+    step1_data = step1_response.json()
+    assert step1_data["last_grading"]["is_correct"] == True
+
+    # Step 3: Submit incorrect answer
+    step2_response = client.post(f"/sessions/{session_id}/step", json={
+        "student_reply": "x^2 + 5x + 6 = 0 is a linear equation"
+    })
+    assert step2_response.status_code == 200
+    step2_data = step2_response.json()
+    assert step2_data["last_grading"]["is_correct"] == False
+    assert step2_data["routing"] in ["remediate", "diagnose"]
+
+    # Step 4: Remediation turn
+    step3_response = client.post(f"/sessions/{session_id}/step", json={
+        "student_reply": "Oh I see, linear equations can't have x^2"
+    })
+    assert step3_response.status_code == 200
+
+    # Step 5: Continue conversation for a few more turns
+    # ...
+
+    # Step 6: Get session summary
+    summary_response = client.get(f"/sessions/{session_id}/summary")
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+
+    assert summary["steps_completed"] >= 3
+    assert "mastery_score" in summary
+    assert len(summary["misconceptions_seen"]) > 0
+
+================================================================================
+5. CLEANUP STRATEGIES
+================================================================================
+
+5.1 DATABASE CLEANUP STRATEGY
+------------------------------
+
+APPROACH: Automatic cleanup in fixtures
+
+IMPLEMENTATION:
+- Use pytest fixtures with `yield` pattern
+- Track created records during test execution
+- Delete records in reverse dependency order after test
+- Use database transactions for atomic cleanup
+
+EXAMPLE:
+```python
+@pytest.fixture
+def cleanup_tracker():
+    tracker = {
+        "session_ids": [],
+        "book_ids": [],
+        "guideline_ids": []
+    }
+    yield tracker
+
+    # Cleanup happens in dependent fixtures
+    # See cleanup_sessions_after_test, cleanup_books_after_test
+
+@pytest.fixture(autouse=True)
+def cleanup_sessions_after_test(db_session, cleanup_tracker):
+    yield
+
+    from models.database import Session, Event
+
+    # Delete events first (foreign key dependency)
+    db_session.query(Event).filter(
+        Event.session_id.in_(cleanup_tracker["session_ids"])
+    ).delete(synchronize_session=False)
+
+    # Delete sessions
+    db_session.query(Session).filter(
+        Session.id.in_(cleanup_tracker["session_ids"])
+    ).delete(synchronize_session=False)
+
+    db_session.commit()
+```
+
+EDGE CASES:
+- Handle foreign key constraints (delete children first)
+- Handle cascading deletes properly
+- Use `synchronize_session=False` for bulk deletes
+- Commit after all deletes to ensure atomicity
+
+5.2 S3 CLEANUP STRATEGY
+-----------------------
+
+APPROACH: Delete all objects under test prefixes
+
+IMPLEMENTATION:
+- Use unique test prefixes for all S3 keys (e.g., `test_{uuid}_`)
+- Track uploaded keys during test
+- Delete objects recursively after test
+- Handle pagination for large numbers of objects
+
+EXAMPLE:
+```python
+@pytest.fixture
+def s3_client(test_config):
+    from features.book_ingestion.utils.s3_client import S3Client
+    s3 = S3Client(bucket_name=test_config["s3_bucket"])
+
+    uploaded_keys = []
+
+    yield s3, uploaded_keys
+
+    # Cleanup
+    for key in uploaded_keys:
+        try:
+            s3.client.delete_object(Bucket=s3.bucket_name, Key=key)
+        except Exception as e:
+            print(f"Warning: Failed to cleanup {key}: {e}")
+
+def cleanup_s3_prefix(s3_client, prefix):
+    """Delete all objects with given prefix"""
+    paginator = s3_client.client.get_paginator('list_objects_v2')
+
+    for page in paginator.paginate(Bucket=s3_client.bucket_name, Prefix=prefix):
+        if 'Contents' in page:
+            objects = [{'Key': obj['Key']} for obj in page['Contents']]
+            if objects:
+                s3_client.client.delete_objects(
+                    Bucket=s3_client.bucket_name,
+                    Delete={'Objects': objects}
+                )
+```
+
+EDGE CASES:
+- Handle partial cleanup failures (log and continue)
+- Handle S3 rate limits (use exponential backoff)
+- Clean up book-level prefixes (books/{book_id}/)
+
+5.3 TEST DATA ISOLATION
+-----------------------
+
+STRATEGY: Use unique identifiers for all test data
+
+TECHNIQUES:
+1. UUID-based prefixes: `test_{uuid.uuid4().hex[:8]}_`
+2. Separate test database/bucket: `learnlikemagic_test`, `learnlikemagic-books-test`
+3. Scoped fixtures to prevent data leakage between tests
+
+EXAMPLE:
+```python
+@pytest.fixture(scope="session")
+def test_config():
+    test_run_id = uuid.uuid4().hex[:8]
+    return {
+        "test_prefix": f"test_{test_run_id}_",
+        "database_url": os.getenv("TEST_DATABASE_URL"),
+        "s3_bucket": "learnlikemagic-books-test"
+    }
+
+def generate_test_student_id(test_prefix):
+    return f"{test_prefix}student_{uuid.uuid4().hex[:8]}"
+```
+
+5.4 HANDLING LLM API CALLS
+---------------------------
+
+CHALLENGE: LLM calls are expensive and slow
+
+SOLUTIONS:
+1. **Mark as @slow**: Allow selective test execution
+   ```python
+   @pytest.mark.slow
+   @pytest.mark.llm
+   def test_with_real_llm():
+       # Makes actual OpenAI call
+   ```
+
+2. **Use smaller models for tests**: Configure test environment to use `gpt-4o-mini`
+
+3. **Cache responses (optional)**: For deterministic tests, cache LLM responses
+   ```python
+   @pytest.fixture
+   def cached_llm_response():
+       # Return pre-recorded response for specific prompt
+   ```
+
+4. **Mock only in unit tests**: Integration tests should use real API
+
+COST OPTIMIZATION:
+- Use shorter prompts for tests
+- Limit number of LLM-based integration tests
+- Run LLM tests nightly, not on every commit
+
+5.5 CLEANUP ORDER & DEPENDENCIES
+---------------------------------
+
+CORRECT ORDER (bottom-up):
+1. Events (depends on Sessions)
+2. Sessions
+3. BookGuidelines (depends on Books)
+4. Books
+5. TeachingGuidelines
+6. S3 objects (books/{book_id}/)
+
+DEPENDENCY GRAPH:
+```
+Session
+  └── Event (FK: session_id)
+
+Book
+  └── BookGuideline (FK: book_id)
+  └── S3 objects (books/{book_id}/*)
+```
+
+FIXTURE DEPENDENCIES:
+```python
+# Cleanup order managed by fixture dependency chain
+@pytest.fixture(autouse=True)
+def cleanup_all(cleanup_events, cleanup_sessions, cleanup_book_guidelines, cleanup_books, cleanup_s3):
+    yield
+    # Cleanup happens in reverse order of dependencies
+```
+
+================================================================================
+6. IMPLEMENTATION PHASES
+================================================================================
+
+6.1 PHASE 1: INFRASTRUCTURE SETUP (Week 1)
+-------------------------------------------
+
+TASKS:
+□ Create test directory structure
+□ Set up conftest.py with core fixtures
+□ Configure pytest.ini with markers and settings
+□ Create helper modules (database_helpers, s3_helpers, etc.)
+□ Set up test database and S3 bucket
+□ Configure CI/CD pipeline for test execution
+□ Document testing conventions
+
+DELIVERABLES:
+- Working test infrastructure
+- Sample test demonstrating fixture usage
+- CI/CD integration with pytest
+
+VALIDATION:
+- Run `pytest --collect-only` successfully
+- Sample test passes with cleanup
+
+6.2 PHASE 2: CRITICAL PATH TESTS (Week 2)
+------------------------------------------
+
+PRIORITY: HIGH - Core functionality
+
+TESTS TO IMPLEMENT:
+□ Health check endpoints (smoke tests)
+□ Session creation and step processing
+□ End-to-end tutoring workflow
+□ Curriculum discovery
+
+GOAL: Achieve 60% coverage of critical endpoints
+
+VALIDATION:
+- All critical tests pass
+- Cleanup verified (no test data leakage)
+
+6.3 PHASE 3: BOOK MANAGEMENT TESTS (Week 3)
+--------------------------------------------
+
+PRIORITY: HIGH - Phase 6 core
+
+TESTS TO IMPLEMENT:
+□ Book CRUD operations
+□ Page upload and OCR processing
+□ S3 integration tests
+
+GOAL: Achieve 70% coverage of book management APIs
+
+VALIDATION:
+- S3 cleanup verified
+- OCR integration working
+
+6.4 PHASE 4: GUIDELINE GENERATION TESTS (Week 4)
+-------------------------------------------------
+
+PRIORITY: MEDIUM-HIGH - Phase 6 pipeline
+
+TESTS TO IMPLEMENT:
+□ Guideline generation end-to-end
+□ Admin guidelines review endpoints
+□ Database sync operations
+
+GOAL: Achieve 75% coverage of Phase 6 APIs
+
+VALIDATION:
+- Pipeline tests pass (with real LLM calls)
+- Database sync verified
+
+6.5 PHASE 5: EDGE CASES & ERROR HANDLING (Week 5)
+--------------------------------------------------
+
+PRIORITY: MEDIUM - Robustness
+
+TESTS TO IMPLEMENT:
+□ Invalid input validation tests
+□ Non-existent resource tests (404s)
+□ Error handling tests
+□ Concurrent request tests (optional)
+
+GOAL: Achieve 80%+ overall coverage
+
+VALIDATION:
+- Error cases handled gracefully
+- No unhandled exceptions
+
+6.6 PHASE 6: PERFORMANCE & OPTIMIZATION (Week 6)
+-------------------------------------------------
+
+PRIORITY: LOW - Nice to have
+
+TASKS:
+□ Add performance benchmarking tests
+□ Optimize slow tests
+□ Implement LLM response caching for deterministic tests
+□ Add load testing (optional)
+
+GOAL: Reduce test suite runtime
+
+VALIDATION:
+- Test suite runs in <10 minutes (excluding slow tests)
+- Slow tests isolated with markers
+
+================================================================================
+7. CI/CD INTEGRATION
+================================================================================
+
+7.1 GITHUB ACTIONS WORKFLOW
+----------------------------
+
+FILE: .github/workflows/integration-tests.yml
+
+```yaml
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: learnlikemagic_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd llm-backend
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Configure test environment
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/learnlikemagic_test
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: learnlikemagic-books-test
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cd llm-backend
+          python db.py --migrate
+
+      - name: Run integration tests (fast)
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/learnlikemagic_test
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: learnlikemagic-books-test
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cd llm-backend
+          pytest tests/integration -m "not slow" -v --cov=. --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./llm-backend/coverage.xml
+          fail_ci_if_error: true
+
+  slow-tests:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: learnlikemagic_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd llm-backend
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run slow integration tests (LLM-dependent)
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/learnlikemagic_test
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: learnlikemagic-books-test
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cd llm-backend
+          pytest tests/integration -m "slow" -v
+```
+
+7.2 MAKEFILE TARGETS
+--------------------
+
+FILE: llm-backend/Makefile
+
+```makefile
+.PHONY: test-integration test-integration-fast test-integration-slow test-coverage
+
+test-integration:
+    pytest tests/integration -v
+
+test-integration-fast:
+    pytest tests/integration -m "not slow" -v
+
+test-integration-slow:
+    pytest tests/integration -m "slow" -v
+
+test-smoke:
+    pytest tests/integration -m "smoke" -v
+
+test-coverage:
+    pytest tests/integration --cov=. --cov-report=html --cov-report=term
+
+test-critical:
+    pytest tests/integration -m "critical" -v
+```
+
+7.3 PRE-COMMIT HOOKS
+--------------------
+
+FILE: .pre-commit-config.yaml
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: run-smoke-tests
+        name: Run smoke tests
+        entry: make test-smoke
+        language: system
+        pass_filenames: false
+        always_run: true
+```
+
+7.4 TEST EXECUTION STRATEGIES
+------------------------------
+
+LOCAL DEVELOPMENT:
+```bash
+# Run all fast tests
+make test-integration-fast
+
+# Run specific test file
+pytest tests/integration/test_session_endpoints.py -v
+
+# Run specific test
+pytest tests/integration/test_session_endpoints.py::test_create_session_success -v
+
+# Run with specific markers
+pytest tests/integration -m "db and not slow" -v
+```
+
+CI/CD PIPELINE:
+- **On PR**: Run fast tests only (smoke + critical, no LLM)
+- **On merge to main**: Run all tests including slow
+- **Nightly**: Run full suite with coverage report
+
+COST OPTIMIZATION:
+- Limit LLM tests to main branch and nightly runs
+- Use caching for dependencies
+- Parallelize test execution where possible
+
+================================================================================
+8. SUCCESS METRICS
+================================================================================
+
+8.1 COVERAGE TARGETS
+--------------------
+
+OVERALL COVERAGE: 80%+
+
+BREAKDOWN BY COMPONENT:
+- API Endpoints: 90%+ (critical user interface)
+- Service Layer: 85%+ (core business logic)
+- Repository Layer: 80%+ (data access)
+- Models/Schemas: 70%+ (mostly validation)
+- Utilities: 70%+ (lower priority)
+
+MEASUREMENT:
+```bash
+pytest --cov=. --cov-report=term-missing --cov-report=html
+```
+
+VIEW REPORT:
+```bash
+open htmlcov/index.html
+```
+
+8.2 RELIABILITY METRICS
+-----------------------
+
+GOALS:
+- 0% test flakiness (no intermittent failures)
+- 100% cleanup success rate (no test data leakage)
+- <5% test failure rate in CI/CD
+
+MONITORING:
+- Track test failure trends over time
+- Alert on increased failure rates
+- Review and fix flaky tests immediately
+
+8.3 PERFORMANCE METRICS
+-----------------------
+
+TARGETS:
+- Fast tests (<2s each): Run in <5 minutes total
+- Slow tests (2-30s each): Run in <30 minutes total
+- Full suite: Run in <35 minutes
+
+OPTIMIZATION:
+- Use pytest-xdist for parallel execution
+- Cache LLM responses for deterministic tests
+- Optimize database setup/teardown
+
+8.4 MAINTAINABILITY METRICS
+---------------------------
+
+GOALS:
+- Clear test names describing what is tested
+- Comprehensive docstrings explaining test purpose
+- Minimal code duplication (use helpers and fixtures)
+- Easy to add new tests (good fixture library)
+
+CODE REVIEW CHECKLIST:
+□ Test has clear, descriptive name
+□ Test has docstring explaining purpose
+□ Test properly cleans up resources
+□ Test is properly tagged with markers
+□ Test uses existing fixtures where possible
+□ Test follows established patterns
+
+================================================================================
+9. ADDITIONAL CONSIDERATIONS
+================================================================================
+
+9.1 SECURITY & SECRETS MANAGEMENT
+----------------------------------
+
+- Store API keys in environment variables (never commit)
+- Use separate test credentials (not production)
+- Rotate test credentials regularly
+- Use AWS IAM roles for CI/CD (avoid static credentials)
+
+9.2 TEST DATA MANAGEMENT
+-------------------------
+
+- Generate test data programmatically (don't commit large files)
+- Use faker library for realistic fake data
+- Create minimal test data (just enough to validate)
+- Seed database with minimal guidelines for curriculum tests
+
+9.3 ERROR REPORTING & DEBUGGING
+--------------------------------
+
+- Use pytest's `-v` flag for verbose output
+- Use `--tb=short` for concise tracebacks
+- Log important test state for debugging
+- Use pytest's `--pdb` flag for interactive debugging
+
+9.4 DOCUMENTATION
+-----------------
+
+- Document all fixtures in conftest.py
+- Document helper functions with docstrings
+- Maintain this plan document as tests evolve
+- Create troubleshooting guide for common test failures
+
+================================================================================
+END OF INTEGRATION TESTS PLAN
+================================================================================
+
+This plan provides a comprehensive strategy for implementing integration tests
+across all backend APIs. The phased approach ensures gradual progress while
+maintaining focus on critical functionality first.
+
+Key principles:
+- Use production resources with proper cleanup
+- Prioritize critical path coverage
+- Isolate slow/expensive tests with markers
+- Maintain clean, maintainable test code
+
+Next steps:
+1. Review and approve this plan
+2. Begin Phase 1 (Infrastructure Setup)
+3. Implement tests following the detailed specifications above
+4. Iterate and refine based on learnings
+
+For questions or updates, refer to the detailed sections above.
