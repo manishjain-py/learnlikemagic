@@ -747,7 +747,55 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                 detail=f"No guidelines found for book: {book_id}"
             )
 
-        # Sync all final shards to database
+        # STEP 1: Approve all non-final guidelines (change status to "final")
+        approved_count = 0
+        for topic_entry in index.topics:
+            for subtopic_entry in topic_entry.subtopics:
+                # Load shard to check its ACTUAL status (index might be out of sync)
+                shard_key = (
+                    f"books/{book_id}/guidelines/topics/{topic_entry.topic_key}/"
+                    f"subtopics/{subtopic_entry.subtopic_key}.latest.json"
+                )
+
+                try:
+                    shard_data = s3_client.download_json(shard_key)
+                    shard = SubtopicShard(**shard_data)
+
+                    # Approve if not already final
+                    if shard.status != "final":
+                        shard.status = "final"
+                        shard.version += 1
+                        s3_client.upload_json(data=shard.model_dump(), s3_key=shard_key)
+
+                        # Update index to match
+                        index = index_mgr.update_subtopic_status(
+                            index=index,
+                            topic_key=topic_entry.topic_key,
+                            subtopic_key=subtopic_entry.subtopic_key,
+                            new_status="final"
+                        )
+
+                        approved_count += 1
+                    elif subtopic_entry.status != "final":
+                        # Shard is final but index isn't - sync the index
+                        index = index_mgr.update_subtopic_status(
+                            index=index,
+                            topic_key=topic_entry.topic_key,
+                            subtopic_key=subtopic_entry.subtopic_key,
+                            new_status="final"
+                        )
+
+                except Exception as e:
+                    import logging
+                    logging.error(
+                        f"Failed to approve {topic_entry.topic_key}/{subtopic_entry.subtopic_key}: {str(e)}"
+                    )
+                    # Continue with next shard
+
+        # Save updated index (always save if we made changes OR if index was out of sync)
+        index_mgr.save_index(index, create_snapshot=True)
+
+        # STEP 2: Sync all final shards to database
         synced_count = 0
 
         for topic_entry in index.topics:
@@ -769,7 +817,8 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                             book_id=book_id,
                             grade=book.grade,
                             subject=book.subject,
-                            board=book.board
+                            board=book.board,
+                            country=book.country
                         )
 
                         synced_count += 1
@@ -784,7 +833,9 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
         return {
             "book_id": book_id,
             "status": "approved",
-            "synced_count": synced_count
+            "approved_count": approved_count,
+            "synced_count": synced_count,
+            "message": f"Approved {approved_count} guidelines and synced {synced_count} to database"
         }
 
     except HTTPException:

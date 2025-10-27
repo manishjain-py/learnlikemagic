@@ -52,7 +52,8 @@ class DBSyncService:
         book_id: str,
         grade: int,
         subject: str,
-        board: str
+        board: str,
+        country: str = "India"
     ) -> int:
         """
         Sync a subtopic shard to the database.
@@ -63,6 +64,7 @@ class DBSyncService:
             grade: Grade level
             subject: Subject
             board: Board (CBSE, ICSE, etc.)
+            country: Country (default: India)
 
         Returns:
             Database row ID (guideline_id)
@@ -83,13 +85,13 @@ class DBSyncService:
                 f"Updating existing guideline (id={existing_id}): "
                 f"{shard.topic_key}/{shard.subtopic_key}"
             )
-            self._update_guideline(existing_id, shard, grade, subject, board)
+            self._update_guideline(existing_id, shard, grade, subject, board, country)
             return existing_id
         else:
             logger.info(
                 f"Inserting new guideline: {shard.topic_key}/{shard.subtopic_key}"
             )
-            new_id = self._insert_guideline(shard, book_id, grade, subject, board)
+            new_id = self._insert_guideline(shard, book_id, grade, subject, board, country)
             return new_id
 
     def _find_existing_guideline(
@@ -137,7 +139,8 @@ class DBSyncService:
         book_id: str,
         grade: int,
         subject: str,
-        board: str
+        board: str,
+        country: str
     ) -> int:
         """
         Insert new guideline into database.
@@ -152,6 +155,10 @@ class DBSyncService:
         Returns:
             New guideline_id
         """
+        # Generate unique ID for the guideline
+        import uuid
+        guideline_id = str(uuid.uuid4())
+
         # Serialize JSON fields
         objectives_json = json.dumps(shard.objectives)
         examples_json = json.dumps(shard.examples)
@@ -167,22 +174,24 @@ class DBSyncService:
 
         query = text("""
             INSERT INTO teaching_guidelines (
-                book_id, grade, subject, board,
+                id, country, book_id, grade, subject, board,
+                topic, subtopic, guideline,
                 topic_key, subtopic_key, topic_title, subtopic_title,
                 objectives_json, examples_json, misconceptions_json, assessments_json,
                 teaching_description,
-                source_page_start, source_page_end,
+                source_page_start, source_page_end, source_pages,
                 evidence_summary, status, confidence, version,
-                created_at, updated_at
+                created_at
             )
             VALUES (
-                :book_id, :grade, :subject, :board,
+                :id, :country, :book_id, :grade, :subject, :board,
+                :topic, :subtopic, :guideline,
                 :topic_key, :subtopic_key, :topic_title, :subtopic_title,
                 :objectives_json, :examples_json, :misconceptions_json, :assessments_json,
                 :teaching_description,
-                :source_page_start, :source_page_end,
+                :source_page_start, :source_page_end, :source_pages,
                 :evidence_summary, :status, :confidence, :version,
-                NOW(), NOW()
+                NOW()
             )
             RETURNING id
         """)
@@ -190,10 +199,15 @@ class DBSyncService:
         result = self.db.execute(
             query,
             {
+                "id": guideline_id,
+                "country": country,
                 "book_id": book_id,
                 "grade": grade,
                 "subject": subject,
                 "board": board,
+                "topic": shard.topic_title,  # Old field - use title
+                "subtopic": shard.subtopic_title,  # Old field - use title
+                "guideline": shard.teaching_description or "",  # Old field - use teaching_description
                 "topic_key": shard.topic_key,
                 "subtopic_key": shard.subtopic_key,
                 "topic_title": shard.topic_title,
@@ -205,6 +219,7 @@ class DBSyncService:
                 "teaching_description": shard.teaching_description or "",
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
+                "source_pages": json.dumps(shard.source_pages),
                 "evidence_summary": shard.evidence_summary,
                 "status": shard.status,
                 "confidence": shard.confidence,
@@ -227,7 +242,8 @@ class DBSyncService:
         shard: SubtopicShard,
         grade: int,
         subject: str,
-        board: str
+        board: str,
+        country: str
     ) -> None:
         """
         Update existing guideline.
@@ -255,9 +271,13 @@ class DBSyncService:
         query = text("""
             UPDATE teaching_guidelines
             SET
+                country = :country,
                 grade = :grade,
                 subject = :subject,
                 board = :board,
+                topic = :topic,
+                subtopic = :subtopic,
+                guideline = :guideline,
                 topic_title = :topic_title,
                 subtopic_title = :subtopic_title,
                 objectives_json = :objectives_json,
@@ -267,11 +287,11 @@ class DBSyncService:
                 teaching_description = :teaching_description,
                 source_page_start = :source_page_start,
                 source_page_end = :source_page_end,
+                source_pages = :source_pages,
                 evidence_summary = :evidence_summary,
                 status = :status,
                 confidence = :confidence,
-                version = :version,
-                updated_at = NOW()
+                version = :version
             WHERE id = :guideline_id
         """)
 
@@ -279,9 +299,13 @@ class DBSyncService:
             query,
             {
                 "guideline_id": guideline_id,
+                "country": country,
                 "grade": grade,
                 "subject": subject,
                 "board": board,
+                "topic": shard.topic_title,  # Old field - use title
+                "subtopic": shard.subtopic_title,  # Old field - use title
+                "guideline": shard.teaching_description or "",  # Old field - use teaching_description
                 "topic_title": shard.topic_title,
                 "subtopic_title": shard.subtopic_title,
                 "objectives_json": objectives_json,
@@ -291,6 +315,7 @@ class DBSyncService:
                 "teaching_description": shard.teaching_description or "",
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
+                "source_pages": json.dumps(shard.source_pages),
                 "evidence_summary": shard.evidence_summary,
                 "status": shard.status,
                 "confidence": shard.confidence,
@@ -363,7 +388,7 @@ class DBSyncService:
                 id, topic_key, subtopic_key, topic_title, subtopic_title,
                 status, confidence, version,
                 source_page_start, source_page_end,
-                created_at, updated_at
+                created_at
             FROM teaching_guidelines
             WHERE book_id = :book_id
             ORDER BY source_page_start, topic_key, subtopic_key
@@ -385,8 +410,7 @@ class DBSyncService:
                 "version": row[7],
                 "source_page_start": row[8],
                 "source_page_end": row[9],
-                "created_at": row[10].isoformat() if row[10] else None,
-                "updated_at": row[11].isoformat() if row[11] else None
+                "created_at": row[10].isoformat() if row[10] else None
             })
 
         logger.debug(f"Retrieved {len(guidelines)} guidelines for book {book_id}")
