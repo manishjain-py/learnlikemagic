@@ -83,3 +83,52 @@ export const STATUS_COLORS: Record<BookStatus, string> = {
   guidelines_pending_review: '#8B5CF6',
   approved: '#059669',
 };
+
+// ===== Phase 6 Guideline Types =====
+
+export interface Assessment {
+  level: 'basic' | 'proficient' | 'advanced';
+  prompt: string;
+  answer: string;
+}
+
+export interface GuidelineSubtopic {
+  topic_key: string;
+  topic_title: string;
+  subtopic_key: string;
+  subtopic_title: string;
+  status: 'open' | 'stable' | 'final' | 'needs_review';
+  source_page_start: number;
+  source_page_end: number;
+  objectives: string[];
+  examples: string[];
+  misconceptions: string[];
+  assessments: Assessment[];
+  teaching_description: string | null;
+  evidence_summary: string;
+  confidence: number;
+  quality_score: number | null;
+  version: number;
+}
+
+export interface GuidelinesListResponse {
+  book_id: string;
+  total_subtopics: number;
+  guidelines: GuidelineSubtopic[];
+}
+
+export interface GenerateGuidelinesRequest {
+  start_page?: number;
+  end_page?: number;
+  auto_sync_to_db?: boolean;
+}
+
+export interface GenerateGuidelinesResponse {
+  book_id: string;
+  status: string;
+  pages_processed: number;
+  subtopics_created: number;
+  subtopics_finalized: number;
+  errors: string[];
+  warnings: string[];
+}

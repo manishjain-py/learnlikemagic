@@ -8,6 +8,10 @@ import {
   CreateBookRequest,
   PageUploadResponse,
   PageDetails,
+  GuidelinesListResponse,
+  GuidelineSubtopic,
+  GenerateGuidelinesRequest,
+  GenerateGuidelinesResponse,
 } from '../types';
 
 // Use environment variable for production, fallback to localhost for development
@@ -133,4 +137,50 @@ export async function getPage(
   pageNum: number
 ): Promise<PageDetails> {
   return apiFetch<PageDetails>(`/admin/books/${bookId}/pages/${pageNum}`);
+}
+
+// ===== Guideline Management (Phase 6) =====
+
+export async function generateGuidelines(
+  bookId: string,
+  request: GenerateGuidelinesRequest
+): Promise<GenerateGuidelinesResponse> {
+  return apiFetch<GenerateGuidelinesResponse>(
+    `/admin/books/${bookId}/generate-guidelines`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+export async function getGuidelines(
+  bookId: string
+): Promise<GuidelinesListResponse> {
+  return apiFetch<GuidelinesListResponse>(`/admin/books/${bookId}/guidelines`);
+}
+
+export async function getGuideline(
+  bookId: string,
+  topicKey: string,
+  subtopicKey: string
+): Promise<GuidelineSubtopic> {
+  return apiFetch<GuidelineSubtopic>(
+    `/admin/books/${bookId}/guidelines/${topicKey}/${subtopicKey}`
+  );
+}
+
+export async function approveGuidelines(
+  bookId: string
+): Promise<{ book_id: string; status: string; synced_count: number }> {
+  return apiFetch(`/admin/books/${bookId}/guidelines/approve`, {
+    method: 'PUT',
+  });
+}
+
+export async function rejectGuidelines(bookId: string): Promise<void> {
+  return apiFetch<void>(`/admin/books/${bookId}/guidelines`, {
+    method: 'DELETE',
+  });
 }

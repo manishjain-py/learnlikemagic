@@ -10,6 +10,7 @@ import BookStatusBadge from '../components/BookStatusBadge';
 import PageUploadPanel from '../components/PageUploadPanel';
 import PagesSidebar from '../components/PagesSidebar';
 import PageViewPanel from '../components/PageViewPanel';
+import { GuidelinesPanel } from '../components/GuidelinesPanel';
 
 const BookDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -266,30 +267,13 @@ const BookDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Guideline Section (placeholder for Phase 6) */}
-      {book.status === 'pages_complete' && (
-        <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#FEF3C7', borderRadius: '8px', border: '1px solid #FDE68A' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>
-            Ready for Guideline Generation
-          </h3>
-          <p style={{ fontSize: '14px', color: '#92400E', marginBottom: '12px' }}>
-            All pages have been uploaded and approved. You can now generate teaching guidelines.
-          </p>
-          <button
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#F59E0B',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'not-allowed',
-              opacity: 0.6,
-            }}
-            disabled
-            title="Guideline generation will be available in Phase 6"
-          >
-            Generate Guidelines (Coming Soon)
-          </button>
+      {/* Guideline Section (Phase 6) */}
+      {(book.status === 'pages_complete' ||
+        book.status === 'generating_guidelines' ||
+        book.status === 'guidelines_pending_review' ||
+        book.status === 'approved') && (
+        <div style={{ marginTop: '30px' }}>
+          <GuidelinesPanel bookId={book.id} totalPages={book.pages.length} />
         </div>
       )}
     </div>
