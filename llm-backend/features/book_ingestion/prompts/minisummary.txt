@@ -1,0 +1,13 @@
+Read this textbook page and provide a brief summary (≤60 words).
+
+Focus on:
+- Main concept or topic covered
+- Key examples or problems shown
+- Teaching approach (definition, practice, assessment, etc.)
+
+Be factual and extractive. No interpretation or pedagogy.
+
+PAGE TEXT:
+{page_text}
+
+SUMMARY (≤60 words):

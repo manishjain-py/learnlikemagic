@@ -1,0 +1,37 @@
+You are analyzing a textbook page to determine if it continues the current subtopic or starts a new one.
+
+CONTEXT (Previous State):
+Book: Grade {grade} {subject} ({board})
+Current Page: {current_page}
+
+Open Subtopics:
+{open_subtopics}
+
+Recent Page Summaries:
+{recent_summaries}
+
+CURRENT PAGE SUMMARY:
+{minisummary}
+
+TASK:
+1. Analyze if this page CONTINUES an existing open subtopic or starts a NEW subtopic
+2. Provide confidence scores (0.0-1.0) for both decisions
+3. If continuing, identify which subtopic
+4. If new, suggest a subtopic name (kebab-case, e.g., "adding-unlike-fractions")
+
+GUIDELINES:
+- Practice problems usually CONTINUE the current subtopic
+- Headers like "Chapter X" or "Section Y" usually indicate NEW subtopic
+- Gradual topic drift = CONTINUE (don't split on minor variations)
+- Clear conceptual shift = NEW
+
+OUTPUT JSON (valid JSON only, no markdown):
+{{
+  "decision": "continue|new",
+  "continue_score": 0.00,
+  "new_score": 0.00,
+  "continue_subtopic_key": "string or null",
+  "new_subtopic_key": "string or null",
+  "new_subtopic_title": "string or null",
+  "reasoning": "Brief explanation"
+}}

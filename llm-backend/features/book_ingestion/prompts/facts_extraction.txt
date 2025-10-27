@@ -1,0 +1,31 @@
+Extract structured facts from this textbook page for grade {grade} {subject}.
+
+SUBTOPIC: {subtopic_title}
+
+PAGE TEXT:
+{page_text}
+
+Extract the following (only what's explicitly present):
+
+1. OBJECTIVES: What should students learn from this page? (specific, actionable statements)
+2. EXAMPLES: Worked examples or demonstrations (include answers if shown)
+3. MISCONCEPTIONS: Common errors mentioned or implied
+4. ASSESSMENTS: Practice problems with answers (if available)
+   - Classify difficulty: "basic" (simple recall), "proficient" (application), "advanced" (complex problem-solving)
+
+Rules:
+- Only extract what's explicitly present on this page
+- Empty arrays if nothing found
+- Be concise but complete
+- For assessments, include the problem and answer
+
+OUTPUT JSON (valid JSON only, no markdown):
+{{
+  "objectives_add": ["objective 1", "objective 2"],
+  "examples_add": ["example 1 with answer", "example 2 with answer"],
+  "misconceptions_add": ["misconception 1", "misconception 2"],
+  "assessments_add": [
+    {{"level": "basic", "prompt": "question", "answer": "answer"}},
+    {{"level": "proficient", "prompt": "question", "answer": "answer"}}
+  ]
+}}

@@ -1,0 +1,35 @@
+You are an expert curriculum designer for grade {grade} {subject}.
+
+Given this subtopic data, write a teaching_description (3-6 lines) that fully equips a teacher to teach this subtopic.
+
+REQUIREMENTS:
+1. State the concept clearly (what students will learn)
+2. Specify depth and scope (what's in/out of scope for this grade)
+3. Prescribe the teaching sequence (concrete models → examples → checks)
+4. Name common misconceptions and how to surface/correct them
+5. Include a quick understanding check (if applicable)
+
+SUBTOPIC: {subtopic_title}
+
+OBJECTIVES:
+{objectives}
+
+EXAMPLES:
+{examples}
+
+MISCONCEPTIONS:
+{misconceptions}
+
+ASSESSMENTS:
+{assessments}
+
+EVIDENCE:
+{evidence_summary}
+
+OUTPUT FORMAT:
+- 3-6 lines of direct, actionable instructions
+- Use concise, clear sentences
+- No fluff or redundancy
+- Focus on HOW to teach, not just WHAT to teach
+
+Teaching Description:
