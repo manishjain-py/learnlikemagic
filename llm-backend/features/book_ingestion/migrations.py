@@ -122,6 +122,153 @@ def rollback_book_ingestion():
         raise
 
 
+def migrate_phase6_schema():
+    """
+    Run Phase 6 schema migration for teaching_guidelines table.
+
+    Adds new columns for sharded guideline extraction:
+    - topic_key, subtopic_key (slugified identifiers)
+    - objectives_json, examples_json, misconceptions_json, assessments_json
+    - teaching_description (3-6 line teaching instructions)
+    - source_page_start, source_page_end (page range)
+    - evidence_summary (rule-based summary)
+    - status (open, stable, final, needs_review)
+    - confidence (boundary detection confidence)
+    - version (shard version for tracking updates)
+    """
+    print("🔄 Running Phase 6 schema migration...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            # Check existing columns
+            columns = [col['name'] for col in inspector.get_columns('teaching_guidelines')]
+
+            # Phase 6 columns to add
+            phase6_columns = {
+                'topic_key': "VARCHAR NOT NULL DEFAULT 'unknown-topic'",
+                'subtopic_key': "VARCHAR NOT NULL DEFAULT 'unknown-subtopic'",
+                'topic_title': "VARCHAR",
+                'subtopic_title': "VARCHAR",
+                'objectives_json': "TEXT",
+                'examples_json': "TEXT",
+                'misconceptions_json': "TEXT",
+                'assessments_json': "TEXT",
+                'teaching_description': "TEXT NOT NULL DEFAULT ''",
+                'source_page_start': "INTEGER",
+                'source_page_end': "INTEGER",
+                'evidence_summary': "TEXT",
+                'status': "VARCHAR DEFAULT 'final'",
+                'confidence': "FLOAT DEFAULT 1.0",
+                'version': "INTEGER DEFAULT 1"
+            }
+
+            for col_name, col_type in phase6_columns.items():
+                if col_name not in columns:
+                    print(f"  Adding {col_name} column...")
+                    conn.execute(text(f"""
+                        ALTER TABLE teaching_guidelines
+                        ADD COLUMN {col_name} {col_type}
+                    """))
+                    print(f"  ✓ {col_name} column added")
+                else:
+                    print(f"  ✓ {col_name} column already exists")
+
+            # Create indices for faster lookups
+            print("  Creating indices...")
+
+            # Index on topic_key + subtopic_key (for lookups)
+            try:
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_teaching_guidelines_topic_subtopic
+                    ON teaching_guidelines(topic_key, subtopic_key)
+                """))
+                print("  ✓ idx_teaching_guidelines_topic_subtopic created")
+            except:
+                print("  ✓ idx_teaching_guidelines_topic_subtopic already exists")
+
+            # Index on book_id + topic_key (for book queries)
+            try:
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_teaching_guidelines_book_topic
+                    ON teaching_guidelines(book_id, topic_key)
+                """))
+                print("  ✓ idx_teaching_guidelines_book_topic created")
+            except:
+                print("  ✓ idx_teaching_guidelines_book_topic already exists")
+
+            # Index on status (for filtering)
+            try:
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_teaching_guidelines_status
+                    ON teaching_guidelines(status)
+                """))
+                print("  ✓ idx_teaching_guidelines_status created")
+            except:
+                print("  ✓ idx_teaching_guidelines_status already exists")
+
+            conn.commit()
+
+        print("✅ Phase 6 schema migration completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Phase 6 migration error: {e}", exc_info=True)
+        raise
+
+
+def rollback_phase6_schema():
+    """
+    Rollback Phase 6 schema migration (for development/testing).
+
+    WARNING: This will delete Phase 6 columns from teaching_guidelines!
+    """
+    print("⚠️  Rolling back Phase 6 schema migration...")
+    print("   This will delete Phase 6 columns from teaching_guidelines!")
+
+    response = input("   Are you sure? (yes/no): ")
+    if response.lower() != "yes":
+        print("   Rollback cancelled")
+        return
+
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+
+    try:
+        with engine.connect() as conn:
+            # Drop indices
+            print("  Dropping indices...")
+            conn.execute(text("DROP INDEX IF EXISTS idx_teaching_guidelines_topic_subtopic"))
+            conn.execute(text("DROP INDEX IF EXISTS idx_teaching_guidelines_book_topic"))
+            conn.execute(text("DROP INDEX IF EXISTS idx_teaching_guidelines_status"))
+            print("  ✓ Indices dropped")
+
+            # Drop Phase 6 columns
+            print("  Removing Phase 6 columns from teaching_guidelines...")
+            phase6_columns = [
+                'topic_key', 'subtopic_key', 'topic_title', 'subtopic_title',
+                'objectives_json', 'examples_json', 'misconceptions_json', 'assessments_json',
+                'teaching_description', 'source_page_start', 'source_page_end',
+                'evidence_summary', 'status', 'confidence', 'version'
+            ]
+
+            for col_name in phase6_columns:
+                conn.execute(text(f"ALTER TABLE teaching_guidelines DROP COLUMN IF EXISTS {col_name}"))
+                print(f"  ✓ {col_name} dropped")
+
+            conn.commit()
+
+        print("✅ Phase 6 rollback completed successfully!")
+
+    except Exception as e:
+        print(f"❌ Rollback failed: {e}")
+        logger.error(f"Phase 6 rollback error: {e}", exc_info=True)
+        raise
+
+
 if __name__ == "__main__":
     import sys
     import argparse
@@ -129,6 +276,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Book ingestion migrations")
     parser.add_argument("--migrate", action="store_true", help="Run migrations")
     parser.add_argument("--rollback", action="store_true", help="Rollback migrations (DANGEROUS)")
+    parser.add_argument("--phase6", action="store_true", help="Run Phase 6 schema migration")
+    parser.add_argument("--rollback-phase6", action="store_true", help="Rollback Phase 6 schema (DANGEROUS)")
 
     args = parser.parse_args()
 
@@ -136,8 +285,14 @@ if __name__ == "__main__":
         migrate_book_ingestion()
     elif args.rollback:
         rollback_book_ingestion()
+    elif args.phase6:
+        migrate_phase6_schema()
+    elif args.rollback_phase6:
+        rollback_phase6_schema()
     else:
         print("Usage:")
-        print("  python -m features.book_ingestion.migrations --migrate   # Run migrations")
-        print("  python -m features.book_ingestion.migrations --rollback  # Rollback (DANGEROUS)")
+        print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
+        print("  python -m features.book_ingestion.migrations --rollback          # Rollback base (DANGEROUS)")
+        print("  python -m features.book_ingestion.migrations --phase6            # Run Phase 6 schema")
+        print("  python -m features.book_ingestion.migrations --rollback-phase6   # Rollback Phase 6 (DANGEROUS)")
         sys.exit(1)
