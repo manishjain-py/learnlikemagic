@@ -459,16 +459,25 @@ async def generate_guidelines(
                 detail=f"Book not found: {book_id}"
             )
 
+        # Load total_pages from S3 metadata (page count is stored in S3, not DB)
+        s3_client = S3Client()
+        try:
+            metadata_key = f"books/{book_id}/metadata.json"
+            metadata = s3_client.download_json(metadata_key)
+            total_pages = metadata.get("total_pages", 0)
+        except Exception as e:
+            # If metadata.json doesn't exist yet (no pages uploaded), default to 0
+            total_pages = 0
+
         # Build book metadata
         book_metadata = {
             "grade": book.grade,
             "subject": book.subject,
             "board": book.board,
-            "total_pages": book.total_pages
+            "total_pages": total_pages
         }
 
-        # Initialize orchestrator
-        s3_client = S3Client()
+        # Initialize orchestrator (reuse s3_client from above)
         openai_client = OpenAI()
         orchestrator = GuidelineExtractionOrchestrator(
             s3_client=s3_client,
