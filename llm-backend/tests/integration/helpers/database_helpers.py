@@ -143,6 +143,18 @@ def seed_test_guideline(db_session, guideline_data):
         Created TeachingGuideline object
     """
     from models.database import TeachingGuideline
+    import re
+
+    # Generate topic_key and subtopic_key if not provided
+    if "topic_key" not in guideline_data and "topic" in guideline_data:
+        guideline_data["topic_key"] = re.sub(r'[^a-z0-9]+', '_', guideline_data["topic"].lower()).strip('_')
+
+    if "subtopic_key" not in guideline_data and "subtopic" in guideline_data:
+        guideline_data["subtopic_key"] = re.sub(r'[^a-z0-9]+', '_', guideline_data["subtopic"].lower()).strip('_')
+
+    # Add teaching_description if not provided (required in production DB)
+    if "teaching_description" not in guideline_data:
+        guideline_data["teaching_description"] = guideline_data.get("guideline", "Test teaching description")
 
     guideline = TeachingGuideline(**guideline_data)
     db_session.add(guideline)
