@@ -523,11 +523,10 @@ async def sync_guidelines_to_database(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    # Use DatabaseSyncService to sync
-    from features.book_ingestion.services.database_sync_service import DatabaseSyncService
+    # Use DBSyncService to sync
+    from features.book_ingestion.services.db_sync_service import DBSyncService
 
-    s3 = S3Client()
-    sync_service = DatabaseSyncService(db, s3)
+    sync_service = DBSyncService(db)
 
     try:
         synced_count = sync_service.sync_book_guidelines(
