@@ -160,11 +160,12 @@ def s3_client(test_config):
 def sample_student(test_config):
     """Generate sample student data with unique ID."""
     return {
-        "student_id": f"{test_config['test_prefix']}student_{uuid.uuid4().hex[:8]}",
-        "name": "Test Student",
-        "grade": 8,
-        "country": "India",
-        "board": "CBSE"
+        "id": f"{test_config['test_prefix']}student_{uuid.uuid4().hex[:8]}",
+        "grade": 3,
+        "prefs": {
+            "style": "standard",
+            "lang": "en"
+        }
     }
 
 
@@ -172,12 +173,13 @@ def sample_student(test_config):
 def sample_goal():
     """Generate sample learning goal."""
     return {
-        "country": "India",
-        "board": "CBSE",
-        "grade": 8,
-        "subject": "Mathematics",
-        "topic": "Algebra",
-        "subtopic": "Linear Equations"
+        "topic": "Fractions",
+        "syllabus": "CBSE Grade 3 Mathematics",
+        "learning_objectives": [
+            "Compare fractions with like denominators",
+            "Identify larger/smaller fractions"
+        ],
+        "guideline_id": "g1"  # Reference to existing guideline
     }
 
 
