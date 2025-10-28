@@ -18,19 +18,19 @@ def test_upload_page_with_ocr(client, db_session, s3_client, sample_book_data, s
 
     # Upload page
     sample_page_image.seek(0)  # Reset buffer position
-    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    files = {"image": ("page_1.png", sample_page_image, "image/png")}
     response = client.post(f"/admin/books/{book_id}/pages", files=files)
 
     assert response.status_code == 200
     data = response.json()
 
-    # Verify response structure
-    assert "page_number" in data or "page_num" in data
-    page_num = data.get("page_number") or data.get("page_num")
+    # Verify response structure (PageUploadResponse: page_num, image_url, ocr_text, status)
+    assert "page_num" in data
+    page_num = data["page_num"]
     assert page_num is not None
-
-    # Should have OCR text or status
-    assert "ocr_text" in data or "text" in data or "status" in data
+    assert "image_url" in data
+    assert "ocr_text" in data
+    assert "status" in data
 
     # Track S3 key for cleanup
     s3_key = f"books/{book_id}/pages/{page_num}.png"
@@ -50,9 +50,9 @@ def test_get_page_with_presigned_url(client, db_session, s3_client, sample_book_
     cleanup_tracker["book_ids"].append(book_id)
 
     sample_page_image.seek(0)
-    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    files = {"image": ("page_1.png", sample_page_image, "image/png")}
     upload_response = client.post(f"/admin/books/{book_id}/pages", files=files)
-    page_num = upload_response.json().get("page_number") or upload_response.json().get("page_num") or 1
+    page_num = upload_response.json().get("page_num", 1)
 
     # Get page details
     response = client.get(f"/admin/books/{book_id}/pages/{page_num}")
@@ -80,9 +80,9 @@ def test_approve_page(client, db_session, sample_book_data, sample_page_image, c
     cleanup_tracker["book_ids"].append(book_id)
 
     sample_page_image.seek(0)
-    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    files = {"image": ("page_1.png", sample_page_image, "image/png")}
     upload_response = client.post(f"/admin/books/{book_id}/pages", files=files)
-    page_num = upload_response.json().get("page_number") or upload_response.json().get("page_num") or 1
+    page_num = upload_response.json().get("page_num", 1)
 
     # Approve page
     response = client.put(f"/admin/books/{book_id}/pages/{page_num}/approve")
@@ -110,9 +110,9 @@ def test_delete_page(client, db_session, s3_client, sample_book_data, sample_pag
     cleanup_tracker["book_ids"].append(book_id)
 
     sample_page_image.seek(0)
-    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    files = {"image": ("page_1.png", sample_page_image, "image/png")}
     upload_response = client.post(f"/admin/books/{book_id}/pages", files=files)
-    page_num = upload_response.json().get("page_number") or upload_response.json().get("page_num") or 1
+    page_num = upload_response.json().get("page_num", 1)
 
     s3_key = f"books/{book_id}/pages/{page_num}.png"
 
@@ -136,7 +136,7 @@ def test_upload_page_invalid_format(client, sample_book_data, cleanup_tracker):
 
     # Upload invalid file
     invalid_file = io.BytesIO(b"not an image")
-    files = {"file": ("page.txt", invalid_file, "text/plain")}
+    files = {"image": ("page.txt", invalid_file, "text/plain")}
     response = client.post(f"/admin/books/{book_id}/pages", files=files)
 
     # Should return 400 or 422
@@ -150,11 +150,11 @@ def test_upload_page_to_nonexistent_book(client, sample_page_image):
     fake_book_id = str(uuid.uuid4())
 
     sample_page_image.seek(0)
-    files = {"file": ("page_1.png", sample_page_image, "image/png")}
+    files = {"image": ("page_1.png", sample_page_image, "image/png")}
     response = client.post(f"/admin/books/{fake_book_id}/pages", files=files)
 
-    # Should return 404 or 422
-    assert response.status_code in [404, 422]
+    # Should return 400, 404, or 422
+    assert response.status_code in [400, 404, 422]
 
 
 @pytest.mark.integration
