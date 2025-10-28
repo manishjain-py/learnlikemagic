@@ -11,13 +11,13 @@ def cleanup_s3_prefix(s3_client, prefix):
     """
     try:
         # List all objects with prefix
-        paginator = s3_client.client.get_paginator('list_objects_v2')
+        paginator = s3_client.s3_client.get_paginator('list_objects_v2')
 
         for page in paginator.paginate(Bucket=s3_client.bucket_name, Prefix=prefix):
             if 'Contents' in page:
                 objects = [{'Key': obj['Key']} for obj in page['Contents']]
                 if objects:
-                    s3_client.client.delete_objects(
+                    s3_client.s3_client.delete_objects(
                         Bucket=s3_client.bucket_name,
                         Delete={'Objects': objects}
                     )
@@ -37,7 +37,7 @@ def verify_s3_object_exists(s3_client, key):
         True if object exists, False otherwise
     """
     try:
-        s3_client.client.head_object(Bucket=s3_client.bucket_name, Key=key)
+        s3_client.s3_client.head_object(Bucket=s3_client.bucket_name, Key=key)
         return True
     except:
         return False
@@ -68,7 +68,7 @@ def get_s3_object_content(s3_client, key):
     Returns:
         Object content as bytes
     """
-    response = s3_client.client.get_object(Bucket=s3_client.bucket_name, Key=key)
+    response = s3_client.s3_client.get_object(Bucket=s3_client.bucket_name, Key=key)
     return response['Body'].read()
 
 
@@ -84,7 +84,7 @@ def list_s3_objects_with_prefix(s3_client, prefix):
         List of object keys
     """
     keys = []
-    paginator = s3_client.client.get_paginator('list_objects_v2')
+    paginator = s3_client.s3_client.get_paginator('list_objects_v2')
 
     for page in paginator.paginate(Bucket=s3_client.bucket_name, Prefix=prefix):
         if 'Contents' in page:

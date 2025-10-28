@@ -139,10 +139,7 @@ def s3_client(test_config):
     """
     from features.book_ingestion.utils.s3_client import S3Client
 
-    s3 = S3Client(
-        bucket_name=test_config["s3_bucket"],
-        region_name=test_config["aws_region"]
-    )
+    s3 = S3Client()
 
     uploaded_keys = []
 
@@ -151,7 +148,7 @@ def s3_client(test_config):
     # Cleanup S3 objects
     for key in uploaded_keys:
         try:
-            s3.client.delete_object(Bucket=s3.bucket_name, Key=key)
+            s3.s3_client.delete_object(Bucket=s3.bucket_name, Key=key)
         except Exception as e:
             print(f"Warning: Failed to cleanup S3 key {key}: {e}")
 
