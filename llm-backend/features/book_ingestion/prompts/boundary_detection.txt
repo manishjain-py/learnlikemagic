@@ -19,11 +19,44 @@ TASK:
 3. If continuing, identify which subtopic
 4. If new, suggest a subtopic name (kebab-case, e.g., "adding-unlike-fractions")
 
-GUIDELINES:
-- Practice problems usually CONTINUE the current subtopic
-- Headers like "Chapter X" or "Section Y" usually indicate NEW subtopic
-- Gradual topic drift = CONTINUE (don't split on minor variations)
-- Clear conceptual shift = NEW
+IMPORTANT - PEDAGOGICAL PRINCIPLES:
+A subtopic represents a LEARNING OBJECTIVE, not individual activities or examples.
+Multiple activities can teach the SAME learning objective.
+
+GUIDELINES FOR CONTINUATION (favor CONTINUE over NEW):
+1. **Same Learning Objective**: If pages teach the same concept through different examples → CONTINUE
+   - Example: "Categorizing household items" and "Categorizing hairstyles" both teach categorization → CONTINUE
+   - Example: "Tally marks for cows" and "Tally marks for books" both teach data representation → CONTINUE
+
+2. **Different Activities, Same Skill**: Multiple exercises/activities for one concept → CONTINUE
+   - Counting with tally marks, organizing data, categorizing objects = all "Data Handling" → CONTINUE
+   - Various word problems = all "Problem Solving" → CONTINUE
+
+3. **Common Grade-Level Topics** (be aware of typical curriculum structure):
+   - Grade 3 Math: Data Handling (tally marks, tables, categorizing), Number Operations, Geometry, Measurement
+   - Grade 5 Science: Matter, Energy, Life Cycles, Ecosystems
+   - If activities fit the same curriculum topic → CONTINUE
+
+4. **Look for CONCEPTUAL similarity, not surface-level activity similarity**
+   - Don't create new subtopics just because the activity/example changed
+   - Ask: "Is the LEARNING GOAL the same?" If yes → CONTINUE
+
+GUIDELINES FOR NEW SUBTOPIC (only when learning objective truly changes):
+1. **Clear Learning Objective Shift**: Moving from one concept to entirely different concept
+   - Example: From "Data Handling" to "Addition" → NEW
+   - Example: From "Fractions" to "Geometry" → NEW
+
+2. **Explicit Chapter/Section Headers**: "Chapter 2: Multiplication" → NEW
+
+3. **Different Skill Domain**:
+   - From organizing/categorizing to arithmetic operations → NEW
+   - From reading/comprehension to grammar → NEW
+
+BIAS TOWARDS CONTINUATION:
+- When in doubt, CONTINUE rather than create NEW
+- Subtopics should be BROADER, not narrower
+- Target: 10-20 pages per subtopic (not 1-2 pages)
+- Err on the side of consolidation
 
 OUTPUT JSON (valid JSON only, no markdown):
 {{

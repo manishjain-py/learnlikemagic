@@ -281,13 +281,27 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
                   {selectedSubtopic.subtopic_title}
                 </h3>
 
+                {/* Comprehensive Description */}
+                {selectedSubtopic.description && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                      Overview
+                    </h4>
+                    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                        {selectedSubtopic.description}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Teaching Description */}
                 {selectedSubtopic.teaching_description && (
                   <div className="mb-6">
                     <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                      Teaching Description
+                      Teaching Instructions (Quick Reference)
                     </h4>
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded whitespace-pre-wrap">
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded whitespace-pre-wrap text-sm">
                       {selectedSubtopic.teaching_description}
                     </div>
                   </div>

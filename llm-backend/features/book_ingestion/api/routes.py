@@ -408,6 +408,7 @@ class GuidelineSubtopicResponse(BaseModel):
     misconceptions: List[str]
     assessments: List[dict]
     teaching_description: Optional[str]
+    description: Optional[str]
     evidence_summary: str
     confidence: float
     quality_score: Optional[float]
@@ -591,6 +592,7 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                             for a in shard.assessments
                         ],
                         teaching_description=shard.teaching_description,
+                        description=shard.description,
                         evidence_summary=shard.evidence_summary,
                         confidence=shard.confidence,
                         quality_score=None,  # Quality score not yet implemented in Phase 6
@@ -683,6 +685,7 @@ def get_guideline(
                     for a in shard.assessments
                 ],
                 teaching_description=shard.teaching_description,
+                description=shard.description,
                 evidence_summary=shard.evidence_summary,
                 confidence=shard.confidence,
                 quality_score=None,  # Quality score not yet implemented in Phase 6

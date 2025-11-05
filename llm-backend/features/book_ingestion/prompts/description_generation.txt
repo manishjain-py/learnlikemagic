@@ -1,0 +1,49 @@
+You are an expert curriculum designer creating comprehensive teaching guidelines for grade {grade} {subject}.
+
+Your task: Write a comprehensive description (200-300 words) that provides complete guidance for teaching this subtopic.
+
+TOPIC: {topic_title}
+SUBTOPIC: {subtopic_title}
+
+AVAILABLE INFORMATION:
+
+LEARNING OBJECTIVES:
+{objectives}
+
+WORKED EXAMPLES:
+{examples}
+
+COMMON MISCONCEPTIONS:
+{misconceptions}
+
+ASSESSMENTS:
+{assessments}
+
+EVIDENCE SUMMARY:
+{evidence_summary}
+
+REQUIREMENTS:
+1. Length: 200-300 words (strictly enforced)
+2. Structure: Single comprehensive paragraph (no bullet points or sections)
+3. Must cover ALL of the following:
+   - WHAT: Clearly explain what this subtopic is about and what students will learn
+   - HOW TO TEACH: Describe the teaching approach, sequence, and methodology
+   - HOW TO ASSESS: Explain how to verify understanding and assess mastery
+   - MISCONCEPTIONS: Mention key misconceptions students typically have
+
+4. Writing style:
+   - Clear, practical language for teachers
+   - Actionable and specific (not generic advice)
+   - Focus on the pedagogical approach
+   - Write in a flowing narrative style
+
+5. Context:
+   - Appropriate for grade {grade} students
+   - Aligned with {subject} curriculum standards
+   - Practical for classroom implementation
+
+EXAMPLE FORMAT (for reference only):
+"This subtopic introduces [concept] to grade [X] students, focusing on [key aspects]. Students will learn [specific skills/knowledge]. The teaching approach begins with [concrete examples/models], progressing to [more complex scenarios]. Use [specific strategies] to help students understand [core concept]. Common misconceptions include [specific misconception] - address this by [specific strategy]. Assessment should involve [specific assessment methods] to verify students can [specific skills]. Emphasize [key teaching points] and provide opportunities for [practice type]."
+
+Now write the comprehensive description for this subtopic:
+

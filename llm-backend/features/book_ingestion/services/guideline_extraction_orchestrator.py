@@ -45,6 +45,7 @@ from .reducer_service import ReducerService
 from .stability_detector_service import StabilityDetectorService
 from .index_management_service import IndexManagementService
 from .teaching_description_generator import TeachingDescriptionGenerator
+from .description_generator import DescriptionGenerator
 from .quality_gates_service import QualityGatesService
 from .db_sync_service import DBSyncService
 
@@ -86,6 +87,7 @@ class GuidelineExtractionOrchestrator:
         self.stability_detector = StabilityDetectorService()
         self.index_manager = IndexManagementService(self.s3)
         self.teaching_desc_gen = TeachingDescriptionGenerator(self.openai_client)
+        self.description_gen = DescriptionGenerator(self.openai_client)
         self.quality_gates = QualityGatesService()
         self.db_sync = DBSyncService(self.db_session) if self.db_session else None
 
@@ -379,6 +381,19 @@ class GuidelineExtractionOrchestrator:
                     max_retries=2
                 )
                 shard.teaching_description = teaching_description
+
+                # Step 2.5: Generate comprehensive description
+                description, description_valid = self.description_gen.generate_with_validation(
+                    shard=shard,
+                    grade=book_metadata.get("grade", 3),
+                    subject=book_metadata.get("subject", "Math"),
+                    max_retries=2
+                )
+                shard.description = description
+                logger.info(
+                    f"Generated description for {topic_key}/{subtopic_key}: "
+                    f"{len(description.split())} words, valid={description_valid}"
+                )
 
                 # Step 3: Run quality validation
                 validation_result = self.quality_gates.validate(shard)

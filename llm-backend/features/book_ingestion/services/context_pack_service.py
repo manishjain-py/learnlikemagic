@@ -24,7 +24,11 @@ from ..models.guideline_models import (
     RecentPageSummary,
     ToCHints,
     GuidelinesIndex,
-    SubtopicShard
+    SubtopicShard,
+    # V2 models
+    OpenTopicInfoV2,
+    OpenSubtopicInfoV2,
+    SubtopicShardV2
 )
 from ..utils.s3_client import S3Client
 
@@ -35,20 +39,29 @@ class ContextPackService:
     """
     Build compact context packs from current guideline state.
 
-    Context Pack contains:
+    V1 Context Pack contains:
     - Open subtopics with evidence summaries
-    - Recent page summaries (last 1-2 pages)
-    - ToC hints (simplified for MVP v1)
+    - Recent page summaries (last 2 pages)
+    - ToC hints (simplified)
+
+    V2 Context Pack contains:
+    - Open subtopics with FULL guidelines text
+    - Recent page summaries (last 5 pages)
+    - ToC hints (simplified)
     """
 
-    def __init__(self, s3_client: S3Client):
+    def __init__(self, s3_client: S3Client, version: str = "v1"):
         """
         Initialize context pack service.
 
         Args:
             s3_client: S3 client for reading guideline state
+            version: "v1" or "v2" for different context pack formats
         """
         self.s3 = s3_client
+        self.version = version
+        # V2 uses 5 recent pages instead of 2
+        self.num_recent_pages = 5 if version == "v2" else 2
 
     def build(
         self,
@@ -77,8 +90,10 @@ class ContextPackService:
             # Find open subtopics
             open_topics = self._extract_open_topics(book_id, index)
 
-            # Get recent page summaries
-            recent_summaries = self._get_recent_summaries(book_id, current_page)
+            # Get recent page summaries (2 for V1, 5 for V2)
+            recent_summaries = self._get_recent_summaries(
+                book_id, current_page, num_recent=self.num_recent_pages
+            )
 
             # Build ToC hints (simplified for MVP v1)
             toc_hints = self._build_toc_hints(index)
@@ -131,21 +146,24 @@ class ContextPackService:
         """
         Extract information about open topics and their subtopics.
 
+        V1: Returns OpenTopicInfo with evidence summaries
+        V2: Returns OpenTopicInfoV2 with full guidelines text
+
         Args:
             book_id: Book identifier
             index: Current guidelines index
 
         Returns:
-            List of open topic information
+            List of open topic information (V1 or V2 format)
         """
         open_topics = []
 
         for topic_entry in index.topics:
             open_subtopics = []
 
-            # Find all open subtopics for this topic
+            # Find all open or stable subtopics for this topic
             for subtopic_entry in topic_entry.subtopics:
-                if subtopic_entry.status == "open":
+                if subtopic_entry.status in ["open", "stable"]:
                     # Load shard to get details
                     try:
                         shard = self._load_shard(
@@ -154,15 +172,34 @@ class ContextPackService:
                             subtopic_entry.subtopic_key
                         )
 
-                        open_subtopics.append(
-                            OpenSubtopicInfo(
-                                subtopic_key=shard.subtopic_key,
-                                subtopic_title=shard.subtopic_title,
-                                evidence_summary=self._generate_evidence_summary(shard),
-                                objectives_count=len(shard.objectives),
-                                examples_count=len(shard.examples)
+                        if self.version == "v2":
+                            # V2: Include full guidelines text
+                            # Try to load as V2 shard first, fallback to V1
+                            guidelines_text = getattr(shard, 'guidelines', '')
+                            if not guidelines_text:
+                                # Fallback: construct from V1 fields
+                                guidelines_text = self._construct_guidelines_from_v1(shard)
+
+                            open_subtopics.append(
+                                OpenSubtopicInfoV2(
+                                    subtopic_key=shard.subtopic_key,
+                                    subtopic_title=shard.subtopic_title,
+                                    page_start=shard.source_page_start,
+                                    page_end=shard.source_page_end,
+                                    guidelines=guidelines_text
+                                )
                             )
-                        )
+                        else:
+                            # V1: Use evidence summary
+                            open_subtopics.append(
+                                OpenSubtopicInfo(
+                                    subtopic_key=shard.subtopic_key,
+                                    subtopic_title=shard.subtopic_title,
+                                    evidence_summary=self._generate_evidence_summary(shard),
+                                    objectives_count=len(getattr(shard, 'objectives', [])),
+                                    examples_count=len(getattr(shard, 'examples', []))
+                                )
+                            )
                     except Exception as e:
                         logger.warning(
                             f"Failed to load shard for {subtopic_entry.subtopic_key}: {str(e)}"
@@ -171,13 +208,22 @@ class ContextPackService:
 
             # Only include topics with open subtopics
             if open_subtopics:
-                open_topics.append(
-                    OpenTopicInfo(
-                        topic_key=topic_entry.topic_key,
-                        topic_title=topic_entry.topic_title,
-                        open_subtopics=open_subtopics
+                if self.version == "v2":
+                    open_topics.append(
+                        OpenTopicInfoV2(
+                            topic_key=topic_entry.topic_key,
+                            topic_title=topic_entry.topic_title,
+                            open_subtopics=open_subtopics
+                        )
                     )
-                )
+                else:
+                    open_topics.append(
+                        OpenTopicInfo(
+                            topic_key=topic_entry.topic_key,
+                            topic_title=topic_entry.topic_title,
+                            open_subtopics=open_subtopics
+                        )
+                    )
 
         return open_topics
 
@@ -213,11 +259,68 @@ class ContextPackService:
         Example:
             "Pages 2-6: 3 objectives, 5 examples, 2 misconceptions"
         """
+        objectives = getattr(shard, 'objectives', [])
+        examples = getattr(shard, 'examples', [])
         return (
             f"Pages {shard.source_page_start}-{shard.source_page_end}: "
-            f"{len(shard.objectives)} objectives, "
-            f"{len(shard.examples)} examples"
+            f"{len(objectives)} objectives, "
+            f"{len(examples)} examples"
         )
+
+    def _construct_guidelines_from_v1(self, shard: SubtopicShard) -> str:
+        """
+        Construct guidelines text from V1 structured fields (fallback).
+
+        Used when loading V1 shards in V2 mode.
+
+        Args:
+            shard: V1 subtopic shard
+
+        Returns:
+            Guidelines text constructed from V1 fields
+        """
+        lines = []
+
+        # Objectives
+        objectives = getattr(shard, 'objectives', [])
+        if objectives:
+            lines.append("Learning Objectives:")
+            for obj in objectives:
+                lines.append(f"- {obj}")
+            lines.append("")
+
+        # Examples
+        examples = getattr(shard, 'examples', [])
+        if examples:
+            lines.append("Examples:")
+            for ex in examples:
+                lines.append(f"- {ex}")
+            lines.append("")
+
+        # Misconceptions
+        misconceptions = getattr(shard, 'misconceptions', [])
+        if misconceptions:
+            lines.append("Common Misconceptions:")
+            for misc in misconceptions:
+                lines.append(f"- {misc}")
+            lines.append("")
+
+        # Teaching description
+        teaching_desc = getattr(shard, 'teaching_description', None)
+        if teaching_desc:
+            lines.append("Teaching Approach:")
+            lines.append(teaching_desc)
+            lines.append("")
+
+        # Assessments
+        assessments = getattr(shard, 'assessments', [])
+        if assessments:
+            lines.append("Assessment Questions:")
+            for assessment in assessments:
+                lines.append(f"- [{assessment.level}] {assessment.prompt}")
+            lines.append("")
+
+        return "\n".join(lines).strip() or "No guidelines available"
 
     def _get_recent_summaries(
         self,

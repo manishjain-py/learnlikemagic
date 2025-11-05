@@ -157,6 +157,12 @@ class SubtopicShard(BaseModel):
         description="3-6 line teacher-ready description"
     )
 
+    # Comprehensive description (generated when stable)
+    description: Optional[str] = Field(
+        default=None,
+        description="Comprehensive 200-300 word description covering what this topic is, how it's taught, and how it's assessed"
+    )
+
     # Optional longer guideline (future enhancement)
     guideline_text: Optional[str] = Field(
         default=None,
@@ -380,3 +386,92 @@ def deslugify(slug: str) -> str:
         "fractions" → "Fractions"
     """
     return ' '.join(word.capitalize() for word in slug.split('-'))
+
+
+# ============================================================================
+# V2 MODELS - SIMPLIFIED ARCHITECTURE
+# ============================================================================
+
+class SubtopicShardV2(BaseModel):
+    """
+    V2 SubtopicShard - Simplified with single guidelines field.
+
+    Breaking change from V1:
+    - Removed: objectives, examples, misconceptions, assessments,
+               teaching_description, description, evidence_summary
+    - Added: guidelines (single comprehensive text field)
+    """
+
+    # Identifiers
+    topic_key: str = Field(..., description="Slugified topic identifier (lowercase)")
+    topic_title: str = Field(..., description="Human-readable topic name")
+    subtopic_key: str = Field(..., description="Slugified subtopic identifier (lowercase)")
+    subtopic_title: str = Field(..., description="Human-readable subtopic name")
+
+    # Page range
+    source_page_start: int = Field(..., description="First page of this subtopic")
+    source_page_end: int = Field(..., description="Last page of this subtopic")
+
+    # Status
+    status: Literal["open", "stable", "final"] = Field(
+        default="open",
+        description="open=actively growing, stable=no updates for 5 pages, final=book ended or explicitly finalized"
+    )
+
+    # Single guidelines field (V2 simplification)
+    guidelines: str = Field(
+        ...,
+        description="Complete teaching guidelines in natural language text. Includes objectives, examples, teaching strategies, misconceptions, and assessments."
+    )
+
+    # Metadata
+    version: int = Field(default=1, description="Shard version for tracking updates")
+    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+class BoundaryDecisionV2(BaseModel):
+    """
+    V2 Boundary Detection Output - Simplified.
+
+    Breaking change from V1:
+    - Removed: decision, continue_score, new_score, continue_subtopic_key,
+               new_subtopic_key, new_subtopic_title, reasoning
+    - Changed: Single decision + extracted guidelines
+    """
+
+    is_new_topic: bool = Field(
+        ...,
+        description="True if this page starts a new topic/subtopic, False if it continues an existing one"
+    )
+
+    topic_name: str = Field(
+        ...,
+        description="Topic name (lowercase, kebab-case). MUST exactly match existing topic if is_new_topic=False"
+    )
+
+    subtopic_name: str = Field(
+        ...,
+        description="Subtopic name (lowercase, kebab-case). MUST exactly match existing subtopic if is_new_topic=False"
+    )
+
+    page_guidelines: str = Field(
+        ...,
+        description="Complete teaching guidelines extracted from this page. Natural language text covering objectives, examples, teaching strategies, misconceptions, and assessments."
+    )
+
+
+class OpenSubtopicInfoV2(BaseModel):
+    """Info about an open subtopic (V2 with guidelines text)"""
+    subtopic_key: str
+    subtopic_title: str
+    page_start: int
+    page_end: int
+    guidelines: str = Field(description="Full guidelines text for context")
+
+
+class OpenTopicInfoV2(BaseModel):
+    """Information about an open topic (V2)"""
+    topic_key: str
+    topic_title: str
+    open_subtopics: List[OpenSubtopicInfoV2] = Field(default_factory=list)

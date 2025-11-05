@@ -1,0 +1,27 @@
+You are merging teaching guidelines for a textbook topic.
+
+TOPIC: {topic}
+SUBTOPIC: {subtopic}
+GRADE: {grade}
+SUBJECT: {subject}
+
+EXISTING GUIDELINES:
+{existing_guidelines}
+
+NEW PAGE GUIDELINES:
+{new_page_guidelines}
+
+TASK:
+Merge the new page guidelines into the existing guidelines to create a comprehensive, consolidated text.
+
+REQUIREMENTS:
+1. Combine information without duplication
+2. Maintain natural language flow
+3. Keep all unique objectives, examples, misconceptions, and assessments
+4. Organize logically (objectives → teaching strategies → examples → misconceptions → assessments)
+5. If formats differ, consolidate into a coherent structure
+6. If information overlaps, keep the more detailed version
+7. Preserve specific details (page numbers, problem numbers, exact examples)
+
+OUTPUT:
+Return ONLY the merged guidelines text (no extra commentary, no markdown code blocks).

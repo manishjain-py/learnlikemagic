@@ -105,6 +105,7 @@ export interface GuidelineSubtopic {
   misconceptions: string[];
   assessments: Assessment[];
   teaching_description: string | null;
+  description: string | null;
   evidence_summary: string;
   confidence: number;
   quality_score: number | null;
