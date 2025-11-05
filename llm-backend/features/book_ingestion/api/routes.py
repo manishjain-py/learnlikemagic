@@ -370,6 +370,7 @@ def get_page(
 # ===== Guideline Management Endpoints (Phase 6) =====
 
 from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+from features.book_ingestion.services.guideline_extraction_orchestrator_v2 import GuidelineExtractionOrchestratorV2
 from features.book_ingestion.utils.s3_client import S3Client
 from openai import OpenAI
 from pydantic import BaseModel
@@ -381,6 +382,7 @@ class GenerateGuidelinesRequest(BaseModel):
     start_page: Optional[int] = 1
     end_page: Optional[int] = None
     auto_sync_to_db: bool = False
+    version: str = "v2"  # V2 by default, can specify "v1" for legacy
 
 
 class GenerateGuidelinesResponse(BaseModel):
@@ -389,13 +391,20 @@ class GenerateGuidelinesResponse(BaseModel):
     status: str
     pages_processed: int
     subtopics_created: int
+    subtopics_merged: Optional[int] = 0  # V2: tracks merge operations
     subtopics_finalized: int
+    duplicates_merged: Optional[int] = 0  # V2: tracks duplicate merging
     errors: List[str]
     warnings: List[str]
 
 
 class GuidelineSubtopicResponse(BaseModel):
-    """Response for a single subtopic guideline"""
+    """
+    Response for a single subtopic guideline.
+
+    Supports both V1 (structured fields) and V2 (single guidelines field).
+    V1 fields are optional for backward compatibility.
+    """
     topic_key: str
     topic_title: str
     subtopic_key: str
@@ -403,16 +412,21 @@ class GuidelineSubtopicResponse(BaseModel):
     status: str
     source_page_start: int
     source_page_end: int
-    objectives: List[str]
-    examples: List[str]
-    misconceptions: List[str]
-    assessments: List[dict]
-    teaching_description: Optional[str]
-    description: Optional[str]
-    evidence_summary: str
-    confidence: float
-    quality_score: Optional[float]
     version: int
+
+    # V2 field (primary)
+    guidelines: Optional[str] = None  # V2: Single comprehensive guidelines field
+
+    # V1 fields (optional for backward compatibility)
+    objectives: Optional[List[str]] = None
+    examples: Optional[List[str]] = None
+    misconceptions: Optional[List[str]] = None
+    assessments: Optional[List[dict]] = None
+    teaching_description: Optional[str] = None
+    description: Optional[str] = None
+    evidence_summary: Optional[str] = None
+    confidence: Optional[float] = None
+    quality_score: Optional[float] = None
 
 
 class GuidelinesListResponse(BaseModel):
@@ -478,13 +492,23 @@ async def generate_guidelines(
             "total_pages": total_pages
         }
 
-        # Initialize orchestrator (reuse s3_client from above)
+        # Initialize orchestrator based on version
         openai_client = OpenAI()
-        orchestrator = GuidelineExtractionOrchestrator(
-            s3_client=s3_client,
-            openai_client=openai_client,
-            db_session=db
-        )
+
+        if request.version == "v2":
+            # V2: Simplified pipeline with LLM-based merging
+            orchestrator = GuidelineExtractionOrchestratorV2(
+                s3_client=s3_client,
+                openai_client=openai_client,
+                db_session=db
+            )
+        else:
+            # V1: Legacy structured pipeline
+            orchestrator = GuidelineExtractionOrchestrator(
+                s3_client=s3_client,
+                openai_client=openai_client,
+                db_session=db
+            )
 
         # Extract guidelines
         stats = orchestrator.extract_guidelines_for_book(
@@ -500,7 +524,9 @@ async def generate_guidelines(
             status="completed",
             pages_processed=stats["pages_processed"],
             subtopics_created=stats["subtopics_created"],
+            subtopics_merged=stats.get("subtopics_merged", 0),
             subtopics_finalized=stats["subtopics_finalized"],
+            duplicates_merged=stats.get("duplicates_merged", 0),
             errors=stats["errors"],
             warnings=stats.get("warnings", [])
         )

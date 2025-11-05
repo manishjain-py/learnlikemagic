@@ -20,7 +20,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from ..models.guideline_models import SubtopicShard, Assessment
+from ..models.guideline_models import SubtopicShard, SubtopicShardV2, Assessment
 
 logger = logging.getLogger(__name__)
 
@@ -439,3 +439,227 @@ class DBSyncService:
         self.db.commit()
 
         logger.warning(f"Deleted guideline (id={guideline_id})")
+
+    # ========================================================================
+    # V2 SYNC METHODS
+    # ========================================================================
+
+    def sync_shard_v2(
+        self,
+        shard: SubtopicShardV2,
+        book_id: str,
+        grade: int,
+        subject: str,
+        board: str,
+        country: str = "India"
+    ) -> str:
+        """
+        Sync a V2 subtopic shard to the database.
+
+        V2 changes:
+        - Uses single `guidelines` field instead of structured fields
+        - No objectives_json, examples_json, misconceptions_json, assessments_json
+        - No teaching_description, description, evidence_summary, confidence
+
+        Args:
+            shard: V2 subtopic shard to sync
+            book_id: Book identifier
+            grade: Grade level
+            subject: Subject
+            board: Board (CBSE, ICSE, etc.)
+            country: Country (default: India)
+
+        Returns:
+            Database row ID (guideline_id)
+        """
+        # Check if guideline already exists
+        existing_id = self._find_existing_guideline(
+            book_id,
+            shard.topic_key,
+            shard.subtopic_key
+        )
+
+        if existing_id:
+            logger.info(
+                f"Updating existing V2 guideline (id={existing_id}): "
+                f"{shard.topic_key}/{shard.subtopic_key}"
+            )
+            self._update_guideline_v2(existing_id, shard, grade, subject, board, country)
+            return existing_id
+        else:
+            logger.info(
+                f"Inserting new V2 guideline: {shard.topic_key}/{shard.subtopic_key}"
+            )
+            new_id = self._insert_guideline_v2(shard, book_id, grade, subject, board, country)
+            return new_id
+
+    def _insert_guideline_v2(
+        self,
+        shard: SubtopicShardV2,
+        book_id: str,
+        grade: int,
+        subject: str,
+        board: str,
+        country: str
+    ) -> str:
+        """
+        Insert new V2 guideline into database.
+
+        V2 uses simplified schema with single guidelines field.
+        """
+        import uuid
+        guideline_id = str(uuid.uuid4())
+
+        # V2: Single guidelines field replaces all structured fields
+        query = text("""
+            INSERT INTO teaching_guidelines (
+                id, country, book_id, grade, subject, board,
+                topic, subtopic, guideline,
+                topic_key, subtopic_key, topic_title, subtopic_title,
+                source_page_start, source_page_end,
+                status, version,
+                created_at, updated_at
+            )
+            VALUES (
+                :id, :country, :book_id, :grade, :subject, :board,
+                :topic, :subtopic, :guideline,
+                :topic_key, :subtopic_key, :topic_title, :subtopic_title,
+                :source_page_start, :source_page_end,
+                :status, :version,
+                NOW(), NOW()
+            )
+            RETURNING id
+        """)
+
+        result = self.db.execute(
+            query,
+            {
+                "id": guideline_id,
+                "country": country,
+                "book_id": book_id,
+                "grade": grade,
+                "subject": subject,
+                "board": board,
+                "topic": shard.topic_title,  # Old field - use title for backward compat
+                "subtopic": shard.subtopic_title,  # Old field - use title
+                "guideline": shard.guidelines,  # V2: Single comprehensive guidelines field
+                "topic_key": shard.topic_key,
+                "subtopic_key": shard.subtopic_key,
+                "topic_title": shard.topic_title,
+                "subtopic_title": shard.subtopic_title,
+                "source_page_start": shard.source_page_start,
+                "source_page_end": shard.source_page_end,
+                "status": shard.status,
+                "version": shard.version
+            }
+        )
+
+        self.db.commit()
+        new_id = result.fetchone()[0]
+
+        logger.info(
+            f"Inserted V2 guideline (id={new_id}): {shard.topic_key}/{shard.subtopic_key}"
+        )
+
+        return new_id
+
+    def _update_guideline_v2(
+        self,
+        guideline_id: str,
+        shard: SubtopicShardV2,
+        grade: int,
+        subject: str,
+        board: str,
+        country: str
+    ) -> None:
+        """
+        Update existing V2 guideline.
+
+        V2 uses simplified schema with single guidelines field.
+        """
+        query = text("""
+            UPDATE teaching_guidelines
+            SET
+                country = :country,
+                grade = :grade,
+                subject = :subject,
+                board = :board,
+                topic = :topic,
+                subtopic = :subtopic,
+                guideline = :guideline,
+                topic_title = :topic_title,
+                subtopic_title = :subtopic_title,
+                source_page_start = :source_page_start,
+                source_page_end = :source_page_end,
+                status = :status,
+                version = :version,
+                updated_at = NOW()
+            WHERE id = :guideline_id
+        """)
+
+        self.db.execute(
+            query,
+            {
+                "guideline_id": guideline_id,
+                "country": country,
+                "grade": grade,
+                "subject": subject,
+                "board": board,
+                "topic": shard.topic_title,  # Old field - backward compat
+                "subtopic": shard.subtopic_title,  # Old field - backward compat
+                "guideline": shard.guidelines,  # V2: Single comprehensive guidelines field
+                "topic_title": shard.topic_title,
+                "subtopic_title": shard.subtopic_title,
+                "source_page_start": shard.source_page_start,
+                "source_page_end": shard.source_page_end,
+                "status": shard.status,
+                "version": shard.version
+            }
+        )
+
+        self.db.commit()
+
+        logger.info(
+            f"Updated V2 guideline (id={guideline_id}): "
+            f"{shard.topic_key}/{shard.subtopic_key}, version={shard.version}"
+        )
+
+    def sync_multiple_shards_v2(
+        self,
+        shards: List[SubtopicShardV2],
+        book_id: str,
+        grade: int,
+        subject: str,
+        board: str
+    ) -> List[str]:
+        """
+        Sync multiple V2 shards in a batch.
+
+        Args:
+            shards: List of V2 subtopic shards
+            book_id: Book identifier
+            grade: Grade level
+            subject: Subject
+            board: Board
+
+        Returns:
+            List of guideline_ids (in same order as input shards)
+        """
+        guideline_ids = []
+
+        try:
+            for shard in shards:
+                guideline_id = self.sync_shard_v2(shard, book_id, grade, subject, board)
+                guideline_ids.append(guideline_id)
+
+            logger.info(
+                f"Synced {len(shards)} V2 shards for book {book_id} "
+                f"(grade={grade}, subject={subject})"
+            )
+
+            return guideline_ids
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to sync V2 shards, rolling back: {str(e)}")
+            raise
