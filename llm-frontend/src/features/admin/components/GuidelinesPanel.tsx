@@ -201,7 +201,13 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
           <h3 className="font-bold mb-2">Generation Complete</h3>
           <p>Pages processed: {generationStats.pages_processed}</p>
           <p>Subtopics created: {generationStats.subtopics_created}</p>
+          {generationStats.subtopics_merged !== undefined && generationStats.subtopics_merged > 0 && (
+            <p>Subtopics merged: {generationStats.subtopics_merged}</p>
+          )}
           <p>Subtopics finalized: {generationStats.subtopics_finalized}</p>
+          {generationStats.duplicates_merged !== undefined && generationStats.duplicates_merged > 0 && (
+            <p>Duplicates merged: {generationStats.duplicates_merged}</p>
+          )}
           {generationStats.errors.length > 0 && (
             <div className="mt-2">
               <p className="font-semibold">Errors:</p>
@@ -281,114 +287,137 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
                   {selectedSubtopic.subtopic_title}
                 </h3>
 
-                {/* Comprehensive Description */}
-                {selectedSubtopic.description && (
+                {/* V2: Single Guidelines Field (Primary Display) */}
+                {selectedSubtopic.guidelines && (
                   <div className="mb-6">
                     <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                      Overview
+                      Teaching Guidelines
                     </h4>
                     <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
-                        {selectedSubtopic.description}
-                      </p>
+                      <div className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                        {selectedSubtopic.guidelines}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Teaching Description */}
-                {selectedSubtopic.teaching_description && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                      Teaching Instructions (Quick Reference)
-                    </h4>
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded whitespace-pre-wrap text-sm">
-                      {selectedSubtopic.teaching_description}
-                    </div>
-                  </div>
-                )}
-
-                {/* Objectives */}
-                <div className="mb-6">
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                    Objectives ({selectedSubtopic.objectives.length})
-                  </h4>
-                  <ul className="list-disc list-inside space-y-1">
-                    {selectedSubtopic.objectives.map((obj, idx) => (
-                      <li key={idx} className="text-sm">{obj}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Examples */}
-                {selectedSubtopic.examples.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                      Examples ({selectedSubtopic.examples.length})
-                    </h4>
-                    <ul className="list-disc list-inside space-y-1">
-                      {selectedSubtopic.examples.slice(0, 5).map((ex, idx) => (
-                        <li key={idx} className="text-sm">{ex}</li>
-                      ))}
-                      {selectedSubtopic.examples.length > 5 && (
-                        <li className="text-sm text-gray-500">
-                          ...and {selectedSubtopic.examples.length - 5} more
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Misconceptions */}
-                {selectedSubtopic.misconceptions.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                      Misconceptions ({selectedSubtopic.misconceptions.length})
-                    </h4>
-                    <ul className="list-disc list-inside space-y-1">
-                      {selectedSubtopic.misconceptions.map((m, idx) => (
-                        <li key={idx} className="text-sm text-red-700">{m}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Assessments */}
-                {selectedSubtopic.assessments.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                      Assessments ({selectedSubtopic.assessments.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {selectedSubtopic.assessments.slice(0, 3).map((a, idx) => (
-                        <div key={idx} className="p-2 bg-gray-50 rounded text-sm">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-semibold">{a.prompt}</span>
-                            <span className={`px-2 py-0.5 text-xs rounded ${
-                              a.level === 'advanced' ? 'bg-red-100 text-red-800' :
-                              a.level === 'proficient' ? 'bg-blue-100 text-blue-800' :
-                              'bg-green-100 text-green-800'
-                            }`}>
-                              {a.level}
-                            </span>
-                          </div>
-                          <p className="text-gray-600">Answer: {a.answer}</p>
+                {/* V1: Structured Fields (Backward Compatibility) */}
+                {!selectedSubtopic.guidelines && (
+                  <>
+                    {/* Comprehensive Description */}
+                    {selectedSubtopic.description && (
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                          Overview
+                        </h4>
+                        <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                          <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                            {selectedSubtopic.description}
+                          </p>
                         </div>
-                      ))}
-                      {selectedSubtopic.assessments.length > 3 && (
-                        <p className="text-sm text-gray-500">
-                          ...and {selectedSubtopic.assessments.length - 3} more
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                    )}
+
+                    {/* Teaching Description */}
+                    {selectedSubtopic.teaching_description && (
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                          Teaching Instructions (Quick Reference)
+                        </h4>
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded whitespace-pre-wrap text-sm">
+                          {selectedSubtopic.teaching_description}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Objectives */}
+                    {selectedSubtopic.objectives && selectedSubtopic.objectives.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                          Objectives ({selectedSubtopic.objectives.length})
+                        </h4>
+                        <ul className="list-disc list-inside space-y-1">
+                          {selectedSubtopic.objectives.map((obj, idx) => (
+                            <li key={idx} className="text-sm">{obj}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Examples */}
+                    {selectedSubtopic.examples && selectedSubtopic.examples.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                          Examples ({selectedSubtopic.examples.length})
+                        </h4>
+                        <ul className="list-disc list-inside space-y-1">
+                          {selectedSubtopic.examples.slice(0, 5).map((ex, idx) => (
+                            <li key={idx} className="text-sm">{ex}</li>
+                          ))}
+                          {selectedSubtopic.examples.length > 5 && (
+                            <li className="text-sm text-gray-500">
+                              ...and {selectedSubtopic.examples.length - 5} more
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Misconceptions */}
+                    {selectedSubtopic.misconceptions && selectedSubtopic.misconceptions.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                          Misconceptions ({selectedSubtopic.misconceptions.length})
+                        </h4>
+                        <ul className="list-disc list-inside space-y-1">
+                          {selectedSubtopic.misconceptions.map((m, idx) => (
+                            <li key={idx} className="text-sm text-red-700">{m}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Assessments */}
+                    {selectedSubtopic.assessments && selectedSubtopic.assessments.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                          Assessments ({selectedSubtopic.assessments.length})
+                        </h4>
+                        <div className="space-y-2">
+                          {selectedSubtopic.assessments.slice(0, 3).map((a, idx) => (
+                            <div key={idx} className="p-2 bg-gray-50 rounded text-sm">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="font-semibold">{a.prompt}</span>
+                                <span className={`px-2 py-0.5 text-xs rounded ${
+                                  a.level === 'advanced' ? 'bg-red-100 text-red-800' :
+                                  a.level === 'proficient' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-green-100 text-green-800'
+                                }`}>
+                                  {a.level}
+                                </span>
+                              </div>
+                              <p className="text-gray-600">Answer: {a.answer}</p>
+                            </div>
+                          ))}
+                          {selectedSubtopic.assessments.length > 3 && (
+                            <p className="text-sm text-gray-500">
+                              ...and {selectedSubtopic.assessments.length - 3} more
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Metadata */}
                 <div className="mt-6 pt-4 border-t text-xs text-gray-500">
                   <p>Source Pages: {selectedSubtopic.source_page_start}-{selectedSubtopic.source_page_end}</p>
-                  <p>Confidence: {(selectedSubtopic.confidence * 100).toFixed(0)}%</p>
+                  {selectedSubtopic.confidence !== undefined && (
+                    <p>Confidence: {(selectedSubtopic.confidence * 100).toFixed(0)}%</p>
+                  )}
                   <p>Version: {selectedSubtopic.version}</p>
-                  {selectedSubtopic.quality_score !== null && (
+                  {selectedSubtopic.quality_score !== undefined && selectedSubtopic.quality_score !== null && (
                     <p className={getQualityScoreColor(selectedSubtopic.quality_score)}>
                       Quality Score: {(selectedSubtopic.quality_score * 100).toFixed(0)}%
                     </p>
