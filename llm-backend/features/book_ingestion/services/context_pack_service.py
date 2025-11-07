@@ -15,7 +15,7 @@ This service solves the token explosion problem:
 
 import logging
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 
 from ..models.guideline_models import (
     ContextPack,
@@ -142,7 +142,7 @@ class ContextPackService:
         self,
         book_id: str,
         index: GuidelinesIndex
-    ) -> List[OpenTopicInfo]:
+    ) -> List[Union[OpenTopicInfo, OpenTopicInfoV2]]:
         """
         Extract information about open topics and their subtopics.
 

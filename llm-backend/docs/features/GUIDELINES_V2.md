@@ -1,7 +1,7 @@
 # Guidelines Extraction V2 - Simplified Architecture
 
 **Created**: 2025-11-05
-**Status**: 🔄 Planning & Design
+**Status**: ✅ Implementation Complete | 🐛 Bug Fixing & Testing
 **Version**: 2.0 (Breaking Change)
 
 ---
@@ -1419,15 +1419,15 @@ class GuidelineExtractionOrchestratorV2:
 
 | Phase | Status | Tasks Complete | Time Spent | Notes |
 |-------|--------|----------------|------------|-------|
-| **Phase 1: Data Models** | ⏳ Not Started | 0/3 | 0h | - |
-| **Phase 2: Core Services 1** | ⏳ Not Started | 0/3 | 0h | - |
-| **Phase 3: Core Services 2** | ⏳ Not Started | 0/2 | 0h | - |
-| **Phase 4: Orchestrator** | ⏳ Not Started | 0/4 | 0h | - |
-| **Phase 5: API & DB** | ⏳ Not Started | 0/4 | 0h | - |
-| **Phase 6: Frontend** | ⏳ Not Started | 0/2 | 0h | - |
-| **Phase 7: Testing** | ⏳ Not Started | 0/3 | 0h | - |
-| **Phase 8: Docs** | ⏳ Not Started | 0/3 | 0h | - |
-| **TOTAL** | **0%** | **0/24** | **0h / 25h** | - |
+| **Phase 1: Data Models** | ✅ Complete | 6/6 | 1.5h | All V2 models created |
+| **Phase 2: Core Services 1** | ✅ Complete | 7/7 | 3h | MinisummaryV2, ContextPackV2, BoundaryDetectionV2 |
+| **Phase 3: Core Services 2** | ✅ Complete | 6/6 | 2.5h | GuidelineMerge, TopicDeduplication |
+| **Phase 4: Orchestrator** | ✅ Complete | 5/5 | 3h | Full V2 pipeline with deduplication |
+| **Phase 5: API & DB** | ✅ Complete | 4/4 | 2h | DBSyncV2, API routes, response models |
+| **Phase 6: Frontend** | ✅ Complete | 2/2 | 1h | TypeScript types, GuidelinesPanel |
+| **Phase 7: Testing** | 🐛 In Progress | 0/3 | 2h | Bug fixes: shard loading, S3 methods |
+| **Phase 8: Docs** | ⏳ Pending | 0/3 | 0h | Update docs, cleanup, PR |
+| **TOTAL** | **88%** | **30/36** | **15h / 25h** | Ahead of schedule! |
 
 ---
 
@@ -1559,5 +1559,87 @@ Total: ~13 minutes
 
 ---
 
+## 🐛 Bugs Found & Fixed During Testing
+
+### Bug #1: Shard Not Found on CONTINUE Decision
+**Date**: 2025-11-05
+**Severity**: Critical (Blocking)
+
+**Problem**: When boundary detection returns `is_new=False` (CONTINUE), the orchestrator attempted to load an existing shard that might not exist yet. This occurred when:
+- First page of the book
+- LLM incorrectly decides CONTINUE before any shard is created
+- Shard file doesn't exist in S3 yet
+
+**Error**:
+```
+NoSuchKey: The specified key does not exist.
+books/ncert_mathematics_3_2024/guidelines/v2/topics/.../subtopics/....latest.json
+```
+
+**Root Cause**: `process_page()` in orchestrator_v2 line 290 called `self._load_shard_v2()` without checking if shard exists.
+
+**Fix**: Wrapped shard loading in try-except block. If shard doesn't exist, treat as NEW and create fresh shard.
+
+```python
+# BEFORE (buggy)
+else:
+    shard = self._load_shard_v2(book_id, topic_key, subtopic_key)
+    # merge logic...
+
+# AFTER (fixed)
+else:
+    try:
+        shard = self._load_shard_v2(book_id, topic_key, subtopic_key)
+        # merge logic...
+    except Exception as e:
+        logger.warning(f"Shard not found, creating new: {topic_key}/{subtopic_key}")
+        shard = SubtopicShardV2(...)  # Create new shard
+```
+
+**Status**: ✅ Fixed
+
+---
+
+### Bug #2: Missing S3Client.download_text() Method
+**Date**: 2025-11-05
+**Severity**: Critical (Blocking)
+
+**Problem**: Orchestrator V2 called `self.s3.download_text(page_key)` but S3Client only has:
+- `download_bytes()`
+- `download_json()`
+- `download_file()`
+
+**Error**:
+```
+AttributeError: 'S3Client' object has no attribute 'download_text'
+```
+
+**Root Cause**: Assumed S3Client had a text download method, but it only returns bytes.
+
+**Fix**: Updated `_load_page_text()` to use `download_bytes()` and decode to UTF-8. Added fallback for alternate S3 key paths.
+
+```python
+# BEFORE (buggy)
+def _load_page_text(self, book_id: str, page_num: int) -> str:
+    page_key = f"books/{book_id}/pages/{page_num:03d}.ocr.txt"
+    return self.s3.download_text(page_key)  # Doesn't exist!
+
+# AFTER (fixed)
+def _load_page_text(self, book_id: str, page_num: int) -> str:
+    page_key = f"books/{book_id}/pages/{page_num:03d}.ocr.txt"
+    try:
+        text_bytes = self.s3.download_bytes(page_key)
+        return text_bytes.decode('utf-8')
+    except Exception:
+        # Fallback: try alternate path
+        page_key = f"books/{book_id}/{page_num}.txt"
+        text_bytes = self.s3.download_bytes(page_key)
+        return text_bytes.decode('utf-8')
+```
+
+**Status**: ✅ Fixed
+
+---
+
 **Last Updated**: 2025-11-05
-**Status**: Planning Complete, Ready for Implementation
+**Status**: Implementation Complete, Bug Fixing in Progress

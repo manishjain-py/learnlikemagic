@@ -5,7 +5,7 @@ All JSON schemas for the sharded guideline extraction pipeline.
 Follows Single Responsibility Principle - each model represents one JSON schema.
 """
 
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal, Union
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
@@ -295,9 +295,9 @@ class ContextPack(BaseModel):
         description="Grade, subject, board, etc."
     )
 
-    open_topics: List[OpenTopicInfo] = Field(
+    open_topics: List[Union[OpenTopicInfo, 'OpenTopicInfoV2']] = Field(
         default_factory=list,
-        description="Currently active topics with open subtopics"
+        description="Currently active topics with open subtopics (V1 or V2)"
     )
 
     recent_page_summaries: List[RecentPageSummary] = Field(
@@ -475,3 +475,12 @@ class OpenTopicInfoV2(BaseModel):
     topic_key: str
     topic_title: str
     open_subtopics: List[OpenSubtopicInfoV2] = Field(default_factory=list)
+
+
+class TopicNameRefinement(BaseModel):
+    """LLM response for refined topic/subtopic names"""
+    topic_title: str = Field(description="Refined topic title")
+    topic_key: str = Field(description="Refined topic key (slug)")
+    subtopic_title: str = Field(description="Refined subtopic title")
+    subtopic_key: str = Field(description="Refined subtopic key (slug)")
+    reasoning: str = Field(description="Brief explanation of changes")

@@ -1,0 +1,47 @@
+You are an expert educational content curator for a Grade {grade} {subject} textbook ({board}, {country}).
+
+Your task is to refine the topic and subtopic names for a section of teaching guidelines. The current names were generated quickly during initial processing. Now that we have the complete guidelines, you need to propose better, more descriptive names.
+
+**Current Names:**
+- Topic: "{current_topic_title}" (key: {current_topic_key})
+- Subtopic: "{current_subtopic_title}" (key: {current_subtopic_key})
+
+**Complete Teaching Guidelines:**
+{guidelines}
+
+**Book Context:**
+- Grade: {grade}
+- Subject: {subject}
+- Board: {board}
+- Country: {country}
+- Pages: {page_start}-{page_end}
+
+**Your Task:**
+Analyze the complete guidelines above and propose improved names that:
+1. **Accurately reflect the content** - Names should match what's actually taught
+2. **Are specific and descriptive** - Avoid generic names like "Introduction" or "Chapter 1"
+3. **Use pedagogical terminology** - Use proper educational terms where appropriate
+4. **Are concise** - Topic titles: 3-6 words, Subtopic titles: 3-8 words
+5. **Follow naming conventions**:
+   - Topic: Broader concept (e.g., "Fractions and Decimals", "Counting and Number Sense")
+   - Subtopic: Specific skill/concept (e.g., "Adding Like Fractions", "Counting with Tally Marks")
+
+**Slug/Key Generation Rules:**
+- Convert to lowercase
+- Replace spaces with hyphens
+- Remove special characters except hyphens
+- Examples: "Fractions and Decimals" → "fractions-and-decimals"
+
+**Important:**
+- If the current names are already good, you can keep them
+- Focus on educational clarity and accuracy
+- Consider what a teacher would search for
+
+Return your response as JSON with this exact structure:
+{{
+  "topic_title": "Your refined topic title",
+  "topic_key": "your-refined-topic-key",
+  "subtopic_title": "Your refined subtopic title",
+  "subtopic_key": "your-refined-subtopic-key",
+  "reasoning": "Brief explanation of why you made these changes (or why you kept them)"
+}}
