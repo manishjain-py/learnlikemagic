@@ -70,6 +70,7 @@ llm-backend/
 - **Python 3.10+** (Production uses 3.11, local development supports 3.10-3.13)
 - **PostgreSQL** (Production) or **SQLite** (Development)
 - **OpenAI API Key**
+- **AWS CLI** (for S3 operations - installed at `/opt/homebrew/bin/aws` on macOS with Homebrew)
 
 ### 1. Create Virtual Environment
 

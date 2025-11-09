@@ -1,0 +1,15 @@
+Read this textbook page and provide a detailed summary in 5-6 complete sentences.
+
+REQUIREMENTS:
+- 5-6 complete sentences (not less, not more)
+- Cover main concepts, activities, and examples
+- Mention any explicit learning objectives
+- Note any assessment questions or practice problems
+- Be specific (don't just say "introduces topic", say WHAT is introduced)
+- Factual and extractive - no interpretation
+
+PAGE TEXT:
+{page_text}
+
+OUTPUT:
+5-6 sentence summary only, no extra text.

@@ -269,6 +269,51 @@ def rollback_phase6_schema():
         raise
 
 
+def add_description_field():
+    """
+    Add description field to teaching_guidelines table.
+
+    This migration adds the comprehensive description field (200-300 words)
+    that consolidates teaching guidance into a single paragraph.
+    """
+    print("🔄 Adding description field to teaching_guidelines...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            # Check if description column already exists
+            columns = [col['name'] for col in inspector.get_columns('teaching_guidelines')]
+
+            if 'description' not in columns:
+                print("  Adding description column...")
+                conn.execute(text("""
+                    ALTER TABLE teaching_guidelines
+                    ADD COLUMN description TEXT DEFAULT NULL
+                """))
+                print("  ✓ description column added")
+
+                # Add comment for documentation
+                conn.execute(text("""
+                    COMMENT ON COLUMN teaching_guidelines.description IS
+                    'Comprehensive 200-300 word description covering what the topic is, how it is taught, and how it is assessed'
+                """))
+                print("  ✓ Column comment added")
+            else:
+                print("  ✓ description column already exists")
+
+            conn.commit()
+
+        print("✅ Description field migration completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Description field migration error: {e}", exc_info=True)
+        raise
+
+
 if __name__ == "__main__":
     import sys
     import argparse
@@ -278,6 +323,7 @@ if __name__ == "__main__":
     parser.add_argument("--rollback", action="store_true", help="Rollback migrations (DANGEROUS)")
     parser.add_argument("--phase6", action="store_true", help="Run Phase 6 schema migration")
     parser.add_argument("--rollback-phase6", action="store_true", help="Rollback Phase 6 schema (DANGEROUS)")
+    parser.add_argument("--add-description", action="store_true", help="Add description field to teaching_guidelines")
 
     args = parser.parse_args()
 
@@ -289,10 +335,13 @@ if __name__ == "__main__":
         migrate_phase6_schema()
     elif args.rollback_phase6:
         rollback_phase6_schema()
+    elif args.add_description:
+        add_description_field()
     else:
         print("Usage:")
         print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
         print("  python -m features.book_ingestion.migrations --rollback          # Rollback base (DANGEROUS)")
         print("  python -m features.book_ingestion.migrations --phase6            # Run Phase 6 schema")
         print("  python -m features.book_ingestion.migrations --rollback-phase6   # Rollback Phase 6 (DANGEROUS)")
+        print("  python -m features.book_ingestion.migrations --add-description   # Add description field")
         sys.exit(1)

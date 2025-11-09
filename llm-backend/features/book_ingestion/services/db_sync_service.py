@@ -9,9 +9,9 @@ Single Responsibility Principle:
 - Performs upserts (insert or update)
 
 Database Schema (teaching_guidelines table):
-- NEW Phase 6 columns: topic_key, subtopic_key, objectives_json, examples_json,
-  misconceptions_json, assessments_json, teaching_description, source_page_start,
-  source_page_end, evidence_summary, status, confidence, version
+- Key columns: topic_key, subtopic_key, topic_title, subtopic_title
+- Content: guidelines (text field with complete teaching guidelines)
+- Metadata: source_page_start, source_page_end, status, version
 """
 
 import logging
@@ -20,7 +20,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from ..models.guideline_models import SubtopicShard, Assessment
+from ..models.guideline_models import SubtopicShard, SubtopicShard, Assessment
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +54,12 @@ class DBSyncService:
         subject: str,
         board: str,
         country: str = "India"
-    ) -> int:
+    ) -> str:
         """
         Sync a subtopic shard to the database.
+
+        Uses simplified schema with single `guidelines` text field containing
+        complete teaching guidelines in natural language.
 
         Args:
             shard: Subtopic shard to sync
@@ -68,10 +71,6 @@ class DBSyncService:
 
         Returns:
             Database row ID (guideline_id)
-
-        Side effects:
-            - Inserts new row or updates existing row in teaching_guidelines table
-            - Commits transaction
         """
         # Check if guideline already exists
         existing_id = self._find_existing_guideline(
@@ -99,7 +98,7 @@ class DBSyncService:
         book_id: str,
         topic_key: str,
         subtopic_key: str
-    ) -> Optional[int]:
+    ) -> Optional[str]:
         """
         Find existing guideline by book_id + topic_key + subtopic_key.
 
@@ -141,56 +140,30 @@ class DBSyncService:
         subject: str,
         board: str,
         country: str
-    ) -> int:
+    ) -> str:
         """
         Insert new guideline into database.
 
-        Args:
-            shard: Subtopic shard
-            book_id: Book identifier
-            grade: Grade level
-            subject: Subject
-            board: Board
-
-        Returns:
-            New guideline_id
+        Uses simplified schema with single guidelines text field.
         """
-        # Generate unique ID for the guideline
         import uuid
         guideline_id = str(uuid.uuid4())
-
-        # Serialize JSON fields
-        objectives_json = json.dumps(shard.objectives)
-        examples_json = json.dumps(shard.examples)
-        misconceptions_json = json.dumps(shard.misconceptions)
-        assessments_json = json.dumps([
-            {
-                "level": a.level,
-                "prompt": a.prompt,
-                "answer": a.answer
-            }
-            for a in shard.assessments
-        ])
 
         query = text("""
             INSERT INTO teaching_guidelines (
                 id, country, book_id, grade, subject, board,
                 topic, subtopic, guideline,
                 topic_key, subtopic_key, topic_title, subtopic_title,
-                objectives_json, examples_json, misconceptions_json, assessments_json,
-                teaching_description,
-                source_page_start, source_page_end, source_pages,
-                evidence_summary, status, confidence, version,
+                source_page_start, source_page_end,
+                status, version,
                 created_at
             )
             VALUES (
                 :id, :country, :book_id, :grade, :subject, :board,
                 :topic, :subtopic, :guideline,
                 :topic_key, :subtopic_key, :topic_title, :subtopic_title,
-                :objectives_json, :examples_json, :misconceptions_json, :assessments_json,
-                :teaching_description,
-                :source_page_start, :source_page_end, :source_pages,
-                :evidence_summary, :status, :confidence, :version,
+                :source_page_start, :source_page_end,
+                :status, :version,
                 NOW()
             )
             RETURNING id
@@ -205,24 +178,16 @@ class DBSyncService:
                 "grade": grade,
                 "subject": subject,
                 "board": board,
-                "topic": shard.topic_title,  # Old field - use title
-                "subtopic": shard.subtopic_title,  # Old field - use title
-                "guideline": shard.teaching_description or "",  # Old field - use teaching_description
+                "topic": shard.topic_title,  # Legacy column for backward compatibility
+                "subtopic": shard.subtopic_title,  # Legacy column
+                "guideline": shard.guidelines,  # Complete guidelines in natural language
                 "topic_key": shard.topic_key,
                 "subtopic_key": shard.subtopic_key,
                 "topic_title": shard.topic_title,
                 "subtopic_title": shard.subtopic_title,
-                "objectives_json": objectives_json,
-                "examples_json": examples_json,
-                "misconceptions_json": misconceptions_json,
-                "assessments_json": assessments_json,
-                "teaching_description": shard.teaching_description or "",
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
-                "source_pages": json.dumps(shard.source_pages),
-                "evidence_summary": shard.evidence_summary,
                 "status": shard.status,
-                "confidence": shard.confidence,
                 "version": shard.version
             }
         )
@@ -238,7 +203,7 @@ class DBSyncService:
 
     def _update_guideline(
         self,
-        guideline_id: int,
+        guideline_id: str,
         shard: SubtopicShard,
         grade: int,
         subject: str,
@@ -248,26 +213,8 @@ class DBSyncService:
         """
         Update existing guideline.
 
-        Args:
-            guideline_id: Database row ID
-            shard: Subtopic shard with new data
-            grade: Grade level
-            subject: Subject
-            board: Board
+        Uses simplified schema with single guidelines text field.
         """
-        # Serialize JSON fields
-        objectives_json = json.dumps(shard.objectives)
-        examples_json = json.dumps(shard.examples)
-        misconceptions_json = json.dumps(shard.misconceptions)
-        assessments_json = json.dumps([
-            {
-                "level": a.level,
-                "prompt": a.prompt,
-                "answer": a.answer
-            }
-            for a in shard.assessments
-        ])
-
         query = text("""
             UPDATE teaching_guidelines
             SET
@@ -280,17 +227,9 @@ class DBSyncService:
                 guideline = :guideline,
                 topic_title = :topic_title,
                 subtopic_title = :subtopic_title,
-                objectives_json = :objectives_json,
-                examples_json = :examples_json,
-                misconceptions_json = :misconceptions_json,
-                assessments_json = :assessments_json,
-                teaching_description = :teaching_description,
                 source_page_start = :source_page_start,
                 source_page_end = :source_page_end,
-                source_pages = :source_pages,
-                evidence_summary = :evidence_summary,
                 status = :status,
-                confidence = :confidence,
                 version = :version
             WHERE id = :guideline_id
         """)
@@ -303,22 +242,14 @@ class DBSyncService:
                 "grade": grade,
                 "subject": subject,
                 "board": board,
-                "topic": shard.topic_title,  # Old field - use title
-                "subtopic": shard.subtopic_title,  # Old field - use title
-                "guideline": shard.teaching_description or "",  # Old field - use teaching_description
+                "topic": shard.topic_title,  # Legacy column for backward compatibility
+                "subtopic": shard.subtopic_title,  # Legacy column
+                "guideline": shard.guidelines,  # Complete guidelines in natural language
                 "topic_title": shard.topic_title,
                 "subtopic_title": shard.subtopic_title,
-                "objectives_json": objectives_json,
-                "examples_json": examples_json,
-                "misconceptions_json": misconceptions_json,
-                "assessments_json": assessments_json,
-                "teaching_description": shard.teaching_description or "",
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
-                "source_pages": json.dumps(shard.source_pages),
-                "evidence_summary": shard.evidence_summary,
                 "status": shard.status,
-                "confidence": shard.confidence,
                 "version": shard.version
             }
         )
@@ -337,7 +268,7 @@ class DBSyncService:
         grade: int,
         subject: str,
         board: str
-    ) -> List[int]:
+    ) -> List[str]:
         """
         Sync multiple shards in a batch.
 
@@ -350,9 +281,6 @@ class DBSyncService:
 
         Returns:
             List of guideline_ids (in same order as input shards)
-
-        Note:
-            Uses a single transaction for all shards (atomic)
         """
         guideline_ids = []
 
@@ -363,7 +291,7 @@ class DBSyncService:
 
             logger.info(
                 f"Synced {len(shards)} shards for book {book_id} "
-                f"(grades={grade}, subject={subject})"
+                f"(grade={grade}, subject={subject})"
             )
 
             return guideline_ids
@@ -373,66 +301,108 @@ class DBSyncService:
             logger.error(f"Failed to sync shards, rolling back: {str(e)}")
             raise
 
-    def get_synced_guidelines_for_book(self, book_id: str) -> List[dict]:
+    def sync_book_guidelines(
+        self,
+        book_id: str,
+        s3_client,
+        book_metadata: dict
+    ) -> dict:
         """
-        Get all synced guidelines for a book.
+        Sync all guidelines for a book from S3 to database.
+
+        This method loads all shards from S3 and syncs them to the database.
 
         Args:
             book_id: Book identifier
+            s3_client: S3 client for loading shards
+            book_metadata: Book metadata containing grade, subject, board
 
         Returns:
-            List of guideline dicts (for debugging/monitoring)
+            Dict with sync statistics: {
+                "synced_count": int,
+                "updated_count": int,
+                "created_count": int
+            }
         """
-        query = text("""
-            SELECT
-                id, topic_key, subtopic_key, topic_title, subtopic_title,
-                status, confidence, version,
-                source_page_start, source_page_end,
-                created_at
-            FROM teaching_guidelines
-            WHERE book_id = :book_id
-            ORDER BY source_page_start, topic_key, subtopic_key
-        """)
+        from ..models.guideline_models import GuidelinesIndex, SubtopicShard
 
-        result = self.db.execute(query, {"book_id": book_id})
-        rows = result.fetchall()
+        logger.info(f"Starting database sync for book {book_id}")
 
-        guidelines = []
-        for row in rows:
-            guidelines.append({
-                "id": row[0],
-                "topic_key": row[1],
-                "subtopic_key": row[2],
-                "topic_title": row[3],
-                "subtopic_title": row[4],
-                "status": row[5],
-                "confidence": row[6],
-                "version": row[7],
-                "source_page_start": row[8],
-                "source_page_end": row[9],
-                "created_at": row[10].isoformat() if row[10] else None
-            })
+        # Load index to get all topics/subtopics
+        try:
+            index_key = f"books/{book_id}/guidelines/index.json"
+            index_data = s3_client.download_json(index_key)
+            index = GuidelinesIndex(**index_data)
+        except Exception as e:
+            logger.error(f"Failed to load index for book {book_id}: {e}")
+            return {"synced_count": 0, "updated_count": 0, "created_count": 0}
 
-        logger.debug(f"Retrieved {len(guidelines)} guidelines for book {book_id}")
+        # Extract metadata
+        grade = book_metadata.get("grade", 0)
+        subject = book_metadata.get("subject", "Unknown")
+        board = book_metadata.get("board", "Unknown")
+        country = book_metadata.get("country", "India")
 
-        return guidelines
+        # Collect all shards to sync
+        shards_to_sync = []
+        for topic_entry in index.topics:
+            for subtopic_entry in topic_entry.subtopics:
+                # Load shard from S3
+                shard_key = (
+                    f"books/{book_id}/guidelines/topics/{topic_entry.topic_key}/"
+                    f"subtopics/{subtopic_entry.subtopic_key}.latest.json"
+                )
+                try:
+                    shard_data = s3_client.download_json(shard_key)
+                    shard = SubtopicShard(**shard_data)
+                    shards_to_sync.append(shard)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load shard {shard_key}: {e}. Skipping."
+                    )
+                    continue
 
-    def delete_guideline(self, guideline_id: int) -> None:
-        """
-        Delete a guideline (soft delete recommended, but hard delete for MVP).
+        if not shards_to_sync:
+            logger.warning(f"No shards found to sync for book {book_id}")
+            return {"synced_count": 0, "updated_count": 0, "created_count": 0}
 
-        Args:
-            guideline_id: Database row ID
+        # Sync all shards
+        created_count = 0
+        updated_count = 0
 
-        Note:
-            Future versions should implement soft delete (is_deleted flag)
-        """
-        query = text("""
-            DELETE FROM teaching_guidelines
-            WHERE id = :guideline_id
-        """)
+        try:
+            for shard in shards_to_sync:
+                # Check if exists
+                existing_id = self._find_existing_guideline(
+                    book_id,
+                    shard.topic_key,
+                    shard.subtopic_key
+                )
 
-        self.db.execute(query, {"guideline_id": guideline_id})
-        self.db.commit()
+                if existing_id:
+                    self._update_guideline_v2(
+                        existing_id, shard, grade, subject, board, country
+                    )
+                    updated_count += 1
+                else:
+                    self._insert_guideline_v2(
+                        shard, book_id, grade, subject, board, country
+                    )
+                    created_count += 1
 
-        logger.warning(f"Deleted guideline (id={guideline_id})")
+            total_synced = created_count + updated_count
+            logger.info(
+                f"Database sync complete for book {book_id}: "
+                f"{total_synced} synced ({created_count} created, {updated_count} updated)"
+            )
+
+            return {
+                "synced_count": total_synced,
+                "created_count": created_count,
+                "updated_count": updated_count
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to sync book guidelines: {str(e)}")
+            raise

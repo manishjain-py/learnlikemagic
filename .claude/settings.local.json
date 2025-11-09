@@ -19,7 +19,11 @@
       "Bash(git push:*)",
       "Bash(export PYTHONPATH=/Users/preethijain/manish/repos/learnlikemagic/llm-backend:$PYTHONPATH:*)",
       "Bash(npm install:*)",
-      "Bash(pkill -f \"uvicorn\\|npm\")"
+      "Bash(pkill -f \"uvicorn\\|npm\")",
+      "Bash(tee:*)",
+      "Bash(aws s3 ls:*)",
+      "Bash(/opt/homebrew/bin/aws s3 ls:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

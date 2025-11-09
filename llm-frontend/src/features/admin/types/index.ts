@@ -100,15 +100,21 @@ export interface GuidelineSubtopic {
   status: 'open' | 'stable' | 'final' | 'needs_review';
   source_page_start: number;
   source_page_end: number;
-  objectives: string[];
-  examples: string[];
-  misconceptions: string[];
-  assessments: Assessment[];
-  teaching_description: string | null;
-  evidence_summary: string;
-  confidence: number;
-  quality_score: number | null;
   version: number;
+
+  // V2 field (primary)
+  guidelines?: string;  // V2: Single comprehensive guidelines field
+
+  // V1 fields (optional for backward compatibility)
+  objectives?: string[];
+  examples?: string[];
+  misconceptions?: string[];
+  assessments?: Assessment[];
+  teaching_description?: string | null;
+  description?: string | null;
+  evidence_summary?: string;
+  confidence?: number;
+  quality_score?: number | null;
 }
 
 export interface GuidelinesListResponse {
@@ -121,6 +127,7 @@ export interface GenerateGuidelinesRequest {
   start_page?: number;
   end_page?: number;
   auto_sync_to_db?: boolean;
+  version?: 'v1' | 'v2';  // V2: Version selection (defaults to v2)
 }
 
 export interface GenerateGuidelinesResponse {
@@ -128,7 +135,9 @@ export interface GenerateGuidelinesResponse {
   status: string;
   pages_processed: number;
   subtopics_created: number;
+  subtopics_merged?: number;  // V2: Number of merge operations
   subtopics_finalized: number;
+  duplicates_merged?: number;  // V2: Number of duplicates merged
   errors: string[];
   warnings: string[];
 }

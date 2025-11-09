@@ -1,23 +1,23 @@
 """
 Boundary Detection Service
 
-Responsibility: Determine if a page continues current subtopic or starts new one.
+Simplifications:
+- No hysteresis/confidence scores (simpler decision making)
+- Takes full page text as input (not minisummary)
+- Extracts page guidelines in same call (combined operation)
+- Context pack includes full guidelines text for better matching
 
 Single Responsibility Principle:
-- Only handles boundary detection logic
-- Implements hysteresis to prevent "boundary flapping"
+- Detects boundaries AND extracts guidelines in one LLM call
+- Uses simplified BoundaryDecision model
 - Delegates LLM calls to injected client
-
-Key Innovation: Hysteresis Zone (0.6-0.75)
-- Strong continue (≥0.6, new<0.7): CONTINUE
-- Strong new (≥0.75): NEW
-- Ambiguous (between 0.6-0.75): Provisional continue (best guess)
 """
 
 import logging
 import json
 from pathlib import Path
-from typing import Tuple, Optional, Literal
+from typing import Tuple, Optional
+from datetime import datetime
 
 from openai import OpenAI
 
@@ -33,15 +33,14 @@ logger = logging.getLogger(__name__)
 
 class BoundaryDetectionService:
     """
-    Detect topic/subtopic boundaries using LLM + hysteresis.
+    Boundary Detection - Detects topic/subtopic boundaries with page guidelines extraction.
 
-    This service prevents "boundary flapping" by requiring strong
-    evidence before switching subtopics.
+    Features:
+    - Input: Full page text
+    - Input: Open topics include guidelines text for context
+    - Output: is_new_topic, topic_name, subtopic_name, page_guidelines
+    - No confidence scores or hysteresis (simple decision making)
     """
-
-    # Hysteresis thresholds
-    CONTINUE_THRESHOLD = 0.6
-    NEW_THRESHOLD = 0.75
 
     def __init__(self, openai_client: Optional[OpenAI] = None):
         """
@@ -52,7 +51,7 @@ class BoundaryDetectionService:
         """
         self.client = openai_client or OpenAI()
         self.model = "gpt-4o-mini"
-        self.max_tokens = 300  # Boundary decisions are concise
+        self.max_tokens = 1000  # Increased for guidelines extraction
 
         # Load prompt template
         self.prompt_template = self._load_prompt_template()
@@ -70,31 +69,29 @@ class BoundaryDetectionService:
     def detect(
         self,
         context_pack: ContextPack,
-        minisummary: str,
-        default_topic_key: str = "unknown-topic"
-    ) -> Tuple[str, str, str, str, float]:
+        page_text: str
+    ) -> Tuple[bool, str, str, str, str, str]:
         """
-        Detect if page continues or starts new subtopic.
+        Detect boundary and extract guidelines.
 
         Args:
-            context_pack: Current context
-            minisummary: Current page summary
-            default_topic_key: Default topic if starting fresh (slugified)
+            context_pack: Current context with 5 recent summaries + guidelines
+            page_text: Full page text
 
         Returns:
-            Tuple of (decision, topic_key, topic_title, subtopic_key, subtopic_title, confidence)
-            - decision: "continue" or "new"
+            Tuple of (is_new, topic_key, topic_title, subtopic_key, subtopic_title, page_guidelines)
+            - is_new: True if new topic/subtopic, False if continuing
             - topic_key: Slugified topic identifier
             - topic_title: Human-readable topic name
             - subtopic_key: Slugified subtopic identifier
             - subtopic_title: Human-readable subtopic name
-            - confidence: Float 0.0-1.0
+            - page_guidelines: Extracted guidelines text
 
         Raises:
             ValueError: If LLM returns invalid response
         """
         # Build prompt
-        prompt = self._build_prompt(context_pack, minisummary)
+        prompt = self._build_prompt(context_pack, page_text)
 
         try:
             # Call LLM
@@ -125,53 +122,78 @@ class BoundaryDetectionService:
             # Validate with Pydantic
             decision = BoundaryDecision(**decision_data)
 
-            # Apply hysteresis
-            final_decision, confidence = self._apply_hysteresis(decision)
+            # Normalize keys (lowercase, slugified)
+            topic_key = slugify(decision.topic_name)
+            subtopic_key = slugify(decision.subtopic_name)
 
-            # Extract topic/subtopic information
-            if final_decision == "continue":
-                topic_key, topic_title, subtopic_key, subtopic_title = (
-                    self._extract_continue_info(decision, context_pack)
-                )
-            else:  # new
-                topic_key, topic_title, subtopic_key, subtopic_title = (
-                    self._extract_new_info(decision, context_pack, default_topic_key)
-                )
+            # Generate titles if needed (deslugify)
+            topic_title = deslugify(topic_key) if decision.topic_name == topic_key else decision.topic_name
+            subtopic_title = deslugify(subtopic_key) if decision.subtopic_name == subtopic_key else decision.subtopic_name
 
             logger.info(
-                f"Boundary decision: {final_decision.upper()} "
-                f"(continue={decision.continue_score:.2f}, new={decision.new_score:.2f}) "
-                f"→ {topic_key}/{subtopic_key} (confidence={confidence:.2f})"
+                f"Boundary decision: {'NEW' if decision.is_new_topic else 'CONTINUE'} "
+                f"→ {topic_key}/{subtopic_key}"
             )
 
-            return final_decision, topic_key, topic_title, subtopic_key, subtopic_title, confidence
+            # Log reasoning to file
+            self._log_boundary_decision(
+                context_pack.book_id,
+                context_pack.current_page,
+                decision.is_new_topic,
+                topic_key,
+                subtopic_key,
+                decision.reasoning
+            )
+
+            return (
+                decision.is_new_topic,
+                topic_key,
+                topic_title,
+                subtopic_key,
+                subtopic_title,
+                decision.page_guidelines
+            )
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response as JSON: {str(e)}")
-            raise ValueError(f"Invalid JSON response from LLM: {raw_response[:200]}")
+            logger.error(f"Raw response: {raw_response}")
+            raise ValueError(f"Invalid JSON from LLM: {str(e)}")
+
         except Exception as e:
             logger.error(f"Boundary detection failed: {str(e)}")
             raise
 
-    def _build_prompt(self, context_pack: ContextPack, minisummary: str) -> str:
-        """Build boundary detection prompt from template"""
-        # Format open subtopics
-        open_subtopics_str = ""
+    def _build_prompt(self, context_pack: ContextPack, page_text: str) -> str:
+        """
+        Build boundary detection prompt.
+
+        Args:
+            context_pack: Current context
+            page_text: Full page text
+
+        Returns:
+            Formatted prompt string
+        """
+        # Format open topics with guidelines
+        open_topics_str = ""
         for topic in context_pack.open_topics:
-            open_subtopics_str += f"Topic: {topic.topic_title}\n"
+            open_topics_str += f"\nTopic: {topic.topic_title} ({topic.topic_key})\n"
             for subtopic in topic.open_subtopics:
-                open_subtopics_str += (
-                    f"  - {subtopic.subtopic_title} ({subtopic.subtopic_key})\n"
-                    f"    Evidence: {subtopic.evidence_summary}\n"
+                # Include guidelines text
+                guidelines_preview = getattr(subtopic, 'guidelines', '')[:300] + "..." if hasattr(subtopic, 'guidelines') else 'N/A'
+                open_topics_str += (
+                    f"  Subtopic: {subtopic.subtopic_title} ({subtopic.subtopic_key})\n"
+                    f"  Pages: {getattr(subtopic, 'page_start', '?')}-{getattr(subtopic, 'page_end', '?')}\n"
+                    f"  Guidelines Preview: {guidelines_preview}\n\n"
                 )
 
-        if not open_subtopics_str:
-            open_subtopics_str = "(No open subtopics yet - this may be the first page)"
+        if not open_topics_str:
+            open_topics_str = "(No open topics yet - this is the first page)"
 
         # Format recent summaries
         recent_summaries_str = ""
         for summary in context_pack.recent_page_summaries:
-            recent_summaries_str += f"Page {summary.page}: {summary.summary}\n"
+            recent_summaries_str += f"Page {summary.page}:\n{summary.summary}\n\n"
 
         if not recent_summaries_str:
             recent_summaries_str = "(No recent pages)"
@@ -182,127 +204,57 @@ class BoundaryDetectionService:
             subject=context_pack.book_metadata.get("subject", "?"),
             board=context_pack.book_metadata.get("board", "?"),
             current_page=context_pack.current_page,
-            open_subtopics=open_subtopics_str,
+            open_topics=open_topics_str,
             recent_summaries=recent_summaries_str,
-            minisummary=minisummary
+            page_text=page_text
         )
 
-    def _apply_hysteresis(
+    def _log_boundary_decision(
         self,
-        decision: BoundaryDecision
-    ) -> Tuple[Literal["continue", "new"], float]:
+        book_id: str,
+        page_number: int,
+        is_new_topic: bool,
+        topic_key: str,
+        subtopic_key: str,
+        reasoning: str
+    ) -> None:
         """
-        Apply hysteresis to prevent boundary flapping.
-
-        Hysteresis zones:
-        - Strong continue (≥0.6, new<0.7): CONTINUE
-        - Strong new (≥0.75): NEW
-        - Ambiguous (0.6-0.75): Use best guess, mark low confidence
+        Log boundary detection decision and reasoning to file.
 
         Args:
-            decision: Raw LLM decision
-
-        Returns:
-            Tuple of (final_decision, confidence)
+            book_id: Book identifier
+            page_number: Current page number
+            is_new_topic: Whether this is a new topic
+            topic_key: Topic key
+            subtopic_key: Subtopic key
+            reasoning: LLM's reasoning for the decision
         """
-        continue_score = decision.continue_score
-        new_score = decision.new_score
+        log_file = Path("/Users/preethijain/manish/repos/learnlikemagic/llm-backend/boundary_detection_llm_logs.txt")
 
-        # Strong continue signal
-        if continue_score >= self.CONTINUE_THRESHOLD and new_score < 0.7:
-            return "continue", continue_score
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            decision = "NEW TOPIC" if is_new_topic else "CONTINUE"
 
-        # Strong new signal
-        if new_score >= self.NEW_THRESHOLD:
-            return "new", new_score
+            log_entry = f"""
+{'=' * 80}
+Timestamp: {timestamp}
+Book ID: {book_id}
+Page: {page_number}
+Decision: {decision}
+Topic: {topic_key}
+Subtopic: {subtopic_key}
 
-        # Ambiguous zone (0.6-0.75)
-        # Use best guess but mark as low confidence
-        if continue_score > new_score:
-            logger.warning(
-                f"Ambiguous decision (continue={continue_score:.2f}, "
-                f"new={new_score:.2f}), defaulting to CONTINUE"
-            )
-            return "continue", min(continue_score, 0.65)  # Cap confidence
-        else:
-            logger.warning(
-                f"Ambiguous decision (continue={continue_score:.2f}, "
-                f"new={new_score:.2f}), defaulting to NEW"
-            )
-            return "new", min(new_score, 0.65)  # Cap confidence
+Reasoning:
+{reasoning}
+{'=' * 80}
 
-    def _extract_continue_info(
-        self,
-        decision: BoundaryDecision,
-        context_pack: ContextPack
-    ) -> Tuple[str, str, str, str]:
-        """
-        Extract topic/subtopic info when continuing.
+"""
 
-        Returns:
-            Tuple of (topic_key, topic_title, subtopic_key, subtopic_title)
-        """
-        # Find the subtopic to continue
-        subtopic_key = decision.continue_subtopic_key
+            # Append to log file
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(log_entry)
 
-        if not subtopic_key:
-            # LLM didn't specify - use last open subtopic
-            if context_pack.open_topics:
-                last_topic = context_pack.open_topics[-1]
-                if last_topic.open_subtopics:
-                    last_subtopic = last_topic.open_subtopics[-1]
-                    return (
-                        last_topic.topic_key,
-                        last_topic.topic_title,
-                        last_subtopic.subtopic_key,
-                        last_subtopic.subtopic_title
-                    )
+            logger.debug(f"Logged boundary decision for page {page_number} to {log_file}")
 
-            raise ValueError("No open subtopic to continue")
-
-        # Find the specified subtopic
-        for topic in context_pack.open_topics:
-            for subtopic in topic.open_subtopics:
-                if subtopic.subtopic_key == subtopic_key:
-                    return (
-                        topic.topic_key,
-                        topic.topic_title,
-                        subtopic.subtopic_key,
-                        subtopic.subtopic_title
-                    )
-
-        raise ValueError(f"Subtopic {subtopic_key} not found in open subtopics")
-
-    def _extract_new_info(
-        self,
-        decision: BoundaryDecision,
-        context_pack: ContextPack,
-        default_topic_key: str
-    ) -> Tuple[str, str, str, str]:
-        """
-        Extract topic/subtopic info when starting new.
-
-        Returns:
-            Tuple of (topic_key, topic_title, subtopic_key, subtopic_title)
-        """
-        subtopic_key = decision.new_subtopic_key
-        subtopic_title = decision.new_subtopic_title
-
-        if not subtopic_key or not subtopic_title:
-            raise ValueError("LLM must provide new_subtopic_key and new_subtopic_title")
-
-        # Normalize subtopic_key (ensure slugified)
-        subtopic_key = slugify(subtopic_key)
-
-        # Infer topic from context or use default
-        if context_pack.open_topics:
-            # Continue with last topic (common case: new subtopic within same topic)
-            last_topic = context_pack.open_topics[-1]
-            topic_key = last_topic.topic_key
-            topic_title = last_topic.topic_title
-        else:
-            # First subtopic - use default topic
-            topic_key = default_topic_key
-            topic_title = deslugify(default_topic_key)
-
-        return topic_key, topic_title, subtopic_key, subtopic_title
+        except Exception as e:
+            logger.warning(f"Failed to write to boundary detection log file: {str(e)}")

@@ -1,51 +1,61 @@
 """
-Guideline Extraction Orchestrator
+Guideline Extraction Orchestrator V2
 
-Responsibility: Coordinate the entire guideline extraction pipeline.
+V2 Simplifications:
+- No FactsExtractionService (done in boundary detection)
+- No ReducerService (replaced with GuidelineMergeService)
+- No TeachingDescriptionGenerator (single guidelines field)
+- No QualityGatesService (parked for V2)
+- Adds TopicDeduplicationService for end-of-book cleanup
+- 5-page stability threshold (vs 3 in V1)
+- Book-end finalization
 
 Single Responsibility Principle:
-- Only handles orchestration logic (calling other services in sequence)
+- Only handles orchestration logic (calling V2 services in sequence)
 - No LLM calls (delegates to component services)
 - No business logic (delegates to component services)
 
-Pipeline Flow (for each page):
+V2 Pipeline Flow (for each page):
 1. Load page OCR text
-2. Generate minisummary
-3. Build context pack
-4. Detect subtopic boundary
-5. Extract page facts
-6. Merge facts into shard (reducer)
-7. Update indices (index management)
-8. Check stability (stability detector)
-9. If stable: generate teaching description, validate quality, sync to DB
+2. Generate minisummary (5-6 lines)
+3. Build context pack (5 recent pages + guidelines)
+4. Detect boundary + extract guidelines (combined)
+5. Create new shard OR merge guidelines (LLM-based)
+6. Check stability (5-page threshold)
+7. Update indices
+8. Save shard and page guideline
+
+Book End Flow:
+1. Finalize all open topics
+2. Run deduplication pass
+3. Merge duplicate shards
+4. Sync to database (if enabled)
 """
 
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
+from datetime import datetime
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from ..models.guideline_models import (
     SubtopicShard,
-    PageGuideline,
-    PageFacts,
-    DecisionMetadata,
-    slugify
+    slugify,
+    deslugify,
+    GuidelinesIndex
 )
 from ..utils.s3_client import S3Client
 
-# Import all component services
+# Import V2 component services
 from .minisummary_service import MinisummaryService
 from .context_pack_service import ContextPackService
 from .boundary_detection_service import BoundaryDetectionService
-from .facts_extraction_service import FactsExtractionService
-from .reducer_service import ReducerService
-from .stability_detector_service import StabilityDetectorService
+from .guideline_merge_service import GuidelineMergeService
+from .topic_deduplication_service import TopicDeduplicationService
+from .topic_name_refinement_service import TopicNameRefinementService
 from .index_management_service import IndexManagementService
-from .teaching_description_generator import TeachingDescriptionGenerator
-from .quality_gates_service import QualityGatesService
 from .db_sync_service import DBSyncService
 
 logger = logging.getLogger(__name__)
@@ -53,11 +63,19 @@ logger = logging.getLogger(__name__)
 
 class GuidelineExtractionOrchestrator:
     """
-    Orchestrate the entire guideline extraction pipeline.
+    V2 Orchestrator - Simplified pipeline with LLM-based merging.
 
-    This is the main entry point for extracting teaching guidelines
-    from textbook pages. It coordinates all 9+ component services.
+    Key changes from V1:
+    - Use BoundaryDetectionService (extracts guidelines in same call)
+    - Use GuidelineMergeService for CONTINUE (LLM-based)
+    - No FactsExtractionService (done in boundary detection)
+    - Add TopicDeduplicationService for end-of-book cleanup
+    - 5-page stability threshold
+    - Book-end finalization
     """
+
+    # V2 Configuration
+    STABILITY_THRESHOLD = 5  # V2: 5 pages without update (vs 3 in V1)
 
     def __init__(
         self,
@@ -66,7 +84,7 @@ class GuidelineExtractionOrchestrator:
         db_session: Optional[Session] = None
     ):
         """
-        Initialize orchestrator with all component services.
+        Initialize V2 orchestrator with component services.
 
         Args:
             s3_client: S3 client for reading/writing files
@@ -77,19 +95,17 @@ class GuidelineExtractionOrchestrator:
         self.openai_client = openai_client or OpenAI()
         self.db_session = db_session
 
-        # Initialize component services
+        # Initialize V2 component services
         self.minisummary = MinisummaryService(self.openai_client)
         self.context_pack = ContextPackService(self.s3)
         self.boundary_detector = BoundaryDetectionService(self.openai_client)
-        self.facts_extractor = FactsExtractionService(self.openai_client)
-        self.reducer = ReducerService()
-        self.stability_detector = StabilityDetectorService()
+        self.merge_service = GuidelineMergeService(self.openai_client)
+        self.dedup_service = TopicDeduplicationService(self.openai_client)
+        self.name_refinement = TopicNameRefinementService(self.openai_client)
         self.index_manager = IndexManagementService(self.s3)
-        self.teaching_desc_gen = TeachingDescriptionGenerator(self.openai_client)
-        self.quality_gates = QualityGatesService()
         self.db_sync = DBSyncService(self.db_session) if self.db_session else None
 
-        logger.info("Initialized GuidelineExtractionOrchestrator with all component services")
+        logger.info("Initialized GuidelineExtractionOrchestrator with all V2 services")
 
     def extract_guidelines_for_book(
         self,
@@ -100,7 +116,7 @@ class GuidelineExtractionOrchestrator:
         auto_sync_to_db: bool = False
     ) -> Dict[str, Any]:
         """
-        Extract guidelines for an entire book.
+        Extract guidelines for an entire book (V2 pipeline).
 
         Args:
             book_id: Book identifier
@@ -112,24 +128,31 @@ class GuidelineExtractionOrchestrator:
         Returns:
             Dict with extraction results and statistics
 
-        Pipeline:
+        V2 Pipeline:
             For each page (start_page to end_page):
-            1. Process page (extract, merge, update indices)
-            2. Check for stable subtopics
-            3. Finalize stable subtopics (teaching desc, quality, DB sync)
+            1. Process page (extract guidelines, merge, update indices)
+            2. Check for stable subtopics (5-page threshold)
+
+            After all pages:
+            1. Finalize all open topics
+            2. Run deduplication
+            3. Merge duplicates
+            4. Sync to database (if enabled)
         """
         total_pages = book_metadata.get("total_pages", 100)
         end_page = end_page or total_pages
 
         logger.info(
-            f"Starting guideline extraction for book {book_id}: "
+            f"Starting V2 guideline extraction for book {book_id}: "
             f"pages {start_page}-{end_page}, auto_sync={auto_sync_to_db}"
         )
 
         stats = {
             "pages_processed": 0,
             "subtopics_created": 0,
+            "subtopics_merged": 0,
             "subtopics_finalized": 0,
+            "duplicates_merged": 0,
             "errors": [],
             "warnings": []
         }
@@ -149,23 +172,22 @@ class GuidelineExtractionOrchestrator:
 
                     stats["pages_processed"] += 1
 
-                    if page_result.get("new_subtopic_created"):
+                    if page_result.get("is_new_topic"):
                         stats["subtopics_created"] += 1
+                    else:
+                        stats["subtopics_merged"] += 1
 
-                    # Check for stable subtopics
-                    stable_subtopics = self.check_and_finalize_stable_subtopics(
+                    # Check for stable subtopics (5-page threshold)
+                    stable_count = self._check_and_mark_stable_subtopics(
                         book_id=book_id,
-                        current_page=page_num,
-                        book_metadata=book_metadata,
-                        auto_sync_to_db=auto_sync_to_db
+                        current_page=page_num
                     )
-
-                    stats["subtopics_finalized"] += len(stable_subtopics)
 
                     logger.info(
                         f"Page {page_num} complete: "
-                        f"{stats['subtopics_created']} subtopics created, "
-                        f"{stats['subtopics_finalized']} finalized"
+                        f"{'NEW' if page_result.get('is_new_topic') else 'CONTINUE'} "
+                        f"→ {page_result.get('topic_key')}/{page_result.get('subtopic_key')}, "
+                        f"{stable_count} marked stable"
                     )
 
                 except Exception as e:
@@ -174,18 +196,31 @@ class GuidelineExtractionOrchestrator:
                     stats["errors"].append(error_msg)
                     # Continue processing next page
 
+            # Book-end processing
+            logger.info(f"Book processing complete. Starting finalization...")
+
+            finalization_result = self.finalize_book(
+                book_id=book_id,
+                book_metadata=book_metadata,
+                auto_sync_to_db=auto_sync_to_db
+            )
+
+            stats["subtopics_finalized"] = finalization_result.get("subtopics_finalized", 0)
+            stats["duplicates_merged"] = finalization_result.get("duplicates_merged", 0)
+
             logger.info(
-                f"Guideline extraction complete for book {book_id}: "
+                f"V2 guideline extraction complete for book {book_id}: "
                 f"{stats['pages_processed']} pages, "
-                f"{stats['subtopics_created']} subtopics, "
-                f"{stats['subtopics_finalized']} finalized, "
+                f"{stats['subtopics_created']} created, "
+                f"{stats['subtopics_merged']} merged, "
+                f"{stats['duplicates_merged']} duplicates merged, "
                 f"{len(stats['errors'])} errors"
             )
 
             return stats
 
         except Exception as e:
-            logger.error(f"Guideline extraction failed for book {book_id}: {str(e)}", exc_info=True)
+            logger.error(f"V2 guideline extraction failed for book {book_id}: {str(e)}", exc_info=True)
             raise
 
     def process_page(
@@ -195,7 +230,7 @@ class GuidelineExtractionOrchestrator:
         book_metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Process a single page through the pipeline.
+        Process a single page through the V2 pipeline.
 
         Args:
             book_id: Book identifier
@@ -205,69 +240,93 @@ class GuidelineExtractionOrchestrator:
         Returns:
             Dict with page processing results
 
-        Steps:
+        V2 Steps:
         1. Load page OCR text
-        2. Generate minisummary
-        3. Build context pack
-        4. Detect subtopic boundary
-        5. Extract page facts
-        6. Merge facts into shard
-        7. Save updated shard to S3
-        8. Update indices
-        9. Save page guideline
+        2. Generate minisummary (5-6 lines)
+        3. Build context pack (5 recent pages + guidelines)
+        4. Boundary detection + guideline extraction (combined)
+        5. Create new shard OR merge guidelines (LLM)
+        6. Save updated shard to S3
+        7. Update indices
+        8. Save page guideline
         """
-        logger.debug(f"Processing page {page_num}...")
+        logger.debug(f"Processing page {page_num} (V2 pipeline)...")
 
         # Step 1: Load page OCR text
         page_text = self._load_page_text(book_id, page_num)
 
-        # Step 2: Generate minisummary
+        # Step 2: Generate minisummary (5-6 lines)
         minisummary = self.minisummary.generate(page_text)
 
-        # Step 3: Build context pack
+        # Step 3: Build context pack (5 recent + guidelines)
         context_pack = self.context_pack.build(
             book_id=book_id,
             current_page=page_num,
             book_metadata=book_metadata
         )
 
-        # Step 4: Detect subtopic boundary
-        decision, topic_key, topic_title, subtopic_key, subtopic_title, confidence = \
+        # Step 4: Boundary detection + guideline extraction (V2)
+        is_new, topic_key, topic_title, subtopic_key, subtopic_title, page_guidelines = \
             self.boundary_detector.detect(
                 context_pack=context_pack,
-                minisummary=minisummary,
-                default_topic_key=f"{book_metadata.get('subject', 'unknown').lower()}-grade-{book_metadata.get('grade', 0)}"
+                page_text=page_text  # V2: Full text, not summary
             )
 
-        # Step 5: Extract page facts
-        page_facts = self.facts_extractor.extract(
-            page_text=page_text,
-            subtopic_title=subtopic_title,
-            grade=book_metadata.get("grade", 3),
-            subject=book_metadata.get("subject", "Math")
-        )
+        # Step 5: Create or merge shard
+        if is_new:
+            # Create new shard
+            shard = SubtopicShard(
+                topic_key=topic_key,
+                topic_title=topic_title,
+                subtopic_key=subtopic_key,
+                subtopic_title=subtopic_title,
+                source_page_start=page_num,
+                source_page_end=page_num,
+                status="open",
+                guidelines=page_guidelines,  # V2: Single field
+                version=1
+            )
+            logger.info(f"Created NEW shard: {topic_key}/{subtopic_key}")
+        else:
+            # Load existing shard and merge (or create if doesn't exist yet)
+            try:
+                shard = self._load_shard_v2(book_id, topic_key, subtopic_key)
 
-        # Step 6: Load or create shard, then merge facts
-        shard = self._load_or_create_shard(
-            book_id=book_id,
-            topic_key=topic_key,
-            topic_title=topic_title,
-            subtopic_key=subtopic_key,
-            subtopic_title=subtopic_title,
-            page_facts=page_facts,
-            page_num=page_num
-        )
+                # V2: LLM-based merge
+                merged_guidelines = self.merge_service.merge(
+                    existing_guidelines=shard.guidelines,
+                    new_page_guidelines=page_guidelines,
+                    topic_title=topic_title,
+                    subtopic_title=subtopic_title,
+                    grade=book_metadata.get("grade", 3),
+                    subject=book_metadata.get("subject", "Math")
+                )
 
-        new_subtopic_created = (shard.version == 1)
+                shard.guidelines = merged_guidelines
+                shard.source_page_end = page_num
+                shard.version += 1
+                shard.updated_at = datetime.utcnow().isoformat()
 
-        if not new_subtopic_created:
-            # Merge facts into existing shard
-            shard = self.reducer.merge(shard, page_facts, page_num)
+                logger.info(f"Merged into existing shard: {topic_key}/{subtopic_key}")
+            except Exception as e:
+                # Shard doesn't exist yet - treat as new
+                logger.warning(f"Shard not found, creating new: {topic_key}/{subtopic_key}")
+                shard = SubtopicShard(
+                    topic_key=topic_key,
+                    topic_title=topic_title,
+                    subtopic_key=subtopic_key,
+                    subtopic_title=subtopic_title,
+                    source_page_start=page_num,
+                    source_page_end=page_num,
+                    status="open",
+                    guidelines=page_guidelines,
+                    version=1
+                )
 
-        # Step 7: Save updated shard to S3
-        self._save_shard(shard)
+        # Step 6: Save shard to S3
+        self._save_shard_v2(book_id, shard)
 
-        # Step 8: Update indices
+        # Step 7: Update indices
         self._update_indices(
             book_id=book_id,
             topic_key=topic_key,
@@ -275,242 +334,359 @@ class GuidelineExtractionOrchestrator:
             subtopic_key=subtopic_key,
             subtopic_title=subtopic_title,
             page_num=page_num,
-            confidence=confidence,
             status=shard.status,
             source_page_start=shard.source_page_start,
             source_page_end=shard.source_page_end
         )
 
-        # Step 9: Save page guideline
-        page_guideline = PageGuideline(
+        # Step 8: Save page guideline (minisummary)
+        self._save_page_guideline_v2(
             book_id=book_id,
-            page=page_num,
-            assigned_topic_key=topic_key,
-            assigned_subtopic_key=subtopic_key,
-            assigned_topic_title=topic_title,
-            assigned_subtopic_title=subtopic_title,
-            confidence=confidence,
-            summary=minisummary,
-            facts=page_facts,
-            provisional=False,
-            decision_metadata=DecisionMetadata(
-                decision=decision,
-                continue_score=0.0,  # Not stored in MVP v1
-                new_score=0.0,
-                reasoning="Decision based on boundary detection analysis"
-            )
+            page_num=page_num,
+            minisummary=minisummary
         )
-        self._save_page_guideline(page_guideline)
 
         logger.debug(
-            f"Page {page_num} processed: {topic_key}/{subtopic_key}, "
-            f"confidence={confidence:.2f}, new_subtopic={new_subtopic_created}"
+            f"Page {page_num} processed (V2): {topic_key}/{subtopic_key}, "
+            f"is_new={is_new}"
         )
 
         return {
             "page_num": page_num,
             "topic_key": topic_key,
             "subtopic_key": subtopic_key,
-            "confidence": confidence,
-            "new_subtopic_created": new_subtopic_created,
-            "facts_count": {
-                "objectives": len(page_facts.objectives_add),
-                "examples": len(page_facts.examples_add),
-                "misconceptions": len(page_facts.misconceptions_add),
-                "assessments": len(page_facts.assessments_add)
-            }
+            "is_new_topic": is_new,
+            "guidelines_length": len(page_guidelines)
         }
 
-    def check_and_finalize_stable_subtopics(
+    def finalize_book(
         self,
         book_id: str,
-        current_page: int,
         book_metadata: Dict[str, Any],
         auto_sync_to_db: bool = False
-    ) -> List[Tuple[str, str]]:
+    ) -> Dict[str, Any]:
         """
-        Check for stable subtopics and finalize them.
+        End-of-book processing (V2).
+
+        Steps:
+        1. Finalize all open topics/subtopics
+        2. Run deduplication pass
+        3. Merge duplicate shards
+        4. Sync to database (if enabled)
 
         Args:
             book_id: Book identifier
-            current_page: Current page number
             book_metadata: Book metadata
             auto_sync_to_db: If True, sync to database
 
         Returns:
-            List of (topic_key, subtopic_key) that were finalized
-
-        Steps (for each stable subtopic):
-        1. Mark shard as stable
-        2. Generate teaching description
-        3. Run quality validation
-        4. Update quality flags
-        5. Save updated shard
-        6. Optionally sync to database
+            Dict with finalization results
         """
-        # Load indices
-        index = self.index_manager.get_or_create_index(book_id)
-        page_index = self.index_manager.get_or_create_page_index(book_id)
+        logger.info(f"Finalizing book {book_id} (V2 pipeline)")
 
-        # Detect stable subtopics
-        stable_subtopics = self.stability_detector.detect_stable_subtopics(
-            index=index,
-            page_index=page_index,
-            current_page=current_page
+        # Step 1: Finalize all open shards
+        index = self._load_index(book_id)
+        finalized_count = 0
+
+        for topic in index.topics:
+            for subtopic in topic.subtopics:
+                if subtopic.status in ["open", "stable"]:
+                    try:
+                        shard = self._load_shard_v2(book_id, topic.topic_key, subtopic.subtopic_key)
+                        shard.status = "final"
+                        shard.updated_at = datetime.utcnow().isoformat()
+                        self._save_shard_v2(book_id, shard)
+                        finalized_count += 1
+                    except Exception as e:
+                        logger.warning(f"Shard not found during finalization, skipping: {topic.topic_key}/{subtopic.subtopic_key} - {str(e)}")
+                        continue
+
+        logger.info(f"Finalized {finalized_count} open/stable shards")
+
+        # Step 2: Refine topic/subtopic names based on complete guidelines
+        logger.info(f"Refining topic/subtopic names for {book_id}")
+        refined_count = 0
+        for topic in index.topics:
+            for subtopic in topic.subtopics:
+                try:
+                    shard = self._load_shard_v2(book_id, topic.topic_key, subtopic.subtopic_key)
+
+                    # Get refined names from LLM
+                    refinement = self.name_refinement.refine_names(shard, book_metadata)
+
+                    # Track if names changed
+                    names_changed = (
+                        refinement.topic_title != shard.topic_title or
+                        refinement.topic_key != shard.topic_key or
+                        refinement.subtopic_title != shard.subtopic_title or
+                        refinement.subtopic_key != shard.subtopic_key
+                    )
+
+                    if names_changed:
+                        logger.info(
+                            f"Refining: {shard.topic_key}/{shard.subtopic_key} → "
+                            f"{refinement.topic_key}/{refinement.subtopic_key}"
+                        )
+
+                        # Update shard with new names
+                        old_topic_key = shard.topic_key
+                        old_subtopic_key = shard.subtopic_key
+
+                        shard.topic_title = refinement.topic_title
+                        shard.topic_key = refinement.topic_key
+                        shard.subtopic_title = refinement.subtopic_title
+                        shard.subtopic_key = refinement.subtopic_key
+                        shard.updated_at = datetime.utcnow().isoformat()
+
+                        # Save shard with NEW key (and delete old if key changed)
+                        self._save_shard_v2(book_id, shard)
+                        if old_topic_key != shard.topic_key or old_subtopic_key != shard.subtopic_key:
+                            self._delete_shard_v2(book_id, old_topic_key, old_subtopic_key)
+
+                        # Update index with new names
+                        self._update_index_names(
+                            book_id, old_topic_key, old_subtopic_key,
+                            refinement.topic_key, refinement.subtopic_key,
+                            refinement.topic_title, refinement.subtopic_title
+                        )
+
+                        refined_count += 1
+
+                except Exception as e:
+                    logger.warning(f"Failed to refine names for {topic.topic_key}/{subtopic.subtopic_key}: {str(e)}")
+                    continue
+
+        logger.info(f"Refined {refined_count} topic/subtopic names")
+
+        # Step 3: Load all shards for deduplication
+        all_shards = self._load_all_shards_v2(book_id)
+
+        # Step 3: Identify duplicates
+        duplicates = self.dedup_service.deduplicate(
+            all_shards=all_shards,
+            grade=book_metadata.get("grade", 3),
+            subject=book_metadata.get("subject", "Math")
         )
 
-        finalized = []
-
-        for topic_key, subtopic_key in stable_subtopics:
+        # Step 4: Merge duplicate shards
+        merged_count = 0
+        for topic1, subtopic1, topic2, subtopic2 in duplicates:
             try:
-                logger.info(f"Finalizing stable subtopic: {topic_key}/{subtopic_key}")
-
-                # Load shard
-                shard = self._load_shard(book_id, topic_key, subtopic_key)
-
-                # Step 1: Mark as stable
-                shard = self.stability_detector.mark_as_stable(shard)
-
-                # Step 2: Generate teaching description
-                teaching_description, is_valid = self.teaching_desc_gen.generate_with_validation(
-                    shard=shard,
+                self._merge_duplicate_shards(
+                    book_id=book_id,
+                    topic1=topic1,
+                    subtopic1=subtopic1,
+                    topic2=topic2,
+                    subtopic2=subtopic2,
                     grade=book_metadata.get("grade", 3),
-                    subject=book_metadata.get("subject", "Math"),
-                    max_retries=2
+                    subject=book_metadata.get("subject", "Math")
                 )
-                shard.teaching_description = teaching_description
-
-                # Step 3: Run quality validation
-                validation_result = self.quality_gates.validate(shard)
-
-                # Step 4: Update quality flags and status
-                shard = self.quality_gates.update_quality_flags(shard, validation_result)
-
-                # Step 5: Save updated shard
-                self._save_shard(shard)
-
-                # Update index status
-                index = self.index_manager.update_subtopic_status(
-                    index=index,
-                    topic_key=topic_key,
-                    subtopic_key=subtopic_key,
-                    new_status=shard.status  # "final" or "needs_review"
-                )
-                self.index_manager.save_index(index, create_snapshot=True)
-
-                # Step 6: Optionally sync to database
-                if auto_sync_to_db and self.db_sync and shard.status == "final":
-                    self.db_sync.sync_shard(
-                        shard=shard,
-                        book_id=book_id,
-                        grade=book_metadata.get("grade", 3),
-                        subject=book_metadata.get("subject", "Math"),
-                        board=book_metadata.get("board", "CBSE")
-                    )
-                    logger.info(f"Synced {topic_key}/{subtopic_key} to database")
-
-                finalized.append((topic_key, subtopic_key))
-
-                logger.info(
-                    f"Finalized {topic_key}/{subtopic_key}: "
-                    f"status={shard.status}, quality_score={shard.quality_flags.quality_score}"
-                )
-
+                merged_count += 1
             except Exception as e:
-                logger.error(
-                    f"Failed to finalize {topic_key}/{subtopic_key}: {str(e)}",
-                    exc_info=True
+                logger.error(f"Failed to merge duplicates {topic1}/{subtopic1} + {topic2}/{subtopic2}: {e}")
+
+        logger.info(f"Book finalized: {merged_count} duplicate pairs merged")
+
+        # Step 5: Sync to database (if enabled)
+        logger.info(f"DEBUG: auto_sync_to_db={auto_sync_to_db}, self.db_sync={self.db_sync}")
+        if auto_sync_to_db and self.db_sync:
+            logger.info("Auto-syncing to database...")
+            try:
+                sync_stats = self.db_sync.sync_book_guidelines(
+                    book_id=book_id,
+                    s3_client=self.s3,
+                    book_metadata=book_metadata
                 )
-                # Continue with next subtopic
+                logger.info(
+                    f"Database sync complete: {sync_stats['synced_count']} guidelines synced "
+                    f"({sync_stats['created_count']} created, {sync_stats['updated_count']} updated)"
+                )
+            except Exception as e:
+                logger.error(f"Database sync failed: {str(e)}")
 
-        return finalized
+        return {
+            "status": "finalized",
+            "subtopics_finalized": finalized_count,
+            "subtopics_renamed": refined_count,
+            "duplicates_merged": merged_count,
+            "total_topics": len(index.topics)
+        }
 
-    # ==================== Helper Methods ====================
-
-    def _load_page_text(self, book_id: str, page_num: int) -> str:
-        """Load page OCR text from S3"""
-        # OCR text files are stored as books/{book_id}/{page_num}.txt
-        page_key = f"books/{book_id}/{page_num}.txt"
-
-        try:
-            page_text_bytes = self.s3.download_bytes(page_key)
-            page_text = page_text_bytes.decode('utf-8')
-            logger.debug(f"Loaded page text from {page_key}: {len(page_text)} chars")
-            return page_text
-        except Exception as e:
-            logger.error(f"Failed to load page text from {page_key}: {str(e)}")
-            raise FileNotFoundError(f"Page text not found: {page_key}")
-
-    def _load_or_create_shard(
+    def _check_and_mark_stable_subtopics(
         self,
         book_id: str,
-        topic_key: str,
-        topic_title: str,
-        subtopic_key: str,
-        subtopic_title: str,
-        page_facts: PageFacts,
-        page_num: int
-    ) -> SubtopicShard:
-        """Load existing shard or create new one"""
-        try:
-            # Try to load existing shard
-            shard = self._load_shard(book_id, topic_key, subtopic_key)
-            logger.debug(f"Loaded existing shard: {topic_key}/{subtopic_key}")
-            return shard
-        except FileNotFoundError:
-            # Create new shard
-            shard = self.reducer.create_new_shard(
-                book_id=book_id,
-                topic_key=topic_key,
-                topic_title=topic_title,
-                subtopic_key=subtopic_key,
-                subtopic_title=subtopic_title,
-                page_facts=page_facts,
-                page_num=page_num
-            )
-            logger.info(f"Created new shard: {topic_key}/{subtopic_key}")
-            return shard
+        current_page: int
+    ) -> int:
+        """
+        Check for stable subtopics (V2: 5-page threshold).
 
-    def _load_shard(self, book_id: str, topic_key: str, subtopic_key: str) -> SubtopicShard:
-        """Load shard from S3"""
+        Args:
+            book_id: Book identifier
+            current_page: Current page number
+
+        Returns:
+            Number of subtopics marked as stable
+        """
+        index = self._load_index(book_id)
+        stable_count = 0
+
+        for topic in index.topics:
+            for subtopic in topic.subtopics:
+                if subtopic.status == "open":
+                    shard = self._load_shard_v2(book_id, topic.topic_key, subtopic.subtopic_key)
+
+                    # V2: 5-page gap threshold
+                    if current_page - shard.source_page_end >= self.STABILITY_THRESHOLD:
+                        shard.status = "stable"
+                        shard.updated_at = datetime.utcnow().isoformat()
+                        self._save_shard_v2(book_id, shard)
+                        stable_count += 1
+                        logger.info(
+                            f"Marked stable: {topic.topic_key}/{subtopic.subtopic_key} "
+                            f"(last page: {shard.source_page_end}, current: {current_page})"
+                        )
+
+        return stable_count
+
+    def _merge_duplicate_shards(
+        self,
+        book_id: str,
+        topic1: str,
+        subtopic1: str,
+        topic2: str,
+        subtopic2: str,
+        grade: int,
+        subject: str
+    ):
+        """Merge two duplicate shards"""
+        shard1 = self._load_shard_v2(book_id, topic1, subtopic1)
+        shard2 = self._load_shard_v2(book_id, topic2, subtopic2)
+
+        # Merge guidelines using LLM
+        merged_guidelines = self.merge_service.merge(
+            existing_guidelines=shard1.guidelines,
+            new_page_guidelines=shard2.guidelines,
+            topic_title=shard1.topic_title,
+            subtopic_title=shard1.subtopic_title,
+            grade=grade,
+            subject=subject
+        )
+
+        # Keep shard1, update it
+        shard1.guidelines = merged_guidelines
+        shard1.source_page_start = min(shard1.source_page_start, shard2.source_page_start)
+        shard1.source_page_end = max(shard1.source_page_end, shard2.source_page_end)
+        shard1.version += 1
+        shard1.updated_at = datetime.utcnow().isoformat()
+
+        # Save merged shard
+        self._save_shard_v2(book_id, shard1)
+
+        # Delete shard2
+        self._delete_shard_v2(book_id, topic2, subtopic2)
+
+        # Update index to remove shard2
+        self._remove_from_index(book_id, topic2, subtopic2)
+
+        logger.info(f"Merged {topic1}/{subtopic1} ← {topic2}/{subtopic2}")
+
+    # ========================================================================
+    # HELPER METHODS - S3 I/O
+    # ========================================================================
+
+    def _load_page_text(self, book_id: str, page_num: int) -> str:
+        """Load OCR text for a page"""
+        # Try OCR text file first
+        page_key = f"books/{book_id}/pages/{page_num:03d}.ocr.txt"
+        try:
+            text_bytes = self.s3.download_bytes(page_key)
+            return text_bytes.decode('utf-8')
+        except Exception:
+            # Fallback: try .txt extension
+            page_key = f"books/{book_id}/{page_num}.txt"
+            try:
+                text_bytes = self.s3.download_bytes(page_key)
+                return text_bytes.decode('utf-8')
+            except Exception as e:
+                logger.error(f"Failed to load page text from {page_key}: {str(e)}")
+                raise
+
+    def _load_shard_v2(self, book_id: str, topic_key: str, subtopic_key: str) -> SubtopicShard:
+        """Load a V2 subtopic shard from S3"""
         shard_key = (
             f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
             f"{subtopic_key}.latest.json"
         )
-
         try:
             shard_data = self.s3.download_json(shard_key)
             return SubtopicShard(**shard_data)
         except Exception as e:
-            raise FileNotFoundError(f"Shard not found: {shard_key}")
-
-    def _save_shard(self, shard: SubtopicShard) -> None:
-        """Save shard to S3"""
-        shard_key = (
-            f"books/{shard.book_id}/guidelines/topics/{shard.topic_key}/subtopics/"
-            f"{shard.subtopic_key}.latest.json"
-        )
-
-        try:
-            self.s3.upload_json(data=shard.model_dump(), s3_key=shard_key)
-            logger.debug(f"Saved shard to {shard_key}: version {shard.version}")
-        except Exception as e:
-            logger.error(f"Failed to save shard to {shard_key}: {str(e)}")
+            logger.error(f"Failed to load V2 shard from {shard_key}: {str(e)}")
             raise
 
-    def _save_page_guideline(self, page_guideline: PageGuideline) -> None:
-        """Save page guideline to S3"""
-        page_key = (
-            f"books/{page_guideline.book_id}/pages/{page_guideline.page:03d}."
-            f"page_guideline.json"
+    def _save_shard_v2(self, book_id: str, shard: SubtopicShard):
+        """Save a V2 subtopic shard to S3"""
+        shard_key = (
+            f"books/{book_id}/guidelines/topics/{shard.topic_key}/subtopics/"
+            f"{shard.subtopic_key}.latest.json"
         )
-
         try:
-            self.s3.upload_json(data=page_guideline.model_dump(), s3_key=page_key)
-            logger.debug(f"Saved page guideline to {page_key}")
+            self.s3.upload_json(shard.model_dump(), shard_key)
+            logger.debug(f"Saved V2 shard: {shard_key}")
+        except Exception as e:
+            logger.error(f"Failed to save V2 shard to {shard_key}: {str(e)}")
+            raise
+
+    def _delete_shard_v2(self, book_id: str, topic_key: str, subtopic_key: str):
+        """Delete a V2 subtopic shard from S3"""
+        shard_key = (
+            f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
+            f"{subtopic_key}.latest.json"
+        )
+        try:
+            self.s3.delete_file(shard_key)
+            logger.debug(f"Deleted V2 shard: {shard_key}")
+        except Exception as e:
+            logger.warning(f"Failed to delete V2 shard {shard_key}: {str(e)}")
+
+    def _load_all_shards_v2(self, book_id: str) -> List[SubtopicShard]:
+        """Load all V2 shards for a book"""
+        index = self._load_index(book_id)
+        all_shards = []
+
+        for topic in index.topics:
+            for subtopic in topic.subtopics:
+                try:
+                    shard = self._load_shard_v2(book_id, topic.topic_key, subtopic.subtopic_key)
+                    all_shards.append(shard)
+                except Exception as e:
+                    logger.warning(f"Failed to load shard {topic.topic_key}/{subtopic.subtopic_key}: {e}")
+
+        return all_shards
+
+    def _save_page_guideline_v2(self, book_id: str, page_num: int, minisummary: str):
+        """Save page guideline (minisummary) for context building"""
+        page_key = f"books/{book_id}/pages/{page_num:03d}.page_guideline.json"
+        page_data = {
+            "page": page_num,
+            "summary": minisummary,
+            "version": "v2"
+        }
+        try:
+            self.s3.upload_json(page_data, page_key)
         except Exception as e:
             logger.error(f"Failed to save page guideline to {page_key}: {str(e)}")
             raise
+
+    def _load_index(self, book_id: str) -> GuidelinesIndex:
+        """Load guidelines index from S3"""
+        index_key = f"books/{book_id}/guidelines/index.json"
+        try:
+            index_data = self.s3.download_json(index_key)
+            return GuidelinesIndex(**index_data)
+        except Exception as e:
+            logger.warning(f"No index found at {index_key}, creating new one")
+            return GuidelinesIndex(book_id=book_id, topics=[])
 
     def _update_indices(
         self,
@@ -520,12 +696,11 @@ class GuidelineExtractionOrchestrator:
         subtopic_key: str,
         subtopic_title: str,
         page_num: int,
-        confidence: float,
         status: str,
         source_page_start: int,
         source_page_end: int
-    ) -> None:
-        """Update index.json and page_index.json"""
+    ):
+        """Update guidelines index and page index"""
         # Calculate page range
         page_range = f"{source_page_start}-{source_page_end}"
 
@@ -549,7 +724,65 @@ class GuidelineExtractionOrchestrator:
             page_num=page_num,
             topic_key=topic_key,
             subtopic_key=subtopic_key,
-            confidence=confidence,
+            confidence=0.9,  # V2: using fixed high confidence
             provisional=False
         )
         self.index_manager.save_page_index(page_index, create_snapshot=False)
+
+    def _remove_from_index(self, book_id: str, topic_key: str, subtopic_key: str):
+        """Remove subtopic from index (after merging duplicates)"""
+        try:
+            index = self._load_index(book_id)
+
+            for topic in index.topics:
+                if topic.topic_key == topic_key:
+                    topic.subtopics = [s for s in topic.subtopics if s.subtopic_key != subtopic_key]
+                    # Remove topic if no subtopics left
+                    if not topic.subtopics:
+                        index.topics = [t for t in index.topics if t.topic_key != topic_key]
+                    break
+
+            # Save updated index (use mode='json' to serialize datetime)
+            index_key = f"books/{book_id}/guidelines/index.json"
+            self.s3.upload_json(index.model_dump(mode='json'), index_key)
+
+        except Exception as e:
+            logger.error(f"Failed to remove {topic_key}/{subtopic_key} from index: {e}")
+
+    def _update_index_names(
+        self,
+        book_id: str,
+        old_topic_key: str,
+        old_subtopic_key: str,
+        new_topic_key: str,
+        new_subtopic_key: str,
+        new_topic_title: str,
+        new_subtopic_title: str
+    ):
+        """Update topic/subtopic names in the index after refinement"""
+        try:
+            index = self._load_index(book_id)
+
+            # Find and update the subtopic entry
+            for topic in index.topics:
+                if topic.topic_key == old_topic_key:
+                    # Update topic name if it changed
+                    if old_topic_key != new_topic_key:
+                        topic.topic_key = new_topic_key
+                        topic.topic_title = new_topic_title
+
+                    # Update subtopic entry
+                    for subtopic in topic.subtopics:
+                        if subtopic.subtopic_key == old_subtopic_key:
+                            subtopic.subtopic_key = new_subtopic_key
+                            subtopic.subtopic_title = new_subtopic_title
+                            break
+                    break
+
+            # Save updated index (use mode='json' to serialize datetime)
+            index_key = f"books/{book_id}/guidelines/index.json"
+            self.s3.upload_json(index.model_dump(mode='json'), index_key)
+            logger.debug(f"Updated index: {old_topic_key}/{old_subtopic_key} → {new_topic_key}/{new_subtopic_key}")
+
+        except Exception as e:
+            logger.error(f"Failed to update index names: {e}")

@@ -3,11 +3,14 @@ Admin API routes for book ingestion.
 
 Provides endpoints for book CRUD, page upload, and guideline management.
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from database import get_db
+
+logger = logging.getLogger(__name__)
 from features.book_ingestion.models.schemas import (
     CreateBookRequest,
     BookResponse,
@@ -370,6 +373,7 @@ def get_page(
 # ===== Guideline Management Endpoints (Phase 6) =====
 
 from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
 from features.book_ingestion.utils.s3_client import S3Client
 from openai import OpenAI
 from pydantic import BaseModel
@@ -389,7 +393,9 @@ class GenerateGuidelinesResponse(BaseModel):
     status: str
     pages_processed: int
     subtopics_created: int
+    subtopics_merged: Optional[int] = 0
     subtopics_finalized: int
+    duplicates_merged: Optional[int] = 0
     errors: List[str]
     warnings: List[str]
 
@@ -403,15 +409,8 @@ class GuidelineSubtopicResponse(BaseModel):
     status: str
     source_page_start: int
     source_page_end: int
-    objectives: List[str]
-    examples: List[str]
-    misconceptions: List[str]
-    assessments: List[dict]
-    teaching_description: Optional[str]
-    evidence_summary: str
-    confidence: float
-    quality_score: Optional[float]
     version: int
+    guidelines: str
 
 
 class GuidelinesListResponse(BaseModel):
@@ -477,7 +476,7 @@ async def generate_guidelines(
             "total_pages": total_pages
         }
 
-        # Initialize orchestrator (reuse s3_client from above)
+        # Initialize orchestrator
         openai_client = OpenAI()
         orchestrator = GuidelineExtractionOrchestrator(
             s3_client=s3_client,
@@ -499,7 +498,9 @@ async def generate_guidelines(
             status="completed",
             pages_processed=stats["pages_processed"],
             subtopics_created=stats["subtopics_created"],
+            subtopics_merged=stats.get("subtopics_merged", 0),
             subtopics_finalized=stats["subtopics_finalized"],
+            duplicates_merged=stats.get("duplicates_merged", 0),
             errors=stats["errors"],
             warnings=stats.get("warnings", [])
         )
@@ -510,6 +511,102 @@ async def generate_guidelines(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate guidelines: {str(e)}"
+        )
+
+
+class FinalizeRequest(BaseModel):
+    """Request to finalize and consolidate guidelines"""
+    auto_sync_to_db: bool = False
+
+
+class FinalizeResponse(BaseModel):
+    """Response from finalization"""
+    book_id: str
+    status: str
+    subtopics_finalized: int
+    subtopics_renamed: int
+    duplicates_merged: int
+    message: str
+
+
+@router.post("/books/{book_id}/finalize", response_model=FinalizeResponse)
+async def finalize_guidelines(
+    book_id: str,
+    request: FinalizeRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Finalize and consolidate guidelines for a book.
+
+    This triggers the finalization pipeline:
+    1. Mark all open/stable subtopics as final
+    2. Refine topic/subtopic names using LLM
+    3. Run deduplication to merge similar topics
+    4. Optionally sync to database
+
+    Args:
+        book_id: Book identifier
+        request: Finalization request with options
+        db: Database session
+
+    Returns:
+        Finalization results with statistics
+
+    Raises:
+        HTTPException: If book not found or finalization fails
+    """
+    try:
+        # Get book metadata
+        book_service = BookService(db)
+        book = book_service.get_book(book_id)
+
+        if not book:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Book not found: {book_id}"
+            )
+
+        # Build book metadata
+        book_metadata = {
+            "grade": book.grade,
+            "subject": book.subject,
+            "board": book.board,
+            "country": book.country
+        }
+
+        # Initialize V2 orchestrator
+        s3_client = S3Client()
+        openai_client = OpenAI()
+        orchestrator = GuidelineExtractionOrchestrator(
+            s3_client=s3_client,
+            openai_client=openai_client,
+            db_session=db
+        )
+
+        # Run finalization
+        result = orchestrator.finalize_book(
+            book_id=book_id,
+            book_metadata=book_metadata,
+            auto_sync_to_db=request.auto_sync_to_db
+        )
+
+        return FinalizeResponse(
+            book_id=book_id,
+            status="completed",
+            subtopics_finalized=result.get("subtopics_finalized", 0),
+            subtopics_renamed=result.get("subtopics_renamed", 0),
+            duplicates_merged=result.get("duplicates_merged", 0),
+            message=f"Successfully finalized {result.get('subtopics_finalized', 0)} subtopics, "
+                   f"refined {result.get('subtopics_renamed', 0)} names, "
+                   f"merged {result.get('duplicates_merged', 0)} duplicates"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to finalize guidelines: {str(e)}"
         )
 
 
@@ -555,13 +652,13 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                 guidelines=[]
             )
 
-        # Load all shards
+        # Load all shards (V2 only)
         guidelines = []
         from features.book_ingestion.models.guideline_models import SubtopicShard
 
         for topic_entry in index.topics:
             for subtopic_entry in topic_entry.subtopics:
-                # Load shard
+                # Load V2 shard
                 shard_key = (
                     f"books/{book_id}/guidelines/topics/{topic_entry.topic_key}/"
                     f"subtopics/{subtopic_entry.subtopic_key}.latest.json"
@@ -571,6 +668,7 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                     shard_data = s3_client.download_json(shard_key)
                     shard = SubtopicShard(**shard_data)
 
+                    # V2 response with single guidelines field
                     guidelines.append(GuidelineSubtopicResponse(
                         topic_key=shard.topic_key,
                         topic_title=shard.topic_title,
@@ -579,22 +677,21 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                         status=shard.status,
                         source_page_start=shard.source_page_start,
                         source_page_end=shard.source_page_end,
-                        objectives=shard.objectives,
-                        examples=shard.examples,
-                        misconceptions=shard.misconceptions,
-                        assessments=[
-                            {
-                                "level": a.level,
-                                "prompt": a.prompt,
-                                "answer": a.answer
-                            }
-                            for a in shard.assessments
-                        ],
-                        teaching_description=shard.teaching_description,
-                        evidence_summary=shard.evidence_summary,
-                        confidence=shard.confidence,
-                        quality_score=None,  # Quality score not yet implemented in Phase 6
-                        version=shard.version
+                        version=shard.version,
+
+                        # V2: Single comprehensive guidelines field
+                        guidelines=shard.guidelines,
+
+                        # V1 fields: Not used in V2 (set to None)
+                        objectives=None,
+                        examples=None,
+                        misconceptions=None,
+                        assessments=None,
+                        teaching_description=None,
+                        description=None,
+                        evidence_summary=None,
+                        confidence=None,
+                        quality_score=None
                     ))
 
                 except Exception as e:
@@ -683,6 +780,7 @@ def get_guideline(
                     for a in shard.assessments
                 ],
                 teaching_description=shard.teaching_description,
+                description=shard.description,
                 evidence_summary=shard.evidence_summary,
                 confidence=shard.confidence,
                 quality_score=None,  # Quality score not yet implemented in Phase 6
@@ -812,7 +910,7 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                         shard = SubtopicShard(**shard_data)
 
                         # Sync to database
-                        db_sync.sync_shard(
+                        guideline_id = db_sync.sync_shard(
                             shard=shard,
                             book_id=book_id,
                             grade=book.grade,
@@ -821,13 +919,16 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                             country=book.country
                         )
 
+                        logger.info(f"Successfully synced guideline {guideline_id}: {topic_entry.topic_key}/{subtopic_entry.subtopic_key}")
                         synced_count += 1
 
                     except Exception as e:
                         import logging
+                        import traceback
                         logging.error(
                             f"Failed to sync {topic_entry.topic_key}/{subtopic_entry.subtopic_key}: {str(e)}"
                         )
+                        traceback.print_exc()
                         # Continue with next shard
 
         return {

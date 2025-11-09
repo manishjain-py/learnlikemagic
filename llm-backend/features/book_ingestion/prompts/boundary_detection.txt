@@ -1,37 +1,50 @@
-You are analyzing a textbook page to determine if it continues the current subtopic or starts a new one.
+You are analyzing a textbook page to determine if it continues an existing topic/subtopic or starts a new one, AND extract teaching guidelines from this page.
 
-CONTEXT (Previous State):
+CONTEXT:
 Book: Grade {grade} {subject} ({board})
 Current Page: {current_page}
 
-Open Subtopics:
-{open_subtopics}
+EXISTING OPEN TOPICS/SUBTOPICS:
+{open_topics}
 
-Recent Page Summaries:
+RECENT PAGE SUMMARIES (last 5 pages):
 {recent_summaries}
 
-CURRENT PAGE SUMMARY:
-{minisummary}
+CURRENT PAGE FULL TEXT:
+{page_text}
 
 TASK:
-1. Analyze if this page CONTINUES an existing open subtopic or starts a NEW subtopic
-2. Provide confidence scores (0.0-1.0) for both decisions
-3. If continuing, identify which subtopic
-4. If new, suggest a subtopic name (kebab-case, e.g., "adding-unlike-fractions")
+1. Determine if this page CONTINUES an existing topic/subtopic or starts a NEW one
+2. Identify the topic and subtopic names
+3. Extract complete teaching guidelines from this page
 
-GUIDELINES:
-- Practice problems usually CONTINUE the current subtopic
-- Headers like "Chapter X" or "Section Y" usually indicate NEW subtopic
-- Gradual topic drift = CONTINUE (don't split on minor variations)
-- Clear conceptual shift = NEW
+DECISION GUIDELINES:
+- A topic/subtopic represents a LEARNING OBJECTIVE, not individual activities
+- Multiple activities can teach the SAME learning objective → CONTINUE
+- Look for CONCEPTUAL similarity, not surface-level changes
+- When in doubt, CONTINUE rather than create NEW
+- If CONTINUING: topic_name and subtopic_name MUST EXACTLY MATCH an existing one from the list above
 
-OUTPUT JSON (valid JSON only, no markdown):
+TOPIC/SUBTOPIC NAMING:
+- Use lowercase, kebab-case (e.g., "data-handling", "adding-fractions")
+- If NEW: Create descriptive, broad names (not activity-specific)
+- If CONTINUE: Copy exact name from existing topics list
+
+GUIDELINES EXTRACTION:
+Extract from this page in natural language text:
+- Learning objectives (what students should learn)
+- Examples and activities shown
+- Teaching strategies or instructions for teachers
+- Common misconceptions mentioned
+- Assessment questions or practice problems
+
+Format as a comprehensive paragraph or bulleted text (your choice - natural language).
+
+OUTPUT JSON:
 {{
-  "decision": "continue|new",
-  "continue_score": 0.00,
-  "new_score": 0.00,
-  "continue_subtopic_key": "string or null",
-  "new_subtopic_key": "string or null",
-  "new_subtopic_title": "string or null",
-  "reasoning": "Brief explanation"
+  "is_new_topic": true|false,
+  "topic_name": "lowercase-topic-name",
+  "subtopic_name": "lowercase-subtopic-name",
+  "page_guidelines": "Complete teaching guidelines text extracted from this page...",
+  "reasoning": "Detailed explanation of why this is/isn't a new topic. Consider: conceptual similarity to existing topics, whether this is same learning objective with different activities, key differences or connections to previous content."
 }}

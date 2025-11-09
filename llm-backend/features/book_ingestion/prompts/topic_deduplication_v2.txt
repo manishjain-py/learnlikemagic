@@ -1,0 +1,34 @@
+You are analyzing all topics/subtopics extracted from a Grade {grade} {subject} textbook to identify duplicates.
+
+ALL TOPICS/SUBTOPICS:
+{topics_summary}
+
+TASK:
+Identify any duplicate or highly overlapping topics/subtopics that should be merged.
+
+CRITERIA FOR DUPLICATES:
+1. Same concept with different wording (e.g., "Data Handling" vs "Organizing Data")
+2. One is subset of another (e.g., "Addition" vs "Adding Two-Digit Numbers")
+3. Nearly identical page ranges (likely same content, different naming)
+4. Guidelines preview shows same concepts
+
+DO NOT mark as duplicate if:
+- Different concepts (e.g., "Addition" vs "Subtraction")
+- Sequential progression (e.g., "Basic Fractions" → "Advanced Fractions")
+- Clear pedagogical separation
+- Page ranges don't overlap
+
+OUTPUT JSON:
+{{
+  "duplicates": [
+    {{
+      "topic_key1": "data-handling",
+      "subtopic_key1": "organizing-information",
+      "topic_key2": "data-organization",
+      "subtopic_key2": "categorizing-data",
+      "reason": "Both cover same concept of organizing and categorizing data"
+    }}
+  ]
+}}
+
+If no duplicates found, return {{"duplicates": []}}.

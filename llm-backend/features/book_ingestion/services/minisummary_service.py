@@ -22,9 +22,12 @@ logger = logging.getLogger(__name__)
 
 class MinisummaryService:
     """
-    Generate extractive summaries (≤60 words) from textbook pages.
+    Generate extractive summaries from textbook pages.
 
-    This service creates compact summaries that:
+    V1: Compact summaries (≤60 words / 2-3 lines)
+    V2: Detailed summaries (5-6 lines) for better context
+
+    This service creates summaries that:
     - Focus on main concepts and examples
     - Are factual and extractive (no interpretation)
     - Serve as input to boundary detection and context building
@@ -39,14 +42,17 @@ class MinisummaryService:
         """
         self.client = openai_client or OpenAI()
         self.model = "gpt-4o-mini"
-        self.max_tokens = 200  # ~60 words + overhead
+
+        # Use 300 tokens for detailed summaries (5-6 lines)
+        self.max_tokens = 300
 
         # Load prompt template
         self.prompt_template = self._load_prompt_template()
 
     def _load_prompt_template(self) -> str:
         """Load minisummary prompt template from file"""
-        prompt_path = Path(__file__).parent.parent / "prompts" / "minisummary.txt"
+        filename = "minisummary_v2.txt"
+        prompt_path = Path(__file__).parent.parent / "prompts" / filename
 
         try:
             return prompt_path.read_text()
@@ -103,10 +109,12 @@ class MinisummaryService:
 
             # Validate word count (soft limit, warning only)
             word_count = len(summary.split())
-            if word_count > 70:  # 60 + 10 tolerance
+            target_words = 150  # ~25 words/line * 6 lines
+            tolerance = 30
+            if word_count > target_words + tolerance:
                 logger.warning(
                     f"Minisummary exceeds target length: {word_count} words "
-                    f"(target: ≤60). Summary: {summary[:100]}..."
+                    f"(target: ≤{target_words}). Summary: {summary[:100]}..."
                 )
 
             logger.debug(f"Generated minisummary ({word_count} words): {summary[:100]}...")
