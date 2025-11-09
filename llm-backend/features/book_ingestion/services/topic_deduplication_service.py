@@ -16,7 +16,7 @@ from typing import List, Tuple, Optional
 
 from openai import OpenAI
 
-from ..models.guideline_models import SubtopicShardV2
+from ..models.guideline_models import SubtopicShard
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class TopicDeduplicationService:
 
     def deduplicate(
         self,
-        all_shards: List[SubtopicShardV2],
+        all_shards: List[SubtopicShard],
         grade: int,
         subject: str
     ) -> List[Tuple[str, str, str, str]]:
@@ -132,7 +132,7 @@ class TopicDeduplicationService:
             logger.error(f"Deduplication analysis failed: {str(e)}")
             return []  # Safe fallback: no duplicates
 
-    def _build_topics_summary(self, shards: List[SubtopicShardV2]) -> str:
+    def _build_topics_summary(self, shards: List[SubtopicShard]) -> str:
         """
         Build a summary of all topics for LLM analysis.
 

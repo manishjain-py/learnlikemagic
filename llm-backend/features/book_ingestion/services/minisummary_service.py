@@ -33,32 +33,25 @@ class MinisummaryService:
     - Serve as input to boundary detection and context building
     """
 
-    def __init__(self, openai_client: Optional[OpenAI] = None, version: str = "v1"):
+    def __init__(self, openai_client: Optional[OpenAI] = None):
         """
         Initialize minisummary service.
 
         Args:
             openai_client: Optional OpenAI client (if None, creates new one)
-            version: "v1" for compact summaries, "v2" for detailed summaries
         """
         self.client = openai_client or OpenAI()
         self.model = "gpt-4o-mini"
-        self.version = version
 
-        # V2 requires more tokens for 5-6 lines
-        self.max_tokens = 300 if version == "v2" else 200
+        # Use 300 tokens for detailed summaries (5-6 lines)
+        self.max_tokens = 300
 
-        # Load appropriate prompt template
-        self.prompt_template = self._load_prompt_template(version)
+        # Load prompt template
+        self.prompt_template = self._load_prompt_template()
 
-    def _load_prompt_template(self, version: str = "v1") -> str:
-        """
-        Load minisummary prompt template from file
-
-        Args:
-            version: "v1" or "v2" for different prompt templates
-        """
-        filename = f"minisummary_v2.txt" if version == "v2" else "minisummary.txt"
+    def _load_prompt_template(self) -> str:
+        """Load minisummary prompt template from file"""
+        filename = "minisummary_v2.txt"
         prompt_path = Path(__file__).parent.parent / "prompts" / filename
 
         try:
@@ -116,8 +109,8 @@ class MinisummaryService:
 
             # Validate word count (soft limit, warning only)
             word_count = len(summary.split())
-            target_words = 150 if self.version == "v2" else 60  # V2: ~25 words/line * 6 lines
-            tolerance = 30 if self.version == "v2" else 10
+            target_words = 150  # ~25 words/line * 6 lines
+            tolerance = 30
             if word_count > target_words + tolerance:
                 logger.warning(
                     f"Minisummary exceeds target length: {word_count} words "

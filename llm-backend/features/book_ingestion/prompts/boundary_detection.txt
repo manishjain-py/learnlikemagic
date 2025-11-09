@@ -1,70 +1,50 @@
-You are analyzing a textbook page to determine if it continues the current subtopic or starts a new one.
+You are analyzing a textbook page to determine if it continues an existing topic/subtopic or starts a new one, AND extract teaching guidelines from this page.
 
-CONTEXT (Previous State):
+CONTEXT:
 Book: Grade {grade} {subject} ({board})
 Current Page: {current_page}
 
-Open Subtopics:
-{open_subtopics}
+EXISTING OPEN TOPICS/SUBTOPICS:
+{open_topics}
 
-Recent Page Summaries:
+RECENT PAGE SUMMARIES (last 5 pages):
 {recent_summaries}
 
-CURRENT PAGE SUMMARY:
-{minisummary}
+CURRENT PAGE FULL TEXT:
+{page_text}
 
 TASK:
-1. Analyze if this page CONTINUES an existing open subtopic or starts a NEW subtopic
-2. Provide confidence scores (0.0-1.0) for both decisions
-3. If continuing, identify which subtopic
-4. If new, suggest a subtopic name (kebab-case, e.g., "adding-unlike-fractions")
+1. Determine if this page CONTINUES an existing topic/subtopic or starts a NEW one
+2. Identify the topic and subtopic names
+3. Extract complete teaching guidelines from this page
 
-IMPORTANT - PEDAGOGICAL PRINCIPLES:
-A subtopic represents a LEARNING OBJECTIVE, not individual activities or examples.
-Multiple activities can teach the SAME learning objective.
-
-GUIDELINES FOR CONTINUATION (favor CONTINUE over NEW):
-1. **Same Learning Objective**: If pages teach the same concept through different examples → CONTINUE
-   - Example: "Categorizing household items" and "Categorizing hairstyles" both teach categorization → CONTINUE
-   - Example: "Tally marks for cows" and "Tally marks for books" both teach data representation → CONTINUE
-
-2. **Different Activities, Same Skill**: Multiple exercises/activities for one concept → CONTINUE
-   - Counting with tally marks, organizing data, categorizing objects = all "Data Handling" → CONTINUE
-   - Various word problems = all "Problem Solving" → CONTINUE
-
-3. **Common Grade-Level Topics** (be aware of typical curriculum structure):
-   - Grade 3 Math: Data Handling (tally marks, tables, categorizing), Number Operations, Geometry, Measurement
-   - Grade 5 Science: Matter, Energy, Life Cycles, Ecosystems
-   - If activities fit the same curriculum topic → CONTINUE
-
-4. **Look for CONCEPTUAL similarity, not surface-level activity similarity**
-   - Don't create new subtopics just because the activity/example changed
-   - Ask: "Is the LEARNING GOAL the same?" If yes → CONTINUE
-
-GUIDELINES FOR NEW SUBTOPIC (only when learning objective truly changes):
-1. **Clear Learning Objective Shift**: Moving from one concept to entirely different concept
-   - Example: From "Data Handling" to "Addition" → NEW
-   - Example: From "Fractions" to "Geometry" → NEW
-
-2. **Explicit Chapter/Section Headers**: "Chapter 2: Multiplication" → NEW
-
-3. **Different Skill Domain**:
-   - From organizing/categorizing to arithmetic operations → NEW
-   - From reading/comprehension to grammar → NEW
-
-BIAS TOWARDS CONTINUATION:
+DECISION GUIDELINES:
+- A topic/subtopic represents a LEARNING OBJECTIVE, not individual activities
+- Multiple activities can teach the SAME learning objective → CONTINUE
+- Look for CONCEPTUAL similarity, not surface-level changes
 - When in doubt, CONTINUE rather than create NEW
-- Subtopics should be BROADER, not narrower
-- Target: 10-20 pages per subtopic (not 1-2 pages)
-- Err on the side of consolidation
+- If CONTINUING: topic_name and subtopic_name MUST EXACTLY MATCH an existing one from the list above
 
-OUTPUT JSON (valid JSON only, no markdown):
+TOPIC/SUBTOPIC NAMING:
+- Use lowercase, kebab-case (e.g., "data-handling", "adding-fractions")
+- If NEW: Create descriptive, broad names (not activity-specific)
+- If CONTINUE: Copy exact name from existing topics list
+
+GUIDELINES EXTRACTION:
+Extract from this page in natural language text:
+- Learning objectives (what students should learn)
+- Examples and activities shown
+- Teaching strategies or instructions for teachers
+- Common misconceptions mentioned
+- Assessment questions or practice problems
+
+Format as a comprehensive paragraph or bulleted text (your choice - natural language).
+
+OUTPUT JSON:
 {{
-  "decision": "continue|new",
-  "continue_score": 0.00,
-  "new_score": 0.00,
-  "continue_subtopic_key": "string or null",
-  "new_subtopic_key": "string or null",
-  "new_subtopic_title": "string or null",
-  "reasoning": "Brief explanation"
+  "is_new_topic": true|false,
+  "topic_name": "lowercase-topic-name",
+  "subtopic_name": "lowercase-subtopic-name",
+  "page_guidelines": "Complete teaching guidelines text extracted from this page...",
+  "reasoning": "Detailed explanation of why this is/isn't a new topic. Consider: conceptual similarity to existing topics, whether this is same learning objective with different activities, key differences or connections to previous content."
 }}

@@ -26,9 +26,9 @@ from ..models.guideline_models import (
     GuidelinesIndex,
     SubtopicShard,
     # V2 models
-    OpenTopicInfoV2,
-    OpenSubtopicInfoV2,
-    SubtopicShardV2
+    OpenTopicInfo,
+    OpenSubtopicInfo,
+    SubtopicShard
 )
 from ..utils.s3_client import S3Client
 
@@ -50,18 +50,16 @@ class ContextPackService:
     - ToC hints (simplified)
     """
 
-    def __init__(self, s3_client: S3Client, version: str = "v1"):
+    def __init__(self, s3_client: S3Client):
         """
         Initialize context pack service.
 
         Args:
             s3_client: S3 client for reading guideline state
-            version: "v1" or "v2" for different context pack formats
         """
         self.s3 = s3_client
-        self.version = version
-        # V2 uses 5 recent pages instead of 2
-        self.num_recent_pages = 5 if version == "v2" else 2
+        # Use 5 recent pages for context
+        self.num_recent_pages = 5
 
     def build(
         self,
@@ -142,12 +140,12 @@ class ContextPackService:
         self,
         book_id: str,
         index: GuidelinesIndex
-    ) -> List[Union[OpenTopicInfo, OpenTopicInfoV2]]:
+    ) -> List[Union[OpenTopicInfo, OpenTopicInfo]]:
         """
         Extract information about open topics and their subtopics.
 
         V1: Returns OpenTopicInfo with evidence summaries
-        V2: Returns OpenTopicInfoV2 with full guidelines text
+        V2: Returns OpenTopicInfo with full guidelines text
 
         Args:
             book_id: Book identifier
@@ -172,7 +170,7 @@ class ContextPackService:
                             subtopic_entry.subtopic_key
                         )
 
-                        if self.version == "v2":
+                        if True:  # simplified
                             # V2: Include full guidelines text
                             # Try to load as V2 shard first, fallback to V1
                             guidelines_text = getattr(shard, 'guidelines', '')
@@ -181,7 +179,7 @@ class ContextPackService:
                                 guidelines_text = self._construct_guidelines_from_v1(shard)
 
                             open_subtopics.append(
-                                OpenSubtopicInfoV2(
+                                OpenSubtopicInfo(
                                     subtopic_key=shard.subtopic_key,
                                     subtopic_title=shard.subtopic_title,
                                     page_start=shard.source_page_start,
@@ -208,9 +206,9 @@ class ContextPackService:
 
             # Only include topics with open subtopics
             if open_subtopics:
-                if self.version == "v2":
+                if True:  # simplified
                     open_topics.append(
-                        OpenTopicInfoV2(
+                        OpenTopicInfo(
                             topic_key=topic_entry.topic_key,
                             topic_title=topic_entry.topic_title,
                             open_subtopics=open_subtopics
@@ -232,16 +230,28 @@ class ContextPackService:
         book_id: str,
         topic_key: str,
         subtopic_key: str
-    ) -> SubtopicShard:
+    ) -> Union[SubtopicShard, SubtopicShard]:
         """Load a subtopic shard from S3"""
-        shard_key = (
-            f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
-            f"{subtopic_key}.latest.json"
-        )
+        # Use V2 path if version is v2
+        if True:  # simplified
+            shard_key = (
+                f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
+                f"{subtopic_key}.latest.json"
+            )
+        else:
+            shard_key = (
+                f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
+                f"{subtopic_key}.latest.json"
+            )
 
         try:
             shard_data = self.s3.download_json(shard_key)
-            return SubtopicShard(**shard_data)
+
+            # Load as appropriate model based on version
+            if True:  # simplified
+                return SubtopicShard(**shard_data)
+            else:
+                return SubtopicShard(**shard_data)
         except Exception as e:
             logger.error(f"Failed to load shard from {shard_key}: {str(e)}")
             raise

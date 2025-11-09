@@ -14,6 +14,7 @@ import {
   getGuidelines,
   approveGuidelines,
   rejectGuidelines,
+  finalizeGuidelines,
 } from '../api/adminApi';
 import {
   GuidelineSubtopic,
@@ -33,9 +34,16 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   const [guidelines, setGuidelines] = useState<GuidelineSubtopic[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSubtopic, setSelectedSubtopic] = useState<GuidelineSubtopic | null>(null);
   const [generationStats, setGenerationStats] = useState<GenerateGuidelinesResponse | null>(null);
+  const [finalizeStats, setFinalizeStats] = useState<{
+    subtopics_finalized: number;
+    subtopics_renamed: number;
+    duplicates_merged: number;
+    message: string;
+  } | null>(null);
 
   // Load guidelines on mount
   useEffect(() => {
@@ -123,6 +131,24 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     }
   };
 
+  const handleFinalizeGuidelines = async () => {
+    setFinalizing(true);
+    setError(null);
+    setFinalizeStats(null);
+
+    try {
+      const stats = await finalizeGuidelines(bookId, false);
+      setFinalizeStats(stats);
+
+      // Reload guidelines to show refined names
+      await loadGuidelines();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to finalize guidelines');
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'final':
@@ -162,6 +188,13 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
             </button>
           ) : (
             <>
+              <button
+                onClick={handleFinalizeGuidelines}
+                disabled={finalizing}
+                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-400"
+              >
+                {finalizing ? 'Refining...' : 'Refine & Consolidate'}
+              </button>
               <button
                 onClick={handleApproveGuidelines}
                 disabled={loading}
@@ -218,6 +251,17 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Finalize stats */}
+      {finalizeStats && (
+        <div className="mb-4 p-4 bg-purple-100 border border-purple-400 text-purple-700 rounded">
+          <h3 className="font-bold mb-2">Refinement & Consolidation Complete</h3>
+          <p>Subtopics finalized: {finalizeStats.subtopics_finalized}</p>
+          <p>Names refined: {finalizeStats.subtopics_renamed}</p>
+          <p>Duplicates merged: {finalizeStats.duplicates_merged}</p>
+          <p className="mt-2 text-sm">{finalizeStats.message}</p>
         </div>
       )}
 

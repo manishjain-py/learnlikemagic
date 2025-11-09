@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Any
 from openai import OpenAI
 
-from ..models.guideline_models import SubtopicShardV2, TopicNameRefinement
+from ..models.guideline_models import SubtopicShard, TopicNameRefinement
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class TopicNameRefinementService:
 
     def refine_names(
         self,
-        shard: SubtopicShardV2,
+        shard: SubtopicShard,
         book_metadata: Dict[str, Any]
     ) -> TopicNameRefinement:
         """

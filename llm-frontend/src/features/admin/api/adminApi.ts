@@ -184,3 +184,21 @@ export async function rejectGuidelines(bookId: string): Promise<void> {
     method: 'DELETE',
   });
 }
+
+export async function finalizeGuidelines(
+  bookId: string,
+  autoSyncToDb: boolean = false
+): Promise<{
+  book_id: string;
+  status: string;
+  subtopics_finalized: number;
+  subtopics_renamed: number;
+  duplicates_merged: number;
+  message: string;
+}> {
+  return apiFetch(`/admin/books/${bookId}/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auto_sync_to_db: autoSyncToDb }),
+  });
+}
