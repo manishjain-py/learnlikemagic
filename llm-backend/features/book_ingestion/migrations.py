@@ -314,6 +314,60 @@ def add_description_field():
         raise
 
 
+def add_updated_at_field():
+    """
+    Add updated_at field to teaching_guidelines table.
+
+    This migration adds the missing updated_at timestamp column that is
+    expected by the SQLAlchemy model but missing from the database.
+    """
+    print("🔄 Adding updated_at field to teaching_guidelines...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            # Check if updated_at column already exists
+            columns = [col['name'] for col in inspector.get_columns('teaching_guidelines')]
+
+            if 'updated_at' not in columns:
+                print("  Adding updated_at column...")
+                conn.execute(text("""
+                    ALTER TABLE teaching_guidelines
+                    ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                """))
+                print("  ✓ updated_at column added")
+
+                # Set updated_at = created_at for existing records
+                print("  Setting updated_at = created_at for existing records...")
+                conn.execute(text("""
+                    UPDATE teaching_guidelines 
+                    SET updated_at = created_at 
+                    WHERE updated_at IS NULL
+                """))
+                print("  ✓ Existing records updated")
+
+                # Add comment for documentation
+                conn.execute(text("""
+                    COMMENT ON COLUMN teaching_guidelines.updated_at IS
+                    'Timestamp when the record was last updated. Auto-updated on changes.'
+                """))
+                print("  ✓ Column comment added")
+            else:
+                print("  ✓ updated_at column already exists")
+
+            conn.commit()
+
+        print("✅ Updated_at field migration completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Updated_at field migration error: {e}", exc_info=True)
+        raise
+
+
 if __name__ == "__main__":
     import sys
     import argparse
@@ -324,6 +378,7 @@ if __name__ == "__main__":
     parser.add_argument("--phase6", action="store_true", help="Run Phase 6 schema migration")
     parser.add_argument("--rollback-phase6", action="store_true", help="Rollback Phase 6 schema (DANGEROUS)")
     parser.add_argument("--add-description", action="store_true", help="Add description field to teaching_guidelines")
+    parser.add_argument("--add-updated-at", action="store_true", help="Add updated_at field to teaching_guidelines")
 
     args = parser.parse_args()
 
@@ -337,6 +392,8 @@ if __name__ == "__main__":
         rollback_phase6_schema()
     elif args.add_description:
         add_description_field()
+    elif args.add_updated_at:
+        add_updated_at_field()
     else:
         print("Usage:")
         print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
@@ -344,4 +401,5 @@ if __name__ == "__main__":
         print("  python -m features.book_ingestion.migrations --phase6            # Run Phase 6 schema")
         print("  python -m features.book_ingestion.migrations --rollback-phase6   # Rollback Phase 6 (DANGEROUS)")
         print("  python -m features.book_ingestion.migrations --add-description   # Add description field")
+        print("  python -m features.book_ingestion.migrations --add-updated-at    # Add updated_at field")
         sys.exit(1)
