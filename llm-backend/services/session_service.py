@@ -16,7 +16,6 @@ from models import (
     GradingResult
 )
 from repositories import SessionRepository, EventRepository, TeachingGuidelineRepository
-from services.graph_service import GraphService
 from adapters.workflow_adapter import SessionWorkflowAdapter  # New workflow
 from utils.formatting import extract_last_turn, build_turn_response
 from utils.constants import MAX_STEPS, MASTERY_COMPLETION_THRESHOLD

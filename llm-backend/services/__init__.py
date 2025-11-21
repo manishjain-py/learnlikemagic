@@ -1,8 +1,10 @@
 """Business logic layer - services for orchestrating operations."""
-from .graph_service import GraphService
 from .session_service import SessionService
+from .llm_service import LLMService
+from .agent_logging_service import AgentLoggingService
 
 __all__ = [
-    "GraphService",
-    "SessionService"
+    "SessionService",
+    "LLMService",
+    "AgentLoggingService"
 ]
