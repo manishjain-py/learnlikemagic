@@ -1,7 +1,7 @@
 """
 PLANNER Agent
 
-This agent creates or updates the comprehensive study plan using GPT-5.1 with deep reasoning.
+This agent creates or updates the comprehensive study plan using GPT-4o for fast performance.
 
 Responsibilities:
 - Initial planning at session start
@@ -10,7 +10,7 @@ Responsibilities:
 - Adaptation to student profile
 
 Uses:
-- GPT-5.1 with high reasoning effort
+- GPT-4o for fast planning (switched from GPT-5.1 for better performance)
 - planner_initial.txt or planner_replan.txt templates
 """
 
@@ -29,7 +29,7 @@ class PlannerAgent(BaseAgent):
     Creates or updates study plans with strategic thinking.
 
     Features:
-    - Initial planning (GPT-5.1 deep thinking)
+    - Initial planning (GPT-4o for fast performance)
     - Adaptive replanning based on feedback
     - Student-centered approach
     - Realistic pacing estimation
@@ -46,7 +46,7 @@ class PlannerAgent(BaseAgent):
         Execute PLANNER agent.
 
         Determines if this is initial planning or replanning,
-        renders appropriate prompt, calls GPT-5.1, parses output,
+        renders appropriate prompt, calls GPT-4o, parses output,
         and updates state.
 
         SAFETY GUARD: If a plan already exists and replan_needed=False,
@@ -112,15 +112,16 @@ class PlannerAgent(BaseAgent):
         # Render prompt
         prompt = self._render_prompt("planner_initial", variables)
 
-        # Call GPT-5.1 with deep reasoning
-        logger.info("Calling GPT-5.1 for initial planning...")
-        result = self.llm_service.call_gpt_5_1(
+        # Call GPT-4o for faster planning
+        logger.info("Calling GPT-4o for initial planning...")
+        response_text = self.llm_service.call_gpt_4o(
             prompt=prompt,
             max_tokens=4096,
+            json_mode=True,
         )
 
         # Parse response
-        plan = self._parse_plan_output(result["output_text"])
+        plan = self._parse_plan_output(response_text)
 
         # Ensure timestamps
         current_time = get_timestamp()
@@ -144,7 +145,7 @@ class PlannerAgent(BaseAgent):
             "metadata": plan.get("metadata", {}),
         }
 
-        reasoning = result.get("reasoning") or plan.get("reasoning", "")
+        reasoning = plan.get("reasoning", "Initial planning completed")
         input_summary = f"Initial planning for {topic_info.get('topic')} - {topic_info.get('subtopic')}"
 
         return updated_state, output, reasoning, input_summary
@@ -183,15 +184,16 @@ class PlannerAgent(BaseAgent):
         # Render prompt
         prompt = self._render_prompt("planner_replan", variables)
 
-        # Call GPT-5.1 with deep reasoning
-        logger.info("Calling GPT-5.1 for replanning...")
-        result = self.llm_service.call_gpt_5_1(
+        # Call GPT-4o for faster replanning
+        logger.info("Calling GPT-4o for replanning...")
+        response_text = self.llm_service.call_gpt_4o(
             prompt=prompt,
             max_tokens=4096,
+            json_mode=True,
         )
 
         # Parse response
-        plan = self._parse_plan_output(result["output_text"])
+        plan = self._parse_plan_output(response_text)
 
         # Increment replan count
         if "metadata" not in plan:
@@ -217,7 +219,7 @@ class PlannerAgent(BaseAgent):
             "changes_made": plan.get("changes_made", ""),
         }
 
-        reasoning = result.get("reasoning") or plan.get("reasoning", "")
+        reasoning = plan.get("reasoning", "Replanning completed")
         input_summary = f"Replanning (version {plan['metadata']['plan_version']}): {state.get('replan_reason', '')[:100]}"
 
         return updated_state, output, reasoning, input_summary
