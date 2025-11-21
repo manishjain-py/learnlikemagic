@@ -27,6 +27,16 @@ from .schemas import (
     CurriculumResponse
 )
 
+# Logs API schemas
+from .logs import (
+    AgentLogEntry,
+    SessionLogsResponse,
+    FilteredLogsResponse,
+    SessionLogsSummary,
+    AllSessionsLogsResponse,
+    TextLogsResponse
+)
+
 __all__ = [
     # Database models
     "Base",
@@ -51,5 +61,12 @@ __all__ = [
     "SummaryResponse",
     "GuidelineResponse",
     "SubtopicInfo",
-    "CurriculumResponse"
+    "CurriculumResponse",
+    # Logs API schemas
+    "AgentLogEntry",
+    "SessionLogsResponse",
+    "FilteredLogsResponse",
+    "SessionLogsSummary",
+    "AllSessionsLogsResponse",
+    "TextLogsResponse"
 ]

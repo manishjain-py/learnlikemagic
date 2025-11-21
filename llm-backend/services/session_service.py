@@ -17,6 +17,7 @@ from models import (
 )
 from repositories import SessionRepository, EventRepository, TeachingGuidelineRepository
 from services.graph_service import GraphService
+from adapters.workflow_adapter import SessionWorkflowAdapter  # New workflow
 from utils.formatting import extract_last_turn, build_turn_response
 from utils.constants import MAX_STEPS, MASTERY_COMPLETION_THRESHOLD
 from utils.exceptions import SessionNotFoundException, GuidelineNotFoundException
@@ -30,7 +31,10 @@ class SessionService:
         self.session_repo = SessionRepository(db)
         self.event_repo = EventRepository(db)
         self.guideline_repo = TeachingGuidelineRepository(db)
-        self.graph_service = GraphService(db)
+
+        # Use new TutorWorkflow instead of old GraphService
+        # This gives us: LangGraph, logging, bug fixes, and the EVALUATOR agent!
+        self.graph_service = SessionWorkflowAdapter(db)
 
     def create_new_session(self, request: CreateSessionRequest) -> CreateSessionResponse:
         """

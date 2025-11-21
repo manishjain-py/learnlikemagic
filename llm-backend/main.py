@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings, validate_required_settings
 from database import get_db_manager
-from api.routes import health, curriculum, sessions
+from api.routes import health, curriculum, sessions, logs
 from features.book_ingestion.api import routes as admin_routes
 from routers import admin_guidelines
 
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(curriculum.router)
 app.include_router(sessions.router)
+app.include_router(logs.router)  # Logs API endpoints
 app.include_router(admin_routes.router)  # Book ingestion admin routes
 app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
 

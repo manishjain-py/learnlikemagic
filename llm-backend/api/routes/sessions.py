@@ -21,9 +21,12 @@ def create_session(request: CreateSessionRequest, db: DBSession = Depends(get_db
         raise e.to_http_exception()
     except Exception as e:
         import traceback
+        import logging
+        logger = logging.getLogger(__name__)
         error_details = f"Error creating session: {str(e)}\n{traceback.format_exc()}"
-        print(error_details)
-        raise HTTPException(status_code=500, detail=f"Error creating session: {str(e)}")
+        logger.error(error_details)
+        # Ensure we return a JSON response even for 500 errors
+        raise HTTPException(status_code=500, detail={"message": f"Error creating session: {str(e)}", "type": type(e).__name__})
 
 
 @router.post("/{session_id}/step", response_model=StepResponse)

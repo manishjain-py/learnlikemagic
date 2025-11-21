@@ -13,15 +13,30 @@ llm-backend/
 │       └── sessions.py           # Session management
 ├── services/                      # Business logic layer
 │   ├── session_service.py        # Session orchestration
-│   └── graph_service.py          # Graph execution
+│   ├── llm_service.py            # OpenAI API wrapper (GPT-4o, GPT-5.1)
+│   └── agent_logging_service.py  # Dual-format logging (JSONL + TXT)
 ├── repositories/                  # Data access layer
 │   ├── session_repository.py     # Session CRUD
 │   ├── event_repository.py       # Event logging
 │   └── guideline_repository.py   # Guideline queries
-├── graph/                         # LangGraph agent
-│   ├── state.py                  # State definitions
-│   ├── nodes.py                  # Node implementations (pure functions)
-│   └── build_graph.py            # Graph compilation
+├── workflows/                     # LangGraph workflow (3-agent system)
+│   ├── tutor_workflow.py         # Main workflow orchestration
+│   ├── state.py                  # SimplifiedState TypedDict
+│   ├── schemas.py                # Pydantic validation models
+│   └── helpers.py                # Utility functions
+├── agents/                        # Agent implementations
+│   ├── planner_agent.py          # PLANNER (GPT-5.1 deep reasoning)
+│   ├── executor_agent.py         # EXECUTOR (GPT-4o question generation)
+│   ├── evaluator_agent.py        # EVALUATOR (GPT-4o grading & routing)
+│   ├── base.py                   # Base agent class
+│   └── prompts/                  # External prompt templates
+│       ├── planner_initial.txt   # Initial planning prompt
+│       ├── planner_replan.txt    # Adaptive replanning prompt
+│       ├── executor.txt          # Message generation prompt
+│       └── evaluator.txt         # Evaluation prompt
+├── adapters/                      # Integration adapters
+│   ├── workflow_adapter.py       # SessionService ↔ TutorWorkflow bridge
+│   └── state_adapter.py          # TutorState ↔ SimplifiedState converter
 ├── prompts/                       # LLM prompt templates
 │   ├── templates/                # Template files
 │   │   ├── teaching_prompt.txt   # Teaching/present node
@@ -272,36 +287,51 @@ created_at DATETIME
 INDEX idx_session_step (session_id, step_idx)
 ```
 
-## LangGraph Agent
+## LangGraph Workflow (3-Agent System)
 
-### Nodes
+### Architecture
 
-1. **Present**: Generate teaching turn based on guideline
-2. **Check**: Grade student response
-3. **Diagnose**: Update evidence and mastery score
-4. **Remediate**: Provide scaffolding for struggling students
-5. **Advance**: Move to next step
+The tutoring system uses a **3-agent adaptive architecture** with LangGraph orchestration:
 
-### Flow
+1. **PLANNER** (GPT-5.1 with deep reasoning)
+   - Strategic planning and replanning
+   - Creates study plans with 3-5 steps
+   - Adapts when students struggle
+
+2. **EXECUTOR** (GPT-4o)
+   - Fast question generation
+   - Context-aware teaching messages
+   - Follows plan's teaching approach
+
+3. **EVALUATOR** (GPT-4o)
+   - Evaluates student responses (0.0-1.0 score)
+   - Provides constructive feedback
+   - Routes workflow (continue/replan/end)
+   - Off-topic detection & redirection
+
+### Workflow Flow
 
 ```
-Start → Present → Check
-                    ├─> Advance → Present (if score ≥ 0.8)
-                    └─> Remediate → Diagnose → Present (if score < 0.8)
+START → ROUTER (smart entry point)
+          ↓
+          ├─→ PLANNER (new session) → EXECUTOR → END
+          │                              ↓
+          ├─→ EVALUATOR (student response) → (routing decision)
+          │                                      ↓
+          │                                      ├─→ replan → PLANNER
+          │                                      ├─→ continue → EXECUTOR → END
+          │                                      └─→ end → END
+          │
+          └─→ EXECUTOR (edge case)
 ```
 
-### Routing Logic
+### Key Features
 
-- **After Check**:
-  - If score ≥ 0.8 AND confidence ≥ 0.6 → Advance
-  - Otherwise → Remediate
-
-- **After Advance**:
-  - If step_idx ≥ 10 OR mastery ≥ 0.85 → End
-  - Otherwise → Present
-
-- **After Remediate**:
-  - Always → Diagnose → Present
+- **Session Persistence**: SQLite checkpointing with LangGraph
+- **Adaptive Teaching**: Dynamic replanning when students struggle
+- **Comprehensive Logging**: Dual-format (JSONL + TXT) agent execution logs
+- **Smart Routing**: Context-aware entry point prevents infinite loops
+- **Cost Optimization**: GPT-5.1 for planning only, GPT-4o for execution
 
 ## Teaching Guidelines
 
@@ -411,6 +441,50 @@ curl -X POST http://localhost:8000/sessions \
       "guideline_id": "g1"
     }
   }'
+```
+
+### Debugging & Logs
+
+#### Streaming Session Logs (Live)
+
+To monitor agent execution in real-time during a tutoring session:
+
+```bash
+# Stream logs for a specific session (follows new log entries)
+curl -N "http://localhost:8000/sessions/{session_id}/logs/stream?follow=true"
+
+# Example:
+curl -N "http://localhost:8000/sessions/2469eccd-8ad4-485b-a33b-272657c67f7b/logs/stream?follow=true"
+```
+
+The `-N` flag disables buffering for real-time streaming. You'll see:
+- Agent executions (PLANNER, EXECUTOR, EVALUATOR)
+- Reasoning traces
+- State transitions
+- Performance metrics
+
+#### Agent Log Files
+
+Agent execution logs are stored in two formats:
+
+```bash
+# Machine-readable JSON logs
+logs/sessions/{session_id}/agent_steps.jsonl
+
+# Human-readable text logs
+logs/sessions/{session_id}/agent_steps.txt
+```
+
+#### Checkpoint Database
+
+LangGraph checkpoints are stored in:
+```bash
+checkpoints/tutor_sessions.db
+```
+
+Query session state:
+```bash
+sqlite3 checkpoints/tutor_sessions.db "SELECT thread_id, checkpoint_ns FROM checkpoints;"
 ```
 
 ## Testing
@@ -640,5 +714,5 @@ For issues specific to the backend:
 
 ---
 
-**Backend Version**: 2.1
-**Last Updated**: 2025-10-23
+**Backend Version**: 3.0 (3-Agent LangGraph System)
+**Last Updated**: 2025-11-21

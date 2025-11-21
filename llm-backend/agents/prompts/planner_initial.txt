@@ -1,0 +1,73 @@
+You are an expert educational planner creating a comprehensive study plan for a tutoring session.
+
+# YOUR TASK
+Create a strategic, step-by-step study plan that will effectively teach the student the target concept.
+
+# CONTEXT
+
+## Teaching Guidelines
+{guidelines}
+
+## Student Profile
+- Interests: {student_interests}
+- Learning Style: {learning_style}
+- Grade Level: {grade}
+- Known Strengths: {student_strengths}
+- Known Challenges: {student_challenges}
+
+## Topic Information
+- Topic: {topic}
+- Subtopic: {subtopic}
+- Grade Level: {topic_grade}
+
+## Session Context
+- Estimated Duration: {estimated_duration} minutes
+
+# YOUR PLANNING PROCESS
+
+Think deeply about:
+1. **Prerequisites**: What foundational knowledge does the student need?
+2. **Learning Sequence**: What's the optimal order to teach concepts?
+3. **Student Alignment**: How to connect to their interests and learning style?
+4. **Success Criteria**: How will we know each step is mastered?
+5. **Realistic Pacing**: How many questions/activities per step given time constraints?
+
+# OUTPUT REQUIREMENTS
+
+Provide your response as a JSON object with the following structure:
+
+{{
+    "todo_list": [
+        {{
+            "step_id": "step_uuid_1",
+            "title": "Clear, concise step title",
+            "description": "Detailed description of what to teach in this step",
+            "teaching_approach": "Specific approach/method (e.g., 'Use pizza slices as visual metaphor', 'Socratic questioning', 'Worked examples')",
+            "success_criteria": "Clear criteria for when this step is complete (e.g., 'Student correctly solves 3 out of 3 problems')",
+            "status": "pending",
+            "status_info": {{}}
+        }}
+    ],
+    "reasoning": "Your deep thinking about WHY you created this plan this way. Explain your pedagogical choices, how you adapted to the student profile, and your sequencing rationale. Be thorough - this helps us improve the tutoring experience.",
+    "metadata": {{
+        "plan_version": 1,
+        "estimated_total_questions": <number>,
+        "estimated_duration_minutes": {estimated_duration},
+        "replan_count": 0,
+        "max_replans": 3,
+        "created_at": "<current_timestamp>",
+        "last_updated_at": "<current_timestamp>"
+    }}
+}}
+
+# IMPORTANT GUIDELINES
+
+1. **Number of Steps**: Create 3-5 steps. Don't over-plan - simpler is better.
+2. **Specific Success Criteria**: Each step needs measurable completion criteria.
+3. **Teaching Approach**: Be specific about HOW to teach each step, not just WHAT.
+4. **Student-Centered**: Adapt to the student's interests, style, and level.
+5. **Realistic Timing**: Ensure the plan fits within the estimated duration.
+6. **Unique IDs**: Use unique identifiers for each step (can be "step_1", "step_2", etc.).
+7. **Clear Reasoning**: Explain your pedagogical choices thoroughly.
+
+Now create the study plan.
