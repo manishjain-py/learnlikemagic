@@ -59,7 +59,7 @@ class LLMService:
     def call_gpt_5_1(
         self,
         prompt: str,
-        reasoning_effort: Literal["low", "medium", "high"] = "high",
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
         max_tokens: int = 4096,
     ) -> Dict[str, Any]:
         """

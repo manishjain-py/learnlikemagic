@@ -42,10 +42,23 @@ class SessionWorkflowAdapter:
 
         self.llm_service = LLMService(api_key=api_key, max_retries=3)
         self.logging_service = AgentLoggingService(log_base_dir="logs/sessions")
+
+        # Create PostgreSQL connection for LangGraph checkpointing
+        from psycopg import connect
+        from psycopg.rows import dict_row
+        from config import get_settings
+
+        settings = get_settings()
+        db_conn = connect(
+            str(settings.database_url),
+            autocommit=True,
+            row_factory=dict_row
+        )
+
         self.workflow = TutorWorkflow(
             self.llm_service,
             self.logging_service,
-            checkpoint_path="checkpoints/tutor_sessions.db"
+            db_connection=db_conn
         )
 
         self.state_adapter = StateAdapter()

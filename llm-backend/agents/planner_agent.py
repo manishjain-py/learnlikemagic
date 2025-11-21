@@ -116,7 +116,6 @@ class PlannerAgent(BaseAgent):
         logger.info("Calling GPT-5.1 for initial planning...")
         result = self.llm_service.call_gpt_5_1(
             prompt=prompt,
-            reasoning_effort="high",
             max_tokens=4096,
         )
 
@@ -188,7 +187,6 @@ class PlannerAgent(BaseAgent):
         logger.info("Calling GPT-5.1 for replanning...")
         result = self.llm_service.call_gpt_5_1(
             prompt=prompt,
-            reasoning_effort="high",
             max_tokens=4096,
         )
 
