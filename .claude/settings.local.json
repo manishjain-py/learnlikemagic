@@ -23,7 +23,14 @@
       "Bash(tee:*)",
       "Bash(aws s3 ls:*)",
       "Bash(/opt/homebrew/bin/aws s3 ls:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(chmod +x test-scripts/*.py)",
+      "Bash(if [ -z \"$OPENAI_API_KEY\" ])",
+      "Bash(then echo \"API_KEY_NOT_SET\")",
+      "Bash(else echo \"API_KEY_IS_SET\")",
+      "Bash(fi)",
+      "Bash(git rev-parse --show-toplevel)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nImplement 3-agent LangGraph workflow system\n\nMajor architecture upgrade: Replace old graph-based workflow with new\n3-agent adaptive tutoring system using LangGraph.\n\n## New Components\n\n### Workflow System (workflows/)\n- TutorWorkflow: LangGraph orchestration with checkpointing\n- SimplifiedState: Status-based navigation (no manual step tracking)\n- Comprehensive helper functions and validation schemas\n\n### Agent System (agents/)\n- PLANNER: GPT-5.1 with deep reasoning for strategic planning\n- EXECUTOR: GPT-4o for fast question generation\n- EVALUATOR: GPT-4o for grading, feedback, and routing\n- Base agent class with template method pattern\n\n### Integration Layer (adapters/)\n- SessionWorkflowAdapter: Bridges SessionService to TutorWorkflow\n- StateAdapter: Converts between TutorState and SimplifiedState\n- Maintains backward compatibility with existing API\n\n### Services\n- LLMService: Unified OpenAI API wrapper (GPT-4o, GPT-5.1)\n- AgentLoggingService: Dual-format logging (JSONL + TXT)\n\n### Logs API (api/routes/logs.py)\n- Stream session logs in real-time\n- Query agent execution history\n- Machine and human-readable formats\n\n## Key Features\n\n✅ Adaptive Teaching: Dynamic replanning when students struggle\n✅ Session Persistence: LangGraph checkpointing with SQLite\n✅ Comprehensive Logging: Full agent execution traces\n✅ Smart Routing: Context-aware entry prevents infinite loops\n✅ Cost Optimization: GPT-5.1 for planning only, GPT-4o for execution\n\n## Modified Files\n\n- SessionService: Now uses SessionWorkflowAdapter (not old GraphService)\n- README: Updated architecture, added debugging/logs section\n- main.py: Added logs router\n- models/__init__.py: Added log schemas\n- requirements.txt: Added langgraph-checkpoint-sqlite\n\n## Documentation\n\nAdded comprehensive implementation docs in docs/features/tutor/:\n- IMPLEMENTATION_PROGRESS.md: Complete progress tracking\n- TUTOR_PLANNER_REQUIREMENTS.md: System design specs\n\n## Status\n\nOld workflow (graph/) still exists but is NOT used.\nWill be removed in follow-up commit.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
