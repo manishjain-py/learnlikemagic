@@ -39,9 +39,9 @@ causing infinite plan regeneration and making EVALUATOR unreachable.
 
 from typing import Literal
 import logging
-import sqlite3
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg import Connection
 
 from workflows.state import SimplifiedState
 from agents.planner_agent import PlannerAgent
@@ -165,7 +165,7 @@ def route_after_evaluation(state: SimplifiedState) -> Literal["replan", "continu
 def build_workflow(
     llm_service: LLMService,
     logging_service: AgentLoggingService,
-    checkpoint_path: str = "checkpoints/tutor_sessions.db",
+    db_connection: Connection,
 ) -> StateGraph:
     """
     Build the complete LangGraph workflow.
@@ -173,7 +173,7 @@ def build_workflow(
     Args:
         llm_service: LLM service instance
         logging_service: Logging service instance
-        checkpoint_path: Path to checkpoint database
+        db_connection: Database connection for checkpoints
 
     Returns:
         Compiled LangGraph workflow app
@@ -247,9 +247,10 @@ def build_workflow(
     )
 
     # Set up checkpointing
-    logger.info(f"Setting up checkpointing at {checkpoint_path}")
-    conn = sqlite3.connect(checkpoint_path, check_same_thread=False)
-    checkpointer = SqliteSaver(conn)
+    # Set up checkpointing
+    logger.info("Setting up PostgreSQL checkpointing")
+    checkpointer = PostgresSaver(db_connection)
+    checkpointer.setup()
 
     # Compile workflow
     logger.info("Compiling workflow...")
@@ -273,7 +274,7 @@ class TutorWorkflow:
         self,
         llm_service: LLMService,
         logging_service: AgentLoggingService,
-        checkpoint_path: str = "checkpoints/tutor_sessions.db",
+        db_connection: Connection,
     ):
         """
         Initialize workflow wrapper.
@@ -281,12 +282,11 @@ class TutorWorkflow:
         Args:
             llm_service: LLM service instance
             logging_service: Logging service instance
-            checkpoint_path: Path to checkpoint database
+            db_connection: Database connection for checkpoints
         """
         self.llm_service = llm_service
         self.logging_service = logging_service
-        self.checkpoint_path = checkpoint_path
-        self.app = build_workflow(llm_service, logging_service, checkpoint_path)
+        self.app = build_workflow(llm_service, logging_service, db_connection)
 
     def start_session(
         self,
