@@ -17,6 +17,16 @@ from routers import admin_guidelines
 # Validate configuration on startup
 validate_required_settings()
 
+# Configure logging
+import logging
+import sys
+settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="LearnLikeMagic LLM Backend",

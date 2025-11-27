@@ -327,7 +327,7 @@ START → ROUTER (smart entry point)
 
 ### Key Features
 
-- **Session Persistence**: SQLite checkpointing with LangGraph
+- **Session Persistence**: PostgreSQL checkpointing with LangGraph
 - **Adaptive Teaching**: Dynamic replanning when students struggle
 - **Comprehensive Logging**: Dual-format (JSONL + TXT) agent execution logs
 - **Smart Routing**: Context-aware entry point prevents infinite loops
@@ -477,14 +477,11 @@ logs/sessions/{session_id}/agent_steps.txt
 
 #### Checkpoint Database
 
-LangGraph checkpoints are stored in:
-```bash
-checkpoints/tutor_sessions.db
-```
+LangGraph checkpoints are stored in the PostgreSQL database in the `checkpoints` and `writes` tables.
 
 Query session state:
 ```bash
-sqlite3 checkpoints/tutor_sessions.db "SELECT thread_id, checkpoint_ns FROM checkpoints;"
+psql $DATABASE_URL -c "SELECT thread_id, checkpoint_ns FROM checkpoints;"
 ```
 
 ## Testing

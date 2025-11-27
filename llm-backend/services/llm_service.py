@@ -18,6 +18,8 @@ import json
 import time
 from typing import Dict, Any, Optional, Literal
 from openai import OpenAI, OpenAIError, RateLimitError, APITimeoutError
+from google import genai
+from google.genai import types
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ class LLMService:
     Features:
     - GPT-5.1 support with reasoning parameter
     - GPT-4o support for faster execution
+    - Gemini support for alternative planning
     - Automatic retries with exponential backoff
     - Structured error handling
     - JSON mode support
@@ -38,6 +41,7 @@ class LLMService:
     def __init__(
         self,
         api_key: str,
+        gemini_api_key: Optional[str] = None,
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
         timeout: int = 60,
@@ -47,6 +51,7 @@ class LLMService:
 
         Args:
             api_key: OpenAI API key
+            gemini_api_key: Google Gemini API key
             max_retries: Maximum number of retry attempts
             initial_retry_delay: Initial delay between retries (seconds)
             timeout: Request timeout (seconds)
@@ -55,6 +60,12 @@ class LLMService:
         self.max_retries = max_retries
         self.initial_retry_delay = initial_retry_delay
         self.timeout = timeout
+        
+        if gemini_api_key:
+            self.gemini_client = genai.Client(api_key=gemini_api_key)
+            self.has_gemini = True
+        else:
+            self.has_gemini = False
 
     def call_gpt_5_1(
         self,
@@ -159,6 +170,52 @@ class LLMService:
 
         return self._execute_with_retry(_api_call, "GPT-4o")
 
+    def call_gemini(
+        self,
+        prompt: str,
+        model_name: str = "gemini-3-pro-preview",
+        temperature: float = 0.7,
+        json_mode: bool = True,
+    ) -> str:
+        """
+        Call Google Gemini model.
+
+        Args:
+            prompt: The prompt to send
+            model_name: Model to use (e.g., gemini-3-pro-preview)
+            temperature: Sampling temperature
+            json_mode: Whether to request JSON output
+
+        Returns:
+            Response text
+
+        Raises:
+            LLMServiceError: If API call fails or Gemini not configured
+        """
+        if not self.has_gemini:
+            raise LLMServiceError("Gemini API key not configured")
+
+        logger.info(f"Calling Gemini ({model_name})")
+
+        def _api_call():
+            config = {
+                "temperature": temperature,
+            }
+            
+            if json_mode:
+                config["response_mime_type"] = "application/json"
+
+            response = self.gemini_client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=config
+            )
+            
+            return response.text
+
+        # Use generic retry logic
+        return self._execute_with_retry(_api_call, f"Gemini-{model_name}")
+
     def _execute_with_retry(self, api_call_fn, model_name: str) -> Any:
         """
         Execute API call with exponential backoff retry logic.
@@ -210,6 +267,8 @@ class LLMService:
             except Exception as e:
                 last_error = e
                 logger.error(f"{model_name} unexpected error: {str(e)}")
+                # For Gemini, we might want to retry on some errors, but for now we'll treat them as unexpected
+                # unless we specifically import google.api_core.exceptions
                 raise LLMServiceError(f"{model_name} unexpected error: {str(e)}") from e
 
         # All retries failed

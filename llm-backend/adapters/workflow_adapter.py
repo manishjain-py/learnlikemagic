@@ -35,12 +35,16 @@ class SessionWorkflowAdapter:
         self.guideline_repo = TeachingGuidelineRepository(db)
 
         # Initialize new workflow services
-        import os
-        api_key = os.getenv("OPENAI_API_KEY")
+        from config import get_settings
+        settings = get_settings()
+        
+        api_key = settings.openai_api_key
+        gemini_key = settings.gemini_api_key
+        
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set")
 
-        self.llm_service = LLMService(api_key=api_key, max_retries=3)
+        self.llm_service = LLMService(api_key=api_key, gemini_api_key=gemini_key, max_retries=3)
         self.logging_service = AgentLoggingService(log_base_dir="logs/sessions")
 
         # Create PostgreSQL connection for LangGraph checkpointing

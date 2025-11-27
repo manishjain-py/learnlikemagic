@@ -2,6 +2,9 @@
 from typing import Optional, List
 from sqlalchemy.orm import Session as DBSession
 from uuid import uuid4
+import logging
+
+logger = logging.getLogger(__name__)
 
 from models import (
     CreateSessionRequest,
@@ -62,6 +65,7 @@ class SessionService:
 
         # Generate session ID
         session_id = str(uuid4())
+        logger.info(f"Generated session_id: {session_id}")
 
         # Initialize tutor state
         tutor_state = TutorState(
@@ -75,12 +79,14 @@ class SessionService:
             last_grading=None,
             next_action="present"
         )
+        logger.info(f"Initialized tutor_state: {tutor_state}")
 
         # Generate first question using graph service
         tutor_state = self.graph_service.execute_present_node(
             tutor_state,
             teaching_guideline=guideline.guideline
         )
+        logger.info(f"Generated first question: {tutor_state}")
 
         # Persist session
         self.session_repo.create(

@@ -7,7 +7,7 @@ This module defines the complete LangGraph workflow for the tutor system:
 - Conditional routing from EVALUATOR
 - Session persistence with checkpointing
 
-Architecture (FIXED - No longer has infinite reset bug):
+Architecture:
 
     START → ROUTER (smart entry point)
               ↓
@@ -33,8 +33,6 @@ Flow Details:
    - Plan exists + last msg is student → EVALUATOR (evaluate response)
    - Plan exists + last msg is tutor → EXECUTOR (edge case)
 
-This fixes the critical bug where submit_response always went through PLANNER,
-causing infinite plan regeneration and making EVALUATOR unreachable.
 """
 
 from typing import Literal
@@ -56,9 +54,6 @@ logger = logging.getLogger(__name__)
 def route_entry(state: SimplifiedState) -> Literal["planner", "evaluator", "executor"]:
     """
     Smart entry point routing based on session context.
-
-    This router solves the critical bug where submit_response was always
-    starting at PLANNER, causing infinite plan regeneration loops.
 
     Decision tree:
     1. No study plan exists → PLANNER (new session - initial planning)

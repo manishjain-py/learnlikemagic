@@ -59,6 +59,12 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
+variable "gemini_api_key" {
+  description = "Google Gemini API key (sensitive)"
+  type        = string
+  sensitive   = true
+}
+
 variable "llm_model" {
   description = "OpenAI model to use"
   type        = string

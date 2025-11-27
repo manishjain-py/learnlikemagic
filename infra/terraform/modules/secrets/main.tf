@@ -33,3 +33,20 @@ resource "aws_secretsmanager_secret_version" "db_password" {
   secret_id     = aws_secretsmanager_secret.db_password.id
   secret_string = var.db_password
 }
+
+resource "aws_secretsmanager_secret" "gemini_api_key" {
+  name        = "${var.project_name}-${var.environment}-gemini-api-key"
+  description = "Google Gemini API key for LLM integration"
+
+  recovery_window_in_days = 7 # Allow recovery within 7 days if deleted
+
+  tags = {
+    Name        = "${var.project_name}-gemini-api-key"
+    Environment = var.environment
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "gemini_api_key" {
+  secret_id     = aws_secretsmanager_secret.gemini_api_key.id
+  secret_string = var.gemini_api_key
+}

@@ -95,6 +95,19 @@ class PlannerAgent(BaseAgent):
         student_profile = state["student_profile"]
         topic_info = state["topic_info"]
         session_context = state["session_context"]
+        logger.info(f"Student profile: {student_profile}")
+
+        # HARDCODED PROFILE FOR EXPERIMENTATION
+        student_profile = {
+            "id": "experiment_student",
+            "name": "Alex",
+            "grade": 3,
+            "interests": ["Sports", "Cricket"],
+            "learning_style": "Visual",
+            "strengths": ["Creative thinking"],
+            "challenges": ["Reading long texts", "Staying focused on abstract concepts"]
+        }
+        logger.info(f"OVERRIDE: Using hardcoded student profile: {student_profile}")
 
         variables = {
             "guidelines": state["guidelines"],

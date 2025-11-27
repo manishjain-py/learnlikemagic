@@ -24,6 +24,11 @@ variable "openai_secret_arn" {
   type        = string
 }
 
+variable "gemini_secret_arn" {
+  description = "ARN of Gemini API key secret in Secrets Manager"
+  type        = string
+}
+
 variable "llm_model" {
   description = "OpenAI model to use"
   type        = string

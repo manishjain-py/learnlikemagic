@@ -19,3 +19,9 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "gemini_api_key" {
+  description = "Google Gemini API key"
+  type        = string
+  sensitive   = true
+}

@@ -45,6 +45,10 @@ class Settings(BaseSettings):
         default="",
         description="OpenAI API key (required at runtime)"
     )
+    gemini_api_key: str = Field(
+        default="",
+        description="Google Gemini API key (optional)"
+    )
     llm_model: str = Field(
         default="gpt-4o-mini",
         description="OpenAI model to use"

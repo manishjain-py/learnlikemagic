@@ -60,7 +60,10 @@ resource "aws_iam_role_policy" "app_runner_secrets" {
       Action = [
         "secretsmanager:GetSecretValue"
       ]
-      Resource = [var.openai_secret_arn]
+      Resource = [
+        var.openai_secret_arn,
+        var.gemini_secret_arn
+      ]
     }]
   })
 }
@@ -128,6 +131,7 @@ resource "aws_apprunner_service" "backend" {
 
         runtime_environment_secrets = {
           OPENAI_API_KEY = var.openai_secret_arn
+          GEMINI_API_KEY = var.gemini_secret_arn
         }
       }
     }
