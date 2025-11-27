@@ -67,7 +67,8 @@ class TeachingGuidelineRepository:
             TeachingGuideline.grade == grade,
             TeachingGuideline.subject == subject,
             TeachingGuideline.topic == topic,
-            TeachingGuideline.subtopic == subtopic
+            TeachingGuideline.subtopic == subtopic,
+            TeachingGuideline.review_status == "APPROVED"  # Requirement: Tutor only sees approved
         ).first()
 
         if not guideline:
@@ -99,7 +100,8 @@ class TeachingGuidelineRepository:
             GuidelineResponse or None if not found
         """
         guideline = self.db.query(TeachingGuideline).filter(
-            TeachingGuideline.id == guideline_id
+            TeachingGuideline.id == guideline_id,
+            TeachingGuideline.review_status == "APPROVED"  # Requirement: Tutor only sees approved
         ).first()
 
         if not guideline:
@@ -135,7 +137,8 @@ class TeachingGuidelineRepository:
         subjects = self.db.query(distinct(TeachingGuideline.subject)).filter(
             TeachingGuideline.country == country,
             TeachingGuideline.board == board,
-            TeachingGuideline.grade == grade
+            TeachingGuideline.grade == grade,
+            TeachingGuideline.review_status == "APPROVED"
         ).order_by(TeachingGuideline.subject).all()
 
         return [s[0] for s in subjects]
@@ -163,7 +166,8 @@ class TeachingGuidelineRepository:
             TeachingGuideline.country == country,
             TeachingGuideline.board == board,
             TeachingGuideline.grade == grade,
-            TeachingGuideline.subject == subject
+            TeachingGuideline.subject == subject,
+            TeachingGuideline.review_status == "APPROVED"
         ).order_by(TeachingGuideline.topic).all()
 
         return [t[0] for t in topics]
@@ -194,7 +198,8 @@ class TeachingGuidelineRepository:
             TeachingGuideline.board == board,
             TeachingGuideline.grade == grade,
             TeachingGuideline.subject == subject,
-            TeachingGuideline.topic == topic
+            TeachingGuideline.topic == topic,
+            TeachingGuideline.review_status == "APPROVED"
         ).order_by(TeachingGuideline.subtopic).all()
 
         return [

@@ -368,6 +368,81 @@ def add_updated_at_field():
         raise
 
 
+def migrate_guidelines_workflow():
+    """
+    Run Guidelines Workflow migration.
+
+    Adds new columns and tables required for the guidelines extraction workflow:
+    - review_status column in teaching_guidelines (TO_BE_REVIEWED, APPROVED)
+    - book_jobs table for job locking
+    """
+    print("🔄 Running Guidelines Workflow migration...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            # Step 1: Add review_status column to teaching_guidelines
+            columns = [col['name'] for col in inspector.get_columns('teaching_guidelines')]
+
+            if 'review_status' not in columns:
+                print("  Adding review_status column to teaching_guidelines...")
+                conn.execute(text("""
+                    ALTER TABLE teaching_guidelines
+                    ADD COLUMN review_status VARCHAR(20) DEFAULT 'TO_BE_REVIEWED' NOT NULL
+                """))
+                print("  ✓ review_status column added")
+
+                # Create index for efficient filtering
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_teaching_guidelines_review_status
+                    ON teaching_guidelines(book_id, review_status)
+                """))
+                print("  ✓ review_status index created")
+            else:
+                print("  ✓ review_status column already exists")
+
+            conn.commit()
+
+        # Step 2: Create book_jobs table
+        print("  Creating book_jobs table...")
+        tables = inspector.get_table_names()
+
+        if 'book_jobs' not in tables:
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    CREATE TABLE book_jobs (
+                        id VARCHAR(36) PRIMARY KEY,
+                        book_id VARCHAR(255) NOT NULL,
+                        job_type VARCHAR(50) NOT NULL,
+                        status VARCHAR(20) DEFAULT 'running',
+                        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        error_message TEXT,
+                        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+                    )
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_book_jobs_book_id ON book_jobs(book_id)
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_book_jobs_status ON book_jobs(status)
+                """))
+                conn.commit()
+            print("  ✓ book_jobs table created")
+        else:
+            print("  ✓ book_jobs table already exists")
+
+        print("✅ Guidelines Workflow migration completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Guidelines Workflow migration error: {e}", exc_info=True)
+        raise
+
+
 if __name__ == "__main__":
     import sys
     import argparse
@@ -379,6 +454,7 @@ if __name__ == "__main__":
     parser.add_argument("--rollback-phase6", action="store_true", help="Rollback Phase 6 schema (DANGEROUS)")
     parser.add_argument("--add-description", action="store_true", help="Add description field to teaching_guidelines")
     parser.add_argument("--add-updated-at", action="store_true", help="Add updated_at field to teaching_guidelines")
+    parser.add_argument("--guidelines-workflow", action="store_true", help="Run Guidelines Workflow migration (review_status + book_jobs)")
 
     args = parser.parse_args()
 
@@ -394,6 +470,8 @@ if __name__ == "__main__":
         add_description_field()
     elif args.add_updated_at:
         add_updated_at_field()
+    elif args.guidelines_workflow:
+        migrate_guidelines_workflow()
     else:
         print("Usage:")
         print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
@@ -402,4 +480,5 @@ if __name__ == "__main__":
         print("  python -m features.book_ingestion.migrations --rollback-phase6   # Rollback Phase 6 (DANGEROUS)")
         print("  python -m features.book_ingestion.migrations --add-description   # Add description field")
         print("  python -m features.book_ingestion.migrations --add-updated-at    # Add updated_at field")
+        print("  python -m features.book_ingestion.migrations --guidelines-workflow # Add review_status + book_jobs")
         sys.exit(1)

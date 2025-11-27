@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for book ingestion feature."""
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, Index, text
 from models.database import Base  # Import the shared Base from existing models
 
 
@@ -57,6 +57,7 @@ class BookGuideline(Base):
 
     # Review status
     status = Column(String, nullable=False)  # draft, pending_review, approved, rejected
+    review_status = Column(String, default='TO_BE_REVIEWED')  # TO_BE_REVIEWED, APPROVED
     generated_at = Column(DateTime, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String, nullable=True)
@@ -66,4 +67,27 @@ class BookGuideline(Base):
 
     __table_args__ = (
         Index("idx_book_guidelines_book", "book_id"),
+    )
+
+
+class BookJob(Base):
+    """
+    Track active jobs per book to prevent concurrent operations.
+    
+    Job types: extraction, finalization, sync
+    """
+    __tablename__ = "book_jobs"
+
+    id = Column(String, primary_key=True)
+    book_id = Column(String, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    job_type = Column(String, nullable=False)  # extraction, finalization, sync
+    status = Column(String, default='running')  # running, completed, failed
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    __table_args__ = (
+        # Ensure only one running job per book
+        Index('idx_book_running_job', 'book_id', 'status',
+              postgresql_where=text("status = 'running'")),
     )

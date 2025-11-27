@@ -197,25 +197,8 @@ class GuidelineExtractionOrchestrator:
                     # Continue processing next page
 
             # Book-end processing
-            logger.info(f"Book processing complete. Starting finalization...")
-
-            finalization_result = self.finalize_book(
-                book_id=book_id,
-                book_metadata=book_metadata,
-                auto_sync_to_db=auto_sync_to_db
-            )
-
-            stats["subtopics_finalized"] = finalization_result.get("subtopics_finalized", 0)
-            stats["duplicates_merged"] = finalization_result.get("duplicates_merged", 0)
-
-            logger.info(
-                f"V2 guideline extraction complete for book {book_id}: "
-                f"{stats['pages_processed']} pages, "
-                f"{stats['subtopics_created']} created, "
-                f"{stats['subtopics_merged']} merged, "
-                f"{stats['duplicates_merged']} duplicates merged, "
-                f"{len(stats['errors'])} errors"
-            )
+            # Requirement 5: Finalize & Consolidate is a separate action
+            logger.info(f"Page range extraction complete. Finalization must be triggered separately.")
 
             return stats
 
@@ -282,7 +265,7 @@ class GuidelineExtractionOrchestrator:
                 subtopic_title=subtopic_title,
                 source_page_start=page_num,
                 source_page_end=page_num,
-                status="open",
+                # status="open",  # REMOVED
                 guidelines=page_guidelines,  # V2: Single field
                 version=1
             )
@@ -318,7 +301,7 @@ class GuidelineExtractionOrchestrator:
                     subtopic_title=subtopic_title,
                     source_page_start=page_num,
                     source_page_end=page_num,
-                    status="open",
+                    # status="open",  # REMOVED
                     guidelines=page_guidelines,
                     version=1
                 )
@@ -334,7 +317,7 @@ class GuidelineExtractionOrchestrator:
             subtopic_key=subtopic_key,
             subtopic_title=subtopic_title,
             page_num=page_num,
-            status=shard.status,
+            status="open", # Keep status in index for internal tracking
             source_page_start=shard.source_page_start,
             source_page_end=shard.source_page_end
         )
@@ -393,7 +376,7 @@ class GuidelineExtractionOrchestrator:
                 if subtopic.status in ["open", "stable"]:
                     try:
                         shard = self._load_shard_v2(book_id, topic.topic_key, subtopic.subtopic_key)
-                        shard.status = "final"
+                        # shard.status = "final" # REMOVED
                         shard.updated_at = datetime.utcnow().isoformat()
                         self._save_shard_v2(book_id, shard)
                         finalized_count += 1
@@ -537,10 +520,13 @@ class GuidelineExtractionOrchestrator:
 
                     # V2: 5-page gap threshold
                     if current_page - shard.source_page_end >= self.STABILITY_THRESHOLD:
-                        shard.status = "stable"
+                        # shard.status = "stable" # REMOVED
                         shard.updated_at = datetime.utcnow().isoformat()
                         self._save_shard_v2(book_id, shard)
                         stable_count += 1
+                        
+                        # Update index status
+                        # self._update_index_status(book_id, topic.topic_key, subtopic.subtopic_key, "stable")
                         logger.info(
                             f"Marked stable: {topic.topic_key}/{subtopic.subtopic_key} "
                             f"(last page: {shard.source_page_end}, current: {current_page})"

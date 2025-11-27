@@ -76,6 +76,7 @@ class TeachingGuideline(Base):
     topic = Column(String, nullable=False)    # e.g., "Fractions"
     subtopic = Column(String, nullable=False) # e.g., "Comparing Like Denominators"
     guideline = Column(Text, nullable=False)  # Detailed teaching instructions
+    review_status = Column(String, default="TO_BE_REVIEWED")  # TO_BE_REVIEWED, APPROVED
     metadata_json = Column(Text, nullable=True)  # JSON: objectives, depth, misconceptions, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
 

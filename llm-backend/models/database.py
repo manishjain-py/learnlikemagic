@@ -103,12 +103,16 @@ class TeachingGuideline(Base):
     evidence_summary = Column(Text, nullable=True)  # [V1 only]
     confidence = Column(Float, nullable=True)  # [V1 only]
 
-    # Metadata (kept in V2)
+    # Metadata
     book_id = Column(String, nullable=True)  # Reference to books table
     source_page_start = Column(Integer, nullable=True)
     source_page_end = Column(Integer, nullable=True)
     source_pages = Column(String, nullable=True)  # JSON array as string [REMOVE in V2]
-    status = Column(String, default='draft')
+    status = Column(String, nullable=False, default='draft')  # draft, pending_review, approved, rejected
+    review_status = Column(String, default='TO_BE_REVIEWED')  # TO_BE_REVIEWED, APPROVED
+    generated_at = Column(DateTime, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String, nullable=True)
     version = Column(Integer, default=1)
 
     __table_args__ = (

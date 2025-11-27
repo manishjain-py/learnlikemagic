@@ -44,11 +44,8 @@ class SubtopicShard(BaseModel):
     source_page_start: int = Field(..., description="First page of this subtopic")
     source_page_end: int = Field(..., description="Last page of this subtopic")
 
-    # Status
-    status: Literal["open", "stable", "final"] = Field(
-        default="open",
-        description="open=actively growing, stable=no updates for 5 pages, final=book ended or explicitly finalized"
-    )
+    # Status - REMOVED (GAP-001: No lifecycle statuses in S3)
+    # status: Literal["open", "stable", "final"] = Field(...)
 
     # Single guidelines field
     guidelines: str = Field(

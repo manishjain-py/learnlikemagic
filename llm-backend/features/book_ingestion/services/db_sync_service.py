@@ -16,11 +16,12 @@ Database Schema (teaching_guidelines table):
 
 import logging
 import json
+from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from ..models.guideline_models import SubtopicShard, SubtopicShard, Assessment
+from ..models.guideline_models import SubtopicShard, Assessment
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,8 @@ class DBSyncService:
         grade: int,
         subject: str,
         board: str,
-        country: str
+        country: str,
+        review_status: str = "TO_BE_REVIEWED"
     ) -> str:
         """
         Insert new guideline into database.
@@ -155,7 +157,7 @@ class DBSyncService:
                 topic, subtopic, guideline,
                 topic_key, subtopic_key, topic_title, subtopic_title,
                 source_page_start, source_page_end,
-                status, version,
+                status, version, review_status,
                 created_at
             )
             VALUES (
@@ -163,7 +165,7 @@ class DBSyncService:
                 :topic, :subtopic, :guideline,
                 :topic_key, :subtopic_key, :topic_title, :subtopic_title,
                 :source_page_start, :source_page_end,
-                :status, :version,
+                :status, :version, :review_status,
                 NOW()
             )
             RETURNING id
@@ -187,8 +189,9 @@ class DBSyncService:
                 "subtopic_title": shard.subtopic_title,
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
-                "status": shard.status,
-                "version": shard.version
+                "status": "synced", # Default status as shard.status is removed
+                "version": shard.version,
+                "review_status": review_status
             }
         )
 
@@ -249,8 +252,9 @@ class DBSyncService:
                 "subtopic_title": shard.subtopic_title,
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
-                "status": shard.status,
-                "version": shard.version
+                "status": "synced", # Default status
+                "version": shard.version,
+                "updated_at": datetime.utcnow()
             }
         )
 
@@ -366,40 +370,37 @@ class DBSyncService:
             logger.warning(f"No shards found to sync for book {book_id}")
             return {"synced_count": 0, "updated_count": 0, "created_count": 0}
 
-        # Sync all shards
-        created_count = 0
-        updated_count = 0
-
+        # Sync all shards (Requirement 6: Full book snapshot & reset statuses)
         try:
+            # 1. Delete all existing guidelines for this book
+            delete_query = text("DELETE FROM teaching_guidelines WHERE book_id = :book_id")
+            self.db.execute(delete_query, {"book_id": book_id})
+            
+            # 2. Insert all shards as new rows with TO_BE_REVIEWED status
+            created_count = 0
+            
             for shard in shards_to_sync:
-                # Check if exists
-                existing_id = self._find_existing_guideline(
-                    book_id,
-                    shard.topic_key,
-                    shard.subtopic_key
+                # Force status reset (Requirement 6.2)
+                # shard.status = "final"  # REMOVED: S3 status no longer exists
+                
+                # Insert new row
+                self._insert_guideline(
+                    shard, book_id, grade, subject, board, country, 
+                    review_status="TO_BE_REVIEWED"
                 )
+                created_count += 1
 
-                if existing_id:
-                    self._update_guideline_v2(
-                        existing_id, shard, grade, subject, board, country
-                    )
-                    updated_count += 1
-                else:
-                    self._insert_guideline_v2(
-                        shard, book_id, grade, subject, board, country
-                    )
-                    created_count += 1
-
-            total_synced = created_count + updated_count
+            self.db.commit()
+            
             logger.info(
                 f"Database sync complete for book {book_id}: "
-                f"{total_synced} synced ({created_count} created, {updated_count} updated)"
+                f"{created_count} guidelines synced (all reset to TO_BE_REVIEWED)"
             )
 
             return {
-                "synced_count": total_synced,
+                "synced_count": created_count,
                 "created_count": created_count,
-                "updated_count": updated_count
+                "updated_count": 0
             }
 
         except Exception as e:

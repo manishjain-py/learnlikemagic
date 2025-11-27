@@ -9,7 +9,7 @@ These endpoints allow the admin UI to:
 5. Edit and update guidelines
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -146,11 +146,11 @@ async def list_books_with_guidelines(
 
             topics_count = len(index.topics)
             subtopics_count = sum(len(topic.subtopics) for topic in index.topics)
-            subtopics_approved = sum(
-                1 for topic in index.topics
-                for subtopic in topic.subtopics
-                if subtopic.status == "final"
-            )
+            # ISSUE-001: Count approved from DB
+            subtopics_approved = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book.id,
+                TeachingGuideline.review_status == "APPROVED"
+            ).count()
             last_updated = index.last_updated
             extraction_status = "completed" if subtopics_count > 0 else "in_progress"
 
@@ -230,7 +230,7 @@ async def get_book_topics(
     return result
 
 
-@router.get("/books/{book_id}/subtopics/{subtopic_key}", response_model=SubtopicGuideline)
+@router.get("/books/{book_id}/subtopics/{subtopic_key}")
 async def get_subtopic_guideline(
     book_id: str,
     subtopic_key: str,
@@ -282,27 +282,18 @@ async def get_subtopic_guideline(
         return result
 
     # Convert to response format
-    return SubtopicGuideline(
-        book_id=shard.book_id,
-        topic_key=shard.topic_key,
-        topic_title=shard.topic_title,
-        subtopic_key=shard.subtopic_key,
-        subtopic_title=shard.subtopic_title,
-        source_page_start=shard.source_page_start,
-        source_page_end=shard.source_page_end,
-        source_pages=shard.source_pages,
-        page_range=f"{shard.source_page_start}-{shard.source_page_end}",
-        status=shard.status,
-        confidence=shard.confidence,
-        version=shard.version,
-        last_updated=datetime.utcnow(),  # Use current time as shard doesn't track this
-        teaching_description=shard.teaching_description,
-        objectives=to_list(shard.objectives),
-        examples=to_list(shard.examples),
-        misconceptions=to_list(shard.misconceptions),
-        assessments=to_list(shard.assessments),
-        evidence_summary=shard.evidence_summary
-    )
+    # Convert to response format
+    return {
+        "book_id": book_id,
+        "topic_key": shard.topic_key,
+        "topic_title": shard.topic_title,
+        "subtopic_key": shard.subtopic_key,
+        "subtopic_title": shard.subtopic_title,
+        "source_page_start": shard.source_page_start,
+        "source_page_end": shard.source_page_end,
+        "guidelines": shard.guidelines,  # V2: Single field
+        "version": shard.version
+    }
 
 
 @router.put("/books/{book_id}/subtopics/{subtopic_key}")
@@ -314,154 +305,18 @@ async def update_subtopic_guideline(
     db: Session = Depends(get_db)
 ):
     """
-    Update a subtopic guideline.
-
-    Allows editing of:
-    - Teaching description
-    - Learning objectives
-    - Examples
-    - Misconceptions
-    - Assessment questions
-    - Status
+    [DISABLED FOR MVP]
+    Manual editing is not supported in MVP.
+    To change guidelines, re-run extraction and finalize.
     """
-    # Verify book exists
-    book = db.query(Book).filter(Book.id == book_id).first()
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
-
-    # Load shard from S3
-    s3 = S3Client()
-    shard_key = (
-        f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
-        f"{subtopic_key}.latest.json"
+    raise HTTPException(
+        status_code=501,  # Not Implemented
+        detail="Manual editing disabled for MVP. Use regeneration instead."
     )
 
-    try:
-        shard_data = s3.download_json(shard_key)
-        shard = SubtopicShard(**shard_data)
-    except Exception as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Subtopic guideline not found: {str(e)}"
-        )
 
-    # Apply updates
-    update_data = update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        if hasattr(shard, field):
-            setattr(shard, field, value)
-
-    # Increment version and update timestamp
-    shard.version += 1
-    shard.last_updated = datetime.utcnow()
-
-    # Save back to S3
-    try:
-        s3.upload_json(data=shard.model_dump(), s3_key=shard_key)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save updated guideline: {str(e)}"
-        )
-
-    return {
-        "message": "Guideline updated successfully",
-        "version": shard.version,
-        "updated_at": shard.last_updated
-    }
-
-
-@router.post("/books/{book_id}/subtopics/{subtopic_key}/approve")
-async def approve_subtopic_guideline(
-    book_id: str,
-    subtopic_key: str,
-    topic_key: str = Query(..., description="Topic key for the subtopic"),
-    approval: ApprovalRequest = ...,
-    db: Session = Depends(get_db)
-):
-    """
-    Approve or reject a subtopic guideline.
-
-    When approved:
-    - Status changes to "final"
-    - Guideline becomes visible to teachers
-    - Can be synced to database
-
-    When rejected:
-    - Status changes to "needs_review"
-    - Reviewer notes are stored
-    """
-    # Verify book exists
-    book = db.query(Book).filter(Book.id == book_id).first()
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
-
-    # Load shard from S3
-    s3 = S3Client()
-    shard_key = (
-        f"books/{book_id}/guidelines/topics/{topic_key}/subtopics/"
-        f"{subtopic_key}.latest.json"
-    )
-
-    try:
-        shard_data = s3.download_json(shard_key)
-        shard = SubtopicShard(**shard_data)
-    except Exception as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Subtopic guideline not found: {str(e)}"
-        )
-
-    # Update status based on approval
-    old_status = shard.status
-    if approval.approved:
-        shard.status = "final"
-    else:
-        shard.status = "needs_review"
-
-    # Store reviewer notes in evidence_summary if provided
-    if approval.reviewer_notes:
-        if shard.evidence_summary:
-            shard.evidence_summary += f"\n\nReviewer Notes: {approval.reviewer_notes}"
-        else:
-            shard.evidence_summary = f"Reviewer Notes: {approval.reviewer_notes}"
-
-    # Increment version and update timestamp
-    shard.version += 1
-    shard.last_updated = datetime.utcnow()
-
-    # Save back to S3
-    try:
-        s3.upload_json(data=shard.model_dump(), s3_key=shard_key)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save approval: {str(e)}"
-        )
-
-    # Update index to reflect new status
-    from features.book_ingestion.services.index_management_service import IndexManagementService
-    index_manager = IndexManagementService(s3)
-    try:
-        index = index_manager.get_or_create_index(book_id)
-        index = index_manager.update_subtopic_status(
-            index=index,
-            topic_key=topic_key,
-            subtopic_key=subtopic_key,
-            status=shard.status
-        )
-        index_manager.save_index(index, create_snapshot=True)
-    except Exception as e:
-        # Log but don't fail - shard is already updated
-        print(f"Warning: Failed to update index: {e}")
-
-    return {
-        "message": f"Guideline {'approved' if approval.approved else 'rejected'}",
-        "status": shard.status,
-        "previous_status": old_status,
-        "version": shard.version,
-        "updated_at": shard.last_updated
-    }
+# Old approval endpoint removed (BUG-004, ISSUE-003)
+# Use POST /{guideline_id}/approve instead
 
 
 @router.get("/books/{book_id}/page-assignments", response_model=Dict[str, Dict[str, Any]])
@@ -504,6 +359,154 @@ async def get_page_assignments(
     return result
 
 
+@router.post("/books/{book_id}/extract")
+async def extract_guidelines_for_pages(
+    book_id: str,
+    start_page: int = Query(..., ge=1, description="First page to process"),
+    end_page: int = Query(..., ge=1, description="Last page to process"),
+    db: Session = Depends(get_db)
+):
+    """
+    Run guideline extraction on a specific page range.
+
+    - Updates the SAME S3 topic/subtopic map (incremental)
+    - Can be run multiple times with different ranges
+    - Does NOT sync to DB (use finalize-and-sync for that)
+    """
+    # Validate book exists
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    # Check for active job
+    from features.book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    job_service = JobLockService(db)
+    try:
+        job_id = job_service.acquire_lock(book_id, "extraction")
+    except JobLockError as e:
+        raise HTTPException(409, str(e))
+
+    try:
+        # Initialize orchestrator
+        from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+        s3 = S3Client()
+        orchestrator = GuidelineExtractionOrchestrator(
+            s3_client=s3,
+            db_session=db
+        )
+
+        # Get page count from S3 metadata
+        total_pages = 100 # Default fallback
+        try:
+            page_index_key = f"books/{book_id}/guidelines/page_index.json"
+            page_index_data = s3.download_json(page_index_key)
+            page_index_obj = PageIndex(**page_index_data)
+            total_pages = len(page_index_obj.pages)
+        except Exception:
+            pass
+
+        book_metadata = {
+            "grade": book.grade,
+            "subject": book.subject,
+            "board": book.board,
+            "total_pages": total_pages
+        }
+
+        # Run extraction
+        result = orchestrator.extract_guidelines_for_book(
+            book_id=book_id,
+            book_metadata=book_metadata,
+            start_page=start_page,
+            end_page=end_page,
+            auto_sync_to_db=False  # Never auto-sync
+        )
+
+        job_service.release_lock(job_id, 'completed')
+
+        return {
+            "status": "completed",
+            "pages_processed": result["pages_processed"],
+            "subtopics_created": result["subtopics_created"],
+            "subtopics_merged": result["subtopics_merged"],
+            "message": "Extraction complete. Run finalize-and-sync to publish."
+        }
+
+    except Exception as e:
+        job_service.release_lock(job_id, 'failed', str(e))
+        raise HTTPException(500, f"Extraction failed: {e}")
+
+
+@router.post("/books/{book_id}/finalize")
+async def finalize_book_guidelines(
+    book_id: str,
+    auto_sync: bool = Query(False, description="Auto-sync to DB after finalization"),
+    db: Session = Depends(get_db)
+):
+    """
+    Finalize and consolidate guidelines for a book.
+    
+    Triggers:
+    1. Finalization of all open topics
+    2. Deduplication and merging
+    3. Optional sync to database
+    """
+    # Verify book exists
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    # Initialize orchestrator
+    from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+    s3 = S3Client()
+    orchestrator = GuidelineExtractionOrchestrator(
+        s3_client=s3,
+        db_session=db
+    )
+
+    # Check for active job
+    from features.book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    job_service = JobLockService(db)
+    try:
+        job_id = job_service.acquire_lock(book_id, "finalization")
+    except JobLockError as e:
+        raise HTTPException(409, str(e))
+
+    try:
+        # Get page count from S3 metadata
+        total_pages = 100 # Default fallback
+        try:
+            page_index_key = f"books/{book_id}/guidelines/page_index.json"
+            page_index_data = s3.download_json(page_index_key)
+            page_index_obj = PageIndex(**page_index_data)
+            total_pages = len(page_index_obj.pages)
+        except Exception:
+            pass
+
+        book_metadata = {
+            "grade": book.grade,
+            "subject": book.subject,
+            "board": book.board,
+            "total_pages": total_pages
+        }
+        
+        result = orchestrator.finalize_book(
+            book_id=book_id,
+            book_metadata=book_metadata,
+            auto_sync_to_db=auto_sync
+        )
+        
+        job_service.release_lock(job_id, 'completed')
+        
+        return result
+        
+    except Exception as e:
+        job_service.release_lock(job_id, 'failed', str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Finalization failed: {str(e)}"
+        )
+
+
 @router.post("/books/{book_id}/sync-to-database")
 async def sync_guidelines_to_database(
     book_id: str,
@@ -516,7 +519,10 @@ async def sync_guidelines_to_database(
     This makes the guidelines available via the standard API
     for teacher-facing applications.
 
-    Only syncs guidelines with status="final" by default.
+    CRITICAL: This is a full snapshot sync. It will:
+    1. DELETE all existing guidelines for this book from the DB.
+    2. INSERT all guidelines from S3 as new rows.
+    3. Reset all review statuses to "TO_BE_REVIEWED".
     """
     # Verify book exists
     book = db.query(Book).filter(Book.id == book_id).first()
@@ -529,9 +535,18 @@ async def sync_guidelines_to_database(
     sync_service = DBSyncService(db)
 
     try:
+        # Get book metadata
+        book_metadata = {
+            "grade": book.grade,
+            "subject": book.subject,
+            "board": book.board,
+            "country": "India"
+        }
+
         synced_count = sync_service.sync_book_guidelines(
             book_id=book_id,
-            status_filter=status_filter
+            s3_client=S3Client(),
+            book_metadata=book_metadata
         )
     except Exception as e:
         raise HTTPException(
@@ -540,7 +555,57 @@ async def sync_guidelines_to_database(
         )
 
     return {
-        "message": f"Successfully synced {synced_count} guidelines to database",
+        "message": f"Successfully synced {synced_count['synced_count']} guidelines to database (statuses reset)",
         "book_id": book_id,
-        "synced_count": synced_count
+        "stats": synced_count
+    }
+
+@router.get("/books/{book_id}/review")
+async def review_book_guidelines(
+    book_id: str,
+    status: Optional[str] = Query(None, description="Filter by review status (TO_BE_REVIEWED, APPROVED)"),
+    db: Session = Depends(get_db)
+):
+    """
+    List guidelines from the database for review.
+    """
+    query = db.query(TeachingGuideline).filter(TeachingGuideline.book_id == book_id)
+    
+    if status:
+        query = query.filter(TeachingGuideline.review_status == status)
+        
+    guidelines = query.all()
+    
+    return [
+        {
+            "id": g.id,
+            "topic": g.topic,
+            "subtopic": g.subtopic,
+            "guideline": g.guideline,
+            "review_status": g.review_status,
+            "updated_at": g.created_at
+        }
+        for g in guidelines
+    ]
+
+
+@router.post("/{guideline_id}/approve")
+async def approve_guideline(
+    guideline_id: str,
+    approved: bool = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    Approve or reject a guideline in the database.
+    """
+    guideline = db.query(TeachingGuideline).filter(TeachingGuideline.id == guideline_id).first()
+    if not guideline:
+        raise HTTPException(status_code=404, detail="Guideline not found")
+        
+    guideline.review_status = "APPROVED" if approved else "TO_BE_REVIEWED"
+    db.commit()
+    
+    return {
+        "id": guideline.id,
+        "review_status": guideline.review_status
     }

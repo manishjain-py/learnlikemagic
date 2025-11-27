@@ -669,12 +669,14 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                     shard = SubtopicShard(**shard_data)
 
                     # V2 response with single guidelines field
+                    # Note: status comes from index (subtopic_entry), not shard
+                    # because shard.status was removed per GAP-001
                     guidelines.append(GuidelineSubtopicResponse(
                         topic_key=shard.topic_key,
                         topic_title=shard.topic_title,
                         subtopic_key=shard.subtopic_key,
                         subtopic_title=shard.subtopic_title,
-                        status=shard.status,
+                        status=subtopic_entry.status,  # From index, not shard
                         source_page_start=shard.source_page_start,
                         source_page_end=shard.source_page_end,
                         version=shard.version,
