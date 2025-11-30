@@ -59,6 +59,10 @@ class Settings(BaseSettings):
         default="INFO",
         description="Logging level"
     )
+    log_format: str = Field(
+        default="json",
+        description="Logging format: 'json' for structured, 'text' for human-readable"
+    )
     environment: str = Field(
         default="development",
         description="Environment: development, staging, production"

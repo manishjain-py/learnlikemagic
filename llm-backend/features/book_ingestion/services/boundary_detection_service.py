@@ -94,6 +94,17 @@ class BoundaryDetectionService:
         prompt = self._build_prompt(context_pack, page_text)
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "BOUNDARY_DETECT",
+                "status": "starting",
+                "book_id": context_pack.book_id,
+                "page": context_pack.current_page
+            }))
+
             # Call LLM
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -130,20 +141,22 @@ class BoundaryDetectionService:
             topic_title = deslugify(topic_key) if decision.topic_name == topic_key else decision.topic_name
             subtopic_title = deslugify(subtopic_key) if decision.subtopic_name == subtopic_key else decision.subtopic_name
 
-            logger.info(
-                f"Boundary decision: {'NEW' if decision.is_new_topic else 'CONTINUE'} "
-                f"→ {topic_key}/{subtopic_key}"
-            )
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "BOUNDARY_DETECT",
+                "status": "complete",
+                "book_id": context_pack.book_id,
+                "page": context_pack.current_page,
+                "output": {
+                    "is_new_topic": decision.is_new_topic,
+                    "topic": topic_key,
+                    "subtopic": subtopic_key
+                },
+                "duration_ms": duration_ms
+            }))
 
-            # Log reasoning to file
-            self._log_boundary_decision(
-                context_pack.book_id,
-                context_pack.current_page,
-                decision.is_new_topic,
-                topic_key,
-                subtopic_key,
-                decision.reasoning
-            )
+            # Log reasoning to file - REMOVED in favor of structured logging above
+            # self._log_boundary_decision(...)
 
             return (
                 decision.is_new_topic,

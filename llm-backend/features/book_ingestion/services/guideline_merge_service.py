@@ -84,6 +84,21 @@ class GuidelineMergeService:
         )
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "GUIDELINE_MERGE_LLM",
+                "status": "starting",
+                "input": {
+                    "existing_len": len(existing_guidelines),
+                    "new_len": len(new_page_guidelines),
+                    "topic": topic_title,
+                    "subtopic": subtopic_title
+                }
+            }))
+
             # Call LLM
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -107,10 +122,16 @@ class GuidelineMergeService:
             if not merged_guidelines:
                 raise ValueError("LLM returned empty merged guidelines")
 
-            logger.info(
-                f"Merged guidelines for {topic_title}/{subtopic_title}: "
-                f"{len(existing_guidelines)} + {len(new_page_guidelines)} → {len(merged_guidelines)} chars"
-            )
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "GUIDELINE_MERGE_LLM",
+                "status": "complete",
+                "output": {
+                    "merged_len": len(merged_guidelines),
+                    "delta": len(merged_guidelines) - len(existing_guidelines)
+                },
+                "duration_ms": duration_ms
+            }))
 
             return merged_guidelines
 

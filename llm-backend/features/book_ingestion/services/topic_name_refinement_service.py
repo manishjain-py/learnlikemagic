@@ -66,8 +66,21 @@ class TopicNameRefinementService:
                 page_end=shard.source_page_end
             )
 
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "TOPIC_REFINEMENT",
+                "status": "starting",
+                "input": {
+                    "topic_key": shard.topic_key,
+                    "subtopic_key": shard.subtopic_key,
+                    "guidelines_len": len(shard.guidelines)
+                }
+            }))
+
             # Call LLM
-            logger.info(f"Refining names for {shard.topic_key}/{shard.subtopic_key}")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{
@@ -85,10 +98,20 @@ class TopicNameRefinementService:
 
             refinement = TopicNameRefinement(**refinement_data)
 
-            logger.info(
-                f"Refined: {shard.topic_title} → {refinement.topic_title}, "
-                f"{shard.subtopic_title} → {refinement.subtopic_title}"
-            )
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "TOPIC_REFINEMENT",
+                "status": "complete",
+                "output": {
+                    "old_topic": shard.topic_title,
+                    "new_topic": refinement.topic_title,
+                    "old_subtopic": shard.subtopic_title,
+                    "new_subtopic": refinement.subtopic_title,
+                    "changed": (shard.topic_title != refinement.topic_title or 
+                               shard.subtopic_title != refinement.subtopic_title)
+                },
+                "duration_ms": duration_ms
+            }))
 
             return refinement
 

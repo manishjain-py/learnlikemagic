@@ -645,8 +645,7 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
 
                 except Exception as e:
                     # Log error but continue
-                    import logging
-                    logging.error(f"Failed to load shard {shard_key}: {str(e)}")
+                    logger.error(f"Failed to load shard {shard_key}: {str(e)}")
                     continue
 
         return GuidelinesListResponse(
@@ -833,8 +832,7 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                         )
 
                 except Exception as e:
-                    import logging
-                    logging.error(
+                    logger.error(
                         f"Failed to approve {topic_entry.topic_key}/{subtopic_entry.subtopic_key}: {str(e)}"
                     )
                     # Continue with next shard
@@ -872,9 +870,8 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                         synced_count += 1
 
                     except Exception as e:
-                        import logging
                         import traceback
-                        logging.error(
+                        logger.error(
                             f"Failed to sync {topic_entry.topic_key}/{subtopic_entry.subtopic_key}: {str(e)}"
                         )
                         traceback.print_exc()
@@ -931,14 +928,12 @@ async def reject_guidelines(book_id: str, db: Session = Depends(get_db)):
             # Delete all files under guidelines/ prefix
             # Note: This is a simplified implementation
             # A production version should use s3_client.delete_prefix()
-            import logging
-            logging.info(f"Deleting guidelines for book {book_id} (prefix: {guidelines_prefix})")
+            logger.info(f"Deleting guidelines for book {book_id} (prefix: {guidelines_prefix})")
             # TODO: Implement s3_client.delete_prefix() method
             # For now, just log the action
 
         except Exception as e:
-            import logging
-            logging.error(f"Failed to delete guidelines: {str(e)}")
+            logger.error(f"Failed to delete guidelines: {str(e)}")
 
         return None
 

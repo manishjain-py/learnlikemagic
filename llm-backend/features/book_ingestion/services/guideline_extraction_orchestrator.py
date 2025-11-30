@@ -158,10 +158,19 @@ class GuidelineExtractionOrchestrator:
         }
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
             # Process each page sequentially
             for page_num in range(start_page, end_page + 1):
                 try:
-                    logger.info(f"Processing page {page_num}/{end_page}...")
+                    logger.info(json.dumps({
+                        "step": "PAGE_PROCESS",
+                        "status": "starting",
+                        "book_id": book_id,
+                        "page": page_num
+                    }))
 
                     # Process single page
                     page_result = self.process_page(
@@ -183,22 +192,41 @@ class GuidelineExtractionOrchestrator:
                         current_page=page_num
                     )
 
-                    logger.info(
-                        f"Page {page_num} complete: "
-                        f"{'NEW' if page_result.get('is_new_topic') else 'CONTINUE'} "
-                        f"→ {page_result.get('topic_key')}/{page_result.get('subtopic_key')}, "
-                        f"{stable_count} marked stable"
-                    )
+                    logger.info(json.dumps({
+                        "step": "PAGE_PROCESS",
+                        "status": "complete",
+                        "book_id": book_id,
+                        "page": page_num,
+                        "output": {
+                            "is_new_topic": page_result.get("is_new_topic"),
+                            "topic": page_result.get("topic_key"),
+                            "subtopic": page_result.get("subtopic_key"),
+                            "stable_count": stable_count
+                        }
+                    }))
 
                 except Exception as e:
                     error_msg = f"Error processing page {page_num}: {str(e)}"
-                    logger.error(error_msg, exc_info=True)
+                    logger.error(json.dumps({
+                        "step": "PAGE_PROCESS",
+                        "status": "failed",
+                        "book_id": book_id,
+                        "page": page_num,
+                        "error": str(e)
+                    }))
                     stats["errors"].append(error_msg)
                     # Continue processing next page
 
             # Book-end processing
             # Requirement 5: Finalize & Consolidate is a separate action
-            logger.info(f"Page range extraction complete. Finalization must be triggered separately.")
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "GUIDELINE_EXTRACTION",
+                "status": "complete",
+                "book_id": book_id,
+                "output": stats,
+                "duration_ms": duration_ms
+            }))
 
             return stats
 
@@ -233,20 +261,51 @@ class GuidelineExtractionOrchestrator:
         7. Update indices
         8. Save page guideline
         """
-        logger.debug(f"Processing page {page_num} (V2 pipeline)...")
+        import time
+        import json
+        page_start_time = time.time()
 
         # Step 1: Load page OCR text
+        logger.info(json.dumps({
+            "step": "LOAD_OCR",
+            "status": "starting",
+            "book_id": book_id,
+            "page": page_num
+        }))
         page_text = self._load_page_text(book_id, page_num)
+        logger.info(json.dumps({
+            "step": "LOAD_OCR",
+            "status": "complete",
+            "book_id": book_id,
+            "page": page_num,
+            "output": {"text_len": len(page_text)}
+        }))
 
         # Step 2: Generate minisummary (5-6 lines)
         minisummary = self.minisummary.generate(page_text)
 
         # Step 3: Build context pack (5 recent + guidelines)
+        logger.info(json.dumps({
+            "step": "CONTEXT_PACK",
+            "status": "starting",
+            "book_id": book_id,
+            "page": page_num
+        }))
         context_pack = self.context_pack.build(
             book_id=book_id,
             current_page=page_num,
             book_metadata=book_metadata
         )
+        logger.info(json.dumps({
+            "step": "CONTEXT_PACK",
+            "status": "complete",
+            "book_id": book_id,
+            "page": page_num,
+            "output": {
+                "recent_pages": len(context_pack.recent_page_summaries),
+                "open_topics": len(context_pack.open_topics)
+            }
+        }))
 
         # Step 4: Boundary detection + guideline extraction (V2)
         is_new, topic_key, topic_title, subtopic_key, subtopic_title, page_guidelines = \
@@ -269,7 +328,13 @@ class GuidelineExtractionOrchestrator:
                 guidelines=page_guidelines,  # V2: Single field
                 version=1
             )
-            logger.info(f"Created NEW shard: {topic_key}/{subtopic_key}")
+            logger.info(json.dumps({
+                "step": "SHARD_CREATE",
+                "status": "complete",
+                "book_id": book_id,
+                "page": page_num,
+                "output": {"topic": topic_key, "subtopic": subtopic_key}
+            }))
         else:
             # Load existing shard and merge (or create if doesn't exist yet)
             try:
@@ -290,7 +355,17 @@ class GuidelineExtractionOrchestrator:
                 shard.version += 1
                 shard.updated_at = datetime.utcnow().isoformat()
 
-                logger.info(f"Merged into existing shard: {topic_key}/{subtopic_key}")
+                logger.info(json.dumps({
+                    "step": "GUIDELINE_MERGE",
+                    "status": "complete",
+                    "book_id": book_id,
+                    "page": page_num,
+                    "output": {
+                        "topic": topic_key, 
+                        "subtopic": subtopic_key,
+                        "merged_len": len(merged_guidelines)
+                    }
+                }))
             except Exception as e:
                 # Shard doesn't exist yet - treat as new
                 logger.warning(f"Shard not found, creating new: {topic_key}/{subtopic_key}")
@@ -321,17 +396,19 @@ class GuidelineExtractionOrchestrator:
             source_page_start=shard.source_page_start,
             source_page_end=shard.source_page_end
         )
+        
+        logger.info(json.dumps({
+            "step": "INDEX_UPDATE",
+            "status": "complete",
+            "book_id": book_id,
+            "page": page_num
+        }))
 
         # Step 8: Save page guideline (minisummary)
         self._save_page_guideline_v2(
             book_id=book_id,
             page_num=page_num,
             minisummary=minisummary
-        )
-
-        logger.debug(
-            f"Page {page_num} processed (V2): {topic_key}/{subtopic_key}, "
-            f"is_new={is_new}"
         )
 
         return {

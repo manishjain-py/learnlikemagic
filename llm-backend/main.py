@@ -20,12 +20,52 @@ validate_required_settings()
 # Configure logging
 import logging
 import sys
+import json
+from datetime import datetime
+
 settings = get_settings()
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+
+class JSONFormatter(logging.Formatter):
+    """Format log records as JSON for structured logging."""
+
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+        }
+
+        # Check if message is already JSON (our structured logs)
+        msg = record.getMessage()
+        try:
+            msg_data = json.loads(msg)
+            if isinstance(msg_data, dict):
+                log_entry.update(msg_data)
+            else:
+                log_entry["message"] = msg
+        except (json.JSONDecodeError, TypeError):
+            log_entry["message"] = msg
+
+        return json.dumps(log_entry)
+
+# Update basicConfig
+log_format = settings.log_format  # "json" or "text"
+if log_format == "json":
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(JSONFormatter())
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        handlers=[handler],
+        force=True  # Ensure we override any existing config
+    )
+else:
+    # Keep existing text format for development
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True
+    )
 
 # Initialize FastAPI app
 app = FastAPI(

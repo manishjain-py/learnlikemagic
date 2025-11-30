@@ -84,6 +84,16 @@ class MinisummaryService:
         prompt = self.prompt_template.format(page_text=truncated_text)
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "MINISUMMARY",
+                "status": "starting",
+                "input": {"text_len": len(truncated_text)}
+            }))
+
             # Call LLM
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -112,12 +122,20 @@ class MinisummaryService:
             target_words = 150  # ~25 words/line * 6 lines
             tolerance = 30
             if word_count > target_words + tolerance:
-                logger.warning(
-                    f"Minisummary exceeds target length: {word_count} words "
-                    f"(target: ≤{target_words}). Summary: {summary[:100]}..."
-                )
+                logger.warning(json.dumps({
+                    "step": "MINISUMMARY",
+                    "status": "warning",
+                    "message": "Minisummary exceeds target length",
+                    "details": {"word_count": word_count, "target": target_words}
+                }))
 
-            logger.debug(f"Generated minisummary ({word_count} words): {summary[:100]}...")
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "MINISUMMARY",
+                "status": "complete",
+                "output": {"word_count": word_count, "summary_preview": summary[:50]},
+                "duration_ms": duration_ms
+            }))
 
             return summary
 

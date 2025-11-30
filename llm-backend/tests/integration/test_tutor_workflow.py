@@ -10,7 +10,7 @@ These tests verify the complete workflow end-to-end:
 - Replanning
 - Session completion
 
-Note: These tests require OpenAI API key and will make real API calls.
+Note: These tests require OpenAI API key and PostgreSQL database.
 Use mock responses for faster unit tests.
 """
 
@@ -19,7 +19,6 @@ import os
 from workflows.tutor_workflow import TutorWorkflow
 from workflows.helpers import generate_session_id
 from services.llm_service import LLMService
-from services.agent_logging_service import AgentLoggingService
 
 
 @pytest.fixture
@@ -32,17 +31,35 @@ def llm_service():
 
 
 @pytest.fixture
-def logging_service(tmp_path):
-    """Create logging service with temp directory"""
-    log_dir = tmp_path / "logs"
-    return AgentLoggingService(log_base_dir=str(log_dir))
+def db_connection():
+    """Create PostgreSQL connection for LangGraph checkpointing"""
+    from config import get_settings
+
+    try:
+        from psycopg import connect
+        from psycopg.rows import dict_row
+
+        settings = get_settings()
+        if not settings.database_url:
+            pytest.skip("DATABASE_URL not set")
+
+        conn = connect(
+            str(settings.database_url),
+            autocommit=True,
+            row_factory=dict_row
+        )
+        yield conn
+        conn.close()
+    except ImportError:
+        pytest.skip("psycopg not installed")
+    except Exception as e:
+        pytest.skip(f"Could not connect to database: {e}")
 
 
 @pytest.fixture
-def workflow(llm_service, logging_service, tmp_path):
+def workflow(llm_service, db_connection):
     """Create workflow instance"""
-    checkpoint_path = str(tmp_path / "checkpoints.db")
-    return TutorWorkflow(llm_service, logging_service, checkpoint_path)
+    return TutorWorkflow(llm_service, db_connection)
 
 
 def test_session_creation(workflow):

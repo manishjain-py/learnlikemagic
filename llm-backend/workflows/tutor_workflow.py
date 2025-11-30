@@ -46,7 +46,6 @@ from agents.planner_agent import PlannerAgent
 from agents.executor_agent import ExecutorAgent
 from agents.evaluator_agent import EvaluatorAgent
 from services.llm_service import LLMService
-from services.agent_logging_service import AgentLoggingService
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +158,6 @@ def route_after_evaluation(state: SimplifiedState) -> Literal["replan", "continu
 
 def build_workflow(
     llm_service: LLMService,
-    logging_service: AgentLoggingService,
     db_connection: Connection,
 ) -> StateGraph:
     """
@@ -167,7 +165,6 @@ def build_workflow(
 
     Args:
         llm_service: LLM service instance
-        logging_service: Logging service instance
         db_connection: Database connection for checkpoints
 
     Returns:
@@ -176,9 +173,9 @@ def build_workflow(
     logger.info("Building tutor workflow...")
 
     # Create agent instances
-    planner = PlannerAgent(llm_service, logging_service)
-    executor = ExecutorAgent(llm_service, logging_service)
-    evaluator = EvaluatorAgent(llm_service, logging_service)
+    planner = PlannerAgent(llm_service)
+    executor = ExecutorAgent(llm_service)
+    evaluator = EvaluatorAgent(llm_service)
 
     # Create StateGraph
     workflow = StateGraph(SimplifiedState)
@@ -268,7 +265,6 @@ class TutorWorkflow:
     def __init__(
         self,
         llm_service: LLMService,
-        logging_service: AgentLoggingService,
         db_connection: Connection,
     ):
         """
@@ -276,12 +272,10 @@ class TutorWorkflow:
 
         Args:
             llm_service: LLM service instance
-            logging_service: Logging service instance
             db_connection: Database connection for checkpoints
         """
         self.llm_service = llm_service
-        self.logging_service = logging_service
-        self.app = build_workflow(llm_service, logging_service, db_connection)
+        self.app = build_workflow(llm_service, db_connection)
 
     def start_session(
         self,

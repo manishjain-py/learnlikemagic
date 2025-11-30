@@ -92,6 +92,17 @@ class PageService:
         self._validate_image(image_data, filename)
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "PAGE_UPLOAD",
+                "status": "starting",
+                "book_id": book_id,
+                "input": {"filename": filename, "size_bytes": len(image_data)}
+            }))
+
             # Load current metadata
             metadata = self._load_metadata(book_id)
 
@@ -100,14 +111,20 @@ class PageService:
 
             # Upload image to S3
             image_s3_key = f"books/{book_id}/{page_num}.png"
-            logger.info(f"Uploading page {page_num} for book {book_id}")
-
+            
             # Convert to PNG for consistency
             image_bytes = self._convert_to_png(image_data)
+            
+            logger.info(json.dumps({
+                "step": "IMAGE_CONVERT",
+                "status": "complete",
+                "book_id": book_id,
+                "output": {"format": "PNG", "size_bytes": len(image_bytes)}
+            }))
+
             self.s3_client.upload_bytes(image_bytes, image_s3_key, content_type="image/png")
 
             # Perform OCR
-            logger.info(f"Performing OCR on page {page_num}")
             ocr_text = self.ocr_service.extract_text_with_retry(image_bytes=image_bytes)
 
             # Save OCR text to S3
@@ -133,14 +150,17 @@ class PageService:
 
             self.s3_client.update_metadata_json(book_id, metadata)
 
-            # Update book status if this is the first page
-            # if book.status == "draft":
-            #     self.book_repository.update_status(book_id, "uploading_pages")
-
             # Generate presigned URL for image
             image_url = self.s3_client.get_presigned_url(image_s3_key, expiration=3600)
 
-            logger.info(f"Successfully uploaded page {page_num} for book {book_id}")
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "PAGE_UPLOAD",
+                "status": "complete",
+                "book_id": book_id,
+                "output": {"page_num": page_num, "ocr_chars": len(ocr_text)},
+                "duration_ms": duration_ms
+            }))
 
             return PageUploadResponse(
                 page_num=page_num,

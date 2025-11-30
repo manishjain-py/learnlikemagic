@@ -9,7 +9,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()
 
 from services.llm_service import LLMService
-from services.agent_logging_service import AgentLoggingService
 from workflows.tutor_workflow import build_workflow
 from config import get_settings
 
@@ -23,7 +22,6 @@ def generate_graph_image():
         os.environ["OPENAI_API_KEY"] = "sk-mock-key-for-visualization"
         
     llm_service = LLMService(api_key="mock", max_retries=1)
-    logging_service = AgentLoggingService()
     
     # Build the workflow manually to avoid checkpointer dependency
     from workflows.state import SimplifiedState
@@ -34,9 +32,9 @@ def generate_graph_image():
     from workflows.tutor_workflow import route_entry, route_after_executor, route_after_evaluation
     
     # Create agent instances
-    planner = PlannerAgent(llm_service, logging_service)
-    executor = ExecutorAgent(llm_service, logging_service)
-    evaluator = EvaluatorAgent(llm_service, logging_service)
+    planner = PlannerAgent(llm_service)
+    executor = ExecutorAgent(llm_service)
+    evaluator = EvaluatorAgent(llm_service)
 
     # Create StateGraph
     workflow = StateGraph(SimplifiedState)

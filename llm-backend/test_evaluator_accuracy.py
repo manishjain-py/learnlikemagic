@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from services.llm_service import LLMService
-from services.agent_logging_service import AgentLoggingService
 from agents.evaluator_agent import EvaluatorAgent
 from workflows.state import SimplifiedState
 
@@ -180,8 +179,7 @@ def main():
 
     # Create services
     llm_service = LLMService(api_key=api_key)
-    logging_service = AgentLoggingService(log_base_dir="logs/sessions")
-    evaluator = EvaluatorAgent(llm_service, logging_service)
+    evaluator = EvaluatorAgent(llm_service)
 
     # Create test state
     state = create_test_state()

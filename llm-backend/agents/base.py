@@ -20,7 +20,6 @@ import time
 import logging
 from workflows.state import SimplifiedState
 from services.llm_service import LLMService
-from services.agent_logging_service import AgentLoggingService
 from agents.prompts import PromptLoader
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,6 @@ class BaseAgent(ABC):
     def __init__(
         self,
         llm_service: LLMService,
-        logging_service: AgentLoggingService,
         prompt_loader: Optional[PromptLoader] = None,
     ):
         """
@@ -52,11 +50,9 @@ class BaseAgent(ABC):
 
         Args:
             llm_service: Service for LLM API calls
-            logging_service: Service for agent logging
             prompt_loader: Prompt template loader (uses default if None)
         """
         self.llm_service = llm_service
-        self.logging_service = logging_service
         self.prompt_loader = prompt_loader or PromptLoader()
 
     @property
@@ -87,7 +83,13 @@ class BaseAgent(ABC):
         start_time = time.time()
 
         try:
-            logger.info(f"Executing {self.agent_name} agent...")
+            import json
+            logger.info(json.dumps({
+                "step": f"AGENT_EXECUTION:{self.agent_name.upper()}",
+                "status": "starting",
+                "session_id": state.get("session_id"),
+                "agent": self.agent_name
+            }))
 
             # Call subclass implementation
             updated_state, output, reasoning, input_summary = self.execute_internal(state)
@@ -95,22 +97,28 @@ class BaseAgent(ABC):
             # Calculate duration
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # Log execution
-            log_entry = self.logging_service.log_agent_execution(
-                session_id=state["session_id"],
-                agent=self.agent_name,
-                input_summary=input_summary,
-                output=output,
-                reasoning=reasoning,
-                duration_ms=duration_ms,
-            )
+            # Log execution (structured)
+            log_entry = {
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "session_id": state.get("session_id"),
+                "agent": self.agent_name,
+                "input_summary": input_summary,
+                "output": output,
+                "reasoning": reasoning,
+                "duration_ms": duration_ms
+            }
 
             # Add log entry to state
             updated_state = self._append_log(updated_state, log_entry)
 
-            logger.info(
-                f"{self.agent_name} agent completed in {duration_ms}ms"
-            )
+            logger.info(json.dumps({
+                "step": f"AGENT_EXECUTION:{self.agent_name.upper()}",
+                "status": "complete",
+                "session_id": state.get("session_id"),
+                "agent": self.agent_name,
+                "output": output,
+                "duration_ms": duration_ms
+            }))
 
             return updated_state
 

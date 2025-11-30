@@ -93,7 +93,12 @@ class LLMService:
         Raises:
             LLMServiceError: If API call fails after retries
         """
-        logger.info(f"Calling GPT-5.1 with reasoning effort: {reasoning_effort}")
+        logger.info(json.dumps({
+            "step": "LLM_CALL",
+            "status": "starting",
+            "model": "gpt-5.1",
+            "params": {"reasoning_effort": reasoning_effort}
+        }))
 
         def _api_call():
             try:
@@ -108,7 +113,13 @@ class LLMService:
                     "reasoning": getattr(result, "reasoning", None),
                 }
             except (OpenAIError, Exception) as e:
-                logger.warning(f"GPT-5.1 call failed: {str(e)}. Falling back to GPT-4o.")
+                logger.warning(json.dumps({
+                    "step": "LLM_CALL",
+                    "status": "warning",
+                    "model": "gpt-5.1",
+                    "error": str(e),
+                    "message": "Falling back to GPT-4o"
+                }))
                 # Fallback to GPT-4o
                 # We need to adapt the prompt or just use it as is. 
                 # Since GPT-4o is chat model, we use chat completions.
@@ -151,7 +162,12 @@ class LLMService:
         Raises:
             LLMServiceError: If API call fails after retries
         """
-        logger.info(f"Calling GPT-4o (json_mode={json_mode})")
+        logger.info(json.dumps({
+            "step": "LLM_CALL",
+            "status": "starting",
+            "model": "gpt-4o",
+            "params": {"json_mode": json_mode}
+        }))
 
         def _api_call():
             kwargs = {
@@ -195,7 +211,12 @@ class LLMService:
         if not self.has_gemini:
             raise LLMServiceError("Gemini API key not configured")
 
-        logger.info(f"Calling Gemini ({model_name})")
+        logger.info(json.dumps({
+            "step": "LLM_CALL",
+            "status": "starting",
+            "model": model_name,
+            "params": {"temperature": temperature}
+        }))
 
         def _api_call():
             config = {
@@ -232,10 +253,23 @@ class LLMService:
         """
         last_error = None
         delay = self.initial_retry_delay
+        start_time = time.time()
 
         for attempt in range(self.max_retries):
             try:
                 result = api_call_fn()
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                # Log successful completion
+                logger.info(json.dumps({
+                    "step": "LLM_CALL",
+                    "status": "complete",
+                    "model": model_name,
+                    "output": {"response_length": len(str(result)) if result else 0},
+                    "duration_ms": duration_ms,
+                    "attempts": attempt + 1
+                }))
+
                 if attempt > 0:
                     logger.info(f"{model_name} call succeeded on attempt {attempt + 1}")
                 return result
@@ -272,6 +306,15 @@ class LLMService:
                 raise LLMServiceError(f"{model_name} unexpected error: {str(e)}") from e
 
         # All retries failed
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(json.dumps({
+            "step": "LLM_CALL",
+            "status": "failed",
+            "model": model_name,
+            "error": str(last_error),
+            "duration_ms": duration_ms,
+            "attempts": self.max_retries
+        }))
         raise LLMServiceError(
             f"{model_name} failed after {self.max_retries} attempts. Last error: {str(last_error)}"
         ) from last_error

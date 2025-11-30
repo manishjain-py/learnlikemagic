@@ -87,6 +87,16 @@ class TopicDeduplicationService:
         prompt = self._build_prompt(topics_summary, grade, subject)
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "TOPIC_DEDUPLICATION",
+                "status": "starting",
+                "input": {"shards_count": len(all_shards)}
+            }))
+
             # Call LLM
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -119,7 +129,13 @@ class TopicDeduplicationService:
                     dup["subtopic_key2"]
                 ))
 
-            logger.info(f"Found {len(duplicates)} duplicate topic/subtopic pairs")
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "TOPIC_DEDUPLICATION",
+                "status": "complete",
+                "output": {"duplicates_found": len(duplicates)},
+                "duration_ms": duration_ms
+            }))
 
             return duplicates
 

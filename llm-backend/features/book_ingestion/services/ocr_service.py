@@ -99,11 +99,21 @@ class OCRService:
             raise ValueError("Either image_path or image_bytes must be provided")
 
         try:
+            import time
+            import json
+            start_time = time.time()
+
             # Encode image to base64
             if image_path:
                 base64_image = self.encode_image_to_base64(image_path)
             else:
                 base64_image = self.encode_bytes_to_base64(image_bytes)
+
+            logger.info(json.dumps({
+                "step": "OCR",
+                "status": "starting",
+                "input": {"model": self.model, "image_b64_size": len(base64_image)}
+            }))
 
             # Detailed interpretation prompt
             prompt_text = """I have a book page image that I need you to interpret completely.
@@ -123,7 +133,6 @@ Please provide:
 Format the output clearly with appropriate structure and formatting."""
 
             # Create the API request
-            logger.info(f"Sending OCR request to OpenAI Vision API (model: {self.model})")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{
@@ -143,7 +152,14 @@ Format the output clearly with appropriate structure and formatting."""
 
             # Extract text from response
             extracted_text = response.choices[0].message.content
-            logger.info(f"OCR completed successfully, extracted {len(extracted_text)} characters")
+            
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "OCR",
+                "status": "complete",
+                "output": {"chars_extracted": len(extracted_text)},
+                "duration_ms": duration_ms
+            }))
 
             return extracted_text
 

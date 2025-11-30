@@ -135,12 +135,27 @@ class IndexManagementService:
         # Update timestamp and save
         index.last_updated = datetime.utcnow().isoformat()
 
+        # Update timestamp and save
+        index.last_updated = datetime.utcnow().isoformat()
+
         try:
+            import time
+            import json
+            start_time = time.time()
+
             self.s3.upload_json(data=index.model_dump(), s3_key=index_key)
-            logger.info(
-                f"Saved index for book {book_id}: version {index.version}, "
-                f"{len(index.topics)} topics"
-            )
+            
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "INDEX_SAVE",
+                "status": "complete",
+                "book_id": book_id,
+                "output": {
+                    "version": index.version,
+                    "topics_count": len(index.topics)
+                },
+                "duration_ms": duration_ms
+            }))
         except Exception as e:
             logger.error(f"Failed to save index to {index_key}: {str(e)}")
             raise

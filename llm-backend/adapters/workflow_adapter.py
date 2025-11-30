@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session as DBSession
 from models import TutorState
 from workflows.tutor_workflow import TutorWorkflow
 from services.llm_service import LLMService
-from services.agent_logging_service import AgentLoggingService
 from adapters.state_adapter import StateAdapter
 from repositories import TeachingGuidelineRepository
 
@@ -45,7 +44,6 @@ class SessionWorkflowAdapter:
             raise ValueError("OPENAI_API_KEY environment variable not set")
 
         self.llm_service = LLMService(api_key=api_key, gemini_api_key=gemini_key, max_retries=3)
-        self.logging_service = AgentLoggingService(log_base_dir="logs/sessions")
 
         # Create PostgreSQL connection for LangGraph checkpointing
         from psycopg import connect
@@ -61,7 +59,6 @@ class SessionWorkflowAdapter:
 
         self.workflow = TutorWorkflow(
             self.llm_service,
-            self.logging_service,
             db_connection=db_conn
         )
 

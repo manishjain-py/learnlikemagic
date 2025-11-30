@@ -78,6 +78,17 @@ class ContextPackService:
             FileNotFoundError: If index.json not found (first page case)
         """
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "CONTEXT_BUILD",
+                "status": "starting",
+                "book_id": book_id,
+                "page": current_page
+            }))
+
             # Load current index
             index = self._load_index(book_id)
 
@@ -101,11 +112,18 @@ class ContextPackService:
                 toc_hints=toc_hints
             )
 
-            logger.debug(
-                f"Built context pack for page {current_page}: "
-                f"{len(open_topics)} open topics, "
-                f"{len(recent_summaries)} recent summaries"
-            )
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "CONTEXT_BUILD",
+                "status": "complete",
+                "book_id": book_id,
+                "page": current_page,
+                "output": {
+                    "open_topics_count": len(open_topics),
+                    "recent_summaries_count": len(recent_summaries)
+                },
+                "duration_ms": duration_ms
+            }))
 
             return context_pack
 

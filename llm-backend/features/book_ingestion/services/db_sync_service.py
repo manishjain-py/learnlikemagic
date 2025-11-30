@@ -372,6 +372,17 @@ class DBSyncService:
 
         # Sync all shards (Requirement 6: Full book snapshot & reset statuses)
         try:
+            import time
+            import json
+            start_time = time.time()
+
+            logger.info(json.dumps({
+                "step": "DB_SYNC",
+                "status": "starting",
+                "book_id": book_id,
+                "input": {"shards_count": len(shards_to_sync)}
+            }))
+
             # 1. Delete all existing guidelines for this book
             delete_query = text("DELETE FROM teaching_guidelines WHERE book_id = :book_id")
             self.db.execute(delete_query, {"book_id": book_id})
@@ -392,10 +403,18 @@ class DBSyncService:
 
             self.db.commit()
             
-            logger.info(
-                f"Database sync complete for book {book_id}: "
-                f"{created_count} guidelines synced (all reset to TO_BE_REVIEWED)"
-            )
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(json.dumps({
+                "step": "DB_SYNC",
+                "status": "complete",
+                "book_id": book_id,
+                "output": {
+                    "synced_count": created_count,
+                    "created_count": created_count,
+                    "updated_count": 0
+                },
+                "duration_ms": duration_ms
+            }))
 
             return {
                 "synced_count": created_count,
