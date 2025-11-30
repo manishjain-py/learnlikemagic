@@ -109,7 +109,9 @@ def test_upload_flow():
                     book = book_response.json()
                     print(f"   ✓ Book retrieved")
                     print(f"   Title: {book['title']}")
-                    print(f"   Status: {book['status']}")
+                    print(f"   Page Count: {book['page_count']}")
+                    print(f"   Guideline Count: {book['guideline_count']}")
+                    print(f"   Approved Count: {book['approved_guideline_count']}")
                     print(f"   Total pages: {len(book['pages'])}")
                     print(f"\n   Pages:")
                     for page in book['pages']:

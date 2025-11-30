@@ -4,8 +4,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getBook, updateBookStatus, deletePage } from '../api/adminApi';
+import { getBook, deletePage, deleteBook } from '../api/adminApi';
 import { BookDetail as BookDetailType } from '../types';
+import { getDisplayStatus } from '../utils/bookStatus';
 import BookStatusBadge from '../components/BookStatusBadge';
 import PageUploadPanel from '../components/PageUploadPanel';
 import PagesSidebar from '../components/PagesSidebar';
@@ -20,8 +21,8 @@ const BookDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [showUploadAfterReplace, setShowUploadAfterReplace] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -44,20 +45,6 @@ const BookDetail: React.FC = () => {
     }
   };
 
-  const handleMarkComplete = async () => {
-    if (!id || !book) return;
-
-    try {
-      setActionLoading(true);
-      await updateBookStatus(id, 'pages_complete');
-      await loadBook();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update status');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handlePageClick = (pageNum: number) => {
     setSelectedPage(pageNum);
     setShowUploadAfterReplace(false);
@@ -76,15 +63,12 @@ const BookDetail: React.FC = () => {
     }
 
     try {
-      setActionLoading(true);
       await deletePage(id, selectedPage);
       await loadBook();
       setSelectedPage(null);
       setShowUploadAfterReplace(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete page');
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -97,6 +81,25 @@ const BookDetail: React.FC = () => {
   const handlePageProcessed = async () => {
     await loadBook();
     setShowUploadAfterReplace(false);
+  };
+
+  const handleDeleteBook = async () => {
+    if (!id || !book) return;
+
+    const confirmMessage = `Are you sure you want to delete "${book.title}"?\n\nThis will permanently delete:\n- All ${book.pages.length} pages\n- All guidelines\n- All S3 files\n\nThis action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await deleteBook(id);
+      navigate('/admin/books');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete book');
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -129,8 +132,7 @@ const BookDetail: React.FC = () => {
     );
   }
 
-  const canUploadPages = book.status === 'draft' || book.status === 'uploading_pages';
-  const canMarkComplete = book.status === 'uploading_pages' && book.pages.some(p => p.status === 'approved');
+  const displayStatus = getDisplayStatus(book);
 
   return (
     <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -158,27 +160,25 @@ const BookDetail: React.FC = () => {
             <p style={{ color: '#6B7280', marginBottom: '12px' }}>
               {book.author} • {book.board} • Grade {book.grade} • {book.subject}
             </p>
-            <BookStatusBadge status={book.status} />
+            <BookStatusBadge status={displayStatus} />
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            {canMarkComplete && (
-              <button
-                onClick={handleMarkComplete}
-                disabled={actionLoading}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: actionLoading ? '#9CA3AF' : '#10B981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: actionLoading ? 'not-allowed' : 'pointer',
-                  fontWeight: '500',
-                }}
-              >
-                {actionLoading ? 'Updating...' : 'Mark Book Complete'}
-              </button>
-            )}
+            <button
+              onClick={handleDeleteBook}
+              disabled={deleting}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: deleting ? '#FCA5A5' : '#EF4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: deleting ? 'not-allowed' : 'pointer',
+                fontWeight: '500',
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Delete Book'}
+            </button>
           </div>
         </div>
       </div>
@@ -218,8 +218,8 @@ const BookDetail: React.FC = () => {
               onReplace={handleReplacePage}
               onPageDeleted={handlePageDeleted}
             />
-          ) : (canUploadPages || showUploadAfterReplace) ? (
-            // Show upload panel when allowed or after replace
+          ) : (
+            // Always show upload panel
             <div>
               {showUploadAfterReplace && (
                 <div style={{
@@ -238,22 +238,6 @@ const BookDetail: React.FC = () => {
                 onPageProcessed={handlePageProcessed}
               />
             </div>
-          ) : (
-            // Show disabled message
-            <div style={{
-              padding: '40px',
-              backgroundColor: '#F9FAFB',
-              borderRadius: '8px',
-              border: '1px solid #E5E7EB',
-              textAlign: 'center',
-            }}>
-              <p style={{ color: '#6B7280', marginBottom: '8px' }}>
-                Page upload is disabled for books in "{book.status}" status
-              </p>
-              <p style={{ fontSize: '14px', color: '#9CA3AF' }}>
-                Book must be in "draft" or "uploading_pages" status to upload pages
-              </p>
-            </div>
           )}
         </div>
 
@@ -268,10 +252,8 @@ const BookDetail: React.FC = () => {
       </div>
 
       {/* Guideline Section (Phase 6) */}
-      {(book.status === 'pages_complete' ||
-        book.status === 'generating_guidelines' ||
-        book.status === 'guidelines_pending_review' ||
-        book.status === 'approved') && (
+      {/* Show guidelines if pages exist */}
+      {book.pages.length > 0 && (
         <div style={{ marginTop: '30px' }}>
           <GuidelinesPanel bookId={book.id} totalPages={book.pages.length} />
         </div>

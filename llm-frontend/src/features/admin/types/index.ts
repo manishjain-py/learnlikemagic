@@ -14,19 +14,17 @@ export interface Book {
   subject: string;
   cover_image_s3_key: string | null;
   s3_prefix: string;
-  status: BookStatus;
+
+  // Counts for derived status
+  page_count: number;
+  guideline_count: number;
+  approved_guideline_count: number;
+  has_active_job: boolean;
+
   created_at: string;
   updated_at: string;
   created_by: string;
 }
-
-export type BookStatus =
-  | 'draft'
-  | 'uploading_pages'
-  | 'pages_complete'
-  | 'generating_guidelines'
-  | 'guidelines_pending_review'
-  | 'approved';
 
 export interface BookDetail extends Book {
   pages: PageInfo[];
@@ -66,23 +64,7 @@ export interface PageDetails {
   ocr_text: string;
 }
 
-export const STATUS_LABELS: Record<BookStatus, string> = {
-  draft: 'Draft',
-  uploading_pages: 'Uploading Pages',
-  pages_complete: 'Pages Complete',
-  generating_guidelines: 'Generating Guidelines',
-  guidelines_pending_review: 'Pending Review',
-  approved: 'Approved',
-};
 
-export const STATUS_COLORS: Record<BookStatus, string> = {
-  draft: '#6B7280',
-  uploading_pages: '#3B82F6',
-  pages_complete: '#10B981',
-  generating_guidelines: '#F59E0B',
-  guidelines_pending_review: '#8B5CF6',
-  approved: '#059669',
-};
 
 // ===== Phase 6 Guideline Types =====
 

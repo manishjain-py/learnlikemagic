@@ -31,7 +31,13 @@ class BookResponse(BaseModel):
     subject: str
     cover_image_s3_key: Optional[str]
     s3_prefix: str
-    status: str
+    
+    # Counts for derived status
+    page_count: int = 0
+    guideline_count: int = 0
+    approved_guideline_count: int = 0
+    has_active_job: bool = False
+
     created_at: datetime
     updated_at: datetime
     created_by: str
@@ -44,11 +50,6 @@ class BookListResponse(BaseModel):
     """Response with list of books."""
     books: List[BookResponse]
     total: int
-
-
-class UpdateBookStatusRequest(BaseModel):
-    """Request to update book status."""
-    status: str = Field(..., pattern="^(draft|uploading_pages|pages_complete|generating_guidelines|guidelines_pending_review|approved)$")
 
 
 # ===== Page Schemas =====
@@ -141,7 +142,7 @@ class BookDetailResponse(BaseModel):
     board: str
     grade: int
     subject: str
-    status: str
+    # status: str  <-- Removed
     pages: List[PageInfo]
     created_at: datetime
     updated_at: datetime

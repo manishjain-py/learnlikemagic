@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listBooks } from '../api/adminApi';
 import { Book } from '../types';
+import { getDisplayStatus } from '../utils/bookStatus';
 import BookStatusBadge from '../components/BookStatusBadge';
 
 const BooksDashboard: React.FC = () => {
@@ -159,7 +160,7 @@ const BooksDashboard: React.FC = () => {
                   }}
                 >
                   <div style={{ marginBottom: '12px' }}>
-                    <BookStatusBadge status={book.status} />
+                    <BookStatusBadge status={getDisplayStatus(book)} />
                   </div>
                   <h3
                     style={{

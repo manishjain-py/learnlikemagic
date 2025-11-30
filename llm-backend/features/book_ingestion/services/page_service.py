@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Supported image formats
 SUPPORTED_FORMATS = {'.png', '.jpg', '.jpeg', '.tiff', '.webp'}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
 class PageService:
@@ -82,11 +82,11 @@ class PageService:
         if not book:
             raise ValueError(f"Book not found: {book_id}")
 
-        if book.status not in ["draft", "uploading_pages"]:
-            raise ValueError(
-                f"Cannot upload pages for book in status '{book.status}'. "
-                "Book must be in 'draft' or 'uploading_pages' status."
-            )
+        # if book.status not in ["draft", "uploading_pages"]:
+        #     raise ValueError(
+        #         f"Cannot upload pages for book in status '{book.status}'. "
+        #         "Book must be in 'draft' or 'uploading_pages' status."
+        #     )
 
         # Validate image
         self._validate_image(image_data, filename)
@@ -134,8 +134,8 @@ class PageService:
             self.s3_client.update_metadata_json(book_id, metadata)
 
             # Update book status if this is the first page
-            if book.status == "draft":
-                self.book_repository.update_status(book_id, "uploading_pages")
+            # if book.status == "draft":
+            #     self.book_repository.update_status(book_id, "uploading_pages")
 
             # Generate presigned URL for image
             image_url = self.s3_client.get_presigned_url(image_s3_key, expiration=3600)

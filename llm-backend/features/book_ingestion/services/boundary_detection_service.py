@@ -229,7 +229,7 @@ class BoundaryDetectionService:
             subtopic_key: Subtopic key
             reasoning: LLM's reasoning for the decision
         """
-        log_file = Path("/Users/preethijain/manish/repos/learnlikemagic/llm-backend/boundary_detection_llm_logs.txt")
+        log_file = Path(__file__).parent.parent.parent.parent / "boundary_detection_llm_logs.txt"
 
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

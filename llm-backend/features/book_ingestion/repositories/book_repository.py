@@ -55,7 +55,6 @@ class BookRepository:
         board: Optional[str] = None,
         grade: Optional[int] = None,
         subject: Optional[str] = None,
-        status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> List[Book]:
@@ -67,7 +66,6 @@ class BookRepository:
             board: Filter by board
             grade: Filter by grade
             subject: Filter by subject
-            status: Filter by status
             limit: Maximum number of results
             offset: Number of results to skip
 
@@ -85,8 +83,6 @@ class BookRepository:
             query = query.filter(Book.grade == grade)
         if subject:
             query = query.filter(Book.subject == subject)
-        if status:
-            query = query.filter(Book.status == status)
 
         # Apply pagination and order
         return query.order_by(Book.created_at.desc()).limit(limit).offset(offset).all()
@@ -96,8 +92,7 @@ class BookRepository:
         country: Optional[str] = None,
         board: Optional[str] = None,
         grade: Optional[int] = None,
-        subject: Optional[str] = None,
-        status: Optional[str] = None
+        subject: Optional[str] = None
     ) -> int:
         """
         Count books with optional filters.
@@ -107,7 +102,6 @@ class BookRepository:
             board: Filter by board
             grade: Filter by grade
             subject: Filter by subject
-            status: Filter by status
 
         Returns:
             Number of matching books
@@ -122,28 +116,10 @@ class BookRepository:
             query = query.filter(Book.grade == grade)
         if subject:
             query = query.filter(Book.subject == subject)
-        if status:
-            query = query.filter(Book.status == status)
 
         return query.count()
 
-    def update_status(self, book_id: str, status: str) -> Optional[Book]:
-        """
-        Update book status.
 
-        Args:
-            book_id: Book identifier
-            status: New status value
-
-        Returns:
-            Updated book instance or None if not found
-        """
-        book = self.get_by_id(book_id)
-        if book:
-            book.status = status
-            self.db.commit()
-            self.db.refresh(book)
-        return book
 
     def update(self, book: Book) -> Book:
         """

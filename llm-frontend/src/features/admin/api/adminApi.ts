@@ -78,16 +78,7 @@ export async function getBook(bookId: string): Promise<BookDetail> {
   return apiFetch<BookDetail>(`/admin/books/${bookId}`);
 }
 
-export async function updateBookStatus(
-  bookId: string,
-  status: string
-): Promise<Book> {
-  return apiFetch<Book>(`/admin/books/${bookId}/status`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  });
-}
+
 
 export async function deleteBook(bookId: string): Promise<void> {
   return apiFetch<void>(`/admin/books/${bookId}`, {

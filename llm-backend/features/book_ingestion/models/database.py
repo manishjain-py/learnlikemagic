@@ -7,10 +7,6 @@ from models.database import Base  # Import the shared Base from existing models
 class Book(Base):
     """
     Book table - stores metadata for uploaded textbooks.
-
-    Status flow:
-    draft → uploading_pages → pages_complete → generating_guidelines →
-    guidelines_pending_review → approved
     """
     __tablename__ = "books"
 
@@ -29,9 +25,6 @@ class Book(Base):
     s3_prefix = Column(String, nullable=False)  # books/{book_id}/
     metadata_s3_key = Column(String, nullable=True)  # books/{book_id}/metadata.json
 
-    # Status tracking
-    status = Column(String, nullable=False)  # draft, uploading_pages, pages_complete, etc.
-
     # Audit fields
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -39,7 +32,6 @@ class Book(Base):
 
     __table_args__ = (
         Index("idx_books_curriculum", "country", "board", "grade", "subject"),
-        Index("idx_books_status", "status"),
     )
 
 

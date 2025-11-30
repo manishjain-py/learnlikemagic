@@ -3,13 +3,28 @@
  */
 
 import React from 'react';
-import { BookStatus, STATUS_LABELS, STATUS_COLORS } from '../types';
+import { DisplayStatus, getStatusLabel, getStatusColor } from '../utils/bookStatus';
 
 interface BookStatusBadgeProps {
-  status: BookStatus;
+  status: DisplayStatus;
 }
 
 const BookStatusBadge: React.FC<BookStatusBadgeProps> = ({ status }) => {
+  const colorType = getStatusColor(status);
+
+  // Map color types to hex colors
+  const colors = {
+    default: '#6B7280',
+    primary: '#8B5CF6',
+    secondary: '#EC4899',
+    error: '#EF4444',
+    info: '#3B82F6',
+    success: '#059669',
+    warning: '#F59E0B',
+  };
+
+  const color = colors[colorType];
+
   return (
     <span
       style={{
@@ -18,12 +33,12 @@ const BookStatusBadge: React.FC<BookStatusBadgeProps> = ({ status }) => {
         borderRadius: '12px',
         fontSize: '12px',
         fontWeight: '500',
-        backgroundColor: `${STATUS_COLORS[status]}20`,
-        color: STATUS_COLORS[status],
-        border: `1px solid ${STATUS_COLORS[status]}40`,
+        backgroundColor: `${color}20`,
+        color: color,
+        border: `1px solid ${color}40`,
       }}
     >
-      {STATUS_LABELS[status]}
+      {getStatusLabel(status)}
     </span>
   );
 };

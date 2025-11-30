@@ -24,15 +24,7 @@ from features.book_ingestion.utils.s3_client import get_s3_client
 logger = logging.getLogger(__name__)
 
 
-# Valid status transitions
-STATUS_TRANSITIONS = {
-    "draft": ["uploading_pages"],
-    "uploading_pages": ["pages_complete"],
-    "pages_complete": ["generating_guidelines"],
-    "generating_guidelines": ["guidelines_pending_review"],
-    "guidelines_pending_review": ["approved", "pages_complete"],  # Can go back to retry
-    "approved": []  # Terminal state
-}
+
 
 
 class BookService:
@@ -84,7 +76,7 @@ class BookService:
             subject=request.subject,
             s3_prefix=s3_prefix,
             metadata_s3_key=f"{s3_prefix}metadata.json",
-            status="draft",
+            # status="draft",  <-- Removed
             created_by=created_by
         )
 
@@ -139,7 +131,7 @@ class BookService:
             board=book.board,
             grade=book.grade,
             subject=book.subject,
-            status=book.status,
+            # status=book.status,  <-- Removed
             pages=pages,
             created_at=book.created_at,
             updated_at=book.updated_at
@@ -151,7 +143,6 @@ class BookService:
         board: Optional[str] = None,
         grade: Optional[int] = None,
         subject: Optional[str] = None,
-        status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> BookListResponse:
@@ -163,7 +154,6 @@ class BookService:
             board: Filter by board
             grade: Filter by grade
             subject: Filter by subject
-            status: Filter by status
             limit: Maximum results
             offset: Pagination offset
 
@@ -175,7 +165,6 @@ class BookService:
             board=board,
             grade=grade,
             subject=subject,
-            status=status,
             limit=limit,
             offset=offset
         )
@@ -184,8 +173,7 @@ class BookService:
             country=country,
             board=board,
             grade=grade,
-            subject=subject,
-            status=status
+            subject=subject
         )
 
         return BookListResponse(
@@ -193,37 +181,7 @@ class BookService:
             total=total
         )
 
-    def update_book_status(self, book_id: str, new_status: str) -> Optional[BookResponse]:
-        """
-        Update book status with validation.
 
-        Args:
-            book_id: Book identifier
-            new_status: New status value
-
-        Returns:
-            Updated book response or None if not found
-
-        Raises:
-            ValueError: If status transition is invalid
-        """
-        book = self.repository.get_by_id(book_id)
-        if not book:
-            return None
-
-        # Validate status transition
-        current_status = book.status
-        if new_status not in STATUS_TRANSITIONS.get(current_status, []):
-            raise ValueError(
-                f"Invalid status transition: {current_status} -> {new_status}. "
-                f"Valid transitions: {STATUS_TRANSITIONS.get(current_status, [])}"
-            )
-
-        # Update status
-        book = self.repository.update_status(book_id, new_status)
-        logger.info(f"Updated book {book_id} status: {current_status} -> {new_status}")
-
-        return self._to_book_response(book)
 
     def delete_book(self, book_id: str) -> bool:
         """
@@ -332,6 +290,28 @@ class BookService:
         Returns:
             Book response schema
         """
+        page_count = 0
+        try:
+            metadata = self.s3_client.download_json(f"books/{book.id}/metadata.json")
+            page_count = len(metadata.get("pages", []))
+        except Exception:
+            pass
+
+        # 2. Guideline counts (from DB)
+        from features.book_ingestion.models.database import BookGuideline
+        guideline_count = self.db.query(BookGuideline).filter(BookGuideline.book_id == book.id).count()
+        approved_guideline_count = self.db.query(BookGuideline).filter(
+            BookGuideline.book_id == book.id,
+            BookGuideline.review_status == "APPROVED"
+        ).count()
+
+        # 3. Active job status
+        from features.book_ingestion.models.database import BookJob
+        has_active_job = self.db.query(BookJob).filter(
+            BookJob.book_id == book.id,
+            BookJob.status == "running"
+        ).count() > 0
+
         return BookResponse(
             id=book.id,
             title=book.title,
@@ -344,7 +324,13 @@ class BookService:
             subject=book.subject,
             cover_image_s3_key=book.cover_image_s3_key,
             s3_prefix=book.s3_prefix,
-            status=book.status,
+            
+            # Populate counts
+            page_count=page_count,
+            guideline_count=guideline_count,
+            approved_guideline_count=approved_guideline_count,
+            has_active_job=has_active_job,
+
             created_at=book.created_at,
             updated_at=book.updated_at,
             created_by=book.created_by

@@ -15,8 +15,8 @@ from features.book_ingestion.models.schemas import (
     CreateBookRequest,
     BookResponse,
     BookListResponse,
-    BookDetailResponse,
-    UpdateBookStatusRequest
+    BookDetailResponse
+
 )
 from features.book_ingestion.services.book_service import BookService
 
@@ -60,7 +60,6 @@ def list_books(
     board: Optional[str] = None,
     grade: Optional[int] = None,
     subject: Optional[str] = None,
-    status: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db)
@@ -73,7 +72,6 @@ def list_books(
         board: Filter by board
         grade: Filter by grade
         subject: Filter by subject
-        status: Filter by status
         limit: Maximum results (default: 100)
         offset: Pagination offset (default: 0)
         db: Database session
@@ -88,7 +86,6 @@ def list_books(
             board=board,
             grade=grade,
             subject=subject,
-            status=status,
             limit=limit,
             offset=offset
         )
@@ -134,46 +131,7 @@ def get_book(book_id: str, db: Session = Depends(get_db)):
         )
 
 
-@router.put("/books/{book_id}/status", response_model=BookResponse)
-def update_book_status(
-    book_id: str,
-    request: UpdateBookStatusRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Update book status.
 
-    Args:
-        book_id: Book identifier
-        request: Status update request
-        db: Database session
-
-    Returns:
-        Updated book response
-
-    Raises:
-        HTTPException: If book not found or status transition invalid
-    """
-    try:
-        service = BookService(db)
-        book = service.update_book_status(book_id, request.status)
-
-        if not book:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Book not found: {book_id}"
-            )
-
-        return book
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update book status: {str(e)}"
-        )
 
 
 @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -373,7 +331,7 @@ def get_page(
 # ===== Guideline Management Endpoints (Phase 6) =====
 
 from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
-from features.book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+
 from features.book_ingestion.utils.s3_client import S3Client
 from openai import OpenAI
 from pydantic import BaseModel
@@ -682,18 +640,7 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
                         version=shard.version,
 
                         # V2: Single comprehensive guidelines field
-                        guidelines=shard.guidelines,
-
-                        # V1 fields: Not used in V2 (set to None)
-                        objectives=None,
-                        examples=None,
-                        misconceptions=None,
-                        assessments=None,
-                        teaching_description=None,
-                        description=None,
-                        evidence_summary=None,
-                        confidence=None,
-                        quality_score=None
+                        guidelines=shard.guidelines
                     ))
 
                 except Exception as e:

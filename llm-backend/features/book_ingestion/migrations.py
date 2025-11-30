@@ -368,6 +368,93 @@ def add_updated_at_field():
         raise
 
 
+def add_book_guidelines_review_status():
+    """
+    Add review_status column to book_guidelines table.
+
+    This column tracks the approval status of guidelines:
+    - TO_BE_REVIEWED: Default, awaiting admin review
+    - APPROVED: Admin has approved the guideline
+    """
+    print("🔄 Adding review_status column to book_guidelines table...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            # Check if column already exists
+            columns = [col['name'] for col in inspector.get_columns('book_guidelines')]
+
+            if 'review_status' not in columns:
+                print("  Adding review_status column...")
+                conn.execute(text("""
+                    ALTER TABLE book_guidelines
+                    ADD COLUMN review_status VARCHAR(20) DEFAULT 'TO_BE_REVIEWED' NOT NULL
+                """))
+                print("  ✓ review_status column added")
+
+                # Create index for efficient filtering
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_book_guidelines_review_status
+                    ON book_guidelines(book_id, review_status)
+                """))
+                print("  ✓ review_status index created")
+            else:
+                print("  ✓ review_status column already exists")
+
+            conn.commit()
+
+        print("✅ book_guidelines review_status migration completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"book_guidelines review_status migration error: {e}", exc_info=True)
+        raise
+
+
+def remove_book_status_column():
+    """
+    Remove the status column from the books table.
+
+    This migration removes the book-level status column as part of the
+    "Remove Book Status State Machine" proposal. Book status is now
+    derived from actual data (page_count, guideline_count, etc.) rather
+    than stored as a column.
+
+    See: docs/features/REMOVE_BOOK_STATUS_PROPOSAL.md
+    """
+    print("🔄 Removing status column from books table...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            # Check if status column exists
+            columns = [col['name'] for col in inspector.get_columns('books')]
+
+            if 'status' in columns:
+                print("  Dropping status column from books...")
+                conn.execute(text("""
+                    ALTER TABLE books DROP COLUMN status
+                """))
+                print("  ✓ status column removed")
+            else:
+                print("  ✓ status column already removed (or never existed)")
+
+            conn.commit()
+
+        print("✅ Book status column removal completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Remove book status migration error: {e}", exc_info=True)
+        raise
+
+
 def migrate_guidelines_workflow():
     """
     Run Guidelines Workflow migration.
@@ -455,6 +542,8 @@ if __name__ == "__main__":
     parser.add_argument("--add-description", action="store_true", help="Add description field to teaching_guidelines")
     parser.add_argument("--add-updated-at", action="store_true", help="Add updated_at field to teaching_guidelines")
     parser.add_argument("--guidelines-workflow", action="store_true", help="Run Guidelines Workflow migration (review_status + book_jobs)")
+    parser.add_argument("--remove-book-status", action="store_true", help="Remove status column from books table")
+    parser.add_argument("--add-book-guidelines-review-status", action="store_true", help="Add review_status column to book_guidelines table")
 
     args = parser.parse_args()
 
@@ -472,6 +561,10 @@ if __name__ == "__main__":
         add_updated_at_field()
     elif args.guidelines_workflow:
         migrate_guidelines_workflow()
+    elif args.remove_book_status:
+        remove_book_status_column()
+    elif args.add_book_guidelines_review_status:
+        add_book_guidelines_review_status()
     else:
         print("Usage:")
         print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
@@ -481,4 +574,6 @@ if __name__ == "__main__":
         print("  python -m features.book_ingestion.migrations --add-description   # Add description field")
         print("  python -m features.book_ingestion.migrations --add-updated-at    # Add updated_at field")
         print("  python -m features.book_ingestion.migrations --guidelines-workflow # Add review_status + book_jobs")
+        print("  python -m features.book_ingestion.migrations --remove-book-status  # Remove status column from books")
+        print("  python -m features.book_ingestion.migrations --add-book-guidelines-review-status  # Add review_status to book_guidelines")
         sys.exit(1)
