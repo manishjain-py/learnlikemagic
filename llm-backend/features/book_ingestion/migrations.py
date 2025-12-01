@@ -414,6 +414,52 @@ def add_book_guidelines_review_status():
         raise
 
 
+def add_review_tracking_fields():
+    """
+    Add review tracking fields to teaching_guidelines table.
+
+    Adds columns for tracking when guidelines were generated and reviewed:
+    - generated_at: Timestamp when the guideline was generated
+    - reviewed_at: Timestamp when the guideline was reviewed/approved
+    - reviewed_by: User/admin who reviewed the guideline
+    """
+    print("🔄 Adding review tracking fields to teaching_guidelines...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+
+    try:
+        with engine.connect() as conn:
+            columns = [col['name'] for col in inspector.get_columns('teaching_guidelines')]
+
+            review_tracking_columns = {
+                'generated_at': "TIMESTAMP",
+                'reviewed_at': "TIMESTAMP",
+                'reviewed_by': "VARCHAR"
+            }
+
+            for col_name, col_type in review_tracking_columns.items():
+                if col_name not in columns:
+                    print(f"  Adding {col_name} column...")
+                    conn.execute(text(f"""
+                        ALTER TABLE teaching_guidelines
+                        ADD COLUMN {col_name} {col_type}
+                    """))
+                    print(f"  ✓ {col_name} column added")
+                else:
+                    print(f"  ✓ {col_name} column already exists")
+
+            conn.commit()
+
+        print("✅ Review tracking fields migration completed successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Review tracking fields migration error: {e}", exc_info=True)
+        raise
+
+
 def remove_book_status_column():
     """
     Remove the status column from the books table.
@@ -544,6 +590,7 @@ if __name__ == "__main__":
     parser.add_argument("--guidelines-workflow", action="store_true", help="Run Guidelines Workflow migration (review_status + book_jobs)")
     parser.add_argument("--remove-book-status", action="store_true", help="Remove status column from books table")
     parser.add_argument("--add-book-guidelines-review-status", action="store_true", help="Add review_status column to book_guidelines table")
+    parser.add_argument("--add-review-tracking", action="store_true", help="Add generated_at, reviewed_at, reviewed_by columns")
 
     args = parser.parse_args()
 
@@ -565,6 +612,8 @@ if __name__ == "__main__":
         remove_book_status_column()
     elif args.add_book_guidelines_review_status:
         add_book_guidelines_review_status()
+    elif args.add_review_tracking:
+        add_review_tracking_fields()
     else:
         print("Usage:")
         print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
@@ -576,4 +625,5 @@ if __name__ == "__main__":
         print("  python -m features.book_ingestion.migrations --guidelines-workflow # Add review_status + book_jobs")
         print("  python -m features.book_ingestion.migrations --remove-book-status  # Remove status column from books")
         print("  python -m features.book_ingestion.migrations --add-book-guidelines-review-status  # Add review_status to book_guidelines")
+        print("  python -m features.book_ingestion.migrations --add-review-tracking  # Add generated_at, reviewed_at, reviewed_by")
         sys.exit(1)
