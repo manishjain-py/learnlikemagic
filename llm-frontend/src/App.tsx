@@ -7,6 +7,7 @@
  * /admin/books - Books list
  * /admin/books/new - Create book
  * /admin/books/:id - Book detail
+ * /admin/guidelines - Guidelines review
  */
 
 import React from 'react';
@@ -17,6 +18,7 @@ import TutorApp from './TutorApp';
 import BooksDashboard from './features/admin/pages/BooksDashboard';
 import CreateBook from './features/admin/pages/CreateBook';
 import BookDetail from './features/admin/pages/BookDetail';
+import GuidelinesReview from './features/admin/pages/GuidelinesReview';
 
 function App() {
   return (
@@ -30,6 +32,7 @@ function App() {
         <Route path="/admin/books" element={<BooksDashboard />} />
         <Route path="/admin/books/new" element={<CreateBook />} />
         <Route path="/admin/books/:id" element={<BookDetail />} />
+        <Route path="/admin/guidelines" element={<GuidelinesReview />} />
       </Routes>
     </BrowserRouter>
   );

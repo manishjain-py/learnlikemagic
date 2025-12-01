@@ -560,6 +560,88 @@ async def sync_guidelines_to_database(
         "stats": synced_count
     }
 
+@router.get("/review")
+async def list_all_guidelines_for_review(
+    country: Optional[str] = Query(None, description="Filter by country"),
+    board: Optional[str] = Query(None, description="Filter by board"),
+    grade: Optional[int] = Query(None, description="Filter by grade"),
+    subject: Optional[str] = Query(None, description="Filter by subject"),
+    status: Optional[str] = Query(None, description="Filter by review status (TO_BE_REVIEWED, APPROVED)"),
+    db: Session = Depends(get_db)
+):
+    """
+    List all teaching guidelines for review with optional filters.
+    Returns guidelines with country, board, grade, subject info.
+    """
+    query = db.query(TeachingGuideline)
+
+    if country:
+        query = query.filter(TeachingGuideline.country == country)
+    if board:
+        query = query.filter(TeachingGuideline.board == board)
+    if grade:
+        query = query.filter(TeachingGuideline.grade == grade)
+    if subject:
+        query = query.filter(TeachingGuideline.subject == subject)
+    if status:
+        query = query.filter(TeachingGuideline.review_status == status)
+
+    # Order by review_status (TO_BE_REVIEWED first), then by subject, topic
+    guidelines = query.order_by(
+        TeachingGuideline.review_status.desc(),
+        TeachingGuideline.subject,
+        TeachingGuideline.topic,
+        TeachingGuideline.subtopic
+    ).all()
+
+    return [
+        {
+            "id": g.id,
+            "country": g.country,
+            "board": g.board,
+            "grade": g.grade,
+            "subject": g.subject,
+            "topic": g.topic,
+            "subtopic": g.subtopic,
+            "guideline": g.guideline,
+            "review_status": g.review_status,
+            "updated_at": g.updated_at or g.created_at
+        }
+        for g in guidelines
+    ]
+
+
+@router.get("/review/filters")
+async def get_guideline_filter_options(db: Session = Depends(get_db)):
+    """
+    Get available filter options for guidelines review.
+    Returns distinct values for country, board, grade, subject.
+    """
+    from sqlalchemy import distinct
+
+    countries = [r[0] for r in db.query(distinct(TeachingGuideline.country)).all() if r[0]]
+    boards = [r[0] for r in db.query(distinct(TeachingGuideline.board)).all() if r[0]]
+    grades = sorted([r[0] for r in db.query(distinct(TeachingGuideline.grade)).all() if r[0]])
+    subjects = [r[0] for r in db.query(distinct(TeachingGuideline.subject)).all() if r[0]]
+
+    # Get counts by status
+    total = db.query(TeachingGuideline).count()
+    pending = db.query(TeachingGuideline).filter(TeachingGuideline.review_status == "TO_BE_REVIEWED").count()
+    approved = db.query(TeachingGuideline).filter(TeachingGuideline.review_status == "APPROVED").count()
+
+    return {
+        "countries": countries,
+        "boards": boards,
+        "grades": grades,
+        "subjects": subjects,
+        "counts": {
+            "total": total,
+            "pending": pending,
+            "approved": approved
+        }
+    }
+
+
 @router.get("/books/{book_id}/review")
 async def review_book_guidelines(
     book_id: str,
@@ -567,15 +649,15 @@ async def review_book_guidelines(
     db: Session = Depends(get_db)
 ):
     """
-    List guidelines from the database for review.
+    List guidelines from the database for review (by book).
     """
     query = db.query(TeachingGuideline).filter(TeachingGuideline.book_id == book_id)
-    
+
     if status:
         query = query.filter(TeachingGuideline.review_status == status)
-        
+
     guidelines = query.all()
-    
+
     return [
         {
             "id": g.id,

@@ -12,6 +12,8 @@ import {
   GuidelineSubtopic,
   GenerateGuidelinesRequest,
   GenerateGuidelinesResponse,
+  GuidelineReview,
+  GuidelineFilters,
 } from '../types';
 
 // Use environment variable for production, fallback to localhost for development
@@ -191,5 +193,48 @@ export async function finalizeGuidelines(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ auto_sync_to_db: autoSyncToDb }),
+  });
+}
+
+// ===== Guidelines Review =====
+
+export async function getGuidelineFilters(): Promise<GuidelineFilters> {
+  return apiFetch<GuidelineFilters>('/admin/guidelines/review/filters');
+}
+
+export async function getAllGuidelinesForReview(filters?: {
+  country?: string;
+  board?: string;
+  grade?: number;
+  subject?: string;
+  status?: 'TO_BE_REVIEWED' | 'APPROVED';
+}): Promise<GuidelineReview[]> {
+  const params = new URLSearchParams();
+  if (filters) {
+    if (filters.country) params.append('country', filters.country);
+    if (filters.board) params.append('board', filters.board);
+    if (filters.grade) params.append('grade', filters.grade.toString());
+    if (filters.subject) params.append('subject', filters.subject);
+    if (filters.status) params.append('status', filters.status);
+  }
+  const query = params.toString();
+  return apiFetch<GuidelineReview[]>(
+    `/admin/guidelines/review${query ? `?${query}` : ''}`
+  );
+}
+
+export async function approveGuideline(guidelineId: string): Promise<{ id: string; review_status: string }> {
+  return apiFetch(`/admin/guidelines/${guidelineId}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approved: true }),
+  });
+}
+
+export async function rejectGuideline(guidelineId: string): Promise<{ id: string; review_status: string }> {
+  return apiFetch(`/admin/guidelines/${guidelineId}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approved: false }),
   });
 }

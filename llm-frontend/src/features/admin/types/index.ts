@@ -123,3 +123,30 @@ export interface GenerateGuidelinesResponse {
   errors: string[];
   warnings: string[];
 }
+
+// ===== Guidelines Review Types =====
+
+export interface GuidelineReview {
+  id: string;
+  country: string;
+  board: string;
+  grade: number;
+  subject: string;
+  topic: string;
+  subtopic: string;
+  guideline: string;
+  review_status: 'TO_BE_REVIEWED' | 'APPROVED';
+  updated_at: string;
+}
+
+export interface GuidelineFilters {
+  countries: string[];
+  boards: string[];
+  grades: number[];
+  subjects: string[];
+  counts: {
+    total: number;
+    pending: number;
+    approved: number;
+  };
+}
