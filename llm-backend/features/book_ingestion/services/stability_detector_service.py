@@ -16,7 +16,7 @@ Stability Criteria:
 import logging
 from typing import Dict, List, Optional
 
-from ..models.guideline_models import GuidelinesIndex, PageIndex, SubtopicShard
+from ..models.guideline_models import GuidelinesIndex, PageIndex
 
 logger = logging.getLogger(__name__)
 
@@ -172,42 +172,36 @@ class StabilityDetectorService:
 
         return should_stabilize
 
-    def mark_as_stable(
+    def get_stable_status_update(
         self,
-        shard: SubtopicShard,
+        topic_key: str,
+        subtopic_key: str,
         reason: str = "stability_threshold_reached"
-    ) -> SubtopicShard:
+    ) -> dict:
         """
-        Mark a shard as stable (immutable - returns new shard).
+        Get status update info for marking a subtopic as stable.
+
+        Note: Status is tracked in the GuidelinesIndex, NOT in shards (per GAP-001).
+        Use IndexManagementService.update_subtopic_status() to apply the change.
 
         Args:
-            shard: Current subtopic shard
-            reason: Reason for marking stable (for logging/debugging)
+            topic_key: Topic key
+            subtopic_key: Subtopic key
+            reason: Reason for marking stable (for logging)
 
         Returns:
-            New shard with status="stable"
-
-        Note:
-            This function does NOT mutate the input shard.
-            It returns a new shard with updated status.
+            Dict with topic_key, subtopic_key, and new_status for index update
         """
-        if shard.status == "stable":
-            logger.debug(f"Shard {shard.subtopic_key} already stable, skipping")
-            return shard
-
-        # Create new shard with updated status
-        from copy import deepcopy
-        updated_shard = deepcopy(shard)
-        updated_shard.status = "stable"
-        updated_shard.version += 1
-
         logger.info(
-            f"Marked {updated_shard.topic_key}/{updated_shard.subtopic_key} as STABLE: "
-            f"reason={reason}, version={updated_shard.version}, "
-            f"pages={updated_shard.source_page_start}-{updated_shard.source_page_end}"
+            f"Subtopic {topic_key}/{subtopic_key} should be marked STABLE: reason={reason}"
         )
 
-        return updated_shard
+        return {
+            "topic_key": topic_key,
+            "subtopic_key": subtopic_key,
+            "new_status": "stable",
+            "reason": reason
+        }
 
     def get_unstable_subtopics(
         self,

@@ -69,7 +69,7 @@ class IndexManagementService:
             return GuidelinesIndex(
                 book_id=book_id,
                 version=1,
-                last_updated=datetime.utcnow().isoformat(),
+                last_updated=datetime.utcnow(),
                 topics=[]
             )
 
@@ -124,7 +124,7 @@ class IndexManagementService:
                     f"books/{book_id}/guidelines/snapshots/"
                     f"index.v{old_index.version}.json"
                 )
-                self.s3.upload_json(data=old_index.model_dump(), s3_key=snapshot_key)
+                self.s3.upload_json(data=old_index.model_dump(mode='json'), s3_key=snapshot_key)
                 logger.info(f"Created index snapshot: {snapshot_key}")
             except FileNotFoundError:
                 # First save - no snapshot needed
@@ -133,17 +133,15 @@ class IndexManagementService:
                 logger.warning(f"Failed to create index snapshot: {str(e)}")
 
         # Update timestamp and save
-        index.last_updated = datetime.utcnow().isoformat()
-
-        # Update timestamp and save
-        index.last_updated = datetime.utcnow().isoformat()
+        index.last_updated = datetime.utcnow()
 
         try:
             import time
             import json
             start_time = time.time()
 
-            self.s3.upload_json(data=index.model_dump(), s3_key=index_key)
+            # Use mode='json' to properly serialize datetime objects
+            self.s3.upload_json(data=index.model_dump(mode='json'), s3_key=index_key)
             
             duration_ms = int((time.time() - start_time) * 1000)
             logger.info(json.dumps({
@@ -306,7 +304,7 @@ class IndexManagementService:
             return PageIndex(
                 book_id=book_id,
                 version=1,
-                last_updated=datetime.utcnow().isoformat(),
+                last_updated=datetime.utcnow(),
                 pages={}
             )
 
@@ -372,7 +370,8 @@ class IndexManagementService:
                     f"page_index.v{old_page_index.version}.json"
                 )
                 # Convert integer keys to strings for JSON serialization
-                snapshot_data = old_page_index.model_dump()
+                # Use mode='json' to properly serialize datetime objects
+                snapshot_data = old_page_index.model_dump(mode='json')
                 snapshot_data["pages"] = {
                     str(k): v for k, v in snapshot_data["pages"].items()
                 }
@@ -385,11 +384,12 @@ class IndexManagementService:
                 logger.warning(f"Failed to create page index snapshot: {str(e)}")
 
         # Update timestamp and save
-        page_index.last_updated = datetime.utcnow().isoformat()
+        page_index.last_updated = datetime.utcnow()
 
         try:
             # Convert integer keys to strings for JSON serialization
-            save_data = page_index.model_dump()
+            # Use mode='json' to properly serialize datetime objects
+            save_data = page_index.model_dump(mode='json')
             save_data["pages"] = {
                 str(k): v for k, v in save_data["pages"].items()
             }

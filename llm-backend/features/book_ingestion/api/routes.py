@@ -696,8 +696,30 @@ def get_guideline(
                 detail=f"Book not found: {book_id}"
             )
 
-        # Load shard
+        # Load index to get status (status is tracked in index, not shard per GAP-001)
         s3_client = S3Client()
+        from features.book_ingestion.services.index_management_service import IndexManagementService
+        index_mgr = IndexManagementService(s3_client)
+
+        try:
+            index = index_mgr.load_index(book_id)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No guidelines found for book: {book_id}"
+            )
+
+        # Find the subtopic entry in index to get status
+        subtopic_status = "open"  # default
+        for topic_entry in index.topics:
+            if topic_entry.topic_key == topic_key:
+                for subtopic_entry in topic_entry.subtopics:
+                    if subtopic_entry.subtopic_key == subtopic_key:
+                        subtopic_status = subtopic_entry.status
+                        break
+                break
+
+        # Load shard
         shard_key = (
             f"books/{book_id}/guidelines/topics/{topic_key}/"
             f"subtopics/{subtopic_key}.latest.json"
@@ -708,31 +730,18 @@ def get_guideline(
             shard_data = s3_client.download_json(shard_key)
             shard = SubtopicShard(**shard_data)
 
+            # V2 response with single guidelines field
+            # Status comes from index (not shard) per GAP-001
             return GuidelineSubtopicResponse(
                 topic_key=shard.topic_key,
                 topic_title=shard.topic_title,
                 subtopic_key=shard.subtopic_key,
                 subtopic_title=shard.subtopic_title,
-                status=shard.status,
+                status=subtopic_status,  # From index, not shard
                 source_page_start=shard.source_page_start,
                 source_page_end=shard.source_page_end,
-                objectives=shard.objectives,
-                examples=shard.examples,
-                misconceptions=shard.misconceptions,
-                assessments=[
-                    {
-                        "level": a.level,
-                        "prompt": a.prompt,
-                        "answer": a.answer
-                    }
-                    for a in shard.assessments
-                ],
-                teaching_description=shard.teaching_description,
-                description=shard.description,
-                evidence_summary=shard.evidence_summary,
-                confidence=shard.confidence,
-                quality_score=None,  # Quality score not yet implemented in Phase 6
-                version=shard.version
+                version=shard.version,
+                guidelines=shard.guidelines
             )
 
         except FileNotFoundError:
@@ -793,49 +802,31 @@ async def approve_guidelines(book_id: str, db: Session = Depends(get_db)):
                 detail=f"No guidelines found for book: {book_id}"
             )
 
-        # STEP 1: Approve all non-final guidelines (change status to "final")
+        # STEP 1: Approve all non-final guidelines (change status to "final" in index)
+        # Note: Status is tracked in the index only (per GAP-001), not in shards
         approved_count = 0
         for topic_entry in index.topics:
             for subtopic_entry in topic_entry.subtopics:
-                # Load shard to check its ACTUAL status (index might be out of sync)
-                shard_key = (
-                    f"books/{book_id}/guidelines/topics/{topic_entry.topic_key}/"
-                    f"subtopics/{subtopic_entry.subtopic_key}.latest.json"
-                )
-
                 try:
-                    shard_data = s3_client.download_json(shard_key)
-                    shard = SubtopicShard(**shard_data)
-
-                    # Approve if not already final
-                    if shard.status != "final":
-                        shard.status = "final"
-                        shard.version += 1
-                        s3_client.upload_json(data=shard.model_dump(), s3_key=shard_key)
-
-                        # Update index to match
+                    # Check if already final (status is in index, not shard)
+                    if subtopic_entry.status != "final":
+                        # Update index status to "final"
                         index = index_mgr.update_subtopic_status(
                             index=index,
                             topic_key=topic_entry.topic_key,
                             subtopic_key=subtopic_entry.subtopic_key,
                             new_status="final"
                         )
-
                         approved_count += 1
-                    elif subtopic_entry.status != "final":
-                        # Shard is final but index isn't - sync the index
-                        index = index_mgr.update_subtopic_status(
-                            index=index,
-                            topic_key=topic_entry.topic_key,
-                            subtopic_key=subtopic_entry.subtopic_key,
-                            new_status="final"
+                        logger.info(
+                            f"Approved {topic_entry.topic_key}/{subtopic_entry.subtopic_key}"
                         )
 
                 except Exception as e:
                     logger.error(
                         f"Failed to approve {topic_entry.topic_key}/{subtopic_entry.subtopic_key}: {str(e)}"
                     )
-                    # Continue with next shard
+                    # Continue with next subtopic
 
         # Save updated index (always save if we made changes OR if index was out of sync)
         index_mgr.save_index(index, create_snapshot=True)
