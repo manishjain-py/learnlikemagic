@@ -27,6 +27,141 @@ interface GuidelinesPanelProps {
   totalPages: number;
 }
 
+// Info tooltip component
+const InfoTooltip: React.FC<{ text: string }> = ({ text }) => {
+  const [show, setShow] = useState(false);
+
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex', marginLeft: '6px' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <span
+        style={{
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          backgroundColor: '#E5E7EB',
+          color: '#6B7280',
+          fontSize: '11px',
+          fontWeight: '600',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'help',
+        }}
+      >
+        ?
+      </span>
+      {show && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            marginBottom: '8px',
+            padding: '12px 14px',
+            backgroundColor: '#1F2937',
+            color: 'white',
+            borderRadius: '8px',
+            fontSize: '13px',
+            lineHeight: '1.5',
+            width: '280px',
+            zIndex: 1000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }}
+        >
+          {text}
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: '6px solid #1F2937',
+            }}
+          />
+        </div>
+      )}
+    </span>
+  );
+};
+
+// Action button component with consistent styling
+const ActionButton: React.FC<{
+  onClick: () => void;
+  disabled?: boolean;
+  variant: 'primary' | 'success' | 'danger' | 'purple' | 'secondary';
+  children: React.ReactNode;
+  tooltip?: string;
+}> = ({ onClick, disabled, variant, children, tooltip }) => {
+  const baseStyles: React.CSSProperties = {
+    padding: '10px 16px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    border: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    transition: 'all 0.2s',
+  };
+
+  const variantStyles: Record<string, React.CSSProperties> = {
+    primary: { backgroundColor: '#3B82F6', color: 'white' },
+    success: { backgroundColor: '#10B981', color: 'white' },
+    danger: { backgroundColor: '#EF4444', color: 'white' },
+    purple: { backgroundColor: '#8B5CF6', color: 'white' },
+    secondary: { backgroundColor: 'white', color: '#374151', border: '1px solid #D1D5DB' },
+  };
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        style={{ ...baseStyles, ...variantStyles[variant] }}
+      >
+        {children}
+      </button>
+      {tooltip && <InfoTooltip text={tooltip} />}
+    </span>
+  );
+};
+
+// Status badge component
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const styles: Record<string, React.CSSProperties> = {
+    final: { backgroundColor: '#D1FAE5', color: '#065F46' },
+    needs_review: { backgroundColor: '#FEE2E2', color: '#991B1B' },
+    stable: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
+    open: { backgroundColor: '#FEF3C7', color: '#92400E' },
+    default: { backgroundColor: '#F3F4F6', color: '#374151' },
+  };
+
+  const style = styles[status] || styles.default;
+
+  return (
+    <span
+      style={{
+        padding: '4px 10px',
+        borderRadius: '12px',
+        fontSize: '12px',
+        fontWeight: '500',
+        ...style,
+      }}
+    >
+      {status}
+    </span>
+  );
+};
+
 export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   bookId,
   totalPages,
@@ -73,14 +208,12 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     const request: GenerateGuidelinesRequest = {
       start_page: 1,
       end_page: totalPages,
-      auto_sync_to_db: false, // User will approve manually
+      auto_sync_to_db: false,
     };
 
     try {
       const stats = await generateGuidelines(bookId, request);
       setGenerationStats(stats);
-
-      // Reload guidelines
       await loadGuidelines();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate guidelines');
@@ -90,7 +223,7 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   };
 
   const handleApproveGuidelines = async () => {
-    if (!window.confirm('Approve all final guidelines and sync to database?')) {
+    if (!window.confirm('Approve all guidelines and sync to database? This will make them available in the tutor app.')) {
       return;
     }
 
@@ -100,8 +233,6 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     try {
       const response = await approveGuidelines(bookId);
       alert(`Successfully synced ${response.synced_count} guidelines to database`);
-
-      // Reload guidelines
       await loadGuidelines();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to approve guidelines');
@@ -111,7 +242,7 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   };
 
   const handleRejectGuidelines = async () => {
-    if (!window.confirm('Delete all guidelines? This cannot be undone.')) {
+    if (!window.confirm('Delete all guidelines? This cannot be undone. You can regenerate them later.')) {
       return;
     }
 
@@ -123,7 +254,7 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
       setGuidelines([]);
       setSelectedSubtopic(null);
       setGenerationStats(null);
-      alert('Guidelines deleted successfully');
+      setFinalizeStats(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reject guidelines');
     } finally {
@@ -139,8 +270,6 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     try {
       const stats = await finalizeGuidelines(bookId, false);
       setFinalizeStats(stats);
-
-      // Reload guidelines to show refined names
       await loadGuidelines();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to finalize guidelines');
@@ -149,73 +278,138 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     }
   };
 
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case 'final':
-        return 'bg-green-100 text-green-800';
-      case 'needs_review':
-        return 'bg-red-100 text-red-800';
-      case 'stable':
-        return 'bg-blue-100 text-blue-800';
-      case 'open':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getQualityScoreColor = (score: number | null) => {
-    if (score === null) return 'text-gray-500';
-    if (score >= 0.9) return 'text-green-600';
-    if (score >= 0.7) return 'text-blue-600';
-    if (score >= 0.5) return 'text-yellow-600';
-    return 'text-red-600';
-  };
+  const finalCount = guidelines.filter(g => g.status === 'final').length;
+  const openCount = guidelines.filter(g => g.status === 'open').length;
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow">
+    <div
+      style={{
+        padding: '24px',
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        border: '1px solid #E5E7EB',
+        marginTop: '24px',
+      }}
+    >
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Teaching Guidelines</h2>
-        <div className="flex gap-2">
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '22px', fontWeight: '600', margin: 0, marginBottom: '8px' }}>
+              Teaching Guidelines
+            </h2>
+            {guidelines.length > 0 && (
+              <div style={{ display: 'flex', gap: '16px', fontSize: '14px' }}>
+                <span style={{ color: '#059669' }}>{finalCount} finalized</span>
+                <span style={{ color: '#D97706' }}>{openCount} open</span>
+                <span style={{ color: '#6B7280' }}>{guidelines.length} total</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Workflow Steps */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            padding: '16px',
+            backgroundColor: '#F9FAFB',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: '13px', color: '#6B7280', marginRight: '8px' }}>Workflow:</span>
+          <span
+            style={{
+              padding: '4px 12px',
+              backgroundColor: guidelines.length === 0 ? '#3B82F6' : '#D1FAE5',
+              color: guidelines.length === 0 ? 'white' : '#065F46',
+              borderRadius: '16px',
+              fontSize: '13px',
+              fontWeight: '500',
+            }}
+          >
+            1. Generate
+          </span>
+          <span style={{ color: '#9CA3AF' }}>→</span>
+          <span
+            style={{
+              padding: '4px 12px',
+              backgroundColor: guidelines.length > 0 && openCount > 0 ? '#8B5CF6' : '#F3F4F6',
+              color: guidelines.length > 0 && openCount > 0 ? 'white' : '#6B7280',
+              borderRadius: '16px',
+              fontSize: '13px',
+              fontWeight: '500',
+            }}
+          >
+            2. Refine
+          </span>
+          <span style={{ color: '#9CA3AF' }}>→</span>
+          <span
+            style={{
+              padding: '4px 12px',
+              backgroundColor: finalCount > 0 ? '#10B981' : '#F3F4F6',
+              color: finalCount > 0 ? 'white' : '#6B7280',
+              borderRadius: '16px',
+              fontSize: '13px',
+              fontWeight: '500',
+            }}
+          >
+            3. Approve & Sync
+          </span>
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           {guidelines.length === 0 ? (
-            <button
+            <ActionButton
               onClick={handleGenerateGuidelines}
               disabled={generating || totalPages === 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+              variant="primary"
+              tooltip="Analyzes all approved pages using AI to extract topics, subtopics, and teaching guidelines. Creates structured content in S3 storage. This may take a few minutes depending on the number of pages."
             >
               {generating ? 'Generating...' : 'Generate Guidelines'}
-            </button>
+            </ActionButton>
           ) : (
             <>
-              <button
+              <ActionButton
                 onClick={handleFinalizeGuidelines}
-                disabled={finalizing}
-                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-400"
+                disabled={finalizing || loading}
+                variant="purple"
+                tooltip="Uses AI to improve topic and subtopic names for clarity and consistency. Merges duplicate or similar topics. Marks all guidelines as 'final' status. Run this before approving to get polished results."
               >
                 {finalizing ? 'Refining...' : 'Refine & Consolidate'}
-              </button>
-              <button
+              </ActionButton>
+
+              <ActionButton
                 onClick={handleApproveGuidelines}
                 disabled={loading}
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
+                variant="success"
+                tooltip="Copies all finalized guidelines to the main database. After this, guidelines become visible in the tutor app for teachers to use. Sets review_status to 'APPROVED' for each guideline."
               >
                 Approve & Sync to DB
-              </button>
-              <button
+              </ActionButton>
+
+              <ActionButton
                 onClick={handleRejectGuidelines}
                 disabled={loading}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400"
+                variant="danger"
+                tooltip="Permanently deletes all generated guidelines from S3 storage. Does NOT affect the uploaded pages. You can regenerate guidelines afterward if needed."
               >
                 Reject & Delete
-              </button>
-              <button
+              </ActionButton>
+
+              <ActionButton
                 onClick={handleGenerateGuidelines}
-                disabled={generating}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+                disabled={generating || loading}
+                variant="secondary"
+                tooltip="Deletes existing guidelines and runs the extraction pipeline again from scratch. Useful if pages were updated or if you want to try different extraction settings."
               >
-                Regenerate
-              </button>
+                {generating ? 'Regenerating...' : 'Regenerate'}
+              </ActionButton>
             </>
           )}
         </div>
@@ -223,32 +417,57 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
 
       {/* Error display */}
       {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '14px 16px',
+            backgroundColor: '#FEE2E2',
+            border: '1px solid #FECACA',
+            borderRadius: '8px',
+            color: '#991B1B',
+            fontSize: '14px',
+          }}
+        >
           {error}
         </div>
       )}
 
       {/* Generation stats */}
       {generationStats && (
-        <div className="mb-4 p-4 bg-blue-100 border border-blue-400 text-blue-700 rounded">
-          <h3 className="font-bold mb-2">Generation Complete</h3>
-          <p>Pages processed: {generationStats.pages_processed}</p>
-          <p>Subtopics created: {generationStats.subtopics_created}</p>
-          {generationStats.subtopics_merged !== undefined && generationStats.subtopics_merged > 0 && (
-            <p>Subtopics merged: {generationStats.subtopics_merged}</p>
-          )}
-          <p>Subtopics finalized: {generationStats.subtopics_finalized}</p>
-          {generationStats.duplicates_merged !== undefined && generationStats.duplicates_merged > 0 && (
-            <p>Duplicates merged: {generationStats.duplicates_merged}</p>
-          )}
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '16px',
+            backgroundColor: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: '8px',
+          }}
+        >
+          <h3 style={{ fontSize: '15px', fontWeight: '600', color: '#1E40AF', marginBottom: '12px' }}>
+            Generation Complete
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#3B82F6' }}>{generationStats.pages_processed}</div>
+              <div style={{ fontSize: '12px', color: '#6B7280' }}>Pages Processed</div>
+            </div>
+            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#10B981' }}>{generationStats.subtopics_created}</div>
+              <div style={{ fontSize: '12px', color: '#6B7280' }}>Subtopics Created</div>
+            </div>
+            {generationStats.subtopics_merged !== undefined && generationStats.subtopics_merged > 0 && (
+              <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+                <div style={{ fontSize: '24px', fontWeight: '600', color: '#8B5CF6' }}>{generationStats.subtopics_merged}</div>
+                <div style={{ fontSize: '12px', color: '#6B7280' }}>Merged</div>
+              </div>
+            )}
+          </div>
           {generationStats.errors.length > 0 && (
-            <div className="mt-2">
-              <p className="font-semibold">Errors:</p>
-              <ul className="list-disc list-inside">
-                {generationStats.errors.map((err, idx) => (
-                  <li key={idx}>{err}</li>
-                ))}
-              </ul>
+            <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#FEF2F2', borderRadius: '6px' }}>
+              <p style={{ fontSize: '13px', fontWeight: '500', color: '#991B1B', marginBottom: '4px' }}>Errors:</p>
+              {generationStats.errors.map((err, idx) => (
+                <p key={idx} style={{ fontSize: '13px', color: '#991B1B' }}>• {err}</p>
+              ))}
             </div>
           )}
         </div>
@@ -256,221 +475,189 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
 
       {/* Finalize stats */}
       {finalizeStats && (
-        <div className="mb-4 p-4 bg-purple-100 border border-purple-400 text-purple-700 rounded">
-          <h3 className="font-bold mb-2">Refinement & Consolidation Complete</h3>
-          <p>Subtopics finalized: {finalizeStats.subtopics_finalized}</p>
-          <p>Names refined: {finalizeStats.subtopics_renamed}</p>
-          <p>Duplicates merged: {finalizeStats.duplicates_merged}</p>
-          <p className="mt-2 text-sm">{finalizeStats.message}</p>
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '16px',
+            backgroundColor: '#F5F3FF',
+            border: '1px solid #DDD6FE',
+            borderRadius: '8px',
+          }}
+        >
+          <h3 style={{ fontSize: '15px', fontWeight: '600', color: '#6D28D9', marginBottom: '12px' }}>
+            Refinement Complete
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#10B981' }}>{finalizeStats.subtopics_finalized}</div>
+              <div style={{ fontSize: '12px', color: '#6B7280' }}>Finalized</div>
+            </div>
+            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#8B5CF6' }}>{finalizeStats.subtopics_renamed}</div>
+              <div style={{ fontSize: '12px', color: '#6B7280' }}>Names Refined</div>
+            </div>
+            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#F59E0B' }}>{finalizeStats.duplicates_merged}</div>
+              <div style={{ fontSize: '12px', color: '#6B7280' }}>Duplicates Merged</div>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Loading state */}
       {loading && guidelines.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6B7280' }}>
           Loading guidelines...
         </div>
       )}
 
       {/* Empty state */}
       {!loading && !generating && guidelines.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
-          <p className="mb-4">No guidelines generated yet</p>
-          <p className="text-sm">
-            Click "Generate Guidelines" to extract teaching guidelines from all pages
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '48px 24px',
+            backgroundColor: '#F9FAFB',
+            borderRadius: '8px',
+            border: '2px dashed #D1D5DB',
+          }}
+        >
+          <div style={{ fontSize: '40px', marginBottom: '16px' }}>📚</div>
+          <p style={{ fontSize: '16px', color: '#374151', marginBottom: '8px', fontWeight: '500' }}>
+            No guidelines generated yet
+          </p>
+          <p style={{ fontSize: '14px', color: '#6B7280' }}>
+            Click "Generate Guidelines" to extract teaching content from all {totalPages} pages
           </p>
         </div>
       )}
 
       {/* Guidelines list */}
       {guidelines.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
           {/* Left: Subtopics list */}
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            <h3 className="font-semibold text-lg mb-4">
+          <div>
+            <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#374151' }}>
               Subtopics ({guidelines.length})
             </h3>
-            {guidelines.map((guideline) => (
-              <div
-                key={`${guideline.topic_key}-${guideline.subtopic_key}`}
-                onClick={() => setSelectedSubtopic(guideline)}
-                className={`p-4 border rounded cursor-pointer hover:bg-gray-50 ${
-                  selectedSubtopic?.subtopic_key === guideline.subtopic_key
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-semibold">{guideline.subtopic_title}</h4>
-                  <span
-                    className={`px-2 py-1 text-xs rounded ${getStatusBadgeColor(
-                      guideline.status
-                    )}`}
-                  >
-                    {guideline.status}
-                  </span>
+            <div style={{ maxHeight: '500px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {guidelines.map((guideline) => (
+                <div
+                  key={`${guideline.topic_key}-${guideline.subtopic_key}`}
+                  onClick={() => setSelectedSubtopic(guideline)}
+                  style={{
+                    padding: '14px 16px',
+                    border: selectedSubtopic?.subtopic_key === guideline.subtopic_key
+                      ? '2px solid #3B82F6'
+                      : '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    backgroundColor: selectedSubtopic?.subtopic_key === guideline.subtopic_key
+                      ? '#EFF6FF'
+                      : 'white',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#1F2937' }}>
+                      {guideline.subtopic_title}
+                    </h4>
+                    <StatusBadge status={guideline.status} />
+                  </div>
+                  <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                    {guideline.topic_title}
+                  </p>
+                  <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '8px' }}>
+                    Pages {guideline.source_page_start}-{guideline.source_page_end}
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600">{guideline.topic_title}</p>
-                <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
-                  <span>Pages {guideline.source_page_start}-{guideline.source_page_end}</span>
-                  {guideline.quality_score !== null && (
-                    <span className={getQualityScoreColor(guideline.quality_score)}>
-                      Quality: {(guideline.quality_score * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           {/* Right: Subtopic details */}
-          <div className="border rounded p-6 max-h-[600px] overflow-y-auto">
+          <div
+            style={{
+              border: '1px solid #E5E7EB',
+              borderRadius: '8px',
+              padding: '20px',
+              maxHeight: '560px',
+              overflowY: 'auto',
+              backgroundColor: '#FAFAFA',
+            }}
+          >
             {selectedSubtopic ? (
               <div>
-                <h3 className="text-xl font-bold mb-4">
-                  {selectedSubtopic.subtopic_title}
-                </h3>
+                <div style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '600', margin: 0, marginBottom: '8px', color: '#1F2937' }}>
+                    {selectedSubtopic.subtopic_title}
+                  </h3>
+                  <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
+                    {selectedSubtopic.topic_title}
+                  </p>
+                </div>
 
-                {/* V2: Single Guidelines Field (Primary Display) */}
+                {/* V2: Single Guidelines Field */}
                 {selectedSubtopic.guidelines && (
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                  <div
+                    style={{
+                      padding: '16px',
+                      backgroundColor: 'white',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#6B7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       Teaching Guidelines
                     </h4>
-                    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                      <div className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
-                        {selectedSubtopic.guidelines}
-                      </div>
+                    <div style={{ fontSize: '14px', lineHeight: '1.7', color: '#374151', whiteSpace: 'pre-wrap' }}>
+                      {selectedSubtopic.guidelines}
                     </div>
                   </div>
                 )}
 
                 {/* V1: Structured Fields (Backward Compatibility) */}
-                {!selectedSubtopic.guidelines && (
-                  <>
-                    {/* Comprehensive Description */}
-                    {selectedSubtopic.description && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                          Overview
-                        </h4>
-                        <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                          <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
-                            {selectedSubtopic.description}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Teaching Description */}
-                    {selectedSubtopic.teaching_description && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                          Teaching Instructions (Quick Reference)
-                        </h4>
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded whitespace-pre-wrap text-sm">
-                          {selectedSubtopic.teaching_description}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Objectives */}
-                    {selectedSubtopic.objectives && selectedSubtopic.objectives.length > 0 && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                          Objectives ({selectedSubtopic.objectives.length})
-                        </h4>
-                        <ul className="list-disc list-inside space-y-1">
-                          {selectedSubtopic.objectives.map((obj, idx) => (
-                            <li key={idx} className="text-sm">{obj}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Examples */}
-                    {selectedSubtopic.examples && selectedSubtopic.examples.length > 0 && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                          Examples ({selectedSubtopic.examples.length})
-                        </h4>
-                        <ul className="list-disc list-inside space-y-1">
-                          {selectedSubtopic.examples.slice(0, 5).map((ex, idx) => (
-                            <li key={idx} className="text-sm">{ex}</li>
-                          ))}
-                          {selectedSubtopic.examples.length > 5 && (
-                            <li className="text-sm text-gray-500">
-                              ...and {selectedSubtopic.examples.length - 5} more
-                            </li>
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Misconceptions */}
-                    {selectedSubtopic.misconceptions && selectedSubtopic.misconceptions.length > 0 && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                          Misconceptions ({selectedSubtopic.misconceptions.length})
-                        </h4>
-                        <ul className="list-disc list-inside space-y-1">
-                          {selectedSubtopic.misconceptions.map((m, idx) => (
-                            <li key={idx} className="text-sm text-red-700">{m}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Assessments */}
-                    {selectedSubtopic.assessments && selectedSubtopic.assessments.length > 0 && (
-                      <div className="mb-6">
-                        <h4 className="font-semibold text-sm text-gray-700 mb-2">
-                          Assessments ({selectedSubtopic.assessments.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {selectedSubtopic.assessments.slice(0, 3).map((a, idx) => (
-                            <div key={idx} className="p-2 bg-gray-50 rounded text-sm">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="font-semibold">{a.prompt}</span>
-                                <span className={`px-2 py-0.5 text-xs rounded ${
-                                  a.level === 'advanced' ? 'bg-red-100 text-red-800' :
-                                  a.level === 'proficient' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-green-100 text-green-800'
-                                }`}>
-                                  {a.level}
-                                </span>
-                              </div>
-                              <p className="text-gray-600">Answer: {a.answer}</p>
-                            </div>
-                          ))}
-                          {selectedSubtopic.assessments.length > 3 && (
-                            <p className="text-sm text-gray-500">
-                              ...and {selectedSubtopic.assessments.length - 3} more
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </>
+                {!selectedSubtopic.guidelines && selectedSubtopic.description && (
+                  <div
+                    style={{
+                      padding: '16px',
+                      backgroundColor: 'white',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#6B7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Overview
+                    </h4>
+                    <div style={{ fontSize: '14px', lineHeight: '1.7', color: '#374151', whiteSpace: 'pre-wrap' }}>
+                      {selectedSubtopic.description}
+                    </div>
+                  </div>
                 )}
 
                 {/* Metadata */}
-                <div className="mt-6 pt-4 border-t text-xs text-gray-500">
-                  <p>Source Pages: {selectedSubtopic.source_page_start}-{selectedSubtopic.source_page_end}</p>
-                  {selectedSubtopic.confidence !== undefined && (
-                    <p>Confidence: {(selectedSubtopic.confidence * 100).toFixed(0)}%</p>
-                  )}
-                  <p>Version: {selectedSubtopic.version}</p>
-                  {selectedSubtopic.quality_score !== undefined && selectedSubtopic.quality_score !== null && (
-                    <p className={getQualityScoreColor(selectedSubtopic.quality_score)}>
-                      Quality Score: {(selectedSubtopic.quality_score * 100).toFixed(0)}%
-                    </p>
-                  )}
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    backgroundColor: '#F3F4F6',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    color: '#6B7280',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                    <span>Pages: {selectedSubtopic.source_page_start}-{selectedSubtopic.source_page_end}</span>
+                    <span>Version: {selectedSubtopic.version}</span>
+                    <span>Status: {selectedSubtopic.status}</span>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                Select a subtopic to view details
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9CA3AF' }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>👈</div>
+                <p>Select a subtopic to view details</p>
               </div>
             )}
           </div>
