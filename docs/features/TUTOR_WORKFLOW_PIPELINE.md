@@ -8,7 +8,7 @@
 
 | Aspect | Details |
 |--------|---------|
-| **What it captures** | End-to-end workflow from topic selection → session creation → 3-agent teaching loop → evaluation → completion |
+| **What it captures** | End-to-end workflow from topic selection -> session creation -> 3-agent teaching loop -> evaluation -> completion |
 | **Audience** | New and existing developers needing complete context on this feature |
 | **Scope** | Frontend components, LangGraph workflow, 3 agents (PLANNER/EXECUTOR/EVALUATOR), state management, API endpoints |
 | **Maintenance** | Update this doc whenever tutor workflow code changes to keep it accurate |
@@ -17,41 +17,41 @@
 - Frontend: `llm-frontend/src/TutorApp.tsx`, `llm-frontend/src/api.ts`
 - Backend Workflow: `llm-backend/workflows/`, `llm-backend/agents/`
 - Backend Services: `llm-backend/services/session_service.py`, `llm-backend/adapters/`
-- API: `llm-backend/api/routes/sessions.py`, `llm-backend/api/routes/logs.py`
+- API: `llm-backend/api/routes/sessions.py`, `llm-backend/api/routes/curriculum.py`
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (React)                                 │
-│   Subject → Topic → Subtopic Selection → Chat Interface                 │
-└─────────────────────────────────────┬───────────────────────────────────┘
-                                      │ REST API
-┌─────────────────────────────────────▼───────────────────────────────────┐
-│                         BACKEND (FastAPI)                                │
-│   Routes: /sessions, /sessions/{id}/step, /sessions/{id}/summary        │
-│           /sessions/{id}/logs, /sessions/{id} (debug)                   │
-│                                                                          │
-│   SessionService → SessionWorkflowAdapter → TutorWorkflow (LangGraph)   │
-│                                                                          │
-│   ┌───────────────────────────────────────────────────────────────┐     │
-│   │                    LANGGRAPH WORKFLOW                          │     │
-│   │                                                                │     │
-│   │  START → ROUTER ──┬─→ PLANNER → EXECUTOR ─┬─→ END             │     │
-│   │                   │                       │                    │     │
-│   │                   ├─→ EVALUATOR ─┬─→ replan → PLANNER         │     │
-│   │                   │              ├─→ continue → EXECUTOR       │     │
-│   │                   │              └─→ end → END                 │     │
-│   │                   │                                            │     │
-│   │                   └─→ EXECUTOR (edge case)                     │     │
-│   └───────────────────────────────────────────────────────────────┘     │
-└─────────────────────────────────────┬───────────────────────────────────┘
-                                      │
-┌─────────────────────────────────────▼───────────────────────────────────┐
-│   PostgreSQL: sessions, events, teaching_guidelines, checkpoint_*       │
-└─────────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------+
+|                         FRONTEND (React)                                 |
+|   Subject -> Topic -> Subtopic Selection -> Chat Interface               |
++-------------------------------------+-----------------------------------+
+                                      | REST API
++-------------------------------------v-----------------------------------+
+|                         BACKEND (FastAPI)                                |
+|   Routes: /sessions, /sessions/{id}/step, /sessions/{id}/summary         |
+|           /sessions/{id} (debug), /curriculum                            |
+|                                                                          |
+|   SessionService -> SessionWorkflowAdapter -> TutorWorkflow (LangGraph)  |
+|                                                                          |
+|   +---------------------------------------------------------------+     |
+|   |                    LANGGRAPH WORKFLOW                          |     |
+|   |                                                                |     |
+|   |  START -> ROUTER --+-> PLANNER -> EXECUTOR -+-> END            |     |
+|   |                    |                        |                  |     |
+|   |                    +-> EVALUATOR -+--> replan -> PLANNER       |     |
+|   |                    |              +--> continue -> EXECUTOR    |     |
+|   |                    |              +--> end -> END              |     |
+|   |                    |                                           |     |
+|   |                    +-> EXECUTOR (edge case)                    |     |
+|   +---------------------------------------------------------------+     |
++-----------------------------------------+-------------------------------+
+                                          |
++-----------------------------------------v-------------------------------+
+|   PostgreSQL: sessions, events, teaching_guidelines, checkpoint_*       |
++-------------------------------------------------------------------------+
 ```
 
 ## The 3-Agent System
@@ -70,7 +70,7 @@
 
 | Phase | Action | Endpoint | Handler |
 |-------|--------|----------|---------|
-| 1 | Select Subject/Topic/Subtopic | `GET /curriculum` | CurriculumService |
+| 1 | Select Subject/Topic/Subtopic | `GET /curriculum` | TeachingGuidelineRepository |
 | 2 | Create Session | `POST /sessions` | SessionService.create_new_session() |
 | 3 | Submit Answer | `POST /sessions/{id}/step` | SessionService.process_step() |
 | 4 | Get Summary | `GET /sessions/{id}/summary` | SessionService.get_summary() |
@@ -82,20 +82,20 @@
 ### Selection Flow
 ```
 Frontend: TutorApp.tsx
-    │
-    ├─▶ Step 1: Load subjects
-    │     GET /curriculum?country=India&board=CBSE&grade=3
-    │     Response: {subjects: ["Mathematics", "English", ...]}
-    │
-    ├─▶ Step 2: User selects subject → Load topics
-    │     GET /curriculum?...&subject=Mathematics
-    │     Response: {topics: ["Fractions", "Multiplication", ...]}
-    │
-    ├─▶ Step 3: User selects topic → Load subtopics
-    │     GET /curriculum?...&subject=Mathematics&topic=Fractions
-    │     Response: {subtopics: [{subtopic, guideline_id}, ...]}
-    │
-    └─▶ Step 4: User selects subtopic → Create session
+    |
+    +-> Step 1: Load subjects
+    |     GET /curriculum?country=India&board=CBSE&grade=3
+    |     Response: {subjects: ["Mathematics", "English", ...]}
+    |
+    +-> Step 2: User selects subject -> Load topics
+    |     GET /curriculum?...&subject=Mathematics
+    |     Response: {topics: ["Fractions", "Multiplication", ...]}
+    |
+    +-> Step 3: User selects topic -> Load subtopics
+    |     GET /curriculum?...&subject=Mathematics&topic=Fractions
+    |     Response: {subtopics: [{subtopic, guideline_id}, ...]}
+    |
+    +-> Step 4: User selects subtopic -> Create session
 ```
 
 **Hardcoded Values (Frontend):**
@@ -121,16 +121,16 @@ Body: {
 ### Flow
 ```
 SessionService.create_new_session()
-    │
-    ├─▶ 1. Load teaching guideline from DB (500-2000 words)
-    ├─▶ 2. Generate session_id (UUID)
-    ├─▶ 3. Initialize TutorState
-    │
-    └─▶ 4. SessionWorkflowAdapter.execute_present_node()
-            │
-            └─▶ TutorWorkflow.start_session()
-                    │
-                    └─▶ LangGraph: START → ROUTER → PLANNER → EXECUTOR → END
+    |
+    +-> 1. Load teaching guideline from DB (500-2000 words)
+    +-> 2. Generate session_id (UUID)
+    +-> 3. Initialize TutorState
+    |
+    +-> 4. SessionWorkflowAdapter.execute_present_node()
+            |
+            +-> TutorWorkflow.start_session()
+                    |
+                    +-> LangGraph: START -> ROUTER -> PLANNER -> EXECUTOR -> END
 ```
 
 ### LangGraph Execution (New Session)
@@ -138,7 +138,7 @@ SessionService.create_new_session()
 **ROUTER** (`route_entry`):
 ```python
 if not study_plan.todo_list:
-    return "planner"  # New session → create plan
+    return "planner"  # New session -> create plan
 ```
 
 **PLANNER** (`planner_agent.py`):
@@ -209,15 +209,15 @@ Body: {student_reply: "I have 3 slices and you have 1, so I have more!"}
 ### Flow
 ```
 SessionService.process_step()
-    │
-    ├─▶ 1. Load session from DB
-    ├─▶ 2. Add student message to history
-    │
-    └─▶ 3. SessionWorkflowAdapter.execute_step_workflow()
-            │
-            └─▶ TutorWorkflow.submit_response()
-                    │
-                    └─▶ LangGraph: START → ROUTER → EVALUATOR → [route] → ...
+    |
+    +-> 1. Load session from DB
+    +-> 2. Add student message to history
+    |
+    +-> 3. SessionWorkflowAdapter.execute_step_workflow()
+            |
+            +-> TutorWorkflow.submit_response()
+                    |
+                    +-> LangGraph: START -> ROUTER -> EVALUATOR -> [route] -> ...
 ```
 
 ### LangGraph Execution (Student Response)
@@ -225,7 +225,7 @@ SessionService.process_step()
 **ROUTER** (`route_entry`):
 ```python
 if conversation[-1].role == "student":
-    return "evaluator"  # Student answered → evaluate
+    return "evaluator"  # Student answered -> evaluate
 ```
 
 **EVALUATOR** (`evaluator_agent.py`) - The Traffic Controller:
@@ -268,11 +268,11 @@ if conversation[-1].role == "student":
 **Routing After Evaluation** (`route_after_evaluation`):
 ```python
 if replan_needed and replan_count < max_replans:
-    return "replan"  # → PLANNER (update plan)
+    return "replan"  # -> PLANNER (update plan)
 elif all_steps_completed:
-    return "end"     # → Session complete
+    return "end"     # -> Session complete
 else:
-    return "continue"  # → EXECUTOR (next question)
+    return "continue"  # -> EXECUTOR (next question)
 ```
 
 **EXECUTOR** (if continuing):
@@ -303,8 +303,8 @@ else:
 ## Phase 4: Session Completion & Summary
 
 ### When Session Ends
-- All steps have `status: "completed"` → EVALUATOR routes to END
-- Max replans exceeded → END with intervention flag
+- All steps have `status: "completed"` -> EVALUATOR routes to END
+- Max replans exceeded -> END with intervention flag
 - Frontend detects `is_complete: true`
 
 ### Summary Endpoint
@@ -359,17 +359,17 @@ class SimplifiedState(TypedDict):
 
 ### Step Status Flow
 ```
-pending ──first question──▶ in_progress
-                                │
-              ┌─────────────────┼─────────────────┐
-              │                 │                 │
+pending --first question--> in_progress
+                                |
+              +-----------------+-----------------+
+              |                 |                 |
        success_criteria    needs_more_work     3+ failures
-       FULLY met              continue             │
-              │                 │                 ▼
-              ▼                 │             blocked
-         completed              │           (replan trigger)
-              │                 │
-              └────────◀────────┘
+       FULLY met              continue             |
+              |                 |                 v
+              v                 |             blocked
+         completed              |           (replan trigger)
+              |                 |
+              +--------<--------+
 ```
 
 ### Dynamic Current Step (No Manual Tracking)
@@ -398,24 +398,24 @@ def get_current_step(plan):
 ### Replan Flow
 ```
 EVALUATOR sets replan_needed=true, replan_reason="..."
-    │
-    ▼
-ROUTER detects replan_needed → "replan"
-    │
-    ▼
+    |
+    v
+ROUTER detects replan_needed -> "replan"
+    |
+    v
 PLANNER receives:
   - Original plan
   - Assessment notes
   - Replan reason
   - Recent conversation
-    │
-    ▼
+    |
+    v
 PLANNER outputs:
   - Updated todo_list (may insert prerequisite steps)
   - Incremented plan_version
   - Incremented replan_count
-    │
-    ▼
+    |
+    v
 EXECUTOR generates message for new/updated step
 ```
 
@@ -434,7 +434,7 @@ EXECUTOR generates message for new/updated step
 ### Backend - Agents
 | File | Purpose |
 |------|---------|
-| `agents/base.py` | BaseAgent abstract class |
+| `agents/base.py` | BaseAgent abstract class with execution + logging |
 | `agents/planner_agent.py` | PLANNER - creates/updates study plans |
 | `agents/executor_agent.py` | EXECUTOR - generates teaching messages |
 | `agents/evaluator_agent.py` | EVALUATOR - evaluates + routes |
@@ -451,12 +451,11 @@ EXECUTOR generates message for new/updated step
 | File | Purpose |
 |------|---------|
 | `services/session_service.py` | Session orchestration |
-| `services/llm_service.py` | LLM API wrapper (GPT-4o, GPT-5.1 fallback, Gemini) |
-| `services/agent_logging_service.py` | Dual-format logging (JSONL + TXT) |
+| `services/llm_service.py` | LLM API wrapper (GPT-4o, GPT-5.1 fallback, Gemini optional) |
 | `api/routes/sessions.py` | Session endpoints |
-| `api/routes/logs.py` | Logs API (stream, summary, text, JSON) |
-| `adapters/workflow_adapter.py` | TutorWorkflow ↔ SessionService bridge |
-| `adapters/state_adapter.py` | TutorState ↔ SimplifiedState conversion |
+| `api/routes/curriculum.py` | Curriculum discovery endpoints |
+| `adapters/workflow_adapter.py` | TutorWorkflow <-> SessionService bridge |
+| `adapters/state_adapter.py` | TutorState <-> SimplifiedState conversion |
 
 ### Frontend
 | File | Purpose |
@@ -477,8 +476,8 @@ EXECUTOR generates message for new/updated step
 
 **LLM Service Features:**
 - GPT-4o for all agents (fast execution)
-- GPT-5.1 with reasoning (fallback available)
-- Gemini support (optional, configurable)
+- GPT-5.1 fallback available (auto-falls back to GPT-4o on failure)
+- Gemini support (optional, configurable via GEMINI_API_KEY)
 - Automatic retry with exponential backoff
 - JSON mode for structured outputs
 
@@ -494,70 +493,68 @@ EXECUTOR generates message for new/updated step
 | `GET` | `/sessions/{id}/summary` | Get session performance summary |
 | `GET` | `/sessions/{id}` | Debug: Get full session state |
 
-### Logs API
+### Curriculum Discovery
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/sessions/logs` | List all sessions with log metadata |
-| `GET` | `/sessions/{id}/logs` | Get JSON logs for a session |
-| `GET` | `/sessions/{id}/logs/text` | Get human-readable text logs |
-| `GET` | `/sessions/{id}/logs/summary` | Get log statistics |
-| `GET` | `/sessions/{id}/logs/stream` | SSE stream for real-time logs |
+| `GET` | `/curriculum?country=&board=&grade=` | Get available subjects |
+| `GET` | `/curriculum?...&subject=` | Get topics for a subject |
+| `GET` | `/curriculum?...&subject=&topic=` | Get subtopics with guideline IDs |
 
 ---
 
 ## Complete Flow Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          NEW SESSION FLOW                                │
-│                                                                          │
-│  POST /sessions                                                          │
-│       │                                                                  │
-│       ▼                                                                  │
-│  Load guideline from DB                                                  │
-│       │                                                                  │
-│       ▼                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐        │
-│  │ LANGGRAPH: ROUTER → PLANNER → EXECUTOR → END                │        │
-│  │                                                              │        │
-│  │ ROUTER: No plan? → "planner"                                │        │
-│  │ PLANNER: Create 3-5 step plan                               │        │
-│  │ EXECUTOR: Generate first question                           │        │
-│  └─────────────────────────────────────────────────────────────┘        │
-│       │                                                                  │
-│       ▼                                                                  │
-│  Return: {session_id, first_turn: {message, hints, step_idx}}           │
-└─────────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------+
+|                          NEW SESSION FLOW                                |
+|                                                                          |
+|  POST /sessions                                                          |
+|       |                                                                  |
+|       v                                                                  |
+|  Load guideline from DB                                                  |
+|       |                                                                  |
+|       v                                                                  |
+|  +-------------------------------------------------------------+        |
+|  | LANGGRAPH: ROUTER -> PLANNER -> EXECUTOR -> END              |        |
+|  |                                                              |        |
+|  | ROUTER: No plan? -> "planner"                                |        |
+|  | PLANNER: Create 3-5 step plan                               |        |
+|  | EXECUTOR: Generate first question                           |        |
+|  +-------------------------------------------------------------+        |
+|       |                                                                  |
+|       v                                                                  |
+|  Return: {session_id, first_turn: {message, hints, step_idx}}           |
++-------------------------------------------------------------------------+
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       STUDENT RESPONSE FLOW                              │
-│                                                                          │
-│  POST /sessions/{id}/step                                                │
-│       │                                                                  │
-│       ▼                                                                  │
-│  Add student message to conversation                                     │
-│       │                                                                  │
-│       ▼                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐        │
-│  │ LANGGRAPH: ROUTER → EVALUATOR → [route_after_evaluation]    │        │
-│  │                                                              │        │
-│  │ ROUTER: Last msg is student? → "evaluator"                  │        │
-│  │ EVALUATOR:                                                   │        │
-│  │   - Score response (0.0-1.0)                                │        │
-│  │   - Generate feedback                                        │        │
-│  │   - Update step statuses                                     │        │
-│  │   - Track assessment notes                                   │        │
-│  │   - Decide: replan_needed?                                  │        │
-│  │                                                              │        │
-│  │ ROUTING:                                                     │        │
-│  │   replan_needed=true → PLANNER → EXECUTOR → END             │        │
-│  │   all_completed=true → END                                   │        │
-│  │   else → EXECUTOR → END                                      │        │
-│  └─────────────────────────────────────────────────────────────┘        │
-│       │                                                                  │
-│       ▼                                                                  │
-│  Return: {next_turn: {message, hints, step_idx, is_complete}}           │
-└─────────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------+
+|                       STUDENT RESPONSE FLOW                              |
+|                                                                          |
+|  POST /sessions/{id}/step                                                |
+|       |                                                                  |
+|       v                                                                  |
+|  Add student message to conversation                                     |
+|       |                                                                  |
+|       v                                                                  |
+|  +-------------------------------------------------------------+        |
+|  | LANGGRAPH: ROUTER -> EVALUATOR -> [route_after_evaluation]   |        |
+|  |                                                              |        |
+|  | ROUTER: Last msg is student? -> "evaluator"                  |        |
+|  | EVALUATOR:                                                   |        |
+|  |   - Score response (0.0-1.0)                                |        |
+|  |   - Generate feedback                                        |        |
+|  |   - Update step statuses                                     |        |
+|  |   - Track assessment notes                                   |        |
+|  |   - Decide: replan_needed?                                   |        |
+|  |                                                              |        |
+|  | ROUTING:                                                     |        |
+|  |   replan_needed=true -> PLANNER -> EXECUTOR -> END           |        |
+|  |   all_completed=true -> END                                  |        |
+|  |   else -> EXECUTOR -> END                                    |        |
+|  +-------------------------------------------------------------+        |
+|       |                                                                  |
+|       v                                                                  |
+|  Return: {next_turn: {message, hints, step_idx, is_complete}}           |
++-------------------------------------------------------------------------+
 ```
 
 ---
@@ -598,27 +595,32 @@ EXECUTOR generates message for new/updated step
 
 ## Logging & Observability
 
-### Agent Logging Service
-```
-logs/sessions/{session_id}/
-    agent_steps.jsonl    # Machine-readable (one JSON per line)
-    agent_steps.txt      # Human-readable (formatted output)
-```
+### Structured Logging to stdout
+All logging is done via structured JSON to stdout for cloud-native observability:
 
-### Log Entry Structure
-```json
+```python
+# In main.py - JSONFormatter outputs structured logs
 {
   "timestamp": "2024-11-19T14:30:00Z",
+  "level": "INFO",
+  "logger": "agents.evaluator_agent",
+  "step": "AGENT_EXECUTION:EVALUATOR",
+  "status": "complete",
+  "session_id": "uuid-123",
   "agent": "evaluator",
-  "input_summary": "Evaluate response for 'Pizza Fractions'",
   "output": {...},
-  "reasoning": "Student correctly compared...",
   "duration_ms": 1234
 }
 ```
 
-### Logs API Features
-- **JSON logs**: Filter by agent type, pagination
-- **Text logs**: Human-readable format, downloadable
-- **Summary**: Aggregated stats per session
-- **Streaming**: Server-Sent Events for real-time monitoring
+### Agent Execution Logs
+- Each agent logs start/complete events with timing
+- Full output and reasoning captured in `agent_logs` state field
+- Duration tracked for performance monitoring
+
+### Log Format Configuration
+```bash
+# Environment variables
+LOG_FORMAT=json  # or "text" for development
+LOG_LEVEL=INFO
+```

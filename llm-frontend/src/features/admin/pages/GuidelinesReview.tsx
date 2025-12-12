@@ -9,6 +9,7 @@ import {
   getAllGuidelinesForReview,
   approveGuideline,
   rejectGuideline,
+  deleteGuideline,
 } from '../api/adminApi';
 import { GuidelineReview, GuidelineFilters } from '../types';
 
@@ -97,6 +98,22 @@ const GuidelinesReviewPage: React.FC = () => {
       await Promise.all([loadGuidelines(), loadFilterOptions()]);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to reject guideline');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async (guidelineId: string) => {
+    if (!confirm('Are you sure you want to delete this guideline? This action cannot be undone.')) {
+      return;
+    }
+    setActionLoading(guidelineId);
+    try {
+      await deleteGuideline(guidelineId);
+      // Refresh guidelines and filter options
+      await Promise.all([loadGuidelines(), loadFilterOptions()]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete guideline');
     } finally {
       setActionLoading(null);
     }
@@ -507,6 +524,22 @@ const GuidelinesReviewPage: React.FC = () => {
                             </span>
                           </>
                         )}
+                        <button
+                          onClick={() => handleDelete(guideline.id)}
+                          disabled={actionLoading === guideline.id}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'white',
+                            color: '#DC2626',
+                            border: '1px solid #FCA5A5',
+                            borderRadius: '6px',
+                            cursor: actionLoading === guideline.id ? 'not-allowed' : 'pointer',
+                            fontSize: '13px',
+                            opacity: actionLoading === guideline.id ? 0.6 : 1,
+                          }}
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </div>

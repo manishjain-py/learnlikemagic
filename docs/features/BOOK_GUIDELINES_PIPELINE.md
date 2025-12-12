@@ -8,38 +8,44 @@
 
 | Aspect | Details |
 |--------|---------|
-| **What it captures** | End-to-end workflow from book creation → page upload → OCR → guidelines generation → approval → database sync |
+| **What it captures** | End-to-end workflow from book creation → page upload → OCR → guidelines generation → review → approval → database sync |
 | **Audience** | New and existing developers needing complete context on this feature |
 | **Scope** | Frontend components, backend services, API endpoints, data models, S3 storage, LLM calls |
 | **Maintenance** | Update this doc whenever pipeline code changes to keep it accurate |
 
 **Key Code Locations:**
 - Frontend: `llm-frontend/src/features/admin/`
-- Backend: `llm-backend/features/book_ingestion/`
+- Backend Book Ingestion: `llm-backend/features/book_ingestion/`
+- Backend Guidelines Router: `llm-backend/routers/admin_guidelines.py`
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (React)                                 │
-│   BooksDashboard → BookDetail → PageUploadPanel → GuidelinesPanel       │
-│                       ↳ BookStatusBadge (derived from counts)           │
-└─────────────────────────────────┬───────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            FRONTEND (React)                                  │
+│   BooksDashboard → BookDetail → PageUploadPanel → GuidelinesPanel           │
+│         │             ↳ BookStatusBadge (derived from counts)               │
+│         └──────────→ GuidelinesReview (review/approve individual guidelines)│
+└─────────────────────────────────┬───────────────────────────────────────────┘
                                   │ REST API
-┌─────────────────────────────────▼───────────────────────────────────────┐
-│                         BACKEND (FastAPI)                                │
-│   Routes: /admin/books, /admin/books/{id}/pages, /admin/books/{id}/...  │
-│                                                                          │
-│   ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────────┐   │
-│   │ BookService │  │ PageService │  │ GuidelineExtractionOrchestrator│  │
-│   └─────────────┘  └─────────────┘  └──────────────────────────────┘   │
-└─────────────────────────────────┬───────────────────────────────────────┘
+┌─────────────────────────────────▼───────────────────────────────────────────┐
+│                          BACKEND (FastAPI)                                   │
+│   Routes: /admin/books/*, /admin/guidelines/*                               │
+│                                                                              │
+│   ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────────────┐   │
+│   │ BookService │  │ PageService │  │ GuidelineExtractionOrchestrator  │   │
+│   └─────────────┘  └─────────────┘  └──────────────────────────────────┘   │
+│                                                                              │
+│   ┌────────────────────────────────────────────────────────────────────┐   │
+│   │ DBSyncService (sync to teaching_guidelines) │ JobLockService       │   │
+│   └────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────┬───────────────────────────────────────────┘
                                   │
-┌─────────────────────────────────▼───────────────────────────────────────┐
-│   PostgreSQL: Book, BookJob, teaching_guidelines  │  S3: images, OCR    │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────▼───────────────────────────────────────────┐
+│   PostgreSQL: Book, BookJob, BookGuideline, TeachingGuideline │ S3: shards  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Pipeline Phases
@@ -52,6 +58,8 @@
 | 4 | Generate Guidelines | `POST /admin/books/{id}/generate-guidelines` | GuidelineExtractionOrchestrator |
 | 5 | Refine & Consolidate | `POST /admin/books/{id}/finalize` | Orchestrator + Refinement Services |
 | 6 | Approve & Sync to DB | `PUT /admin/books/{id}/guidelines/approve` | DBSyncService |
+| 7 | Review Guidelines | `GET /admin/guidelines/review` | TeachingGuideline queries |
+| 8 | Approve Individual | `POST /admin/guidelines/{id}/approve` | TeachingGuideline update |
 
 ---
 
@@ -81,6 +89,12 @@ POST /admin/books/{id}/pages → PageService.upload_page()
 ```
 PUT  .../pages/{num}/approve → Update metadata: status = "approved"
 DELETE .../pages/{num}       → Delete S3 files, renumber remaining pages
+```
+
+### Get Page Details
+```
+GET /admin/books/{id}/pages/{num} → PageService.get_page_with_urls()
+  Returns: {page_num, status, image_url, text_url, ocr_text}
 ```
 
 **S3 Structure (Post-Upload):**
@@ -166,6 +180,7 @@ A subtopic is marked "stable" when `current_page - shard.source_page_end >= 5` (
 books/{book_id}/
   guidelines/
     index.json                              # GuidelinesIndex (status tracked here)
+    page_index.json                         # PageIndex (page → topic/subtopic mapping)
     topics/
       {topic_key}/
         subtopics/
@@ -209,12 +224,44 @@ PUT /admin/books/{id}/guidelines/approve
 # DBSyncService.sync_shard() maps SubtopicShard → teaching_guidelines table
 INSERT INTO teaching_guidelines (
     id, book_id, country, grade, subject, board,
-    topic_key, topic_title, subtopic_key, subtopic_title,
-    guideline,                    # Complete guidelines text
+    topic, subtopic,                      # Legacy columns (for backward compatibility)
+    topic_key, subtopic_key,              # Slugified identifiers
+    topic_title, subtopic_title,          # Human-readable names
+    guideline,                            # Complete guidelines text
     source_page_start, source_page_end,
     status, review_status, version
 )
 ```
+
+---
+
+## Phase 7-8: Guidelines Review Workflow
+
+After sync to database, guidelines need individual review before becoming active.
+
+### Review Endpoints (`/admin/guidelines/*`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/review` | GET | List all guidelines with filters (country, board, grade, subject, status) |
+| `/review/filters` | GET | Get available filter options and counts |
+| `/books/{book_id}/topics` | GET | Get topics/subtopics structure for a book |
+| `/books/{book_id}/subtopics/{key}` | GET | Get full guideline details (requires `topic_key` query param) |
+| `/books/{book_id}/page-assignments` | GET | Get page-to-subtopic assignments for a book |
+| `/books/{book_id}/review` | GET | List guidelines for review (by book) |
+| `/books/{book_id}/extract` | POST | Extract guidelines for specific page range |
+| `/books/{book_id}/finalize` | POST | Finalize book guidelines |
+| `/books/{book_id}/sync-to-database` | POST | Sync guidelines to DB (full snapshot) |
+| `/{guideline_id}/approve` | POST | Approve or reject individual guideline |
+| `/{guideline_id}` | DELETE | Delete individual guideline |
+| `/books` | GET | List all books with guideline extraction status |
+
+### Review Statuses
+- `TO_BE_REVIEWED` - Default after sync, needs admin review
+- `APPROVED` - Admin approved, available for tutor workflow
+
+### Bulk Operations
+- **Approve All**: Frontend iterates and calls `/approve` for each pending guideline
 
 ---
 
@@ -245,8 +292,22 @@ class GuidelinesIndex:
 
 class SubtopicIndexEntry:
     subtopic_key, subtopic_title: str
-    status: "open" | "stable" | "final"  # Status tracked HERE only
+    status: "open" | "stable" | "final" | "needs_review"  # Status tracked HERE only
     page_range: str             # "5-8"
+```
+
+### PageIndex
+```python
+class PageIndex:
+    book_id: str
+    pages: Dict[int, PageAssignment]  # Page number → assignment
+    version: int
+    last_updated: datetime
+
+class PageAssignment:
+    topic_key: str
+    subtopic_key: str
+    confidence: float           # 0.0-1.0
 ```
 
 ### ContextPack (LLM Input)
@@ -257,17 +318,21 @@ class ContextPack:
     book_metadata: dict         # {grade, subject, board}
     recent_page_summaries: List # Last 5 page summaries
     open_topics: List           # Active topics with full guidelines text
+    toc_hints: ToCHints         # Table of contents hints
 ```
 
 ### Database Tables
 
-**Book**
+**Book** (`llm-backend/features/book_ingestion/models/database.py`)
 | Column | Type | Description |
 |--------|------|-------------|
 | id | VARCHAR | Primary key (slug) |
 | title, author, edition | VARCHAR | Book metadata |
 | country, board, grade, subject | VARCHAR/INT | Curriculum info |
 | s3_prefix | VARCHAR | `books/{book_id}/` |
+| metadata_s3_key | VARCHAR | `books/{book_id}/metadata.json` |
+| created_at, updated_at | DATETIME | Timestamps |
+| created_by | VARCHAR | Creator username |
 
 **BookJob** (tracks active operations)
 | Column | Type | Description |
@@ -277,18 +342,32 @@ class ContextPack:
 | job_type | VARCHAR | extraction, finalization, sync |
 | status | VARCHAR | running, completed, failed |
 | started_at, completed_at | DATETIME | Timestamps |
+| error_message | TEXT | Error details on failure |
 
-**teaching_guidelines**
+**BookGuideline** (S3 guideline references for book status)
 | Column | Type | Description |
 |--------|------|-------------|
-| id | UUID | Primary key |
+| id | VARCHAR | Primary key |
+| book_id | VARCHAR | FK to books |
+| guideline_s3_key | VARCHAR | S3 path to guideline JSON |
+| status | VARCHAR | draft, pending_review, approved, rejected |
+| review_status | VARCHAR | TO_BE_REVIEWED, APPROVED |
+| version | INT | Increment on regeneration |
+
+**TeachingGuideline** (`llm-backend/models/database.py`) - Production guidelines for tutor
+| Column | Type | Description |
+|--------|------|-------------|
+| id | VARCHAR | Primary key |
 | book_id | VARCHAR | Book reference |
-| topic_key, subtopic_key | VARCHAR | Slugified identifiers |
+| country, board, grade, subject | VARCHAR/INT | Curriculum filters |
+| topic, subtopic | VARCHAR | Legacy names (display) - for backward compatibility |
+| topic_key, subtopic_key | VARCHAR | Slugified identifiers (primary) |
 | topic_title, subtopic_title | VARCHAR | Human-readable names |
 | guideline | TEXT | Complete teaching guidelines |
 | source_page_start/end | INT | Page range |
-| status | VARCHAR | "synced" |
-| review_status | VARCHAR | "TO_BE_REVIEWED" |
+| status | VARCHAR | synced (default after sync) |
+| review_status | VARCHAR | TO_BE_REVIEWED, APPROVED |
+| version | INT | Tracks updates |
 
 ---
 
@@ -310,19 +389,20 @@ class ContextPack:
 ### Frontend (`llm-frontend/src/features/admin/`)
 | File | Purpose |
 |------|---------|
-| `api/adminApi.ts` | All API client functions |
+| `api/adminApi.ts` | All API client functions (books + guidelines review) |
 | `types/index.ts` | TypeScript interfaces |
 | `pages/BookDetail.tsx` | Book management hub |
 | `pages/BooksDashboard.tsx` | Books list with filters |
+| `pages/GuidelinesReview.tsx` | **Review/approve individual guidelines** |
 | `components/PageUploadPanel.tsx` | Drag-drop upload + OCR review |
 | `components/GuidelinesPanel.tsx` | Generate/approve/reject guidelines |
 | `components/BookStatusBadge.tsx` | Status badge display |
 | `utils/bookStatus.ts` | **Derived status logic** (no stored status) |
 
-### Backend (`llm-backend/features/book_ingestion/`)
+### Backend - Book Ingestion (`llm-backend/features/book_ingestion/`)
 | File | Purpose |
 |------|---------|
-| `api/routes.py` | FastAPI endpoints |
+| `api/routes.py` | FastAPI endpoints for books/pages/guidelines |
 | `services/book_service.py` | Book CRUD + status counts |
 | `services/page_service.py` | Page upload, OCR, approval |
 | `services/ocr_service.py` | OpenAI Vision API wrapper |
@@ -332,6 +412,7 @@ class ContextPack:
 | `services/context_pack_service.py` | Build LLM context |
 | `services/minisummary_service.py` | Page summaries |
 | `services/index_management_service.py` | Index CRUD |
+| `services/stability_detector_service.py` | Detect stable subtopics (5-page threshold) |
 | `services/db_sync_service.py` | PostgreSQL sync |
 | `services/topic_name_refinement_service.py` | Name polishing |
 | `services/topic_deduplication_service.py` | Duplicate detection |
@@ -339,7 +420,28 @@ class ContextPack:
 | `models/guideline_models.py` | Pydantic models (SubtopicShard, Index, etc.) |
 | `models/database.py` | SQLAlchemy ORM (Book, BookJob, BookGuideline) |
 | `utils/s3_client.py` | S3 operations |
-| `prompts/boundary_detection.txt` | LLM prompt template |
+
+### Backend - Guidelines Review (`llm-backend/routers/admin_guidelines.py`)
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /books` | List all books with guideline extraction status |
+| `GET /books/{id}/topics` | Get topic structure for book |
+| `GET /books/{id}/subtopics/{key}` | Get full guideline details |
+| `GET /books/{id}/page-assignments` | Get page-to-subtopic assignments |
+| `GET /books/{id}/review` | List guidelines for review (by book) |
+| `POST /books/{id}/extract` | Extract guidelines for page range |
+| `POST /books/{id}/finalize` | Finalize book guidelines |
+| `POST /books/{id}/sync-to-database` | Sync to DB (full snapshot) |
+| `PUT /books/{id}/subtopics/{key}` | Update guideline (DISABLED for MVP) |
+| `GET /review` | List all guidelines with filters |
+| `GET /review/filters` | Get filter options + counts |
+| `POST /{id}/approve` | Approve/reject guideline |
+| `DELETE /{id}` | Delete guideline |
+
+### Backend - Core Models (`llm-backend/models/database.py`)
+| Model | Purpose |
+|-------|---------|
+| `TeachingGuideline` | Production guidelines for tutor workflow |
 
 ---
 
@@ -352,15 +454,18 @@ class ContextPack:
 5. **Separate finalization** - Refine & Consolidate is distinct from generation
 6. **Full DB snapshot** - Approve deletes all existing rows and re-inserts (clean slate)
 7. **Derived book status** - Frontend computes status from counts (`page_count`, `guideline_count`, `approved_guideline_count`, `has_active_job`)
+8. **Legacy column support** - `topic` and `subtopic` columns maintained for backward compatibility
 
 ---
 
 ## Workflow States (Derived)
 
-Book status is **computed at runtime** from these counts:
+Book status is **computed at runtime** from counts stored in BookService:
 
 ```typescript
-// utils/bookStatus.ts
+// utils/bookStatus.ts - Frontend derives status from counts
+type DisplayStatus = 'no_pages' | 'ready_for_extraction' | 'processing' | 'pending_review' | 'approved';
+
 function getDisplayStatus(book: Book): DisplayStatus {
     if (book.has_active_job) return 'processing';
     if (book.page_count === 0) return 'no_pages';
@@ -371,20 +476,29 @@ function getDisplayStatus(book: Book): DisplayStatus {
 }
 ```
 
+**Count Sources (BookService._to_book_response):**
+- `page_count`: From S3 metadata.json pages array length
+- `guideline_count`: From BookGuideline table count
+- `approved_guideline_count`: From BookGuideline where review_status='APPROVED'
+- `has_active_job`: From BookJob where status='running'
+
 **State Transitions:**
 ```
-NO_PAGES ──upload──▶ READY_FOR_EXTRACTION ──generate──▶ PENDING_REVIEW
-       (page_count=0)    (guideline_count=0)                  │
+NO_PAGES ──upload──▶ READY_FOR_EXTRACTION ──generate──▶ PROCESSING
+       (page_count=0)    (guideline_count=0)         (has_active_job=true)
                                                               │
-                     ┌────────────────────────────────────────┤
+                                                           complete
+                                                              │
+                                                              ▼
+                     ┌──────────────────────────────── PENDING_REVIEW
                      │                                        │
-                  refine                                   approve
+                  refine/reject                            approve
                      │                                        │
                      ▼                                        ▼
-                 PENDING_REVIEW ────approve────────▶    APPROVED
-                     │                              (Synced to DB)
-                  reject
-                     │
-                     ▼
-            READY_FOR_EXTRACTION
+            READY_FOR_EXTRACTION                         APPROVED
+                                                    (Synced to TeachingGuideline)
 ```
+
+**Two-Level Review:**
+1. **Book-level**: Approve all guidelines for a book → Sync to `teaching_guidelines` table
+2. **Guideline-level**: Individual review via GuidelinesReview page → Set `review_status='APPROVED'`

@@ -238,3 +238,9 @@ export async function rejectGuideline(guidelineId: string): Promise<{ id: string
     body: JSON.stringify({ approved: false }),
   });
 }
+
+export async function deleteGuideline(guidelineId: string): Promise<{ message: string; id: string }> {
+  return apiFetch(`/admin/guidelines/${guidelineId}`, {
+    method: 'DELETE',
+  });
+}

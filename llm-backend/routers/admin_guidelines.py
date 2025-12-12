@@ -683,11 +683,29 @@ async def approve_guideline(
     guideline = db.query(TeachingGuideline).filter(TeachingGuideline.id == guideline_id).first()
     if not guideline:
         raise HTTPException(status_code=404, detail="Guideline not found")
-        
+
     guideline.review_status = "APPROVED" if approved else "TO_BE_REVIEWED"
     db.commit()
-    
+
     return {
         "id": guideline.id,
         "review_status": guideline.review_status
     }
+
+
+@router.delete("/{guideline_id}")
+async def delete_guideline(
+    guideline_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a guideline from the database.
+    """
+    guideline = db.query(TeachingGuideline).filter(TeachingGuideline.id == guideline_id).first()
+    if not guideline:
+        raise HTTPException(status_code=404, detail="Guideline not found")
+
+    db.delete(guideline)
+    db.commit()
+
+    return {"message": "Guideline deleted successfully", "id": guideline_id}
