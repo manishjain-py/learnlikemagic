@@ -1,0 +1,18 @@
+Create a topic-level summary from its subtopic summaries.
+
+TOPIC: {topic_title}
+
+SUBTOPICS:
+{subtopic_summaries}
+
+TASK:
+Write ONE line (20-40 words) synthesizing what this entire topic covers.
+Capture the progression and scope across all subtopics.
+
+EXAMPLES:
+- Covers fraction addition from basic same-denominator cases through unlike denominators, including visual models, common denominator algorithms, and mixed number operations
+- Teaches place value system from ones through thousands, with base-10 representations, number comparison, rounding, and ordering strategies
+- Develops multiplication skills from basic facts through multi-digit procedures, covering arrays, area models, partial products, and standard algorithm
+
+OUTPUT:
+Return ONLY the summary line. No quotes, no bullet point, no explanation, no prefix.

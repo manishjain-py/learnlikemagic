@@ -54,7 +54,8 @@ class DBSyncService:
         grade: int,
         subject: str,
         board: str,
-        country: str = "India"
+        country: str = "India",
+        topic_summary: str = ""
     ) -> str:
         """
         Sync a subtopic shard to the database.
@@ -69,6 +70,7 @@ class DBSyncService:
             subject: Subject
             board: Board (CBSE, ICSE, etc.)
             country: Country (default: India)
+            topic_summary: Topic summary
 
         Returns:
             Database row ID (guideline_id)
@@ -85,13 +87,13 @@ class DBSyncService:
                 f"Updating existing guideline (id={existing_id}): "
                 f"{shard.topic_key}/{shard.subtopic_key}"
             )
-            self._update_guideline(existing_id, shard, grade, subject, board, country)
+            self._update_guideline(existing_id, shard, grade, subject, board, country, topic_summary)
             return existing_id
         else:
             logger.info(
                 f"Inserting new guideline: {shard.topic_key}/{shard.subtopic_key}"
             )
-            new_id = self._insert_guideline(shard, book_id, grade, subject, board, country)
+            new_id = self._insert_guideline(shard, book_id, grade, subject, board, country, topic_summary=topic_summary)
             return new_id
 
     def _find_existing_guideline(
@@ -141,7 +143,8 @@ class DBSyncService:
         subject: str,
         board: str,
         country: str,
-        review_status: str = "TO_BE_REVIEWED"
+        review_status: str = "TO_BE_REVIEWED",
+        topic_summary: str = ""
     ) -> str:
         """
         Insert new guideline into database.
@@ -156,6 +159,7 @@ class DBSyncService:
                 id, country, book_id, grade, subject, board,
                 topic, subtopic, guideline,
                 topic_key, subtopic_key, topic_title, subtopic_title,
+                topic_summary, subtopic_summary,
                 source_page_start, source_page_end,
                 status, version, review_status,
                 created_at
@@ -164,6 +168,7 @@ class DBSyncService:
                 :id, :country, :book_id, :grade, :subject, :board,
                 :topic, :subtopic, :guideline,
                 :topic_key, :subtopic_key, :topic_title, :subtopic_title,
+                :topic_summary, :subtopic_summary,
                 :source_page_start, :source_page_end,
                 :status, :version, :review_status,
                 NOW()
@@ -187,6 +192,8 @@ class DBSyncService:
                 "subtopic_key": shard.subtopic_key,
                 "topic_title": shard.topic_title,
                 "subtopic_title": shard.subtopic_title,
+                "topic_summary": topic_summary,
+                "subtopic_summary": shard.subtopic_summary,
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
                 "status": "synced", # Default status as shard.status is removed
@@ -211,7 +218,8 @@ class DBSyncService:
         grade: int,
         subject: str,
         board: str,
-        country: str
+        country: str,
+        topic_summary: str = ""
     ) -> None:
         """
         Update existing guideline.
@@ -230,10 +238,13 @@ class DBSyncService:
                 guideline = :guideline,
                 topic_title = :topic_title,
                 subtopic_title = :subtopic_title,
+                topic_summary = :topic_summary,
+                subtopic_summary = :subtopic_summary,
                 source_page_start = :source_page_start,
                 source_page_end = :source_page_end,
                 status = :status,
-                version = :version
+                version = :version,
+                updated_at = :updated_at
             WHERE id = :guideline_id
         """)
 
@@ -250,6 +261,8 @@ class DBSyncService:
                 "guideline": shard.guidelines,  # Complete guidelines in natural language
                 "topic_title": shard.topic_title,
                 "subtopic_title": shard.subtopic_title,
+                "topic_summary": topic_summary,
+                "subtopic_summary": shard.subtopic_summary,
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
                 "status": "synced", # Default status
@@ -394,10 +407,18 @@ class DBSyncService:
                 # Force status reset (Requirement 6.2)
                 # shard.status = "final"  # REMOVED: S3 status no longer exists
                 
+                # Get topic summary from index
+                topic_summary = ""
+                for topic in index.topics:
+                    if topic.topic_key == shard.topic_key:
+                        topic_summary = topic.topic_summary
+                        break
+
                 # Insert new row
                 self._insert_guideline(
                     shard, book_id, grade, subject, board, country, 
-                    review_status="TO_BE_REVIEWED"
+                    review_status="TO_BE_REVIEWED",
+                    topic_summary=topic_summary
                 )
                 created_count += 1
 

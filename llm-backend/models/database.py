@@ -92,6 +92,8 @@ class TeachingGuideline(Base):
     subtopic_key = Column(String, nullable=True)  # Slugified subtopic
     topic_title = Column(String, nullable=True)  # Human-readable topic
     subtopic_title = Column(String, nullable=True)  # Human-readable subtopic
+    topic_summary = Column(Text, nullable=True)      # Topic-level summary (20-40 words)
+    subtopic_summary = Column(Text, nullable=True)   # Subtopic-level summary (15-30 words)
 
     # V1 structured fields (REMOVE in V2 migration)
     objectives_json = Column(Text, nullable=True)  # JSON array [V1 only]

@@ -39,6 +39,7 @@ class SubtopicShard(BaseModel):
     topic_title: str = Field(..., description="Human-readable topic name")
     subtopic_key: str = Field(..., description="Slugified subtopic identifier (lowercase)")
     subtopic_title: str = Field(..., description="Human-readable subtopic name")
+    subtopic_summary: str = Field(default="", description="One-line summary (15-30 words)")
 
     # Page range
     source_page_start: int = Field(..., description="First page of this subtopic")
@@ -69,6 +70,7 @@ class SubtopicIndexEntry(BaseModel):
 
     subtopic_key: str
     subtopic_title: str
+    subtopic_summary: str = Field(default="", description="One-line summary (15-30 words)")
     status: Literal["open", "stable", "final", "needs_review"]
     page_range: str = Field(description="e.g., '2-6' or '7-?'")
 
@@ -77,6 +79,7 @@ class TopicIndexEntry(BaseModel):
     """Single topic entry in the index"""
     topic_key: str
     topic_title: str
+    topic_summary: str = Field(default="", description="Aggregated summary (20-40 words)")
     subtopics: List[SubtopicIndexEntry] = Field(default_factory=list)
 
 
@@ -95,6 +98,7 @@ class PageAssignment(BaseModel):
     topic_key: str
     subtopic_key: str
     confidence: float = Field(ge=0.0, le=1.0)
+    provisional: bool = Field(default=False)
 
 
 class PageIndex(BaseModel):

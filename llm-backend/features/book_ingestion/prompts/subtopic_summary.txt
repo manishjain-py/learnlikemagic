@@ -1,0 +1,19 @@
+Summarize this teaching guideline in ONE concise line.
+
+SUBTOPIC: {subtopic_title}
+
+GUIDELINES:
+{guidelines}
+
+TASK:
+Write a single line (15-30 words) capturing what this subtopic teaches.
+Include: the core concept, key technique/method, and learning outcome.
+
+EXAMPLES:
+- Teaches adding fractions with same denominators by summing numerators while keeping the denominator unchanged
+- Introduces place value concepts using base-10 blocks to represent ones, tens, and hundreds
+- Covers multi-digit subtraction with regrouping through step-by-step borrowing procedures
+- Explains equivalent fractions using visual fraction strips and multiplication relationships
+
+OUTPUT:
+Return ONLY the summary line. No quotes, no bullet point, no explanation, no prefix.
