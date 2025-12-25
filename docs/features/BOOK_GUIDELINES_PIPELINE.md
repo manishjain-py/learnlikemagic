@@ -135,9 +135,10 @@ for page_num in range(start_page, end_page + 1):
 | 4 | BoundaryDetectionService | Detect boundary + extract guidelines (single LLM call) |
 | 5 | GuidelineMergeService | If continuing: LLM-merge new guidelines into existing shard |
 | 6 | - | Save shard to S3 |
-| 7 | IndexManagementService | Update GuidelinesIndex + PageIndex |
-| 8 | - | Save page guideline (minisummary) |
-| 9 | - | Check stability (5-page threshold) |
+| 7 | TopicSubtopicSummaryService | Generate subtopic summary (15-30 words) + topic summary (20-40 words) |
+| 8 | IndexManagementService | Update GuidelinesIndex + PageIndex (includes summaries) |
+| 9 | - | Save page guideline (minisummary) |
+| 10 | - | Check stability (5-page threshold) |
 
 ### Boundary Detection (Core Logic)
 
@@ -205,6 +206,7 @@ POST /admin/books/{id}/finalize
 | 2 | TopicNameRefinementService | LLM refines topic/subtopic names (cleaner titles) |
 | 3 | TopicDeduplicationService | LLM identifies duplicate subtopics |
 | 4 | GuidelineMergeService | Merge duplicate shards, delete redundant |
+| 5 | TopicSubtopicSummaryService | Regenerate topic summaries for all topics |
 
 ---
 
@@ -227,6 +229,7 @@ INSERT INTO teaching_guidelines (
     topic, subtopic,                      # Legacy columns (for backward compatibility)
     topic_key, subtopic_key,              # Slugified identifiers
     topic_title, subtopic_title,          # Human-readable names
+    topic_summary, subtopic_summary,      # Summaries for navigation/display
     guideline,                            # Complete guidelines text
     source_page_start, source_page_end,
     status, review_status, version
@@ -274,6 +277,7 @@ class SubtopicShard:
     topic_title: str            # "Adding Like Fractions"
     subtopic_key: str           # "same-denominator-addition"
     subtopic_title: str         # "Same Denominator Addition"
+    subtopic_summary: str       # One-line summary (15-30 words)
     source_page_start: int      # First page
     source_page_end: int        # Last page
     guidelines: str             # Single comprehensive text field
@@ -286,12 +290,19 @@ class SubtopicShard:
 ```python
 class GuidelinesIndex:
     book_id: str
-    topics: List[TopicIndexEntry]  # [{topic_key, topic_title, subtopics: [...]}]
+    topics: List[TopicIndexEntry]  # [{topic_key, topic_title, topic_summary, subtopics: [...]}]
     version: int
     last_updated: datetime
 
+class TopicIndexEntry:
+    topic_key: str
+    topic_title: str
+    topic_summary: str          # Aggregated summary (20-40 words)
+    subtopics: List[SubtopicIndexEntry]
+
 class SubtopicIndexEntry:
     subtopic_key, subtopic_title: str
+    subtopic_summary: str       # One-line summary (15-30 words)
     status: "open" | "stable" | "final" | "needs_review"  # Status tracked HERE only
     page_range: str             # "5-8"
 ```
@@ -363,6 +374,8 @@ class ContextPack:
 | topic, subtopic | VARCHAR | Legacy names (display) - for backward compatibility |
 | topic_key, subtopic_key | VARCHAR | Slugified identifiers (primary) |
 | topic_title, subtopic_title | VARCHAR | Human-readable names |
+| topic_summary | TEXT | Topic-level summary (20-40 words) |
+| subtopic_summary | TEXT | Subtopic-level summary (15-30 words) |
 | guideline | TEXT | Complete teaching guidelines |
 | source_page_start/end | INT | Page range |
 | status | VARCHAR | synced (default after sync) |
@@ -379,6 +392,7 @@ class ContextPack:
 | MinisummaryService | gpt-4o-mini | Page summary | 5-6 lines (~60 words) |
 | BoundaryDetectionService | gpt-4o-mini | Detect topic + extract guidelines | BoundaryDecision JSON |
 | GuidelineMergeService | gpt-4o-mini | Merge page into shard | Merged guidelines text |
+| TopicSubtopicSummaryService | gpt-4o-mini | Generate topic/subtopic summaries | Subtopic: 15-30 words, Topic: 20-40 words |
 | TopicNameRefinementService | gpt-4o-mini | Polish names | Refined titles/keys |
 | TopicDeduplicationService | gpt-4o-mini | Find duplicates | List of duplicate pairs |
 
@@ -416,6 +430,7 @@ class ContextPack:
 | `services/db_sync_service.py` | PostgreSQL sync |
 | `services/topic_name_refinement_service.py` | Name polishing |
 | `services/topic_deduplication_service.py` | Duplicate detection |
+| `services/topic_subtopic_summary_service.py` | Generate topic/subtopic summaries |
 | `services/job_lock_service.py` | Job concurrency control |
 | `models/guideline_models.py` | Pydantic models (SubtopicShard, Index, etc.) |
 | `models/database.py` | SQLAlchemy ORM (Book, BookJob, BookGuideline) |
@@ -455,6 +470,7 @@ class ContextPack:
 6. **Full DB snapshot** - Approve deletes all existing rows and re-inserts (clean slate)
 7. **Derived book status** - Frontend computes status from counts (`page_count`, `guideline_count`, `approved_guideline_count`, `has_active_job`)
 8. **Legacy column support** - `topic` and `subtopic` columns maintained for backward compatibility
+9. **Auto-generated summaries** - TopicSubtopicSummaryService generates one-line summaries during page processing (subtopic: 15-30 words, topic: 20-40 words aggregated from subtopics)
 
 ---
 

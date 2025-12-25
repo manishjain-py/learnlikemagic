@@ -12,4 +12,6 @@ Update the Tutor Workflow Pipeline documentation (SSOT).
      - Updated file names or locations
   4. Update the documentation to reflect the current state of the code
   5. Keep the document compact - don't repeat
-  6. Make sure that the documentation is accurate and up-to-date
+  6. Make sure that the documentation is accurate.
+  7. Whatever change you make to the documentation, there should be a solid reason for it. So justify every change you make with evidence and capture that in /Users/manishjain/repos/learnlikemagic/docs/features/TUTOR_WORKFLOW_DOC_CHANGES_JUSTIFICATION.md. Feel free to overwrite this file or create new if it doesn't exist.
+  Lets ultrathink this.

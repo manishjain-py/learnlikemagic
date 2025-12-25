@@ -443,7 +443,7 @@ async def generate_guidelines(
         )
 
         # Extract guidelines
-        stats = orchestrator.extract_guidelines_for_book(
+        stats = await orchestrator.extract_guidelines_for_book(
             book_id=book_id,
             book_metadata=book_metadata,
             start_page=request.start_page,
@@ -542,7 +542,7 @@ async def finalize_guidelines(
         )
 
         # Run finalization
-        result = orchestrator.finalize_book(
+        result = await orchestrator.finalize_book(
             book_id=book_id,
             book_metadata=book_metadata,
             auto_sync_to_db=request.auto_sync_to_db

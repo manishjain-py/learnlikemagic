@@ -57,6 +57,7 @@ from .topic_deduplication_service import TopicDeduplicationService
 from .topic_name_refinement_service import TopicNameRefinementService
 from .index_management_service import IndexManagementService
 from .db_sync_service import DBSyncService
+from .topic_subtopic_summary_service import TopicSubtopicSummaryService
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +105,11 @@ class GuidelineExtractionOrchestrator:
         self.name_refinement = TopicNameRefinementService(self.openai_client)
         self.index_manager = IndexManagementService(self.s3)
         self.db_sync = DBSyncService(self.db_session) if self.db_session else None
+        self.summary_service = TopicSubtopicSummaryService(self.openai_client)
 
         logger.info("Initialized GuidelineExtractionOrchestrator with all V2 services")
 
-    def extract_guidelines_for_book(
+    async def extract_guidelines_for_book(
         self,
         book_id: str,
         book_metadata: Dict[str, Any],
@@ -127,17 +129,6 @@ class GuidelineExtractionOrchestrator:
 
         Returns:
             Dict with extraction results and statistics
-
-        V2 Pipeline:
-            For each page (start_page to end_page):
-            1. Process page (extract guidelines, merge, update indices)
-            2. Check for stable subtopics (5-page threshold)
-
-            After all pages:
-            1. Finalize all open topics
-            2. Run deduplication
-            3. Merge duplicates
-            4. Sync to database (if enabled)
         """
         total_pages = book_metadata.get("total_pages", 100)
         end_page = end_page or total_pages
@@ -173,7 +164,7 @@ class GuidelineExtractionOrchestrator:
                     }))
 
                     # Process single page
-                    page_result = self.process_page(
+                    page_result = await self.process_page(
                         book_id=book_id,
                         page_num=page_num,
                         book_metadata=book_metadata
@@ -234,7 +225,7 @@ class GuidelineExtractionOrchestrator:
             logger.error(f"V2 guideline extraction failed for book {book_id}: {str(e)}", exc_info=True)
             raise
 
-    def process_page(
+    async def process_page(
         self,
         book_id: str,
         page_num: int,
@@ -382,7 +373,24 @@ class GuidelineExtractionOrchestrator:
                 )
 
         # Step 6: Save shard to S3
+        # === NEW: Generate subtopic summary ===
+        subtopic_summary = self.summary_service.generate_subtopic_summary(
+            subtopic_title=shard.subtopic_title,
+            guidelines=shard.guidelines
+        )
+        shard.subtopic_summary = subtopic_summary
+
         self._save_shard_v2(book_id, shard)
+
+        # === NEW: Generate topic summary ===
+        # Collect all subtopic summaries for this topic
+        topic_subtopic_summaries = self._collect_subtopic_summaries(
+            book_id, shard.topic_key, current_subtopic_summary=subtopic_summary
+        )
+        topic_summary = self.summary_service.generate_topic_summary(
+            topic_title=shard.topic_title,
+            subtopic_summaries=topic_subtopic_summaries
+        )
 
         # Step 7: Update indices
         self._update_indices(
@@ -394,7 +402,9 @@ class GuidelineExtractionOrchestrator:
             page_num=page_num,
             status="open", # Keep status in index for internal tracking
             source_page_start=shard.source_page_start,
-            source_page_end=shard.source_page_end
+            source_page_end=shard.source_page_end,
+            subtopic_summary=subtopic_summary,
+            topic_summary=topic_summary
         )
         
         logger.info(json.dumps({
@@ -419,7 +429,7 @@ class GuidelineExtractionOrchestrator:
             "guidelines_length": len(page_guidelines)
         }
 
-    def finalize_book(
+    async def finalize_book(
         self,
         book_id: str,
         book_metadata: Dict[str, Any],
@@ -532,7 +542,7 @@ class GuidelineExtractionOrchestrator:
         merged_count = 0
         for topic1, subtopic1, topic2, subtopic2 in duplicates:
             try:
-                self._merge_duplicate_shards(
+                await self._merge_duplicate_shards(
                     book_id=book_id,
                     topic1=topic1,
                     subtopic1=subtopic1,
@@ -546,6 +556,17 @@ class GuidelineExtractionOrchestrator:
                 logger.error(f"Failed to merge duplicates {topic1}/{subtopic1} + {topic2}/{subtopic2}: {e}")
 
         logger.info(f"Book finalized: {merged_count} duplicate pairs merged")
+
+        # Regenerate topic summaries for all topics (content may have changed)
+        index = self._load_index(book_id)
+        for topic in index.topics:
+            subtopic_summaries = [st.subtopic_summary for st in topic.subtopics if st.subtopic_summary]
+            if subtopic_summaries:
+                topic.topic_summary = self.summary_service.generate_topic_summary(
+                    topic_title=topic.topic_title,
+                    subtopic_summaries=subtopic_summaries
+                )
+        self.index_manager.save_index(index)
 
         # Step 5: Sync to database (if enabled)
         logger.info(f"DEBUG: auto_sync_to_db={auto_sync_to_db}, self.db_sync={self.db_sync}")
@@ -611,7 +632,7 @@ class GuidelineExtractionOrchestrator:
 
         return stable_count
 
-    def _merge_duplicate_shards(
+    async def _merge_duplicate_shards(
         self,
         book_id: str,
         topic1: str,
@@ -641,6 +662,12 @@ class GuidelineExtractionOrchestrator:
         shard1.source_page_end = max(shard1.source_page_end, shard2.source_page_end)
         shard1.version += 1
         shard1.updated_at = datetime.utcnow().isoformat()
+
+        # Regenerate subtopic summary for merged shard
+        shard1.subtopic_summary = self.summary_service.generate_subtopic_summary(
+            subtopic_title=shard1.subtopic_title,
+            guidelines=shard1.guidelines
+        )
 
         # Save merged shard
         self._save_shard_v2(book_id, shard1)
@@ -741,6 +768,33 @@ class GuidelineExtractionOrchestrator:
             logger.error(f"Failed to save page guideline to {page_key}: {str(e)}")
             raise
 
+    def _collect_subtopic_summaries(
+        self,
+        book_id: str,
+        topic_key: str,
+        current_subtopic_summary: str = ""
+    ) -> List[str]:
+        """Collect all subtopic summaries for a topic."""
+        try:
+            index = self._load_index(book_id)
+            summaries = []
+            for topic in index.topics:
+                if topic.topic_key == topic_key:
+                    summaries = [
+                        st.subtopic_summary
+                        for st in topic.subtopics
+                        if st.subtopic_summary
+                    ]
+                    break
+
+            if current_subtopic_summary:
+                summaries.append(current_subtopic_summary)
+
+            return summaries
+        except Exception as e:
+            logger.warning(f"Could not collect subtopic summaries: {e}")
+            return []
+
     def _load_index(self, book_id: str) -> GuidelinesIndex:
         """Load guidelines index from S3"""
         index_key = f"books/{book_id}/guidelines/index.json"
@@ -761,7 +815,9 @@ class GuidelineExtractionOrchestrator:
         page_num: int,
         status: str,
         source_page_start: int,
-        source_page_end: int
+        source_page_end: int,
+        subtopic_summary: str = "",
+        topic_summary: str = ""
     ):
         """Update guidelines index and page index"""
         # Calculate page range
@@ -776,7 +832,9 @@ class GuidelineExtractionOrchestrator:
             subtopic_key=subtopic_key,
             subtopic_title=subtopic_title,
             page_range=page_range,
-            status=status
+            status=status,
+            subtopic_summary=subtopic_summary,
+            topic_summary=topic_summary
         )
         self.index_manager.save_index(index, create_snapshot=False)
 

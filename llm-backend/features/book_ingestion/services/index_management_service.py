@@ -166,7 +166,9 @@ class IndexManagementService:
         subtopic_key: str,
         subtopic_title: str,
         page_range: str,
-        status: str = "open"
+        status: str = "open",
+        subtopic_summary: str = "",
+        topic_summary: str = ""
     ) -> GuidelinesIndex:
         """
         Add or update a subtopic in the index (immutable).
@@ -179,6 +181,8 @@ class IndexManagementService:
             subtopic_title: Human-readable subtopic name
             page_range: Page range for the subtopic (e.g., "2-6" or "7-?")
             status: Subtopic status (open, stable, final, needs_review)
+            subtopic_summary: One-line summary of subtopic
+            topic_summary: One-line summary of topic
 
         Returns:
             New GuidelinesIndex with updated subtopic
@@ -202,10 +206,14 @@ class IndexManagementService:
             topic_entry = TopicIndexEntry(
                 topic_key=topic_key,
                 topic_title=topic_title,
+                topic_summary=topic_summary,
                 subtopics=[]
             )
             updated_index.topics.append(topic_entry)
             logger.info(f"Created new topic: {topic_key} ({topic_title})")
+        elif topic_summary:
+             # Update topic summary if provided
+             topic_entry.topic_summary = topic_summary
 
         # Find or create subtopic
         subtopic_entry = None
@@ -219,6 +227,8 @@ class IndexManagementService:
             old_status = subtopic_entry.status
             subtopic_entry.status = status
             subtopic_entry.page_range = page_range  # Update page range
+            if subtopic_summary:
+                subtopic_entry.subtopic_summary = subtopic_summary
             logger.info(
                 f"Updated subtopic {topic_key}/{subtopic_key}: "
                 f"{old_status} → {status}, page_range={page_range}"
@@ -228,6 +238,7 @@ class IndexManagementService:
             subtopic_entry = SubtopicIndexEntry(
                 subtopic_key=subtopic_key,
                 subtopic_title=subtopic_title,
+                subtopic_summary=subtopic_summary,
                 page_range=page_range,
                 status=status
             )
