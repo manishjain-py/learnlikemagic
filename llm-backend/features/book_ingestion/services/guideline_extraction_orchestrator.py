@@ -374,20 +374,20 @@ class GuidelineExtractionOrchestrator:
 
         # Step 6: Save shard to S3
         # === NEW: Generate subtopic summary ===
-        subtopic_summary = await self.summary_service.generate_subtopic_summary(
+        subtopic_summary = self.summary_service.generate_subtopic_summary(
             subtopic_title=shard.subtopic_title,
             guidelines=shard.guidelines
         )
         shard.subtopic_summary = subtopic_summary
-        
+
         self._save_shard_v2(book_id, shard)
 
         # === NEW: Generate topic summary ===
         # Collect all subtopic summaries for this topic
-        topic_subtopic_summaries = await self._collect_subtopic_summaries(
+        topic_subtopic_summaries = self._collect_subtopic_summaries(
             book_id, shard.topic_key, current_subtopic_summary=subtopic_summary
         )
-        topic_summary = await self.summary_service.generate_topic_summary(
+        topic_summary = self.summary_service.generate_topic_summary(
             topic_title=shard.topic_title,
             subtopic_summaries=topic_subtopic_summaries
         )
@@ -562,7 +562,7 @@ class GuidelineExtractionOrchestrator:
         for topic in index.topics:
             subtopic_summaries = [st.subtopic_summary for st in topic.subtopics if st.subtopic_summary]
             if subtopic_summaries:
-                topic.topic_summary = await self.summary_service.generate_topic_summary(
+                topic.topic_summary = self.summary_service.generate_topic_summary(
                     topic_title=topic.topic_title,
                     subtopic_summaries=subtopic_summaries
                 )
@@ -664,7 +664,7 @@ class GuidelineExtractionOrchestrator:
         shard1.updated_at = datetime.utcnow().isoformat()
 
         # Regenerate subtopic summary for merged shard
-        shard1.subtopic_summary = await self.summary_service.generate_subtopic_summary(
+        shard1.subtopic_summary = self.summary_service.generate_subtopic_summary(
             subtopic_title=shard1.subtopic_title,
             guidelines=shard1.guidelines
         )
@@ -768,7 +768,7 @@ class GuidelineExtractionOrchestrator:
             logger.error(f"Failed to save page guideline to {page_key}: {str(e)}")
             raise
 
-    async def _collect_subtopic_summaries(
+    def _collect_subtopic_summaries(
         self,
         book_id: str,
         topic_key: str,
@@ -786,10 +786,10 @@ class GuidelineExtractionOrchestrator:
                         if st.subtopic_summary
                     ]
                     break
-            
+
             if current_subtopic_summary:
                 summaries.append(current_subtopic_summary)
-            
+
             return summaries
         except Exception as e:
             logger.warning(f"Could not collect subtopic summaries: {e}")

@@ -3,13 +3,13 @@ TopicSubtopicSummaryService - Generates one-line summaries for topics and subtop
 
 Usage:
     service = TopicSubtopicSummaryService(openai_client)
-    subtopic_summary = await service.generate_subtopic_summary(title, guidelines)
-    topic_summary = await service.generate_topic_summary(title, subtopic_summaries)
+    subtopic_summary = service.generate_subtopic_summary(title, guidelines)
+    topic_summary = service.generate_topic_summary(title, subtopic_summaries)
 """
 import logging
 from pathlib import Path
 from typing import List, Optional
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,12 @@ logger = logging.getLogger(__name__)
 class TopicSubtopicSummaryService:
     """Generates and updates one-line summaries for topics and subtopics."""
 
-    def __init__(self, openai_client: AsyncOpenAI):
+    def __init__(self, openai_client: OpenAI):
         self.openai_client = openai_client
         self.subtopic_prompt_template = self._load_prompt("subtopic_summary.txt")
         self.topic_prompt_template = self._load_prompt("topic_summary.txt")
 
-    async def generate_subtopic_summary(
+    def generate_subtopic_summary(
         self,
         subtopic_title: str,
         guidelines: str,
@@ -44,7 +44,7 @@ class TopicSubtopicSummaryService:
                 subtopic_title=subtopic_title,
                 guidelines=guidelines[:max_chars]
             )
-            response = await self.openai_client.chat.completions.create(
+            response = self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that summarizes teaching guidelines."},
@@ -60,7 +60,7 @@ class TopicSubtopicSummaryService:
             logger.error(f"Failed to generate subtopic summary for '{subtopic_title}': {e}")
             return self._fallback_summary(subtopic_title)
 
-    async def generate_topic_summary(
+    def generate_topic_summary(
         self,
         topic_title: str,
         subtopic_summaries: List[str]
@@ -90,7 +90,7 @@ class TopicSubtopicSummaryService:
                 topic_title=topic_title,
                 subtopic_summaries=formatted_subtopics
             )
-            response = await self.openai_client.chat.completions.create(
+            response = self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 temperature=0.3,
                 max_tokens=120,
