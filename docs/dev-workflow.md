@@ -137,6 +137,7 @@ source venv/bin/activate  # Activate venv
 
 # Run with auto-reload
 make run
+make run 2>&1 | tee server.log
 # Or: uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Backend available at: http://localhost:8000

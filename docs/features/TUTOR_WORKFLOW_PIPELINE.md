@@ -14,10 +14,12 @@
 | **Maintenance** | Update this doc whenever tutor workflow code changes to keep it accurate |
 
 **Key Code Locations:**
-- Frontend: `llm-frontend/src/TutorApp.tsx`, `llm-frontend/src/api.ts`
+- Frontend Tutor: `llm-frontend/src/TutorApp.tsx`, `llm-frontend/src/api.ts`
+- Frontend Admin: `llm-frontend/src/features/admin/`
 - Backend Workflow: `llm-backend/workflows/`, `llm-backend/agents/`
 - Backend Services: `llm-backend/services/session_service.py`, `llm-backend/adapters/`
 - API: `llm-backend/api/routes/sessions.py`, `llm-backend/api/routes/curriculum.py`
+- Admin API: `llm-backend/routers/admin_guidelines.py`, `llm-backend/features/book_ingestion/api/routes.py`
 
 ---
 
@@ -25,14 +27,15 @@
 
 ```
 +-------------------------------------------------------------------------+
-|                         FRONTEND (React)                                 |
-|   Subject -> Topic -> Subtopic Selection -> Chat Interface               |
+|                         FRONTEND (React + React Router)                  |
+|   Routes: / (tutor), /admin/books, /admin/guidelines                     |
+|   Tutor: Subject -> Topic -> Subtopic Selection -> Chat Interface        |
 +-------------------------------------+-----------------------------------+
                                       | REST API
 +-------------------------------------v-----------------------------------+
 |                         BACKEND (FastAPI)                                |
 |   Routes: /sessions, /sessions/{id}/step, /sessions/{id}/summary         |
-|           /sessions/{id} (debug), /curriculum                            |
+|           /curriculum, /admin/guidelines/*, /admin/books/*               |
 |                                                                          |
 |   SessionService -> SessionWorkflowAdapter -> TutorWorkflow (LangGraph)  |
 |                                                                          |
@@ -56,13 +59,17 @@
 
 ## The 3-Agent System
 
-| Agent | Model | Responsibility |
-|-------|-------|----------------|
-| **PLANNER** | GPT-4o | Creates/updates study plan (3-5 steps), adapts to student profile |
-| **EXECUTOR** | GPT-4o | Generates teaching messages, questions, hints based on current plan |
-| **EVALUATOR** | GPT-4o | Evaluates responses, updates step statuses, decides routing |
+| Agent | Model | Max Tokens | Temp | Responsibility |
+|-------|-------|------------|------|----------------|
+| **PLANNER** | GPT-4o | 4096 | default | Creates/updates study plan (3-5 steps), adapts to student profile |
+| **EXECUTOR** | GPT-4o | 1024 | 0.7 | Generates teaching messages, questions, hints based on current plan |
+| **EVALUATOR** | GPT-4o | 2048 | 0.7 | Evaluates responses, updates step statuses, decides routing |
 
-**Note:** A ROUTER node provides intelligent entry-point routing but is not an LLM-based agent.
+**Notes:**
+- A ROUTER node provides intelligent entry-point routing but is not an LLM-based agent
+- All agents use `json_mode=True` for structured output
+- PLANNER has a safety guard: if plan exists and `replan_needed=False`, returns current state unchanged
+- PLANNER uses a hardcoded test student profile for experimentation (see `planner_agent.py:100-110`)
 
 ---
 
@@ -293,7 +300,8 @@ else:
   "last_grading": {
     "score": 0.95,
     "rationale": "Student correctly identified...",
-    "labels": []
+    "labels": [],
+    "confidence": 0.9
   }
 }
 ```
@@ -451,39 +459,58 @@ EXECUTOR generates message for new/updated step
 | File | Purpose |
 |------|---------|
 | `services/session_service.py` | Session orchestration |
-| `services/llm_service.py` | LLM API wrapper (GPT-4o, GPT-5.1 fallback, Gemini optional) |
+| `services/llm_service.py` | LLM API wrapper (GPT-4o, GPT-5.1 w/fallback, Gemini) |
 | `api/routes/sessions.py` | Session endpoints |
 | `api/routes/curriculum.py` | Curriculum discovery endpoints |
+| `api/routes/health.py` | Health check endpoints |
+| `api/routes/logs.py` | Logs API (DEPRECATED - returns empty, logs go to stdout) |
+| `routers/admin_guidelines.py` | Admin guidelines API |
+| `features/book_ingestion/api/routes.py` | Book ingestion & page management API |
+| `features/book_ingestion/services/topic_subtopic_summary_service.py` | Auto-summary generation |
 | `adapters/workflow_adapter.py` | TutorWorkflow <-> SessionService bridge |
 | `adapters/state_adapter.py` | TutorState <-> SimplifiedState conversion |
 
 ### Frontend
 | File | Purpose |
 |------|---------|
-| `src/TutorApp.tsx` | Main component (selection + chat) |
-| `src/api.ts` | API client with TypeScript interfaces |
+| `src/TutorApp.tsx` | Main tutor component (selection + chat) |
+| `src/api.ts` | Tutor API client with TypeScript interfaces |
+| `src/App.tsx` | Routing: `/` (tutor), `/admin/books`, `/admin/guidelines` |
+| `src/features/admin/pages/BooksDashboard.tsx` | Book list with status badges |
+| `src/features/admin/pages/BookDetail.tsx` | Book management (pages + guidelines) |
+| `src/features/admin/pages/GuidelinesReview.tsx` | Guidelines approval with filters |
+| `src/features/admin/components/GuidelinesPanel.tsx` | Generate -> Finalize -> Approve workflow |
+| `src/features/admin/api/adminApi.ts` | Admin API client |
+| `src/features/admin/types/index.ts` | TypeScript interfaces for admin |
 
 ---
 
 ## LLM Calls Summary
 
-| Agent | Model | Purpose | Output |
-|-------|-------|---------|--------|
-| PLANNER | GPT-4o | Create study plan | JSON: todo_list, metadata |
-| PLANNER | GPT-4o | Replan | JSON: updated todo_list |
-| EXECUTOR | GPT-4o | Generate message | JSON: message, hints, reasoning, meta |
-| EVALUATOR | GPT-4o | Evaluate + route | JSON: score, feedback, statuses, replan |
+| Agent | Model | Tokens | Purpose | Output |
+|-------|-------|--------|---------|--------|
+| PLANNER | GPT-4o | 4096 | Create study plan | JSON: todo_list, reasoning, metadata |
+| PLANNER | GPT-4o | 4096 | Replan | JSON: todo_list, reasoning, metadata, changes_made |
+| EXECUTOR | GPT-4o | 1024 | Generate message | JSON: message, reasoning, step_id, question_number, meta |
+| EVALUATOR | GPT-4o | 2048 | Evaluate + route | JSON: score, feedback, statuses, assessment_note, replan |
 
 **LLM Service Features:**
-- GPT-4o for all agents (fast execution)
-- GPT-5.1 fallback available (auto-falls back to GPT-4o on failure)
-- Gemini support (optional, configurable via GEMINI_API_KEY)
-- Automatic retry with exponential backoff
-- JSON mode for structured outputs
+- GPT-4o for all agents (json_mode=True)
+- GPT-5.1 method exists with fallback to GPT-4o if unavailable
+- Gemini support (gemini-3-pro-preview, via GEMINI_API_KEY)
+- Automatic retry: 3 attempts with exponential backoff (1s -> 2s -> 4s)
+- Timeout: 60 seconds per request
+- Handles: RateLimitError, APITimeoutError, OpenAIError
 
 ---
 
 ## API Endpoints Reference
+
+### Health & Status
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check: returns `{status: "ok"}` |
+| `GET` | `/health/db` | Database connectivity check |
 
 ### Session Management
 | Method | Endpoint | Description |
@@ -499,6 +526,47 @@ EXECUTOR generates message for new/updated step
 | `GET` | `/curriculum?country=&board=&grade=` | Get available subjects |
 | `GET` | `/curriculum?...&subject=` | Get topics for a subject |
 | `GET` | `/curriculum?...&subject=&topic=` | Get subtopics with guideline IDs |
+
+### Logs API (DEPRECATED)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/sessions/logs` | Returns empty list (deprecated) |
+| `GET` | `/sessions/{id}/logs` | Returns empty (logs now go to stdout) |
+
+### Book Ingestion API (`/admin/books`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/admin/books` | Create new book |
+| `GET` | `/admin/books` | List books with filters (country, board, grade, subject) |
+| `GET` | `/admin/books/{id}` | Get book details |
+| `DELETE` | `/admin/books/{id}` | Delete book |
+| `POST` | `/admin/books/{id}/pages` | Upload page image (multipart/form-data) |
+| `PUT` | `/admin/books/{id}/pages/{num}/approve` | Approve page |
+| `DELETE` | `/admin/books/{id}/pages/{num}` | Delete page |
+| `GET` | `/admin/books/{id}/pages/{num}` | Get page details |
+| `POST` | `/admin/books/{id}/generate-guidelines` | Generate guidelines from pages |
+| `POST` | `/admin/books/{id}/finalize` | Finalize & refine guidelines |
+| `GET` | `/admin/books/{id}/guidelines` | List all guidelines for book |
+| `GET` | `/admin/books/{id}/guidelines/{topic}/{subtopic}` | Get specific guideline |
+| `PUT` | `/admin/books/{id}/guidelines/approve` | Approve & sync guidelines to DB |
+| `DELETE` | `/admin/books/{id}/guidelines` | Reject/delete all guidelines |
+
+### Admin Guidelines API (`/admin/guidelines`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/books` | List books with extraction status |
+| `GET` | `/books/{id}/topics` | Get topics with subtopics for a book |
+| `GET` | `/books/{id}/subtopics/{key}?topic_key=` | Get guideline details |
+| `PUT` | `/books/{id}/subtopics/{key}` | DISABLED (501) - use regeneration |
+| `GET` | `/books/{id}/page-assignments` | Get page-to-subtopic assignments |
+| `POST` | `/books/{id}/extract?start_page=&end_page=` | Run guideline extraction |
+| `POST` | `/books/{id}/finalize?auto_sync=` | Finalize guidelines |
+| `POST` | `/books/{id}/sync-to-database?status_filter=` | Sync to teaching_guidelines table |
+| `GET` | `/review` | List all guidelines for review with filters |
+| `GET` | `/review/filters` | Get filter options and counts |
+| `GET` | `/books/{id}/review` | List book guidelines for review |
+| `POST` | `/{guideline_id}/approve` | Approve or reject (body: `{approved: bool}`) |
+| `DELETE` | `/{guideline_id}` | Delete a guideline |
 
 ---
 
@@ -572,6 +640,10 @@ EXECUTOR generates message for new/updated step
 | **Simple text assessment notes** | Flexible, readable, no rigid schema |
 | **5-section EVALUATOR prompt** | Structured output for all responsibilities |
 | **Hardcoded student profile** | Experimentation mode (PLANNER overrides with test profile) |
+| **Conversation context limiting** | Max 15 messages (first 3 + summary + last N) to prevent context overflow |
+| **Single in_progress step** | Only ONE step can be in_progress at a time (enforced in validation) |
+| **Auto-generated summaries** | Topic/subtopic summaries via gpt-4o-mini for token efficiency |
+| **Stdout logging** | Logs API deprecated; structured JSON logs go to stdout |
 
 ---
 
@@ -580,10 +652,26 @@ EXECUTOR generates message for new/updated step
 ### Database Tables
 | Table | Purpose |
 |-------|---------|
-| `sessions` | Full `state_json` (TutorState serialized) |
-| `events` | Audit log of node executions |
-| `teaching_guidelines` | Guideline text by subtopic |
+| `sessions` | Session state: `id`, `student_json`, `goal_json`, `state_json`, `mastery`, `step_idx`, timestamps |
+| `events` | Audit log: `session_id`, `node`, `step_idx`, `payload_json`, indexed by (session_id, step_idx) |
+| `teaching_guidelines` | Guideline data with review workflow (see below) |
+| `contents` | RAG corpus: `topic`, `grade`, `skill`, `text`, `tags` |
 | `checkpoint_*` | LangGraph PostgreSQL checkpoint tables |
+
+**teaching_guidelines columns:**
+- Identity: `id`, `country`, `board`, `grade`, `subject`, `topic`, `subtopic`
+- Content: `guideline` (main text), `metadata_json`
+- Keys: `topic_key`, `subtopic_key`, `topic_title`, `subtopic_title`
+- Summaries: `topic_summary`, `subtopic_summary` (auto-generated 15-40 words via gpt-4o-mini)
+- Source: `book_id`, `source_page_start`, `source_page_end`
+- Workflow: `status`, `review_status`, `version`
+
+**books table:**
+- Identity: `id`, `title`, `author`, `edition`, `edition_year`
+- Curriculum: `country`, `board`, `grade`, `subject`
+- Storage: `s3_prefix`, `cover_image_s3_key`
+- Stats: `page_count`, `guideline_count`, `approved_guideline_count`
+- Workflow: `has_active_job`, `created_at`, `updated_at`
 
 ### Checkpointing
 - Uses `PostgresSaver` from `langgraph.checkpoint.postgres`
@@ -624,3 +712,45 @@ All logging is done via structured JSON to stdout for cloud-native observability
 LOG_FORMAT=json  # or "text" for development
 LOG_LEVEL=INFO
 ```
+
+**Note:** The `/sessions/logs` API endpoints are deprecated. They return empty responses. All logs are streamed to stdout.
+
+---
+
+## Admin Guideline Workflow
+
+### Book Ingestion Pipeline
+```
+1. Create Book -> Upload Pages -> Approve Pages
+2. Generate Guidelines -> Finalize -> Approve & Sync
+```
+
+### Guideline Status Flow
+```
+open --------+---------> stable ---------> final ---------> [synced to DB]
+             |                              |
+             +-----> needs_review ----------+
+```
+
+### Frontend Admin Routes
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/admin/books` | BooksDashboard | List books with status badges |
+| `/admin/books/new` | CreateBook | Create new book form |
+| `/admin/books/:id` | BookDetail | Manage pages and guidelines |
+| `/admin/guidelines` | GuidelinesReview | Review/approve DB guidelines |
+
+### Guideline Generation Workflow
+1. **Generate**: AI analyzes approved pages, creates subtopic guidelines
+2. **Finalize**: Improves names, merges duplicates, generates summaries, marks as 'final'
+3. **Approve & Sync**: Copies final guidelines to `teaching_guidelines` table with `review_status=TO_BE_REVIEWED`
+4. **Review**: Individual guidelines can be approved/rejected in GuidelinesReview
+
+### Book Status States
+| Status | Condition |
+|--------|-----------|
+| Draft | `page_count == 0` |
+| Ready for Extraction | `page_count > 0 && guideline_count == 0` |
+| Processing | `has_active_job == true` |
+| Pending Review | Guidelines exist, not all approved |
+| Approved | All guidelines approved |
