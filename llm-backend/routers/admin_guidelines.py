@@ -24,6 +24,9 @@ from features.book_ingestion.models.guideline_models import (
     GuidelinesIndex,
     PageIndex
 )
+from features.study_plans.services.orchestrator import StudyPlanOrchestrator
+from services.llm_service import LLMService
+from config import get_settings
 
 router = APIRouter(prefix="/admin/guidelines", tags=["Admin - Guidelines"])
 
@@ -106,6 +109,10 @@ class ApprovalRequest(BaseModel):
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
+
+def get_llm_service():
+    settings = get_settings()
+    return LLMService(api_key=settings.openai_api_key, gemini_api_key=settings.gemini_api_key)
 
 @router.get("/books", response_model=List[BookGuidelineStatus])
 async def list_books_with_guidelines(
@@ -709,3 +716,80 @@ async def delete_guideline(
     db.commit()
 
     return {"message": "Guideline deleted successfully", "id": guideline_id}
+
+
+# ============================================================================
+# STUDY PLAN ENDPOINTS (Phase 2)
+# ============================================================================
+
+@router.post("/{guideline_id}/generate-study-plan")
+async def generate_study_plan(
+    guideline_id: str,
+    force_regenerate: bool = Query(False, description="Force regeneration even if plan exists"),
+    db: Session = Depends(get_db),
+    llm_service: LLMService = Depends(get_llm_service)
+):
+    """
+    Generate a generic study plan for a guideline.
+    
+    Uses AI-to-AI review loop (Generator -> Reviewer -> Improver).
+    """
+    # Verify guideline exists first
+    guideline = db.query(TeachingGuideline).filter(TeachingGuideline.id == guideline_id).first()
+    if not guideline:
+        raise HTTPException(status_code=404, detail="Guideline not found")
+
+    orchestrator = StudyPlanOrchestrator(db, llm_service)
+    try:
+        plan = orchestrator.generate_study_plan(guideline_id, force_regenerate)
+        return plan
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate plan: {str(e)}")
+
+
+@router.get("/{guideline_id}/study-plan")
+async def get_study_plan(
+    guideline_id: str,
+    db: Session = Depends(get_db),
+    llm_service: LLMService = Depends(get_llm_service)
+):
+    """
+    Get the existing study plan for a guideline.
+    """
+    orchestrator = StudyPlanOrchestrator(db, llm_service)
+    plan = orchestrator.get_study_plan(guideline_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Study plan not found")
+    return plan
+
+
+class BulkGenerateRequest(BaseModel):
+    guideline_ids: List[str]
+    force_regenerate: bool = False
+
+@router.post("/bulk-generate-study-plans")
+async def bulk_generate_study_plans(
+    request: BulkGenerateRequest,
+    db: Session = Depends(get_db),
+    llm_service: LLMService = Depends(get_llm_service)
+):
+    """
+    Generate study plans for multiple guidelines.
+    """
+    orchestrator = StudyPlanOrchestrator(db, llm_service)
+    results = {
+        "success": [],
+        "failed": [],
+        "total": len(request.guideline_ids)
+    }
+    
+    for gid in request.guideline_ids:
+        try:
+            orchestrator.generate_study_plan(gid, request.force_regenerate)
+            results["success"].append(gid)
+        except Exception as e:
+            results["failed"].append({"id": gid, "error": str(e)})
+            
+    return results

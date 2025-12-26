@@ -13,6 +13,8 @@ from workflows.tutor_workflow import TutorWorkflow
 from services.llm_service import LLMService
 from adapters.state_adapter import StateAdapter
 from repositories import TeachingGuidelineRepository
+from features.study_plans.services.orchestrator import StudyPlanOrchestrator
+
 
 
 class SessionWorkflowAdapter:
@@ -64,6 +66,10 @@ class SessionWorkflowAdapter:
 
         self.state_adapter = StateAdapter()
 
+        self.study_plan_orchestrator = StudyPlanOrchestrator(
+            db, self.llm_service
+        )
+
     def execute_present_node(
         self,
         tutor_state: TutorState,
@@ -87,13 +93,34 @@ class SessionWorkflowAdapter:
             teaching_guideline
         )
 
+        # Load or generate study plan
+        guideline_id = tutor_state.goal.guideline_id
+        prebuilt_plan = None
+        if guideline_id:
+            try:
+                # Try to get existing plan
+                study_plan = self.study_plan_orchestrator.get_study_plan(guideline_id)
+                if study_plan and study_plan.plan_json:
+                    prebuilt_plan = study_plan.plan_json
+                else:
+                    # On-demand generation (fallback)
+                    self.study_plan_orchestrator.generate_study_plan(guideline_id)
+                    study_plan = self.study_plan_orchestrator.get_study_plan(guideline_id)
+                    if study_plan:
+                        prebuilt_plan = study_plan.plan_json
+            except Exception as e:
+                # Log error but proceed without plan (will use planner agent)
+                import logging
+                logging.getLogger(__name__).error(f"Failed to load/generate study plan: {e}")
+
         # Use TutorWorkflow to start the session
         result = self.workflow.start_session(
             session_id=tutor_state.session_id,
             guidelines=teaching_guideline,
             student_profile=simplified_state["student_profile"],
             topic_info=simplified_state["topic_info"],
-            session_context=simplified_state["session_context"]
+            session_context=simplified_state["session_context"],
+            prebuilt_plan=prebuilt_plan
         )
 
         # Get the updated state from checkpoint

@@ -35,7 +35,7 @@ Flow Details:
 
 """
 
-from typing import Literal
+from typing import Literal, Optional
 import logging
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -284,6 +284,7 @@ class TutorWorkflow:
         student_profile: dict,
         topic_info: dict,
         session_context: dict,
+        prebuilt_plan: Optional[dict] = None,
     ) -> dict:
         """
         Start a new tutoring session.
@@ -314,7 +315,7 @@ class TutorWorkflow:
             "student_profile": student_profile,
             "topic_info": topic_info,
             "session_context": session_context,
-            "study_plan": {},
+            "study_plan": prebuilt_plan or {},
             "assessment_notes": "",
             "conversation": [],
             "replan_needed": False,

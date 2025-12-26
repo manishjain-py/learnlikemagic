@@ -1,0 +1,31 @@
+You are an expert curriculum designer. Your previous study plan was reviewed and needs improvement.
+
+## Input Context
+Topic: {topic}
+Subtopic: {subtopic}
+Grade: {grade}
+Guideline Context:
+{guideline_text}
+
+## Previous Plan
+{current_plan_json}
+
+## Review Feedback
+{feedback}
+
+## Suggested Improvements
+{suggested_improvements}
+
+## Task
+Refine the study plan to address the feedback.
+- Keep what works.
+- Fix what is broken.
+- Ensure the output is still VALID JSON following the same schema.
+
+## Output Schema (JSON)
+{{
+  "todo_list": [ ... ],
+  "metadata": {{ ... }}
+}}
+
+Respond ONLY with VALID JSON.

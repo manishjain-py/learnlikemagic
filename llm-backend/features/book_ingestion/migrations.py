@@ -6,7 +6,7 @@ This script safely creates new tables and extends existing ones.
 from sqlalchemy import text, inspect
 from database import get_db_manager
 from features.book_ingestion.models.database import Book, BookGuideline
-from models.database import Base
+from models.database import Base, StudyPlan
 import logging
 
 logger = logging.getLogger(__name__)
@@ -500,6 +500,34 @@ def add_summary_columns():
         raise
 
 
+def add_study_plans_table():
+    """
+    Add study_plans table.
+    
+    Stores pre-generated study plans linked to teaching guidelines.
+    """
+    print("🔄 Adding study_plans table...")
+    db_manager = get_db_manager()
+    engine = db_manager.engine
+    inspector = inspect(engine)
+    
+    try:
+        # Check if table already exists
+        if not inspector.has_table("study_plans"):
+            print("  Creating study_plans table...")
+            StudyPlan.__table__.create(engine)
+            print("  ✓ study_plans table created")
+        else:
+            print("  ✓ study_plans table already exists")
+            
+        return True
+            
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        logger.error(f"Study plans table migration error: {e}", exc_info=True)
+        raise
+
+
 def remove_book_status_column():
     """
     Remove the status column from the books table.
@@ -632,6 +660,7 @@ if __name__ == "__main__":
     parser.add_argument("--add-book-guidelines-review-status", action="store_true", help="Add review_status column to book_guidelines table")
     parser.add_argument("--add-review-tracking", action="store_true", help="Add generated_at, reviewed_at, reviewed_by columns")
     parser.add_argument("--add-summary-columns", action="store_true", help="Add topic_summary and subtopic_summary columns")
+    parser.add_argument("--add-study-plans", action="store_true", help="Add study_plans table")
 
     args = parser.parse_args()
 
@@ -657,6 +686,8 @@ if __name__ == "__main__":
         add_review_tracking_fields()
     elif args.add_summary_columns:
         add_summary_columns()
+    elif args.add_study_plans:
+        add_study_plans_table()
     else:
         print("Usage:")
         print("  python -m features.book_ingestion.migrations --migrate           # Run base migrations")
@@ -670,4 +701,5 @@ if __name__ == "__main__":
         print("  python -m features.book_ingestion.migrations --add-book-guidelines-review-status  # Add review_status to book_guidelines")
         print("  python -m features.book_ingestion.migrations --add-review-tracking  # Add generated_at, reviewed_at, reviewed_by")
         print("  python -m features.book_ingestion.migrations --add-summary-columns  # Add topic_summary and subtopic_summary")
+        print("  python -m features.book_ingestion.migrations --add-study-plans      # Add study_plans table")
         sys.exit(1)
