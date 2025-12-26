@@ -5,8 +5,11 @@ This adapter wraps the new TutorWorkflow to work with the existing
 SessionService API without breaking changes.
 """
 
+import logging
 from typing import Tuple
 from sqlalchemy.orm import Session as DBSession
+
+logger = logging.getLogger(__name__)
 
 from models import TutorState
 from workflows.tutor_workflow import TutorWorkflow
@@ -94,24 +97,25 @@ class SessionWorkflowAdapter:
         )
 
         # Load or generate study plan
+        # Note: get_study_plan() returns parsed plan dict directly, not ORM object
+        # Note: generate_study_plan() also returns the plan dict directly
         guideline_id = tutor_state.goal.guideline_id
         prebuilt_plan = None
         if guideline_id:
             try:
-                # Try to get existing plan
-                study_plan = self.study_plan_orchestrator.get_study_plan(guideline_id)
-                if study_plan and study_plan.plan_json:
-                    prebuilt_plan = study_plan.plan_json
+                # Try to get existing plan (returns dict or None)
+                prebuilt_plan = self.study_plan_orchestrator.get_study_plan(guideline_id)
+
+                if prebuilt_plan:
+                    logger.info(f"Loaded pre-built study plan for guideline {guideline_id}")
                 else:
-                    # On-demand generation (fallback)
-                    self.study_plan_orchestrator.generate_study_plan(guideline_id)
-                    study_plan = self.study_plan_orchestrator.get_study_plan(guideline_id)
-                    if study_plan:
-                        prebuilt_plan = study_plan.plan_json
+                    # On-demand generation (fallback) - returns dict
+                    logger.info(f"No pre-built plan found, generating on-demand for {guideline_id}")
+                    prebuilt_plan = self.study_plan_orchestrator.generate_study_plan(guideline_id)
+                    logger.info(f"Generated study plan on-demand for guideline {guideline_id}")
             except Exception as e:
                 # Log error but proceed without plan (will use planner agent)
-                import logging
-                logging.getLogger(__name__).error(f"Failed to load/generate study plan: {e}")
+                logger.error(f"Failed to load/generate study plan: {e}")
 
         # Use TutorWorkflow to start the session
         result = self.workflow.start_session(
