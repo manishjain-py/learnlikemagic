@@ -14,6 +14,7 @@ import {
   GenerateGuidelinesResponse,
   GuidelineReview,
   GuidelineFilters,
+  StudyPlan,
 } from '../types';
 
 // Use environment variable for production, fallback to localhost for development
@@ -243,4 +244,20 @@ export async function deleteGuideline(guidelineId: string): Promise<{ message: s
   return apiFetch(`/admin/guidelines/${guidelineId}`, {
     method: 'DELETE',
   });
+}
+
+// ===== Study Plans =====
+
+export async function generateStudyPlan(
+  guidelineId: string,
+  forceRegenerate: boolean = false
+): Promise<StudyPlan> {
+  const query = forceRegenerate ? '?force_regenerate=true' : '';
+  return apiFetch<StudyPlan>(`/admin/guidelines/${guidelineId}/generate-study-plan${query}`, {
+    method: 'POST',
+  });
+}
+
+export async function getStudyPlan(guidelineId: string): Promise<StudyPlan> {
+  return apiFetch<StudyPlan>(`/admin/guidelines/${guidelineId}/study-plan`);
 }

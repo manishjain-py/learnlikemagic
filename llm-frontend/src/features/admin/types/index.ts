@@ -150,3 +150,27 @@ export interface GuidelineFilters {
     approved: number;
   };
 }
+
+// ===== Study Plan Types =====
+
+export interface StudyPlanTodoItem {
+  step_id: string;
+  title: string;
+  description: string;
+  teaching_approach: string;
+  success_criteria: string;
+  status: 'pending' | 'completed' | 'skipped';
+}
+
+export interface StudyPlanMetadata {
+  plan_version: number;
+  estimated_duration_minutes: number;
+  difficulty_level: string;
+  is_generic: boolean;
+  creative_theme?: string;
+}
+
+export interface StudyPlan {
+  todo_list: StudyPlanTodoItem[];
+  metadata: StudyPlanMetadata;
+}

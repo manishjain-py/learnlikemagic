@@ -122,4 +122,36 @@ class TeachingGuideline(Base):
     )
 
 
+
+class StudyPlan(Base):
+    """Pre-generated study plans for teaching guidelines (1:1 relationship)."""
+    __tablename__ = "study_plans"
+
+    id = Column(String, primary_key=True)
+    guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"),
+                          nullable=False, unique=True)
+
+    # The plan JSON (same structure as PLANNER output)
+    plan_json = Column(Text, nullable=False)
+
+    # Generation metadata
+    generator_model = Column(String, nullable=True)
+    reviewer_model = Column(String, nullable=True)
+    generation_reasoning = Column(Text, nullable=True)
+    reviewer_feedback = Column(Text, nullable=True)
+    was_revised = Column(Integer, default=0)  # 0=no, 1=yes
+
+    # Status
+    status = Column(String, default='generated')  # generated, approved
+    version = Column(Integer, default=1)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_study_plans_guideline", "guideline_id"),
+    )
+
+
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model

@@ -10,10 +10,221 @@ import {
   approveGuideline,
   rejectGuideline,
   deleteGuideline,
+  generateStudyPlan,
+  getStudyPlan,
 } from '../api/adminApi';
-import { GuidelineReview, GuidelineFilters } from '../types';
+import { GuidelineReview, GuidelineFilters, StudyPlan } from '../types';
 
 type StatusFilter = 'all' | 'TO_BE_REVIEWED' | 'APPROVED';
+
+// Modal component for viewing study plan
+const StudyPlanModal: React.FC<{
+  plan: StudyPlan;
+  guidelineTopic: string;
+  guidelineSubtopic: string;
+  onClose: () => void;
+}> = ({ plan, guidelineTopic, guidelineSubtopic, onClose }) => {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '20px',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          maxWidth: '700px',
+          width: '100%',
+          maxHeight: '80vh',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: '20px 24px',
+            borderBottom: '1px solid #E5E7EB',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>
+              Study Plan
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#6B7280' }}>
+              {guidelineTopic} / {guidelineSubtopic}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '24px',
+              cursor: 'pointer',
+              color: '#6B7280',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+          {/* Metadata */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '16px',
+              marginBottom: '20px',
+              fontSize: '13px',
+            }}
+          >
+            <span style={{ color: '#6B7280' }}>
+              <strong>{plan.todo_list.length}</strong> steps
+            </span>
+            <span style={{ color: '#6B7280' }}>
+              <strong>{plan.metadata.estimated_duration_minutes || '~15'}</strong> min
+            </span>
+            {plan.metadata.creative_theme && (
+              <span style={{ color: '#8B5CF6' }}>
+                Theme: {plan.metadata.creative_theme}
+              </span>
+            )}
+          </div>
+
+          {/* Steps */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {plan.todo_list.map((step, index) => (
+              <div
+                key={step.step_id}
+                style={{
+                  padding: '16px',
+                  backgroundColor: '#F9FAFB',
+                  borderRadius: '8px',
+                  border: '1px solid #E5E7EB',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      backgroundColor: '#4F46E5',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    {index + 1}
+                  </span>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      color: '#111827',
+                    }}
+                  >
+                    {step.title}
+                  </h3>
+                </div>
+                <p
+                  style={{
+                    margin: '0 0 10px',
+                    fontSize: '14px',
+                    color: '#4B5563',
+                    lineHeight: '1.5',
+                  }}
+                >
+                  {step.description}
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '16px',
+                    fontSize: '12px',
+                  }}
+                >
+                  <span style={{ color: '#059669' }}>
+                    <strong>Approach:</strong> {step.teaching_approach}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    marginTop: '8px',
+                    padding: '8px 10px',
+                    backgroundColor: '#EEF2FF',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: '#4338CA',
+                  }}
+                >
+                  <strong>Success:</strong> {step.success_criteria}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: '16px 24px',
+            borderTop: '1px solid #E5E7EB',
+            display: 'flex',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#4F46E5',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const GuidelinesReviewPage: React.FC = () => {
   const navigate = useNavigate();
@@ -32,6 +243,16 @@ const GuidelinesReviewPage: React.FC = () => {
 
   // Expanded guideline for viewing full content
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Study plan modal state
+  const [viewingPlan, setViewingPlan] = useState<{
+    plan: StudyPlan;
+    topic: string;
+    subtopic: string;
+  } | null>(null);
+
+  // Track which guidelines have study plans (by id)
+  const [studyPlanIds, setStudyPlanIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadFilterOptions();
@@ -98,6 +319,45 @@ const GuidelinesReviewPage: React.FC = () => {
       await Promise.all([loadGuidelines(), loadFilterOptions()]);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to reject guideline');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleGeneratePlan = async (guidelineId: string, guideline: GuidelineReview) => {
+    setActionLoading(guidelineId);
+    try {
+      const plan = await generateStudyPlan(guidelineId, true); // Force regenerate for now
+      // Add to tracked study plans
+      setStudyPlanIds(prev => new Set(prev).add(guidelineId));
+      // Show the plan immediately
+      setViewingPlan({
+        plan,
+        topic: guideline.topic,
+        subtopic: guideline.subtopic,
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to generate study plan');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleViewPlan = async (guidelineId: string, guideline: GuidelineReview) => {
+    setActionLoading(guidelineId);
+    try {
+      const plan = await getStudyPlan(guidelineId);
+      setStudyPlanIds(prev => new Set(prev).add(guidelineId));
+      setViewingPlan({
+        plan,
+        topic: guideline.topic,
+        subtopic: guideline.subtopic,
+      });
+    } catch (err) {
+      // If no plan exists, offer to generate one
+      if (confirm('No study plan found. Would you like to generate one?')) {
+        await handleGeneratePlan(guidelineId, guideline);
+      }
     } finally {
       setActionLoading(null);
     }
@@ -461,6 +721,38 @@ const GuidelinesReviewPage: React.FC = () => {
 
                       {/* Actions */}
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleViewPlan(guideline.id, guideline)}
+                          disabled={actionLoading === guideline.id}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: '#4F46E5',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: actionLoading === guideline.id ? 'not-allowed' : 'pointer',
+                            fontSize: '13px',
+                            opacity: actionLoading === guideline.id ? 0.6 : 1,
+                          }}
+                        >
+                          {actionLoading === guideline.id ? '...' : 'View Plan'}
+                        </button>
+                        <button
+                          onClick={() => handleGeneratePlan(guideline.id, guideline)}
+                          disabled={actionLoading === guideline.id}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'white',
+                            color: '#4F46E5',
+                            border: '1px solid #C7D2FE',
+                            borderRadius: '6px',
+                            cursor: actionLoading === guideline.id ? 'not-allowed' : 'pointer',
+                            fontSize: '13px',
+                            opacity: actionLoading === guideline.id ? 0.6 : 1,
+                          }}
+                        >
+                          {actionLoading === guideline.id ? '...' : 'Regenerate'}
+                        </button>
                         {guideline.review_status === 'APPROVED' ? (
                           <>
                             <span
@@ -548,6 +840,16 @@ const GuidelinesReviewPage: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* Study Plan Modal */}
+      {viewingPlan && (
+        <StudyPlanModal
+          plan={viewingPlan.plan}
+          guidelineTopic={viewingPlan.topic}
+          guidelineSubtopic={viewingPlan.subtopic}
+          onClose={() => setViewingPlan(null)}
+        />
       )}
     </div>
   );

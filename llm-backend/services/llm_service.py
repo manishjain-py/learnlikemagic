@@ -72,6 +72,7 @@ class LLMService:
         prompt: str,
         reasoning_effort: Literal["low", "medium", "high"] = "low",
         max_tokens: int = 4096,
+        json_mode: bool = True,
     ) -> Dict[str, Any]:
         """
         Call GPT-5.1 with extended reasoning.
@@ -79,15 +80,17 @@ class LLMService:
         Used for:
         - Initial planning (strategic thinking)
         - Replanning (analyzing what went wrong)
+        - Study plan generation
 
         Args:
             prompt: The prompt to send
             reasoning_effort: How much thinking effort to use
             max_tokens: Maximum tokens in response
+            json_mode: Whether to request JSON output (default True)
 
         Returns:
             Dict containing:
-                - output_text: The main output
+                - output_text: The main output (valid JSON if json_mode=True)
                 - reasoning: The reasoning process (if available)
 
         Raises:
@@ -97,17 +100,22 @@ class LLMService:
             "step": "LLM_CALL",
             "status": "starting",
             "model": "gpt-5.1",
-            "params": {"reasoning_effort": reasoning_effort}
+            "params": {"reasoning_effort": reasoning_effort, "json_mode": json_mode}
         }))
 
         def _api_call():
             try:
-                result = self.client.responses.create(
-                    model="gpt-5.1",
-                    input=prompt,
-                    reasoning={"effort": reasoning_effort},
-                    timeout=self.timeout,
-                )
+                kwargs = {
+                    "model": "gpt-5.1",
+                    "input": prompt,
+                    "reasoning": {"effort": reasoning_effort},
+                    "timeout": self.timeout,
+                }
+
+                if json_mode:
+                    kwargs["text"] = {"format": {"type": "json_object"}}
+
+                result = self.client.responses.create(**kwargs)
                 return {
                     "output_text": result.output_text,
                     "reasoning": getattr(result, "reasoning", None),
@@ -120,14 +128,11 @@ class LLMService:
                     "error": str(e),
                     "message": "Falling back to GPT-4o"
                 }))
-                # Fallback to GPT-4o
-                # We need to adapt the prompt or just use it as is. 
-                # Since GPT-4o is chat model, we use chat completions.
-                # We'll try to mimic the structure.
+                # Fallback to GPT-4o with same json_mode setting
                 fallback_response = self.call_gpt_4o(
                     prompt=prompt,
                     max_tokens=max_tokens,
-                    json_mode=True # Planner usually expects JSON
+                    json_mode=json_mode
                 )
                 return {
                     "output_text": fallback_response,
