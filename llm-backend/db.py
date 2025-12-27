@@ -5,10 +5,8 @@ import json
 import sys
 import argparse
 from pathlib import Path
-from sqlalchemy.orm import Session as DBSession
-from models import Base, Session, Event, TeachingGuideline
+from models import Base, TeachingGuideline
 from database import get_db_manager
-import uuid
 
 
 def migrate():
@@ -77,55 +75,6 @@ def seed_guidelines(seed_file_path: str):
         raise
     finally:
         db.close()
-
-
-def create_session_record(db: DBSession, session_id: str, state_json: str, student_json: str, goal_json: str) -> Session:
-    """Helper to create a session record."""
-    session = Session(
-        id=session_id,
-        student_json=student_json,
-        goal_json=goal_json,
-        state_json=state_json,
-        mastery=0.0,
-        step_idx=0
-    )
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return session
-
-
-def update_session_state(db: DBSession, session_id: str, state_json: str, mastery: float, step_idx: int):
-    """Update session state."""
-    session = db.query(Session).filter(Session.id == session_id).first()
-    if session:
-        session.state_json = state_json
-        session.mastery = mastery
-        session.step_idx = step_idx
-        db.commit()
-
-
-def log_event(db: DBSession, session_id: str, node: str, step_idx: int, payload: dict):
-    """Log an event to the events table."""
-    event = Event(
-        id=str(uuid.uuid4()),
-        session_id=session_id,
-        node=node,
-        step_idx=step_idx,
-        payload_json=json.dumps(payload)
-    )
-    db.add(event)
-    db.commit()
-
-
-def get_session_by_id(db: DBSession, session_id: str) -> Session:
-    """Retrieve a session by ID."""
-    return db.query(Session).filter(Session.id == session_id).first()
-
-
-def get_session_events(db: DBSession, session_id: str):
-    """Get all events for a session."""
-    return db.query(Event).filter(Event.session_id == session_id).order_by(Event.created_at).all()
 
 
 if __name__ == "__main__":

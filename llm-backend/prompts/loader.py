@@ -57,36 +57,3 @@ class PromptLoader:
         template_path = PROMPTS_DIR / f"{template_name}.json"
         with open(template_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-
-
-# Convenience functions for specific prompts
-def get_teaching_prompt(**kwargs) -> str:
-    """
-    Get the teaching/present node prompt.
-
-    Expected kwargs: grade, topic, prefs, step_idx
-    """
-    return PromptLoader.format("teaching_prompt", **kwargs)
-
-
-def get_grading_prompt(**kwargs) -> str:
-    """
-    Get the grading/check node prompt.
-
-    Expected kwargs: grade, topic, reply
-    """
-    return PromptLoader.format("grading_prompt", **kwargs)
-
-
-def get_remediation_prompt(**kwargs) -> str:
-    """
-    Get the remediation/help node prompt.
-
-    Expected kwargs: grade, labels
-    """
-    return PromptLoader.format("remediation_prompt", **kwargs)
-
-
-def get_fallback_responses() -> Dict[str, Any]:
-    """Get fallback responses for error scenarios."""
-    return PromptLoader.load_json("fallback_responses")

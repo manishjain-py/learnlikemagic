@@ -39,9 +39,9 @@ llm-backend/
 │   └── state_adapter.py          # TutorState ↔ SimplifiedState converter
 ├── prompts/                       # LLM prompt templates
 │   ├── templates/                # Template files
-│   │   ├── teaching_prompt.txt   # Teaching/present node
-│   │   ├── grading_prompt.txt    # Grading/check node
-│   │   └── remediation_prompt.txt # Remediation helper
+│   │   ├── study_plan_generator.txt   # Study plan generation prompt
+│   │   ├── study_plan_reviewer.txt    # Study plan review prompt
+│   │   └── study_plan_improve.txt     # Study plan improvement prompt
 │   └── loader.py                 # PromptLoader class
 ├── models/                        # Data models (separated by concern)
 │   ├── database.py               # SQLAlchemy ORM models
@@ -60,7 +60,6 @@ llm-backend/
 ├── main.py                        # FastAPI app (66 lines, clean!)
 ├── database.py                    # Database manager
 ├── config.py                      # Configuration management
-├── llm.py                         # OpenAI LLM abstraction
 ├── requirements.txt               # Production dependencies
 ├── requirements-dev.txt           # Development dependencies
 ├── pytest.ini                     # Pytest configuration
@@ -365,10 +364,10 @@ Guidelines are structured JSON documents in `data/seed_guidelines.json`:
 
 ## Repository Pattern
 
-The `guideline_repository.py` provides abstraction over database access:
+The `repositories/guideline_repository.py` provides abstraction over database access:
 
 ```python
-from guideline_repository import TeachingGuidelineRepository
+from repositories import TeachingGuidelineRepository
 
 repo = TeachingGuidelineRepository(db)
 
