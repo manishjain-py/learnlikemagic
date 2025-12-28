@@ -1,205 +1,291 @@
 # Book Guidelines Pipeline Documentation Changes Justification
 
-**Document Updated:** BOOK_GUIDELINES_PIPELINE.md
-**Date:** 2025-12-21
-**Reason:** Sync documentation with actual codebase implementation
+**Date:** 2025-12-28
+**Document Updated:** `docs/features/BOOK_GUIDELINES_PIPELINE.md`
+
+This document captures all changes made to the Book Guidelines Pipeline documentation and the evidence supporting each change.
 
 ---
 
 ## Summary of Changes
 
-The documentation was updated to reflect a new feature: **TopicSubtopicSummaryService** which generates auto-generated one-line summaries for topics and subtopics. This feature was added to the codebase but not documented.
+| Category | Changes Made | Files Examined |
+|----------|--------------|----------------|
+| New Features | Added Phase 9 (Study Plans), added DELETE /admin/books/{id} | `admin_guidelines.py`, `routes.py` |
+| Missing Files | Added 4 frontend files to Key Files Reference | Frontend file listing |
+| Accuracy Fixes | Fixed book_id slug format, clarified review status behavior | `book_service.py`, `admin_guidelines.py` |
+| Model Updates | Added PageAssignment.provisional, V1 legacy fields note | `guideline_models.py`, `models/database.py` |
+| Architecture | Added StudyPlanOrchestrator to diagram | `admin_guidelines.py` |
+| Corrections | Updated process_page steps ordering, removed stability_detector_service | `guideline_extraction_orchestrator.py` |
 
 ---
 
-## Change 1: Added TopicSubtopicSummaryService to Pipeline Flow
+## Detailed Change Justification
 
-**Section:** Phase 4 - Per-Page Processing Loop
-**Location:** Lines 137-141
+### 1. Added Phase 9: Study Plan Generation
 
-**What Changed:**
-- Added Step 7: TopicSubtopicSummaryService generates subtopic summary (15-30 words) and topic summary (20-40 words)
-- Renumbered subsequent steps (8, 9, 10)
+**Change:** Added new Phase 9 documenting study plan generation endpoints and flow.
 
 **Evidence:**
-- `guideline_extraction_orchestrator.py:376-393` - process_page() calls `summary_service.generate_subtopic_summary()` and `summary_service.generate_topic_summary()` after saving shard
-- `topic_subtopic_summary_service.py:25-61` - `generate_subtopic_summary()` method implementation
-- `topic_subtopic_summary_service.py:63-107` - `generate_topic_summary()` method implementation
+- File: `llm-backend/routers/admin_guidelines.py:725-795`
+- Endpoints found:
+  - `POST /{guideline_id}/generate-study-plan` (line 725)
+  - `GET /{guideline_id}/study-plan` (line 752)
+  - `POST /bulk-generate-study-plans` (line 772)
+- `StudyPlanOrchestrator` imported from `features.study_plans.services.orchestrator` (line 27)
+
+**Impact:** Critical new feature completely missing from documentation.
 
 ---
 
-## Change 2: Added subtopic_summary to SubtopicShard Model
+### 2. Added DELETE /admin/books/{id} Endpoint
 
-**Section:** Data Models - SubtopicShard (V2)
-**Location:** Line 278
-
-**What Changed:**
-- Added `subtopic_summary: str` field with description "One-line summary (15-30 words)"
+**Change:** Added "Delete Book" section to Phase 1-3 documentation.
 
 **Evidence:**
-- `guideline_models.py:42-43`:
-  ```python
-  subtopic_summary: str = Field(default="", description="One-line summary (15-30 words)")
-  ```
+- File: `llm-backend/features/book_ingestion/api/routes.py:137-169`
+```python
+@router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_book(book_id: str, db: Session = Depends(get_db)):
+```
+- Calls `BookService.delete_book()` which deletes S3 files and DB row
+
+**Impact:** Missing endpoint documentation.
 
 ---
 
-## Change 3: Expanded GuidelinesIndex Model Documentation
+### 3. Fixed Book ID Slug Format
 
-**Section:** Data Models - GuidelinesIndex
-**Location:** Lines 287-306
-
-**What Changed:**
-- Added explicit `TopicIndexEntry` class definition with `topic_summary` field
-- Added `subtopic_summary` field to `SubtopicIndexEntry`
+**Change:** Changed slug format from `title-edition-year-grade-subject` to `author_subject_grade_year`.
 
 **Evidence:**
-- `guideline_models.py:78-83`:
-  ```python
-  class TopicIndexEntry(BaseModel):
-      topic_key: str
-      topic_title: str
-      topic_summary: str = Field(default="", description="Aggregated summary (20-40 words)")
-      subtopics: List[SubtopicIndexEntry] = Field(default_factory=list)
-  ```
-- `guideline_models.py:67-75`:
-  ```python
-  class SubtopicIndexEntry(BaseModel):
-      subtopic_key: str
-      subtopic_title: str
-      subtopic_summary: str = Field(default="", description="One-line summary (15-30 words)")
-      status: Literal["open", "stable", "final", "needs_review"]
-      page_range: str = Field(description="e.g., '2-6' or '7-?'")
-  ```
+- File: `llm-backend/features/book_ingestion/services/book_service.py:211-236`
+```python
+def _generate_book_id(self, request: CreateBookRequest) -> str:
+    author_slug = request.author.lower().replace(" ", "_") if request.author else "unknown"
+    subject_slug = request.subject.lower().replace(" ", "_")
+    grade = request.grade
+    edition_year = request.edition_year or datetime.now().year
+    base_id = f"{author_slug}_{subject_slug}_{grade}_{edition_year}"
+```
+
+**Impact:** Documentation showed incorrect ID format.
 
 ---
 
-## Change 4: Added Summary Columns to TeachingGuideline Table
+### 4. Added Missing Frontend Files to Key Files Reference
 
-**Section:** Data Models - Database Tables - TeachingGuideline
-**Location:** Lines 375-376
-
-**What Changed:**
-- Added `topic_summary` column (TEXT, Topic-level summary 20-40 words)
-- Added `subtopic_summary` column (TEXT, Subtopic-level summary 15-30 words)
+**Change:** Added `CreateBook.tsx`, `PageViewPanel.tsx`, `PagesSidebar.tsx` to frontend files table.
 
 **Evidence:**
-- `models/database.py:95-96`:
-  ```python
-  topic_summary = Column(Text, nullable=True)      # Topic-level summary (20-40 words)
-  subtopic_summary = Column(Text, nullable=True)   # Subtopic-level summary (15-30 words)
-  ```
-- `db_sync_service.py:161-172` - INSERT query includes `topic_summary` and `subtopic_summary`
-- `db_sync_service.py:229-243` - UPDATE query includes `topic_summary` and `subtopic_summary`
+- Glob result from `llm-frontend/src/features/admin/**/*.{ts,tsx}`:
+```
+llm-frontend/src/features/admin/pages/CreateBook.tsx
+llm-frontend/src/features/admin/components/PageViewPanel.tsx
+llm-frontend/src/features/admin/components/PagesSidebar.tsx
+```
+
+**Impact:** Incomplete file listing.
 
 ---
 
-## Change 5: Added TopicSubtopicSummaryService to LLM Calls Summary
+### 5. Clarified Review Status Behavior (No REJECTED Status)
 
-**Section:** LLM Calls Summary
-**Location:** Line 393
-
-**What Changed:**
-- Added new row: TopicSubtopicSummaryService | gpt-4o-mini | Generate topic/subtopic summaries | Subtopic: 15-30 words, Topic: 20-40 words
+**Change:** Added note: "Rejecting a guideline sets it back to `TO_BE_REVIEWED` (there is no `REJECTED` status)."
 
 **Evidence:**
-- `topic_subtopic_summary_service.py:47-55`:
-  ```python
-  response = await self.openai_client.chat.completions.create(
-      model="gpt-4o-mini",
-      messages=[...],
-      max_tokens=50,
-      temperature=0.3
-  )
-  ```
-- `topic_subtopic_summary_service.py:93-101` - Similar for topic summary generation
+- File: `llm-backend/routers/admin_guidelines.py:681-700`
+```python
+@router.post("/{guideline_id}/approve")
+async def approve_guideline(...):
+    guideline.review_status = "APPROVED" if approved else "TO_BE_REVIEWED"
+```
+
+**Impact:** Previous documentation implied existence of REJECTED status.
 
 ---
 
-## Change 6: Added TopicSubtopicSummaryService to Key Files Reference
+### 6. Added PageAssignment.provisional Field
 
-**Section:** Key Files Reference - Backend Book Ingestion
-**Location:** Line 431
-
-**What Changed:**
-- Added: `services/topic_subtopic_summary_service.py` | Generate topic/subtopic summaries
+**Change:** Added `provisional: bool` to PageAssignment model documentation.
 
 **Evidence:**
-- File exists at: `llm-backend/features/book_ingestion/services/topic_subtopic_summary_service.py`
+- File: `llm-backend/features/book_ingestion/models/guideline_models.py:96-101`
+```python
+class PageAssignment(BaseModel):
+    topic_key: str
+    subtopic_key: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    provisional: bool = Field(default=False)
+```
+
+**Impact:** Missing field in model documentation.
 
 ---
 
-## Change 7: Added Finalization Step for Regenerating Topic Summaries
+### 7. Added V1 Legacy Fields Note to TeachingGuideline
 
-**Section:** Phase 5 - Finalize & Consolidate
-**Location:** Line 209
-
-**What Changed:**
-- Added Step 5: TopicSubtopicSummaryService regenerates topic summaries for all topics
+**Change:** Added note about V1 legacy fields kept for backward compatibility.
 
 **Evidence:**
-- `guideline_extraction_orchestrator.py:561-569`:
-  ```python
-  # Regenerate topic summaries for all topics (content may have changed)
-  index = self._load_index(book_id)
-  for topic in index.topics:
-      subtopic_summaries = [st.subtopic_summary for st in topic.subtopics if st.subtopic_summary]
-      if subtopic_summaries:
-          topic.topic_summary = await self.summary_service.generate_topic_summary(
-              topic_title=topic.topic_title,
-              subtopic_summaries=subtopic_summaries
-          )
-  self.index_manager.save_index(index)
-  ```
+- File: `llm-backend/models/database.py:60-120`
+- V1 fields still present:
+  - `objectives_json`, `examples_json`, `misconceptions_json`, `assessments_json`
+  - `teaching_description`, `description`, `evidence_summary`, `confidence`
+  - `metadata_json`, `source_pages`
+- Comment in code: `# V1 structured fields (REMOVE in V2 migration)`
+
+**Impact:** Documentation should clarify these fields exist but aren't actively used.
 
 ---
 
-## Change 8: Updated DB Sync INSERT Statement
+### 8. Added cover_image_s3_key to Book Table
 
-**Section:** Phase 6 - Approve & Database Sync
-**Location:** Lines 232
-
-**What Changed:**
-- Added `topic_summary, subtopic_summary` to the INSERT statement fields
+**Change:** Added `cover_image_s3_key` column to Book table documentation.
 
 **Evidence:**
-- `db_sync_service.py:157-177` - INSERT query includes both summary fields
+- File: `llm-backend/features/book_ingestion/models/database.py:24`
+```python
+cover_image_s3_key = Column(String, nullable=True)
+```
+
+**Impact:** Missing column in table schema.
 
 ---
 
-## Change 9: Added V2 Design Decision About Auto-Generated Summaries
+### 9. Added Note About Book.status Removal
 
-**Section:** V2 Design Decisions
-**Location:** Line 473
-
-**What Changed:**
-- Added decision #9: Auto-generated summaries - TopicSubtopicSummaryService generates one-line summaries during page processing
+**Change:** Added note: "`status` field has been removed from Book model - status is now derived from counts."
 
 **Evidence:**
-- This is a design decision documented to explain the new feature's purpose and behavior
+- File: `llm-backend/features/book_ingestion/services/book_service.py:79,134`
+```python
+# status="draft",  <-- Removed
+# status=book.status,  <-- Removed
+```
+- Status is computed at runtime from counts
+
+**Impact:** Documentation mentioned Book status but code comment shows it was removed.
 
 ---
 
-## Files Examined During Analysis
+### 10. Updated process_page Steps Ordering
 
-### Backend
-1. `llm-backend/features/book_ingestion/api/routes.py` - API endpoints
-2. `llm-backend/routers/admin_guidelines.py` - Guidelines review endpoints
-3. `llm-backend/features/book_ingestion/services/guideline_extraction_orchestrator.py` - Main pipeline orchestrator
-4. `llm-backend/features/book_ingestion/services/topic_subtopic_summary_service.py` - **NEW SERVICE**
-5. `llm-backend/features/book_ingestion/services/db_sync_service.py` - Database sync
-6. `llm-backend/features/book_ingestion/models/guideline_models.py` - Pydantic models
-7. `llm-backend/features/book_ingestion/models/database.py` - SQLAlchemy models
-8. `llm-backend/models/database.py` - TeachingGuideline model
+**Change:** Reordered steps to match actual code flow, now 11 steps instead of 10.
 
-### Frontend
-1. `llm-frontend/src/features/admin/api/adminApi.ts` - API client
-2. `llm-frontend/src/features/admin/types/index.ts` - TypeScript types
-3. `llm-frontend/src/features/admin/utils/bookStatus.ts` - Book status logic
-4. `llm-frontend/src/features/admin/pages/GuidelinesReview.tsx` - Review page
+**Evidence:**
+- File: `llm-backend/features/book_ingestion/services/guideline_extraction_orchestrator.py:228-430`
+- Actual order:
+  1. Load OCR text
+  2. Generate minisummary
+  3. Build context pack
+  4. Boundary detection + extract guidelines
+  5. Create or merge shard (GuidelineMergeService)
+  6. Generate subtopic summary (TopicSubtopicSummaryService)
+  7. Save shard to S3
+  8. Generate topic summary
+  9. Update indices
+  10. Save page guideline
+  11. Check stability
+
+**Impact:** Step ordering was slightly different and topic summary step was merged incorrectly.
 
 ---
 
-## Conclusion
+### 11. Removed stability_detector_service.py from Active Services
 
-All changes to the documentation are justified by actual code implementation. The primary addition is the TopicSubtopicSummaryService which auto-generates one-line summaries for topics and subtopics during the guideline extraction pipeline. These summaries are stored in S3 (in shards and indices) and synced to the PostgreSQL database for use in the tutor workflow.
+**Change:** Noted that stability logic is inlined in orchestrator, added design decision #10.
+
+**Evidence:**
+- File: `llm-backend/features/book_ingestion/services/guideline_extraction_orchestrator.py:596-633`
+```python
+def _check_and_mark_stable_subtopics(self, book_id: str, current_page: int) -> int:
+    # Stability logic is inline here, not using separate service
+```
+- While `stability_detector_service.py` exists in file listing, orchestrator doesn't import it
+
+**Impact:** Documentation listed service that isn't actively used.
+
+---
+
+### 12. Added StudyPlanOrchestrator to Architecture Diagram
+
+**Change:** Added StudyPlanOrchestrator box to backend architecture section.
+
+**Evidence:**
+- File: `llm-backend/routers/admin_guidelines.py:27`
+```python
+from features.study_plans.services.orchestrator import StudyPlanOrchestrator
+```
+
+**Impact:** Architecture diagram should show all major services.
+
+---
+
+### 13. Added Study Plans to Frontend Types Documentation
+
+**Change:** Updated adminApi.ts description to include "study plans".
+
+**Evidence:**
+- File: `llm-frontend/src/features/admin/api/adminApi.ts:249-263`
+```typescript
+export async function generateStudyPlan(guidelineId: string, ...): Promise<StudyPlan>
+export async function getStudyPlan(guidelineId: string): Promise<StudyPlan>
+```
+
+**Impact:** API client functions for study plans existed but weren't documented.
+
+---
+
+### 14. Added Study Plan Endpoints to Guidelines Review Table
+
+**Change:** Added 3 study plan endpoints to the endpoint reference table.
+
+**Evidence:**
+- See Change #1 evidence
+
+**Impact:** Complete endpoint reference.
+
+---
+
+### 15. Added Study Plans Section to Backend Key Files
+
+**Change:** Added `Backend - Study Plans` section with `services/orchestrator.py`.
+
+**Evidence:**
+- File exists: `llm-backend/features/study_plans/services/orchestrator.py` (imported in admin_guidelines.py:27)
+
+**Impact:** Missing file reference.
+
+---
+
+## Files Examined During Audit
+
+### Backend Files
+1. `llm-backend/features/book_ingestion/api/routes.py`
+2. `llm-backend/routers/admin_guidelines.py`
+3. `llm-backend/features/book_ingestion/models/database.py`
+4. `llm-backend/features/book_ingestion/models/guideline_models.py`
+5. `llm-backend/features/book_ingestion/services/book_service.py`
+6. `llm-backend/features/book_ingestion/services/guideline_extraction_orchestrator.py`
+7. `llm-backend/features/book_ingestion/services/ocr_service.py`
+8. `llm-backend/features/book_ingestion/services/boundary_detection_service.py`
+9. `llm-backend/features/book_ingestion/services/db_sync_service.py`
+10. `llm-backend/models/database.py`
+
+### Frontend Files
+1. `llm-frontend/src/features/admin/api/adminApi.ts`
+2. `llm-frontend/src/features/admin/types/index.ts`
+3. `llm-frontend/src/features/admin/utils/bookStatus.ts`
+
+---
+
+## Not Changed (Verified Accurate)
+
+The following documentation sections were verified as accurate:
+- S3 folder structure
+- BoundaryDecision output format
+- LLM Calls Summary (all models are gpt-4o-mini)
+- Workflow state transitions diagram
+- Count sources for derived status
+- Two-level review explanation

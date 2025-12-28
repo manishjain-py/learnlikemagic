@@ -8,7 +8,7 @@
 
 | Aspect | Details |
 |--------|---------|
-| **What it captures** | End-to-end workflow from book creation → page upload → OCR → guidelines generation → review → approval → database sync |
+| **What it captures** | End-to-end workflow from book creation → page upload → OCR → guidelines generation → review → approval → database sync → study plan generation |
 | **Audience** | New and existing developers needing complete context on this feature |
 | **Scope** | Frontend components, backend services, API endpoints, data models, S3 storage, LLM calls |
 | **Maintenance** | Update this doc whenever pipeline code changes to keep it accurate |
@@ -41,6 +41,10 @@
 │   ┌────────────────────────────────────────────────────────────────────┐   │
 │   │ DBSyncService (sync to teaching_guidelines) │ JobLockService       │   │
 │   └────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │ StudyPlanOrchestrator (AI-to-AI review loop for study plans)        │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────┬───────────────────────────────────────────┘
                                   │
 ┌─────────────────────────────────▼───────────────────────────────────────────┐
@@ -60,6 +64,7 @@
 | 6 | Approve & Sync to DB | `PUT /admin/books/{id}/guidelines/approve` | DBSyncService |
 | 7 | Review Guidelines | `GET /admin/guidelines/review` | TeachingGuideline queries |
 | 8 | Approve Individual | `POST /admin/guidelines/{id}/approve` | TeachingGuideline update |
+| 9 | Generate Study Plans | `POST /admin/guidelines/{id}/generate-study-plan` | StudyPlanOrchestrator |
 
 ---
 
@@ -68,7 +73,7 @@
 ### Create Book
 ```
 POST /admin/books → BookService.create_book()
-  1. Generate book_id (slug: title-edition-year-grade-subject)
+  1. Generate book_id (slug: author_subject_grade_year)
   2. Insert Book row in PostgreSQL
   3. Create S3: books/{book_id}/metadata.json
 ```
@@ -95,6 +100,13 @@ DELETE .../pages/{num}       → Delete S3 files, renumber remaining pages
 ```
 GET /admin/books/{id}/pages/{num} → PageService.get_page_with_urls()
   Returns: {page_num, status, image_url, text_url, ocr_text}
+```
+
+### Delete Book
+```
+DELETE /admin/books/{id} → BookService.delete_book()
+  1. Delete all S3 files under books/{book_id}/
+  2. Delete Book row from PostgreSQL (cascades to BookJob, BookGuideline)
 ```
 
 **S3 Structure (Post-Upload):**
@@ -134,11 +146,12 @@ for page_num in range(start_page, end_page + 1):
 | 3 | ContextPackService | Build context: 5 recent summaries + open topics with guidelines |
 | 4 | BoundaryDetectionService | Detect boundary + extract guidelines (single LLM call) |
 | 5 | GuidelineMergeService | If continuing: LLM-merge new guidelines into existing shard |
-| 6 | - | Save shard to S3 |
-| 7 | TopicSubtopicSummaryService | Generate subtopic summary (15-30 words) + topic summary (20-40 words) |
-| 8 | IndexManagementService | Update GuidelinesIndex + PageIndex (includes summaries) |
-| 9 | - | Save page guideline (minisummary) |
-| 10 | - | Check stability (5-page threshold) |
+| 6 | TopicSubtopicSummaryService | Generate subtopic summary (15-30 words) |
+| 7 | - | Save shard to S3 |
+| 8 | TopicSubtopicSummaryService | Generate topic summary (20-40 words) from subtopic summaries |
+| 9 | IndexManagementService | Update GuidelinesIndex + PageIndex (includes summaries) |
+| 10 | - | Save page guideline (minisummary) |
+| 11 | - | Check stability (5-page threshold) |
 
 ### Boundary Detection (Core Logic)
 
@@ -263,8 +276,35 @@ After sync to database, guidelines need individual review before becoming active
 - `TO_BE_REVIEWED` - Default after sync, needs admin review
 - `APPROVED` - Admin approved, available for tutor workflow
 
+Note: Rejecting a guideline sets it back to `TO_BE_REVIEWED` (there is no `REJECTED` status).
+
 ### Bulk Operations
 - **Approve All**: Frontend iterates and calls `/approve` for each pending guideline
+
+---
+
+## Phase 9: Study Plan Generation
+
+After guidelines are approved, study plans can be generated for each guideline.
+
+### Study Plan Endpoints (`/admin/guidelines/*`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/{guideline_id}/generate-study-plan` | POST | Generate study plan using AI-to-AI review loop |
+| `/{guideline_id}/study-plan` | GET | Get existing study plan for a guideline |
+| `/bulk-generate-study-plans` | POST | Generate study plans for multiple guidelines |
+
+### Study Plan Generation Flow
+```
+POST /{guideline_id}/generate-study-plan?force_regenerate=false
+  Handler: StudyPlanOrchestrator.generate_study_plan()
+
+  AI-to-AI Review Loop:
+  1. Generator: Creates initial study plan
+  2. Reviewer: Reviews and provides feedback
+  3. Improver: Refines based on feedback
+```
 
 ---
 
@@ -319,6 +359,7 @@ class PageAssignment:
     topic_key: str
     subtopic_key: str
     confidence: float           # 0.0-1.0
+    provisional: bool           # Whether assignment is provisional
 ```
 
 ### ContextPack (LLM Input)
@@ -337,13 +378,16 @@ class ContextPack:
 **Book** (`llm-backend/features/book_ingestion/models/database.py`)
 | Column | Type | Description |
 |--------|------|-------------|
-| id | VARCHAR | Primary key (slug) |
+| id | VARCHAR | Primary key (slug: author_subject_grade_year) |
 | title, author, edition | VARCHAR | Book metadata |
 | country, board, grade, subject | VARCHAR/INT | Curriculum info |
 | s3_prefix | VARCHAR | `books/{book_id}/` |
 | metadata_s3_key | VARCHAR | `books/{book_id}/metadata.json` |
+| cover_image_s3_key | VARCHAR | Optional cover image |
 | created_at, updated_at | DATETIME | Timestamps |
 | created_by | VARCHAR | Creator username |
+
+Note: `status` field has been removed from Book model - status is now derived from counts.
 
 **BookJob** (tracks active operations)
 | Column | Type | Description |
@@ -382,6 +426,8 @@ class ContextPack:
 | review_status | VARCHAR | TO_BE_REVIEWED, APPROVED |
 | version | INT | Tracks updates |
 
+Note: V1 legacy fields (objectives_json, examples_json, misconceptions_json, assessments_json, teaching_description, description, evidence_summary, confidence, metadata_json, source_pages) are kept nullable for backward compatibility but not actively used in V2.
+
 ---
 
 ## LLM Calls Summary
@@ -403,12 +449,15 @@ class ContextPack:
 ### Frontend (`llm-frontend/src/features/admin/`)
 | File | Purpose |
 |------|---------|
-| `api/adminApi.ts` | All API client functions (books + guidelines review) |
-| `types/index.ts` | TypeScript interfaces |
+| `api/adminApi.ts` | All API client functions (books + guidelines review + study plans) |
+| `types/index.ts` | TypeScript interfaces (Book, GuidelineSubtopic, StudyPlan, etc.) |
 | `pages/BookDetail.tsx` | Book management hub |
 | `pages/BooksDashboard.tsx` | Books list with filters |
+| `pages/CreateBook.tsx` | Book creation form |
 | `pages/GuidelinesReview.tsx` | **Review/approve individual guidelines** |
 | `components/PageUploadPanel.tsx` | Drag-drop upload + OCR review |
+| `components/PageViewPanel.tsx` | View individual page details |
+| `components/PagesSidebar.tsx` | Page navigation sidebar |
 | `components/GuidelinesPanel.tsx` | Generate/approve/reject guidelines |
 | `components/BookStatusBadge.tsx` | Status badge display |
 | `utils/bookStatus.ts` | **Derived status logic** (no stored status) |
@@ -420,13 +469,12 @@ class ContextPack:
 | `services/book_service.py` | Book CRUD + status counts |
 | `services/page_service.py` | Page upload, OCR, approval |
 | `services/ocr_service.py` | OpenAI Vision API wrapper |
-| `services/guideline_extraction_orchestrator.py` | Main pipeline coordinator |
+| `services/guideline_extraction_orchestrator.py` | Main pipeline coordinator (includes stability logic) |
 | `services/boundary_detection_service.py` | Topic detection + guidelines extraction |
 | `services/guideline_merge_service.py` | LLM-based guideline merging |
 | `services/context_pack_service.py` | Build LLM context |
 | `services/minisummary_service.py` | Page summaries |
 | `services/index_management_service.py` | Index CRUD |
-| `services/stability_detector_service.py` | Detect stable subtopics (5-page threshold) |
 | `services/db_sync_service.py` | PostgreSQL sync |
 | `services/topic_name_refinement_service.py` | Name polishing |
 | `services/topic_deduplication_service.py` | Duplicate detection |
@@ -452,11 +500,19 @@ class ContextPack:
 | `GET /review/filters` | Get filter options + counts |
 | `POST /{id}/approve` | Approve/reject guideline |
 | `DELETE /{id}` | Delete guideline |
+| `POST /{id}/generate-study-plan` | Generate study plan for guideline |
+| `GET /{id}/study-plan` | Get existing study plan |
+| `POST /bulk-generate-study-plans` | Bulk generate study plans |
 
 ### Backend - Core Models (`llm-backend/models/database.py`)
 | Model | Purpose |
 |-------|---------|
 | `TeachingGuideline` | Production guidelines for tutor workflow |
+
+### Backend - Study Plans (`llm-backend/features/study_plans/`)
+| File | Purpose |
+|------|---------|
+| `services/orchestrator.py` | StudyPlanOrchestrator with AI-to-AI review loop |
 
 ---
 
@@ -471,6 +527,7 @@ class ContextPack:
 7. **Derived book status** - Frontend computes status from counts (`page_count`, `guideline_count`, `approved_guideline_count`, `has_active_job`)
 8. **Legacy column support** - `topic` and `subtopic` columns maintained for backward compatibility
 9. **Auto-generated summaries** - TopicSubtopicSummaryService generates one-line summaries during page processing (subtopic: 15-30 words, topic: 20-40 words aggregated from subtopics)
+10. **Inlined stability logic** - Stability detection logic is in orchestrator, not a separate service
 
 ---
 

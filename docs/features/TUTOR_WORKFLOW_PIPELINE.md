@@ -18,6 +18,7 @@
 - Frontend Admin: `llm-frontend/src/features/admin/`
 - Backend Workflow: `llm-backend/workflows/`, `llm-backend/agents/`
 - Backend Services: `llm-backend/services/session_service.py`, `llm-backend/adapters/`
+- Backend Study Plans: `llm-backend/features/study_plans/services/`
 - API: `llm-backend/api/routes/sessions.py`, `llm-backend/api/routes/curriculum.py`
 - Admin API: `llm-backend/routers/admin_guidelines.py`, `llm-backend/features/book_ingestion/api/routes.py`
 
@@ -116,6 +117,39 @@ const GRADE = 3;
 
 ---
 
+## Pre-Built Study Plans
+
+Before a session starts, the system attempts to load a **pre-built study plan** for faster session initialization. This is an optimization that avoids calling the PLANNER agent when a plan already exists.
+
+### Study Plan Generation Pipeline
+```
+Teaching Guideline -> Generator (GPT-5.2) -> Reviewer (GPT-4o) -> [Improver] -> DB
+```
+
+**Services:**
+| Service | Purpose |
+|---------|---------|
+| `StudyPlanOrchestrator` | Coordinates plan generation/storage, provides get/generate API |
+| `StudyPlanGeneratorService` | Generates plans using GPT-5.2 with high reasoning |
+| `StudyPlanReviewerService` | Reviews plans using GPT-4o, provides feedback |
+
+### Pre-Built Plan Loading Flow
+```
+SessionWorkflowAdapter.execute_present_node()
+    |
+    +-> 1. Check if pre-built plan exists for guideline_id
+    |       StudyPlanOrchestrator.get_study_plan(guideline_id)
+    |
+    +-> 2a. If plan exists: Pass to TutorWorkflow.start_session(prebuilt_plan=plan)
+    |       -> ROUTER -> EXECUTOR (skips PLANNER)
+    |
+    +-> 2b. If no plan: Generate on-demand or use PLANNER agent
+```
+
+**Note:** Pre-built plans use the same structure as PLANNER output (`todo_list`, `metadata`).
+
+---
+
 ## Phase 2: Session Creation
 
 ### Entry Point
@@ -137,9 +171,13 @@ SessionService.create_new_session()
     |
     +-> 4. SessionWorkflowAdapter.execute_present_node()
             |
-            +-> TutorWorkflow.start_session()
+            +-> 4a. Try to load pre-built study plan (if guideline_id provided)
+            |       StudyPlanOrchestrator.get_study_plan() or generate_study_plan()
+            |
+            +-> TutorWorkflow.start_session(prebuilt_plan=plan_or_None)
                     |
-                    +-> LangGraph: START -> ROUTER -> PLANNER -> EXECUTOR -> END
+                    +-> If prebuilt_plan: ROUTER -> EXECUTOR -> END (skip PLANNER)
+                    +-> If no plan: ROUTER -> PLANNER -> EXECUTOR -> END
 ```
 
 ### LangGraph Execution (New Session)
@@ -467,11 +505,18 @@ EXECUTOR generates message for new/updated step
 | `api/routes/curriculum.py` | Curriculum discovery endpoints |
 | `api/routes/health.py` | Health check endpoints |
 | `api/routes/logs.py` | Logs API (DEPRECATED - returns empty, logs go to stdout) |
-| `routers/admin_guidelines.py` | Admin guidelines API |
+| `routers/admin_guidelines.py` | Admin guidelines API + study plan endpoints |
 | `features/book_ingestion/api/routes.py` | Book ingestion & page management API |
 | `features/book_ingestion/services/topic_subtopic_summary_service.py` | Auto-summary generation |
 | `adapters/workflow_adapter.py` | TutorWorkflow <-> SessionService bridge |
 | `adapters/state_adapter.py` | TutorState <-> SimplifiedState conversion |
+
+### Backend - Study Plans
+| File | Purpose |
+|------|---------|
+| `features/study_plans/services/orchestrator.py` | Coordinates plan generation, storage, and retrieval |
+| `features/study_plans/services/generator_service.py` | Generates plans using GPT-5.2 with strict schema |
+| `features/study_plans/services/reviewer_service.py` | Reviews plans using GPT-4o, provides improvement feedback |
 
 ### Frontend
 | File | Purpose |
@@ -539,6 +584,9 @@ EXECUTOR generates message for new/updated step
 |--------|----------|-------------|
 | `GET` | `/sessions/logs` | Returns empty list (deprecated) |
 | `GET` | `/sessions/{id}/logs` | Returns empty (logs now go to stdout) |
+| `GET` | `/sessions/{id}/logs/text` | Returns deprecation message |
+| `GET` | `/sessions/{id}/logs/summary` | Returns empty summary |
+| `GET` | `/sessions/{id}/logs/stream` | Returns stream closed event |
 
 ### Book Ingestion API (`/admin/books`)
 | Method | Endpoint | Description |
@@ -574,6 +622,9 @@ EXECUTOR generates message for new/updated step
 | `GET` | `/books/{id}/review` | List book guidelines for review |
 | `POST` | `/{guideline_id}/approve` | Approve or reject (body: `{approved: bool}`) |
 | `DELETE` | `/{guideline_id}` | Delete a guideline |
+| `POST` | `/{guideline_id}/generate-study-plan` | Generate study plan for guideline |
+| `GET` | `/{guideline_id}/study-plan` | Get existing study plan |
+| `POST` | `/bulk-generate-study-plans` | Bulk generate plans (body: `{guideline_ids: []}`) |
 
 ---
 
@@ -647,6 +698,7 @@ EXECUTOR generates message for new/updated step
 | **Simple text assessment notes** | Flexible, readable, no rigid schema |
 | **5-section EVALUATOR prompt** | Structured output for all responsibilities |
 | **Hardcoded student profile** | Experimentation mode (PLANNER overrides with test profile) |
+| **Pre-built study plans** | Faster session start by skipping PLANNER when plan exists |
 | **Conversation context limiting** | Max 15 messages (first 3 + summary + last N) to prevent context overflow |
 | **Single in_progress step** | Only ONE step can be in_progress at a time (enforced in validation) |
 | **Auto-generated summaries** | Topic/subtopic summaries via gpt-4o-mini for token efficiency |
@@ -662,6 +714,7 @@ EXECUTOR generates message for new/updated step
 | `sessions` | Session state: `id`, `student_json`, `goal_json`, `state_json`, `mastery`, `step_idx`, timestamps |
 | `events` | Audit log: `session_id`, `node`, `step_idx`, `payload_json`, indexed by (session_id, step_idx) |
 | `teaching_guidelines` | Guideline data with review workflow (see below) |
+| `study_plans` | Pre-built study plans (1:1 with teaching_guidelines) |
 | `contents` | RAG corpus: `topic`, `grade`, `skill`, `text`, `tags` |
 | `checkpoint_*` | LangGraph PostgreSQL checkpoint tables |
 
@@ -672,6 +725,12 @@ EXECUTOR generates message for new/updated step
 - Summaries: `topic_summary`, `subtopic_summary` (auto-generated 15-40 words via gpt-4o-mini)
 - Source: `book_id`, `source_page_start`, `source_page_end`
 - Workflow: `status`, `review_status`, `version`
+
+**study_plans table:**
+- Identity: `id`, `guideline_id` (FK to teaching_guidelines, unique)
+- Content: `plan_json` (same structure as PLANNER output)
+- Generation: `generator_model`, `reviewer_model`, `generation_reasoning`, `reviewer_feedback`
+- Status: `was_revised`, `version`, `created_at`, `updated_at`
 
 **books table:**
 - Identity: `id`, `title`, `author`, `edition`, `edition_year`
