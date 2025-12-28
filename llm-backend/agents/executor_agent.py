@@ -1,7 +1,7 @@
 """
 EXECUTOR Agent
 
-This agent generates the next teaching message based on the current plan state using GPT-4o.
+This agent generates the next teaching message based on the current plan state using GPT-5.2.
 
 Responsibilities:
 - Generate questions for practice
@@ -11,7 +11,8 @@ Responsibilities:
 - Stay faithful to the plan (no going rogue!)
 
 Uses:
-- GPT-4o for fast execution
+- GPT-5.2 with reasoning_effort="none" for fast execution (no chain-of-thought overhead)
+- Strict structured output via json_schema for guaranteed schema adherence
 - executor.txt template
 """
 
@@ -30,11 +31,17 @@ class ExecutorAgent(BaseAgent):
     Generates teaching messages based on study plan.
 
     Features:
+    - GPT-5.2 with no reasoning for fast, low-latency execution
+    - Strict structured output via json_schema for guaranteed schema adherence
     - Context-aware message generation
     - Follows teaching approach from plan
     - Adapts to student profile
     - Tracks question numbering
     """
+
+    # Pre-computed strict schema for GPT-5.2 structured output
+    from agents.llm_schemas import EXECUTOR_STRICT_SCHEMA
+    _STRICT_SCHEMA = EXECUTOR_STRICT_SCHEMA
 
     @property
     def agent_name(self) -> str:
@@ -102,11 +109,15 @@ class ExecutorAgent(BaseAgent):
         # Render prompt
         prompt = self._render_prompt("executor", variables)
 
-        # Call GPT-4o
-        logger.info("Calling GPT-4o for message generation...")
-        response = self.llm_service.call_gpt_4o(
-            prompt=prompt, max_tokens=1024, temperature=0.7, json_mode=True
+        # Call GPT-5.2 with no reasoning for fast execution
+        logger.info("Calling GPT-5.2 (reasoning=none) for message generation...")
+        llm_response = self.llm_service.call_gpt_5_2(
+            prompt=prompt,
+            reasoning_effort="none",
+            json_schema=self._STRICT_SCHEMA,
+            schema_name="ExecutorOutput",
         )
+        response = llm_response["output_text"]
 
         # Parse response
         output = self._parse_executor_output(response)

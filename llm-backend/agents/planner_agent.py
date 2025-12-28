@@ -1,7 +1,7 @@
 """
 PLANNER Agent
 
-This agent creates or updates the comprehensive study plan using GPT-4o for fast performance.
+This agent creates or updates the comprehensive study plan using GPT-5.2 with deep reasoning.
 
 Responsibilities:
 - Initial planning at session start
@@ -10,7 +10,8 @@ Responsibilities:
 - Adaptation to student profile
 
 Uses:
-- GPT-4o for fast planning (switched from GPT-5.1 for better performance)
+- GPT-5.2 with reasoning_effort="high" for strategic planning
+- Strict structured output via json_schema for guaranteed schema adherence
 - planner_initial.txt or planner_replan.txt templates
 """
 
@@ -29,11 +30,16 @@ class PlannerAgent(BaseAgent):
     Creates or updates study plans with strategic thinking.
 
     Features:
-    - Initial planning (GPT-4o for fast performance)
+    - GPT-5.2 with high reasoning for deep strategic thinking
+    - Strict structured output via json_schema for guaranteed schema adherence
     - Adaptive replanning based on feedback
     - Student-centered approach
     - Realistic pacing estimation
     """
+
+    # Pre-computed strict schema for GPT-5.2 structured output
+    from agents.llm_schemas import PLANNER_STRICT_SCHEMA
+    _STRICT_SCHEMA = PLANNER_STRICT_SCHEMA
 
     @property
     def agent_name(self) -> str:
@@ -125,13 +131,15 @@ class PlannerAgent(BaseAgent):
         # Render prompt
         prompt = self._render_prompt("planner_initial", variables)
 
-        # Call GPT-4o for faster planning
-        logger.info("Calling GPT-4o for initial planning...")
-        response_text = self.llm_service.call_gpt_4o(
+        # Call GPT-5.2 with high reasoning for strategic planning
+        logger.info("Calling GPT-5.2 (reasoning=high) for initial planning...")
+        response = self.llm_service.call_gpt_5_2(
             prompt=prompt,
-            max_tokens=4096,
-            json_mode=True,
+            reasoning_effort="high",
+            json_schema=self._STRICT_SCHEMA,
+            schema_name="PlannerOutput",
         )
+        response_text = response["output_text"]
 
         # Parse response
         plan = self._parse_plan_output(response_text)
@@ -197,13 +205,15 @@ class PlannerAgent(BaseAgent):
         # Render prompt
         prompt = self._render_prompt("planner_replan", variables)
 
-        # Call GPT-4o for faster replanning
-        logger.info("Calling GPT-4o for replanning...")
-        response_text = self.llm_service.call_gpt_4o(
+        # Call GPT-5.2 with high reasoning for replanning
+        logger.info("Calling GPT-5.2 (reasoning=high) for replanning...")
+        response = self.llm_service.call_gpt_5_2(
             prompt=prompt,
-            max_tokens=4096,
-            json_mode=True,
+            reasoning_effort="high",
+            json_schema=self._STRICT_SCHEMA,
+            schema_name="PlannerOutput",
         )
+        response_text = response["output_text"]
 
         # Parse response
         plan = self._parse_plan_output(response_text)
@@ -242,7 +252,7 @@ class PlannerAgent(BaseAgent):
         Parse and validate PLANNER output.
 
         Args:
-            output_text: JSON string from GPT-5.1
+            output_text: JSON string from GPT-5.2
 
         Returns:
             Parsed plan dictionary

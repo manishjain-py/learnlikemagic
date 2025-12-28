@@ -11,7 +11,8 @@ This is the most complex agent with 5 key responsibilities:
 This agent acts as the traffic controller for the workflow.
 
 Uses:
-- GPT-4o for complex evaluation
+- GPT-5.2 with reasoning_effort="medium" for balanced evaluation
+- Strict structured output via json_schema for guaranteed schema adherence
 - evaluator.txt template (5 sections)
 """
 
@@ -35,6 +36,8 @@ class EvaluatorAgent(BaseAgent):
     Evaluates student responses and controls workflow routing.
 
     Features:
+    - GPT-5.2 with medium reasoning for balanced evaluation logic
+    - Strict structured output via json_schema for guaranteed schema adherence
     - Multi-faceted evaluation (score, feedback, reasoning)
     - Step status management
     - Assessment note tracking
@@ -42,6 +45,10 @@ class EvaluatorAgent(BaseAgent):
     - Replanning decision logic
     - Comprehensive output validation
     """
+
+    # Pre-computed strict schema for GPT-5.2 structured output
+    from agents.llm_schemas import EVALUATOR_STRICT_SCHEMA
+    _STRICT_SCHEMA = EVALUATOR_STRICT_SCHEMA
 
     @property
     def agent_name(self) -> str:
@@ -120,11 +127,15 @@ class EvaluatorAgent(BaseAgent):
         # Render prompt
         prompt = self._render_prompt("evaluator", variables)
 
-        # Call GPT-4o
-        logger.info("Calling GPT-4o for evaluation...")
-        response = self.llm_service.call_gpt_4o(
-            prompt=prompt, max_tokens=2048, temperature=0.7, json_mode=True
+        # Call GPT-5.2 with medium reasoning for evaluation
+        logger.info("Calling GPT-5.2 (reasoning=medium) for evaluation...")
+        llm_response = self.llm_service.call_gpt_5_2(
+            prompt=prompt,
+            reasoning_effort="medium",
+            json_schema=self._STRICT_SCHEMA,
+            schema_name="EvaluatorOutput",
         )
+        response = llm_response["output_text"]
 
         # Parse response
         eval_output = self._parse_evaluator_output(response)

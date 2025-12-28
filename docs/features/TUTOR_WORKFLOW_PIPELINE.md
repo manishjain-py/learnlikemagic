@@ -59,17 +59,19 @@
 
 ## The 3-Agent System
 
-| Agent | Model | Max Tokens | Temp | Responsibility |
-|-------|-------|------------|------|----------------|
-| **PLANNER** | GPT-4o | 4096 | default | Creates/updates study plan (3-5 steps), adapts to student profile |
-| **EXECUTOR** | GPT-4o | 1024 | 0.7 | Generates teaching messages, questions, hints based on current plan |
-| **EVALUATOR** | GPT-4o | 2048 | 0.7 | Evaluates responses, updates step statuses, decides routing |
+| Agent | Model | Reasoning | Structured Output | Responsibility |
+|-------|-------|-----------|-------------------|----------------|
+| **PLANNER** | GPT-5.2 | high | json_schema (strict) | Creates/updates study plan (3-5 steps), adapts to student profile |
+| **EXECUTOR** | GPT-5.2 | none | json_schema (strict) | Generates teaching messages, questions, hints based on current plan |
+| **EVALUATOR** | GPT-5.2 | medium | json_schema (strict) | Evaluates responses, updates step statuses, decides routing |
 
 **Notes:**
 - A ROUTER node provides intelligent entry-point routing but is not an LLM-based agent
-- All agents use `json_mode=True` for structured output
+- All agents use GPT-5.2 with strict `json_schema` structured output for guaranteed schema adherence
+- PLANNER uses "high" reasoning for deep strategic thinking; EXECUTOR uses "none" for low-latency execution; EVALUATOR uses "medium" for balanced evaluation
 - PLANNER has a safety guard: if plan exists and `replan_needed=False`, returns current state unchanged
 - PLANNER uses a hardcoded test student profile for experimentation (see `planner_agent.py:100-110`)
+- Pre-computed strict schemas are defined in `agents/llm_schemas.py`
 
 ---
 
@@ -443,9 +445,10 @@ EXECUTOR generates message for new/updated step
 | File | Purpose |
 |------|---------|
 | `agents/base.py` | BaseAgent abstract class with execution + logging |
-| `agents/planner_agent.py` | PLANNER - creates/updates study plans |
-| `agents/executor_agent.py` | EXECUTOR - generates teaching messages |
-| `agents/evaluator_agent.py` | EVALUATOR - evaluates + routes |
+| `agents/planner_agent.py` | PLANNER - creates/updates study plans (GPT-5.2 high reasoning) |
+| `agents/executor_agent.py` | EXECUTOR - generates teaching messages (GPT-5.2 no reasoning) |
+| `agents/evaluator_agent.py` | EVALUATOR - evaluates + routes (GPT-5.2 medium reasoning) |
+| `agents/llm_schemas.py` | Pydantic models + pre-computed strict schemas for GPT-5.2 structured output |
 
 ### Backend - Prompts
 | File | Purpose |
@@ -459,7 +462,7 @@ EXECUTOR generates message for new/updated step
 | File | Purpose |
 |------|---------|
 | `services/session_service.py` | Session orchestration |
-| `services/llm_service.py` | LLM API wrapper (GPT-4o, GPT-5.1 w/fallback, Gemini) |
+| `services/llm_service.py` | LLM API wrapper (GPT-5.2 w/strict schema, GPT-5.1, GPT-4o, Gemini) |
 | `api/routes/sessions.py` | Session endpoints |
 | `api/routes/curriculum.py` | Curriculum discovery endpoints |
 | `api/routes/health.py` | Health check endpoints |
@@ -487,20 +490,24 @@ EXECUTOR generates message for new/updated step
 
 ## LLM Calls Summary
 
-| Agent | Model | Tokens | Purpose | Output |
-|-------|-------|--------|---------|--------|
-| PLANNER | GPT-4o | 4096 | Create study plan | JSON: todo_list, reasoning, metadata |
-| PLANNER | GPT-4o | 4096 | Replan | JSON: todo_list, reasoning, metadata, changes_made |
-| EXECUTOR | GPT-4o | 1024 | Generate message | JSON: message, reasoning, step_id, question_number, meta |
-| EVALUATOR | GPT-4o | 2048 | Evaluate + route | JSON: score, feedback, statuses, assessment_note, replan |
+| Agent | Model | Reasoning | Purpose | Output Schema |
+|-------|-------|-----------|---------|---------------|
+| PLANNER | GPT-5.2 | high | Create study plan | PlannerLLMOutput (strict json_schema) |
+| PLANNER | GPT-5.2 | high | Replan | PlannerLLMOutput (strict json_schema) |
+| EXECUTOR | GPT-5.2 | none | Generate message | ExecutorLLMOutput (strict json_schema) |
+| EVALUATOR | GPT-5.2 | medium | Evaluate + route | EvaluatorLLMOutput (strict json_schema) |
 
 **LLM Service Features:**
-- GPT-4o for all agents (json_mode=True)
-- GPT-5.1 method exists with fallback to GPT-4o if unavailable
+- GPT-5.2 for all agents with strict `json_schema` structured output
+- Reasoning effort levels: none (fast), low, medium, high, xhigh (maximum)
+- GPT-5.2 fallback to GPT-5.1, then GPT-4o if unavailable
+- GPT-5.1 method with fallback to GPT-4o
+- GPT-4o for legacy support
 - Gemini support (gemini-3-pro-preview, via GEMINI_API_KEY)
 - Automatic retry: 3 attempts with exponential backoff (1s -> 2s -> 4s)
 - Timeout: 60 seconds per request
 - Handles: RateLimitError, APITimeoutError, OpenAIError
+- `make_schema_strict()` helper for Pydantic to OpenAI strict schema conversion
 
 ---
 
