@@ -235,7 +235,7 @@ const GuidelinesReviewPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('TO_BE_REVIEWED');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [countryFilter, setCountryFilter] = useState<string>('');
   const [boardFilter, setBoardFilter] = useState<string>('');
   const [gradeFilter, setGradeFilter] = useState<string>('');

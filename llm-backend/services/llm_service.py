@@ -2,7 +2,7 @@
 LLM Service for Tutor Workflow
 
 This service provides a clean interface to OpenAI's API with:
-- Support for GPT-5.1 (with reasoning) and GPT-4o
+- Support for GPT-5.2, GPT-5.1 (with reasoning) and GPT-4o
 - Automatic retry logic with exponential backoff
 - Error handling for rate limits and timeouts
 - Response parsing and validation
@@ -12,6 +12,13 @@ Design Principles:
 - Single Responsibility: Only handles LLM API calls
 - Dependency Injection: Receives config via constructor
 - Testability: Easy to mock for testing
+
+GPT-5.2 Notes:
+- Uses Responses API (same as GPT-5.1)
+- Default reasoning is "none" (unlike GPT-5.1's "low")
+- New "xhigh" reasoning level for maximum reasoning
+- Supports structured output with json_schema (stricter than json_object)
+- Better token efficiency and cleaner formatting
 """
 
 import json
@@ -30,6 +37,7 @@ class LLMService:
     Service for making LLM API calls with retry logic and error handling.
 
     Features:
+    - GPT-5.2 support with reasoning parameter and strict json_schema output
     - GPT-5.1 support with reasoning parameter
     - GPT-4o support for faster execution
     - Gemini support for alternative planning
@@ -116,9 +124,22 @@ class LLMService:
                     kwargs["text"] = {"format": {"type": "json_object"}}
 
                 result = self.client.responses.create(**kwargs)
+
+                # Convert reasoning object to string if present
+                # OpenAI SDK returns a Reasoning object, not a string
+                reasoning_obj = getattr(result, "reasoning", None)
+                reasoning_str = None
+                if reasoning_obj is not None:
+                    if hasattr(reasoning_obj, "summary") and reasoning_obj.summary:
+                        reasoning_str = str(reasoning_obj.summary)
+                    elif hasattr(reasoning_obj, "text") and reasoning_obj.text:
+                        reasoning_str = str(reasoning_obj.text)
+                    else:
+                        reasoning_str = str(reasoning_obj)
+
                 return {
                     "output_text": result.output_text,
-                    "reasoning": getattr(result, "reasoning", None),
+                    "reasoning": reasoning_str,
                 }
             except (OpenAIError, Exception) as e:
                 logger.warning(json.dumps({
@@ -140,6 +161,198 @@ class LLMService:
                 }
 
         return self._execute_with_retry(_api_call, "GPT-5.1")
+
+    def call_gpt_5_2(
+        self,
+        prompt: str,
+        reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """
+        Call GPT-5.2 with extended reasoning and optional strict structured output.
+
+        GPT-5.2 is the newest flagship model with improvements over GPT-5.1:
+        - Better token efficiency on medium-to-complex tasks
+        - Cleaner formatting with less unnecessary verbosity
+        - New "xhigh" reasoning effort level
+        - Default reasoning is "none" for lower latency (unlike GPT-5.1's "low")
+        - Supports strict json_schema for guaranteed schema adherence
+
+        Used for:
+        - Initial planning (strategic thinking) with "medium" or "high" reasoning
+        - Fast execution with "none" reasoning
+        - Strict structured output with json_schema parameter
+
+        Args:
+            prompt: The prompt to send
+            reasoning_effort: How much thinking effort to use
+                - "none": Fastest, no chain-of-thought (default)
+                - "low": Light reasoning
+                - "medium": Moderate reasoning
+                - "high": Heavy reasoning
+                - "xhigh": Maximum reasoning (new in 5.2)
+            json_mode: Whether to request JSON output (default True)
+            json_schema: Optional JSON schema for strict structured output.
+                         When provided, uses json_schema format instead of json_object.
+                         Schema must be strict-compliant (use make_schema_strict helper).
+            schema_name: Name for the schema (for logging/debugging)
+
+        Returns:
+            Dict containing:
+                - output_text: The main output (valid JSON if json_mode=True)
+                - reasoning: The reasoning process (if available)
+
+        Raises:
+            LLMServiceError: If API call fails after retries
+        """
+        logger.info(json.dumps({
+            "step": "LLM_CALL",
+            "status": "starting",
+            "model": "gpt-5.2",
+            "params": {
+                "reasoning_effort": reasoning_effort,
+                "json_mode": json_mode,
+                "has_schema": json_schema is not None,
+                "schema_name": schema_name if json_schema else None,
+            }
+        }))
+
+        def _api_call():
+            try:
+                kwargs = {
+                    "model": "gpt-5.2",
+                    "input": prompt,
+                    "timeout": self.timeout,
+                }
+
+                # Add reasoning if not "none" (none is default for 5.2)
+                if reasoning_effort != "none":
+                    kwargs["reasoning"] = {"effort": reasoning_effort}
+
+                # Add structured output format
+                if json_schema:
+                    # Use strict json_schema format for guaranteed schema adherence
+                    kwargs["text"] = {
+                        "format": {
+                            "type": "json_schema",
+                            "name": schema_name,
+                            "schema": json_schema,
+                            "strict": True,
+                        }
+                    }
+                elif json_mode:
+                    # Fall back to simple json_object format
+                    kwargs["text"] = {"format": {"type": "json_object"}}
+
+                result = self.client.responses.create(**kwargs)
+
+                # Convert reasoning object to string if present
+                # OpenAI SDK returns a Reasoning object, not a string
+                reasoning_obj = getattr(result, "reasoning", None)
+                reasoning_str = None
+                if reasoning_obj is not None:
+                    if hasattr(reasoning_obj, "summary") and reasoning_obj.summary:
+                        reasoning_str = str(reasoning_obj.summary)
+                    elif hasattr(reasoning_obj, "text") and reasoning_obj.text:
+                        reasoning_str = str(reasoning_obj.text)
+                    else:
+                        reasoning_str = str(reasoning_obj)
+
+                return {
+                    "output_text": result.output_text,
+                    "reasoning": reasoning_str,
+                }
+            except (OpenAIError, Exception) as e:
+                logger.warning(json.dumps({
+                    "step": "LLM_CALL",
+                    "status": "warning",
+                    "model": "gpt-5.2",
+                    "error": str(e),
+                    "message": "Falling back to GPT-5.1"
+                }))
+                # Fallback to GPT-5.1 with equivalent settings
+                # Map xhigh to high for GPT-5.1 compatibility
+                fallback_effort = "high" if reasoning_effort == "xhigh" else reasoning_effort
+                if fallback_effort == "none":
+                    fallback_effort = "low"  # GPT-5.1 doesn't support "none"
+                return self.call_gpt_5_1(
+                    prompt=prompt,
+                    reasoning_effort=fallback_effort,
+                    json_mode=json_mode,
+                )
+
+        return self._execute_with_retry(_api_call, "GPT-5.2")
+
+    @staticmethod
+    def make_schema_strict(schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform a JSON schema to meet OpenAI's strict mode requirements.
+
+        OpenAI's structured output with strict=true requires:
+        1. All objects must have additionalProperties: false
+        2. All properties must be in the required array
+        3. $defs references must also be transformed
+        4. $ref cannot have sibling keywords (like description)
+
+        Use this when passing a Pydantic-generated schema to call_gpt_5_2().
+
+        Example:
+            from pydantic import BaseModel
+
+            class MyOutput(BaseModel):
+                field1: str
+                field2: int
+
+            schema = MyOutput.model_json_schema()
+            strict_schema = LLMService.make_schema_strict(schema)
+
+            response = llm_service.call_gpt_5_2(
+                prompt="...",
+                json_schema=strict_schema,
+                schema_name="MyOutput"
+            )
+
+        Args:
+            schema: Original JSON schema (e.g., from Pydantic's model_json_schema())
+
+        Returns:
+            Transformed schema meeting OpenAI's strict requirements
+        """
+        def transform(obj: Dict[str, Any]) -> Dict[str, Any]:
+            if not isinstance(obj, dict):
+                return obj
+
+            # If this object has a $ref, remove sibling keywords
+            # OpenAI requires $ref to be alone (no description, title, etc.)
+            if "$ref" in obj:
+                return {"$ref": obj["$ref"]}
+
+            result = {}
+            for key, value in obj.items():
+                if key == "$defs":
+                    # Transform all definitions
+                    result[key] = {k: transform(v) for k, v in value.items()}
+                elif isinstance(value, dict):
+                    result[key] = transform(value)
+                elif isinstance(value, list):
+                    result[key] = [
+                        transform(item) if isinstance(item, dict) else item
+                        for item in value
+                    ]
+                else:
+                    result[key] = value
+
+            # If this is an object type, add strict requirements
+            if result.get("type") == "object" and "properties" in result:
+                result["additionalProperties"] = False
+                # All properties must be required in strict mode
+                result["required"] = list(result["properties"].keys())
+
+            return result
+
+        return transform(schema)
 
     def call_gpt_4o(
         self,
