@@ -15,8 +15,8 @@
 
 **Key Code Locations:**
 - Frontend: `llm-frontend/src/features/admin/`
-- Backend Book Ingestion: `llm-backend/features/book_ingestion/`
-- Backend Guidelines Router: `llm-backend/routers/admin_guidelines.py`
+- Backend Book Ingestion: `llm-backend/book_ingestion/`
+- Backend Guidelines Router: `llm-backend/study_plans/api/admin.py`
 
 ---
 
@@ -375,7 +375,7 @@ class ContextPack:
 
 ### Database Tables
 
-**Book** (`llm-backend/features/book_ingestion/models/database.py`)
+**Book** (`llm-backend/book_ingestion/models/database.py`)
 | Column | Type | Description |
 |--------|------|-------------|
 | id | VARCHAR | Primary key (slug: author_subject_grade_year) |
@@ -409,7 +409,7 @@ Note: `status` field has been removed from Book model - status is now derived fr
 | review_status | VARCHAR | TO_BE_REVIEWED, APPROVED |
 | version | INT | Increment on regeneration |
 
-**TeachingGuideline** (`llm-backend/models/database.py`) - Production guidelines for tutor
+**TeachingGuideline** (`llm-backend/shared/models/entities.py`) - Production guidelines for tutor
 | Column | Type | Description |
 |--------|------|-------------|
 | id | VARCHAR | Primary key |
@@ -462,7 +462,7 @@ Note: V1 legacy fields (objectives_json, examples_json, misconceptions_json, ass
 | `components/BookStatusBadge.tsx` | Status badge display |
 | `utils/bookStatus.ts` | **Derived status logic** (no stored status) |
 
-### Backend - Book Ingestion (`llm-backend/features/book_ingestion/`)
+### Backend - Book Ingestion (`llm-backend/book_ingestion/`)
 | File | Purpose |
 |------|---------|
 | `api/routes.py` | FastAPI endpoints for books/pages/guidelines |
@@ -484,7 +484,7 @@ Note: V1 legacy fields (objectives_json, examples_json, misconceptions_json, ass
 | `models/database.py` | SQLAlchemy ORM (Book, BookJob, BookGuideline) |
 | `utils/s3_client.py` | S3 operations |
 
-### Backend - Guidelines Review (`llm-backend/routers/admin_guidelines.py`)
+### Backend - Guidelines Review (`llm-backend/study_plans/api/admin.py`)
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /books` | List all books with guideline extraction status |
@@ -504,12 +504,12 @@ Note: V1 legacy fields (objectives_json, examples_json, misconceptions_json, ass
 | `GET /{id}/study-plan` | Get existing study plan |
 | `POST /bulk-generate-study-plans` | Bulk generate study plans |
 
-### Backend - Core Models (`llm-backend/models/database.py`)
+### Backend - Core Models (`llm-backend/shared/models/entities.py`)
 | Model | Purpose |
 |-------|---------|
 | `TeachingGuideline` | Production guidelines for tutor workflow |
 
-### Backend - Study Plans (`llm-backend/features/study_plans/`)
+### Backend - Study Plans (`llm-backend/study_plans/`)
 | File | Purpose |
 |------|---------|
 | `services/orchestrator.py` | StudyPlanOrchestrator with AI-to-AI review loop |
