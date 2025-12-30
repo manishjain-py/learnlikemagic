@@ -37,7 +37,9 @@
       "WebFetch(domain:cookbook.openai.com)",
       "Bash(./venv/bin/python -m pytest:*)",
       "Bash(./venv/bin/python:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nConsolidate and compact documentation\n\nMajor documentation cleanup:\n- Create CLAUDE.md at root with documentation index\n- Consolidate backend-architecture.md \\(1025 + 272 → 172 lines\\)\n- Compact deployment.md \\(718 → 200 lines\\)\n- Compact dev-workflow.md \\(1302 → 178 lines\\)\n- Compact tech-stack-rationale.md \\(77 → 45 lines\\)\n- Compact llm-backend/README.md \\(715 → 111 lines\\)\n\nReorganization:\n- Move pipeline docs from docs/features/ to docs/\n- Remove llm-backend/docs/ \\(duplicate of root docs\\)\n- Move justification files to tmp/ \\(intermediate artifacts\\)\n- Update skill commands to use new paths\n\nPath corrections in BOOK_GUIDELINES_PIPELINE.md:\n- llm-backend/features/book_ingestion/ → llm-backend/book_ingestion/\n- llm-backend/routers/admin_guidelines.py → llm-backend/study_plans/api/admin.py\n- llm-backend/models/database.py → llm-backend/shared/models/entities.py\n\nRemoved obsolete docs:\n- docs/common-issues.txt\n- docs/features/BOOK_SUMMARY_FEATURE.md\n- docs/features/STUDY_PLAN_GENERATION_PIPELINE.md\n- docs/features/TOPIC_SUBTOPIC_* files\n- llm-backend/docs/architecture/ \\(one-time planning docs\\)\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

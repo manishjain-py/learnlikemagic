@@ -16,11 +16,10 @@
 **Key Code Locations:**
 - Frontend Tutor: `llm-frontend/src/TutorApp.tsx`, `llm-frontend/src/api.ts`
 - Frontend Admin: `llm-frontend/src/features/admin/`
-- Backend Workflow: `llm-backend/workflows/`, `llm-backend/agents/`
-- Backend Services: `llm-backend/services/session_service.py`, `llm-backend/adapters/`
-- Backend Study Plans: `llm-backend/features/study_plans/services/`
-- API: `llm-backend/api/routes/sessions.py`, `llm-backend/api/routes/curriculum.py`
-- Admin API: `llm-backend/routers/admin_guidelines.py`, `llm-backend/features/book_ingestion/api/routes.py`
+- Backend Tutor: `llm-backend/tutor/` (agents, orchestration, services, api)
+- Backend Shared: `llm-backend/shared/` (llm_service, health api)
+- Backend Study Plans: `llm-backend/study_plans/services/`
+- Admin API: `llm-backend/study_plans/api/admin.py`, `llm-backend/book_ingestion/api/routes.py`
 
 ---
 
@@ -471,52 +470,52 @@ EXECUTOR generates message for new/updated step
 
 ## Key Files Reference
 
-### Backend - Workflow & State
+### Backend - Workflow & State (`llm-backend/tutor/`)
 | File | Purpose |
 |------|---------|
-| `workflows/tutor_workflow.py` | LangGraph workflow + TutorWorkflow class |
-| `workflows/state.py` | SimplifiedState TypedDict |
-| `workflows/helpers.py` | get_current_step(), update_plan_statuses(), calculate_progress() |
-| `workflows/schemas.py` | Validation schemas |
+| `orchestration/tutor_workflow.py` | LangGraph workflow + TutorWorkflow class |
+| `orchestration/workflow_bridge.py` | SessionService ↔ TutorWorkflow bridge |
+| `orchestration/state_converter.py` | TutorState ↔ SimplifiedState conversion |
+| `orchestration/schemas.py` | Validation schemas |
+| `models/state.py` | SimplifiedState TypedDict |
+| `models/helpers.py` | get_current_step(), update_plan_statuses(), calculate_progress() |
 
-### Backend - Agents
+### Backend - Agents (`llm-backend/tutor/agents/`)
 | File | Purpose |
 |------|---------|
-| `agents/base.py` | BaseAgent abstract class with execution + logging |
-| `agents/planner_agent.py` | PLANNER - creates/updates study plans (GPT-5.2 high reasoning) |
-| `agents/executor_agent.py` | EXECUTOR - generates teaching messages (GPT-5.2 no reasoning) |
-| `agents/evaluator_agent.py` | EVALUATOR - evaluates + routes (GPT-5.2 medium reasoning) |
-| `agents/llm_schemas.py` | Pydantic models + pre-computed strict schemas for GPT-5.2 structured output |
+| `base.py` | BaseAgent abstract class with execution + logging |
+| `planner_agent.py` | PLANNER - creates/updates study plans (GPT-5.2 high reasoning) |
+| `executor_agent.py` | EXECUTOR - generates teaching messages (GPT-5.2 no reasoning) |
+| `evaluator_agent.py` | EVALUATOR - evaluates + routes (GPT-5.2 medium reasoning) |
+| `schemas.py` | Pydantic models + pre-computed strict schemas for GPT-5.2 structured output |
 
-### Backend - Prompts
+### Backend - Prompts (`llm-backend/tutor/agents/prompts/`)
 | File | Purpose |
 |------|---------|
-| `agents/prompts/planner_initial.txt` | Initial planning prompt |
-| `agents/prompts/planner_replan.txt` | Replanning prompt |
-| `agents/prompts/executor.txt` | Message generation prompt |
-| `agents/prompts/evaluator.txt` | Evaluation prompt (5 sections) |
+| `planner_initial.txt` | Initial planning prompt |
+| `planner_replan.txt` | Replanning prompt |
+| `executor.txt` | Message generation prompt |
+| `evaluator.txt` | Evaluation prompt (5 sections) |
 
 ### Backend - Services & API
 | File | Purpose |
 |------|---------|
-| `services/session_service.py` | Session orchestration |
-| `services/llm_service.py` | LLM API wrapper (GPT-5.2 w/strict schema, GPT-5.1, GPT-4o, Gemini) |
-| `api/routes/sessions.py` | Session endpoints |
-| `api/routes/curriculum.py` | Curriculum discovery endpoints |
-| `api/routes/health.py` | Health check endpoints |
-| `api/routes/logs.py` | Logs API (DEPRECATED - returns empty, logs go to stdout) |
-| `routers/admin_guidelines.py` | Admin guidelines API + study plan endpoints |
-| `features/book_ingestion/api/routes.py` | Book ingestion & page management API |
-| `features/book_ingestion/services/topic_subtopic_summary_service.py` | Auto-summary generation |
-| `adapters/workflow_adapter.py` | TutorWorkflow <-> SessionService bridge |
-| `adapters/state_adapter.py` | TutorState <-> SimplifiedState conversion |
+| `tutor/services/session_service.py` | Session orchestration |
+| `tutor/api/sessions.py` | Session endpoints |
+| `tutor/api/curriculum.py` | Curriculum discovery endpoints |
+| `tutor/api/logs.py` | Logs API (DEPRECATED - returns empty, logs go to stdout) |
+| `shared/services/llm_service.py` | LLM API wrapper (GPT-5.2 w/strict schema, GPT-5.1, GPT-4o, Gemini) |
+| `shared/api/health.py` | Health check endpoints |
+| `study_plans/api/admin.py` | Admin guidelines API + study plan endpoints |
+| `book_ingestion/api/routes.py` | Book ingestion & page management API |
+| `book_ingestion/services/topic_subtopic_summary_service.py` | Auto-summary generation |
 
-### Backend - Study Plans
+### Backend - Study Plans (`llm-backend/study_plans/services/`)
 | File | Purpose |
 |------|---------|
-| `features/study_plans/services/orchestrator.py` | Coordinates plan generation, storage, and retrieval |
-| `features/study_plans/services/generator_service.py` | Generates plans using GPT-5.2 with strict schema |
-| `features/study_plans/services/reviewer_service.py` | Reviews plans using GPT-4o, provides improvement feedback |
+| `orchestrator.py` | Coordinates plan generation, storage, and retrieval |
+| `generator_service.py` | Generates plans using GPT-5.2 with strict schema |
+| `reviewer_service.py` | Reviews plans using GPT-4o, provides improvement feedback |
 
 ### Frontend
 | File | Purpose |
