@@ -10,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings, validate_required_settings
 from database import get_db_manager
-from api.routes import health, curriculum, sessions, logs
-from features.book_ingestion.api import routes as admin_routes
-from routers import admin_guidelines
+from book_ingestion.api import routes as admin_routes
+from study_plans.api import admin as admin_guidelines
+from shared.api import health
+from tutor.api import curriculum, sessions, logs
 
 # Validate configuration on startup
 validate_required_settings()

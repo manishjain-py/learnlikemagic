@@ -1,11 +1,11 @@
 """Unit tests for formatting utilities."""
 import pytest
-from utils.formatting import (
+from shared.utils.formatting import (
     format_conversation_history,
     extract_last_turn,
     build_turn_response
 )
-from models.domain import HistoryEntry
+from shared.models.domain import HistoryEntry
 
 
 class TestFormatConversationHistory:
@@ -124,7 +124,7 @@ class TestBuildTurnResponse:
 
     def test_build_turn_marks_complete_at_max_steps(self):
         """Test that is_complete=True when step_idx >= MAX_STEPS."""
-        from utils.constants import MAX_STEPS
+        from shared.utils.constants import MAX_STEPS
 
         history = [HistoryEntry(role="teacher", msg="Done", meta=None)]
         result = build_turn_response(history, step_idx=MAX_STEPS, mastery_score=0.5)
@@ -133,7 +133,7 @@ class TestBuildTurnResponse:
 
     def test_build_turn_marks_complete_at_mastery_threshold(self):
         """Test that is_complete=True when mastery >= threshold."""
-        from utils.constants import MASTERY_COMPLETION_THRESHOLD
+        from shared.utils.constants import MASTERY_COMPLETION_THRESHOLD
 
         history = [HistoryEntry(role="teacher", msg="Great job!", meta=None)]
         result = build_turn_response(history, step_idx=5, mastery_score=MASTERY_COMPLETION_THRESHOLD)

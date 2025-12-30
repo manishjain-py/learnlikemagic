@@ -16,9 +16,9 @@ Use mock responses for faster unit tests.
 
 import pytest
 import os
-from workflows.tutor_workflow import TutorWorkflow
-from workflows.helpers import generate_session_id
-from services.llm_service import LLMService
+from tutor.orchestration.tutor_workflow import TutorWorkflow
+from tutor.models.helpers import generate_session_id
+from shared.services import LLMService
 
 
 @pytest.fixture

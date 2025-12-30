@@ -9,7 +9,7 @@ def cleanup_sessions(db_session, session_ids):
         db_session: SQLAlchemy session
         session_ids: List of session IDs to delete
     """
-    from models.database import Session, Event
+    from shared.models.entities import Session, Event
 
     if not session_ids:
         return
@@ -35,7 +35,7 @@ def cleanup_books(db_session, book_ids):
         db_session: SQLAlchemy session
         book_ids: List of book IDs to delete
     """
-    from features.book_ingestion.models.database import Book, BookGuideline
+    from book_ingestion.models.database import Book, BookGuideline
 
     if not book_ids:
         return
@@ -61,7 +61,7 @@ def cleanup_teaching_guidelines(db_session, guideline_ids):
         db_session: SQLAlchemy session
         guideline_ids: List of guideline IDs to delete
     """
-    from models.database import TeachingGuideline
+    from shared.models.entities import TeachingGuideline
 
     if not guideline_ids:
         return
@@ -87,7 +87,7 @@ def verify_session_in_db(db_session, session_id):
     Raises:
         AssertionError: If session not found
     """
-    from models.database import Session
+    from shared.models.entities import Session
 
     session = db_session.query(Session).filter_by(id=session_id).first()
     assert session is not None, f"Session {session_id} not found in database"
@@ -108,7 +108,7 @@ def verify_book_in_db(db_session, book_id):
     Raises:
         AssertionError: If book not found
     """
-    from features.book_ingestion.models.database import Book
+    from book_ingestion.models.database import Book
 
     book = db_session.query(Book).filter_by(id=book_id).first()
     assert book is not None, f"Book {book_id} not found in database"
@@ -126,7 +126,7 @@ def count_events_for_session(db_session, session_id):
     Returns:
         Number of events for the session
     """
-    from models.database import Event
+    from shared.models.entities import Event
 
     return db_session.query(Event).filter_by(session_id=session_id).count()
 
@@ -142,7 +142,7 @@ def seed_test_guideline(db_session, guideline_data):
     Returns:
         Created TeachingGuideline object
     """
-    from models.database import TeachingGuideline
+    from shared.models.entities import TeachingGuideline
     import re
 
     # Generate topic_key and subtopic_key if not provided

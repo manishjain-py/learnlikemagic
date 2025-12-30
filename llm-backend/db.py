@@ -5,7 +5,7 @@ import json
 import sys
 import argparse
 from pathlib import Path
-from models import Base, TeachingGuideline
+from shared.models.entities import Base, TeachingGuideline
 from database import get_db_manager
 
 

@@ -15,9 +15,9 @@ from dotenv import load_dotenv
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.llm_service import LLMService
-from agents.evaluator_agent import EvaluatorAgent
-from workflows.state import SimplifiedState
+from shared.services.llm_service import LLMService
+from tutor.agents.evaluator_agent import EvaluatorAgent
+from tutor.models.state import SimplifiedState
 
 # Load environment
 load_dotenv()

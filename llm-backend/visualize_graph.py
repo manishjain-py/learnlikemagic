@@ -8,8 +8,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Load environment variables
 load_dotenv()
 
-from services.llm_service import LLMService
-from workflows.tutor_workflow import build_workflow
+from shared.services.llm_service import LLMService
+from tutor.orchestration.tutor_workflow import build_workflow
 from config import get_settings
 
 def generate_graph_image():
@@ -24,12 +24,12 @@ def generate_graph_image():
     llm_service = LLMService(api_key="mock", max_retries=1)
     
     # Build the workflow manually to avoid checkpointer dependency
-    from workflows.state import SimplifiedState
-    from agents.planner_agent import PlannerAgent
-    from agents.executor_agent import ExecutorAgent
-    from agents.evaluator_agent import EvaluatorAgent
+    from tutor.models.state import SimplifiedState
+    from tutor.agents.planner_agent import PlannerAgent
+    from tutor.agents.executor_agent import ExecutorAgent
+    from tutor.agents.evaluator_agent import EvaluatorAgent
     from langgraph.graph import StateGraph, END
-    from workflows.tutor_workflow import route_entry, route_after_executor, route_after_evaluation
+    from tutor.orchestration.tutor_workflow import route_entry, route_after_executor, route_after_evaluation
     
     # Create agent instances
     planner = PlannerAgent(llm_service)

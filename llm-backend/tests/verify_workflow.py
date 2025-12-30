@@ -2,9 +2,9 @@
 from unittest.mock import MagicMock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, TeachingGuideline
-from features.book_ingestion.services.db_sync_service import DBSyncService
-from features.book_ingestion.models.guideline_models import SubtopicShard
+from shared.models import Base, TeachingGuideline
+from book_ingestion.services.db_sync_service import DBSyncService
+from book_ingestion.models.guideline_models import SubtopicShard
 
 # Setup in-memory DB
 engine = create_engine('sqlite:///:memory:')
@@ -84,11 +84,11 @@ def test_full_workflow(db_session):
 
     # 5. Test Job Locking
     print("\n--- Job Locking Test ---")
-    from features.book_ingestion.services.job_lock_service import JobLockService, JobLockError
-    from features.book_ingestion.models.database import BookJob
+    from book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    from book_ingestion.models.database import BookJob
     
     # Create Book table if not exists (for foreign key)
-    from features.book_ingestion.models.database import Book
+    from book_ingestion.models.database import Book
     if not engine.dialect.has_table(engine.connect(), "books"):
         Book.__table__.create(engine)
         # Create dummy book

@@ -1,6 +1,7 @@
 """Integration test configuration and fixtures."""
 import os
 import uuid
+import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -8,7 +9,9 @@ from sqlalchemy.orm import sessionmaker
 
 from main import app
 from database import DatabaseManager
-from models.database import Base
+from shared.models.entities import Base
+from book_ingestion.models.database import *
+from book_ingestion.models.guideline_models import *
 
 
 @pytest.fixture(scope="session")
@@ -49,6 +52,14 @@ def db_session(test_config):
         os.environ["DATABASE_URL"] = test_config["database_url"]
 
     db_manager = DatabaseManager()
+    
+    # Ensure tables exist for tests
+    # Note: verify we have engine access
+    if hasattr(db_manager, "engine"):
+         Base.metadata.create_all(db_manager.engine)
+    elif hasattr(db_manager, "_engine"):
+         Base.metadata.create_all(db_manager._engine)
+
     session = db_manager.get_session()
 
     yield session
@@ -75,7 +86,7 @@ def cleanup_tracker():
 
 
 @pytest.fixture(autouse=True)
-def cleanup_sessions_after_test(db_session, cleanup_tracker, request):
+def cleanup_sessions_after_test(db_session, cleanup_tracker, request, mock_s3):
     """Cleanup sessions after each integration test."""
     # Skip if not an integration test
     if "integration" not in [mark.name for mark in request.node.iter_markers()]:
@@ -86,7 +97,7 @@ def cleanup_sessions_after_test(db_session, cleanup_tracker, request):
 
     # Cleanup sessions
     if cleanup_tracker["session_ids"]:
-        from models.database import Session, Event
+        from shared.models.entities import Session, Event
 
         # Delete events first (foreign key dependency)
         db_session.query(Event).filter(
@@ -113,7 +124,7 @@ def cleanup_books_after_test(db_session, cleanup_tracker, request):
 
     # Cleanup books
     if cleanup_tracker["book_ids"]:
-        from features.book_ingestion.models.database import Book, BookGuideline
+        from book_ingestion.models.database import Book, BookGuideline
 
         # Delete book guidelines first
         db_session.query(BookGuideline).filter(
@@ -128,29 +139,80 @@ def cleanup_books_after_test(db_session, cleanup_tracker, request):
         db_session.commit()
 
 
+
+class MockS3Client:
+    """Mock S3 client for integration tests."""
+    def __init__(self, *args, **kwargs):
+        self.bucket_name = "test-bucket"
+        self.storage = {}  # key -> bytes or str
+
+    def upload_json(self, key, data):
+        self.storage[key] = json.dumps(data)
+        print(f"Mock S3: Uploaded JSON to {key}")
+
+    def update_metadata_json(self, book_id, metadata):
+        key = f"books/{book_id}/metadata.json"
+        self.upload_json(key, metadata)
+
+    def download_json(self, key):
+        if key not in self.storage:
+            raise Exception(f"NoSuchKey: {key}")
+        data = self.storage[key]
+        if isinstance(data, bytes):
+            return json.loads(data.decode('utf-8'))
+        return json.loads(data)
+
+    def upload_file(self, file_obj, key, content_type=None):
+        if hasattr(file_obj, 'read'):
+            content = file_obj.read()
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+        else:
+            content = file_obj
+        self.storage[key] = content
+        print(f"Mock S3: Uploaded file to {key}")
+        return f"https://s3.amazonaws.com/{self.bucket_name}/{key}"
+
+    def delete_folder(self, prefix):
+        keys_to_delete = [k for k in self.storage if k.startswith(prefix)]
+        for k in keys_to_delete:
+            del self.storage[k]
+        print(f"Mock S3: Deleted folder {prefix}")
+
+    def generate_presigned_url(self, operation, key, expiration=3600):
+        return f"https://mock-s3-presigned-url/{key}"
+
 @pytest.fixture
-def s3_client(test_config):
+def mock_s3(monkeypatch):
     """
-    S3 client with automatic cleanup.
-
-    Returns a tuple of (s3_client, uploaded_keys_list).
-    Tests should append S3 keys to the uploaded_keys list
-    for automatic cleanup.
+    Mock S3Client for all integration tests.
     """
-    from features.book_ingestion.utils.s3_client import S3Client
+    import book_ingestion.utils.s3_client as s3_module
+    import book_ingestion.services.book_service as book_service_module
+    import book_ingestion.services.page_service as page_service_module
+    
+    mock_client = MockS3Client()
+    
+    def get_mock_client(*args, **kwargs):
+        return mock_client
 
-    s3 = S3Client()
+    # Patch S3Client class
+    monkeypatch.setattr(s3_module, "S3Client", get_mock_client)
+    
+    # Patch get_s3_client if used
+    if hasattr(s3_module, "get_s3_client"):
+         monkeypatch.setattr(s3_module, "get_s3_client", lambda: mock_client)
+    
+    return mock_client
 
+@pytest.fixture
+def s3_client(test_config, mock_s3):
+    """
+    Returns the mock S3 client.
+    """
     uploaded_keys = []
+    yield mock_s3, uploaded_keys
 
-    yield s3, uploaded_keys
-
-    # Cleanup S3 objects
-    for key in uploaded_keys:
-        try:
-            s3.s3_client.delete_object(Bucket=s3.bucket_name, Key=key)
-        except Exception as e:
-            print(f"Warning: Failed to cleanup S3 key {key}: {e}")
 
 
 @pytest.fixture

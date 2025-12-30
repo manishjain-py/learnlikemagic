@@ -4,7 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
-from models.database import Base
+from shared.models.entities import Base
+# Import all models to ensure they are registered with Base.metadata
+from shared.models.entities import *
+from book_ingestion.models.database import *
 from main import app
 
 
@@ -42,7 +45,7 @@ def client():
 @pytest.fixture
 def sample_student():
     """Sample student data for testing."""
-    from models.domain import Student, StudentPrefs
+    from shared.models.domain import Student, StudentPrefs
 
     return Student(
         id="test-student-1",
@@ -57,7 +60,7 @@ def sample_student():
 @pytest.fixture
 def sample_goal():
     """Sample learning goal for testing."""
-    from models.domain import Goal
+    from shared.models.domain import Goal
 
     return Goal(
         topic="Fractions",
@@ -73,7 +76,7 @@ def sample_goal():
 @pytest.fixture
 def sample_tutor_state(sample_student, sample_goal):
     """Sample tutor state for testing."""
-    from models.domain import TutorState
+    from shared.models.domain import TutorState
 
     return TutorState(
         session_id="test-session-123",
@@ -91,7 +94,7 @@ def sample_tutor_state(sample_student, sample_goal):
 @pytest.fixture
 def sample_grading_result():
     """Sample grading result for testing."""
-    from models.domain import GradingResult
+    from shared.models.domain import GradingResult
 
     return GradingResult(
         score=0.85,

@@ -32,8 +32,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
-from services.llm_service import LLMService
-from agents.llm_schemas import (
+from shared.services.llm_service import LLMService
+from tutor.agents.schemas import (
     PlannerLLMOutput, PLANNER_STRICT_SCHEMA,
     ExecutorLLMOutput, EXECUTOR_STRICT_SCHEMA,
     EvaluatorLLMOutput, EVALUATOR_STRICT_SCHEMA,
