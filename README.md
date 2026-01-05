@@ -27,7 +27,7 @@ cd llm-backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # Add OPENAI_API_KEY, DATABASE_URL
-python db.py --migrate && python db.py --seed-guidelines data/seed_guidelines.json
+python db.py --migrate
 uvicorn main:app --reload  # http://localhost:8000
 
 # Frontend

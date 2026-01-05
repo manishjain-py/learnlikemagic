@@ -25,7 +25,6 @@ docker run -d --name llm-postgres \
 
 cd llm-backend
 python db.py --migrate
-python db.py --seed-guidelines data/seed_guidelines.json
 ```
 
 ---

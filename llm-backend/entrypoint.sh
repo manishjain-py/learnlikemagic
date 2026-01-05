@@ -27,7 +27,7 @@ echo "✓ OPENAI_API_KEY is set"
 
 echo ""
 echo "Note: Database migrations should be run manually before first deployment"
-echo "Run: python db.py --migrate && python db.py --seed-guidelines data/seed_guidelines.json"
+echo "Run: python db.py --migrate"
 echo ""
 echo "Starting Uvicorn server..."
 echo "========================================="

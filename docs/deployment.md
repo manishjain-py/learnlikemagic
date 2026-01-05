@@ -73,10 +73,6 @@ docker buildx build --platform linux/amd64 -t llm-backend:migrate .
 # Migrate
 docker run --rm -e DATABASE_URL="postgresql://user:pass@endpoint:5432/learnlikemagic" \
   llm-backend:migrate python db.py --migrate
-
-# Seed
-docker run --rm -e DATABASE_URL="..." \
-  llm-backend:migrate python db.py --seed-guidelines data/seed_guidelines.json
 ```
 
 ### 4. Deploy Backend

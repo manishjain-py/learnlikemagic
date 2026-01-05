@@ -1,4 +1,4 @@
-.PHONY: help build build-local build-prod push test run clean db-migrate db-seed
+.PHONY: help build build-local build-prod push test run clean db-migrate
 
 # Learn Like Magic Backend - Build & Deployment Automation
 # See docs/dev-workflow.md for complete development guide
@@ -14,7 +14,6 @@ help:
 	@echo ""
 	@echo "Database:"
 	@echo "  db-migrate    - Run database migrations"
-	@echo "  db-seed       - Seed database with teaching guidelines"
 	@echo ""
 	@echo "Docker (Local Development):"
 	@echo "  build-local   - Build Docker image for local development (ARM64 on Mac)"
@@ -41,10 +40,6 @@ test:
 db-migrate:
 	@echo "Running database migrations..."
 	python db.py --migrate
-
-db-seed:
-	@echo "Seeding database with teaching guidelines..."
-	python db.py --seed-guidelines data/seed_guidelines.json
 
 # Docker builds
 build-local:

@@ -37,7 +37,6 @@ cp .env.example .env  # Edit with your OPENAI_API_KEY, DATABASE_URL
 
 # Database
 python db.py --migrate
-python db.py --seed-guidelines data/seed_guidelines.json
 
 # Run
 uvicorn main:app --reload

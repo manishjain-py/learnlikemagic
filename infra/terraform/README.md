@@ -288,7 +288,6 @@ DATABASE_URL="postgresql://llmuser:YOUR_PASSWORD@$DB_ENDPOINT:5432/tutor"
 cd ../../llm-backend
 source .venv/bin/activate
 python db.py --migrate
-python db.py --seed-guidelines data/seed_guidelines.json
 ```
 
 ### 3. Deploy Frontend
