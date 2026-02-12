@@ -1,7 +1,7 @@
 # Claude Code Context
 
 ## Project Overview
-LearnLikeMagic: AI-powered adaptive tutoring platform using LangGraph agents.
+LearnLikeMagic: AI-powered adaptive tutoring platform using a single master tutor agent.
 
 ## Codebase Structure
 ```
@@ -20,7 +20,7 @@ learnlikemagic/
 | `docs/dev-workflow.md` | Local setup, daily workflow, testing, making changes | Setting up dev environment, running tests, git workflow |
 | `docs/deployment.md` | AWS infrastructure, CI/CD, production URLs, troubleshooting | Deploying, debugging prod issues, infrastructure questions |
 | `docs/tech-stack-rationale.md` | Why each technology was chosen | Understanding tech decisions |
-| `docs/TUTOR_WORKFLOW_PIPELINE.md` | Tutor feature: real-time adaptive tutoring with 3 agents (Planner, Executor, Evaluator) | Working on tutoring sessions, agent logic, LangGraph workflow |
+| `docs/TUTOR_WORKFLOW_PIPELINE.md` | Tutor feature: single master tutor agent, WebSocket + REST, evaluation pipeline | Working on tutoring sessions, agent logic, orchestration |
 | `docs/BOOK_GUIDELINES_PIPELINE.md` | Book ingestion feature: OCR, topic detection, guideline extraction | Working on book upload, content extraction |
 
 ## Key Conventions
@@ -31,6 +31,6 @@ learnlikemagic/
 - `<entity>_repository.py` - Data access
 - `<domain>_service.py` - Business logic
 - `<role>_agent.py` - LLM-powered actors
-- `<name>_workflow.py` - Agent orchestration
+- `orchestrator.py` - Agent orchestration
 
 **Critical:** Always build Docker images with `--platform linux/amd64` for AWS deployment.

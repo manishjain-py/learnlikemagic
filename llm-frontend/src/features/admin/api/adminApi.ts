@@ -15,6 +15,12 @@ import {
   GuidelineReview,
   GuidelineFilters,
   StudyPlan,
+  EvalRunSummary,
+  EvalRunDetail,
+  EvalStatus,
+  StartEvalRequest,
+  SessionListResponse,
+  EvaluateSessionRequest,
 } from '../types';
 
 // Use environment variable for production, fallback to localhost for development
@@ -260,4 +266,40 @@ export async function generateStudyPlan(
 
 export async function getStudyPlan(guidelineId: string): Promise<StudyPlan> {
   return apiFetch<StudyPlan>(`/admin/guidelines/${guidelineId}/study-plan`);
+}
+
+// ===== Evaluation Pipeline =====
+
+export async function listEvalRuns(): Promise<EvalRunSummary[]> {
+  return apiFetch<EvalRunSummary[]>('/api/evaluation/runs');
+}
+
+export async function getEvalRun(runId: string): Promise<EvalRunDetail> {
+  return apiFetch<EvalRunDetail>(`/api/evaluation/runs/${runId}`);
+}
+
+export async function startEvaluation(request: StartEvalRequest): Promise<{ status: string; topic_id: string; max_turns: number }> {
+  return apiFetch('/api/evaluation/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+}
+
+export async function getEvalStatus(): Promise<EvalStatus> {
+  return apiFetch<EvalStatus>('/api/evaluation/status');
+}
+
+// ===== Sessions =====
+
+export async function listSessions(): Promise<SessionListResponse> {
+  return apiFetch<SessionListResponse>('/sessions');
+}
+
+export async function evaluateSession(request: EvaluateSessionRequest): Promise<{ status: string; session_id: string }> {
+  return apiFetch('/api/evaluation/evaluate-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
 }

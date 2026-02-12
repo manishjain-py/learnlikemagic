@@ -41,6 +41,7 @@ class LLMService:
     - GPT-5.1 support with reasoning parameter
     - GPT-4o support for faster execution
     - Gemini support for alternative planning
+    - Anthropic Claude support via AnthropicAdapter
     - Automatic retries with exponential backoff
     - Structured error handling
     - JSON mode support
@@ -50,6 +51,8 @@ class LLMService:
         self,
         api_key: str,
         gemini_api_key: Optional[str] = None,
+        anthropic_api_key: Optional[str] = None,
+        provider: str = "openai",
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
         timeout: int = 60,
@@ -60,6 +63,8 @@ class LLMService:
         Args:
             api_key: OpenAI API key
             gemini_api_key: Google Gemini API key
+            anthropic_api_key: Anthropic API key
+            provider: LLM provider (openai, anthropic, anthropic-haiku)
             max_retries: Maximum number of retry attempts
             initial_retry_delay: Initial delay between retries (seconds)
             timeout: Request timeout (seconds)
@@ -68,12 +73,21 @@ class LLMService:
         self.max_retries = max_retries
         self.initial_retry_delay = initial_retry_delay
         self.timeout = timeout
-        
+        self.provider = provider
+
         if gemini_api_key:
             self.gemini_client = genai.Client(api_key=gemini_api_key)
             self.has_gemini = True
         else:
             self.has_gemini = False
+
+        self.anthropic_adapter = None
+        if anthropic_api_key:
+            from shared.services.anthropic_adapter import AnthropicAdapter, DEFAULT_CLAUDE_MODEL, CLAUDE_HAIKU_MODEL
+            model = CLAUDE_HAIKU_MODEL if provider == "anthropic-haiku" else DEFAULT_CLAUDE_MODEL
+            self.anthropic_adapter = AnthropicAdapter(
+                api_key=anthropic_api_key, timeout=timeout, model=model
+            )
 
     def call_gpt_5_1(
         self,
@@ -162,6 +176,31 @@ class LLMService:
 
         return self._execute_with_retry(_api_call, "GPT-5.1")
 
+    def call_anthropic(
+        self,
+        prompt: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """
+        Call Anthropic Claude via the adapter.
+
+        Returns the same dict shape as call_gpt_5_2:
+            {output_text, reasoning, parsed?}
+        """
+        if not self.anthropic_adapter:
+            raise LLMServiceError("Anthropic adapter not configured (missing API key)")
+
+        return self.anthropic_adapter.call_sync(
+            prompt=prompt,
+            reasoning_effort=reasoning_effort,
+            json_mode=json_mode,
+            json_schema=json_schema,
+            schema_name=schema_name,
+        )
+
     def call_gpt_5_2(
         self,
         prompt: str,
@@ -172,6 +211,7 @@ class LLMService:
     ) -> Dict[str, Any]:
         """
         Call GPT-5.2 with extended reasoning and optional strict structured output.
+        If provider is anthropic/anthropic-haiku and adapter is available, delegates to Claude.
 
         GPT-5.2 is the newest flagship model with improvements over GPT-5.1:
         - Better token efficiency on medium-to-complex tasks
@@ -207,6 +247,16 @@ class LLMService:
         Raises:
             LLMServiceError: If API call fails after retries
         """
+        # Delegate to Anthropic if provider is set
+        if self.provider in ("anthropic", "anthropic-haiku") and self.anthropic_adapter:
+            return self.call_anthropic(
+                prompt=prompt,
+                reasoning_effort=reasoning_effort,
+                json_mode=json_mode,
+                json_schema=json_schema,
+                schema_name=schema_name,
+            )
+
         logger.info(json.dumps({
             "step": "LLM_CALL",
             "status": "starting",

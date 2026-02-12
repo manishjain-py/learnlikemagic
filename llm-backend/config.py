@@ -49,9 +49,17 @@ class Settings(BaseSettings):
         default="",
         description="Google Gemini API key (optional)"
     )
+    anthropic_api_key: str = Field(
+        default="",
+        description="Anthropic API key (optional, for Claude models)"
+    )
     llm_model: str = Field(
         default="gpt-4o-mini",
         description="OpenAI model to use"
+    )
+    app_llm_provider: str = Field(
+        default="openai",
+        description="LLM provider for tutor: openai, anthropic, or anthropic-haiku"
     )
 
     # Application Settings

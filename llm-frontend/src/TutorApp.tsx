@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   createSession,
   submitStep,
@@ -328,7 +329,9 @@ function App() {
         <div className="messages">
           {messages.map((msg, idx) => (
             <div key={idx} className={`message ${msg.role}`}>
-              <div className="message-content">{msg.content}</div>
+              <div className="message-content">
+                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              </div>
               {msg.hints && msg.hints.length > 0 && (
                 <div className="hints-container">
                   <button
