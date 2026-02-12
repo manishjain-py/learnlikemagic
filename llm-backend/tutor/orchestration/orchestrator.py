@@ -103,6 +103,8 @@ class TeacherOrchestrator:
         try:
             # Check if session is already complete
             if session.is_complete:
+                # Still record the student's message in history
+                session.add_message(create_student_message(student_message))
                 return TurnResult(
                     response="This lesson is complete! Start a new session to keep learning. 🎉",
                     intent="session_complete",
@@ -270,13 +272,19 @@ class TeacherOrchestrator:
             session.off_topic_count += 1
             changed = True
 
-        # 6. Handle session completion
+        # 6. Handle session completion (only honor on final step to prevent premature endings)
         if output.session_complete:
-            # Advance past final step to trigger is_complete
-            while not session.is_complete:
-                if not session.advance_step():
-                    break
-            changed = True
+            total = session.topic.study_plan.total_steps if session.topic else 0
+            if session.current_step >= total:
+                # Advance past final step to trigger is_complete
+                while not session.is_complete:
+                    if not session.advance_step():
+                        break
+                changed = True
+            else:
+                logger.warning(
+                    f"LLM signaled session_complete on step {session.current_step}/{total}, ignoring"
+                )
 
         return changed
 
