@@ -1,28 +1,31 @@
-"""Session management business logic."""
+"""Session management business logic — new single-agent architecture."""
+
+import json
+import logging
 from typing import Optional, List
 from sqlalchemy.orm import Session as DBSession
 from uuid import uuid4
-import logging
 
-logger = logging.getLogger(__name__)
-
+from config import get_settings
 from shared.models import (
     CreateSessionRequest,
     CreateSessionResponse,
     StepRequest,
     StepResponse,
     SummaryResponse,
-    TutorState,
-    Student,
-    Goal,
-    HistoryEntry,
-    GradingResult
+    GradingResult,
 )
+from shared.models.entities import StudyPlan as StudyPlanRecord
 from shared.repositories import SessionRepository, EventRepository, TeachingGuidelineRepository
-from tutor.orchestration import WorkflowBridge  # New workflow
-from shared.utils.formatting import extract_last_turn, build_turn_response
-from shared.utils.constants import MAX_STEPS, MASTERY_COMPLETION_THRESHOLD
+from shared.services.llm_service import LLMService
 from shared.utils.exceptions import SessionNotFoundException, GuidelineNotFoundException
+
+from tutor.orchestration import TeacherOrchestrator
+from tutor.models.session_state import SessionState, create_session
+from tutor.models.messages import StudentContext, create_teacher_message
+from tutor.services.topic_adapter import convert_guideline_to_topic
+
+logger = logging.getLogger("tutor.session_service")
 
 
 class SessionService:
@@ -34,234 +37,211 @@ class SessionService:
         self.event_repo = EventRepository(db)
         self.guideline_repo = TeachingGuidelineRepository(db)
 
-        # Use new TutorWorkflow instead of old GraphService
-        # This gives us: LangGraph, logging, bug fixes, and the EVALUATOR agent!
-        self.graph_service = WorkflowBridge(db)
+        # Initialize LLM service and orchestrator
+        settings = get_settings()
+        self.llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+            provider=settings.app_llm_provider,
+        )
+        self.orchestrator = TeacherOrchestrator(self.llm_service)
 
     def create_new_session(self, request: CreateSessionRequest) -> CreateSessionResponse:
-        """
-        Create a new learning session.
-
-        Steps:
-        1. Validate guideline exists
-        2. Initialize tutor state
-        3. Generate first question via graph
-        4. Persist session
-        5. Return first turn
-
-        Args:
-            request: CreateSessionRequest with student and goal data
-
-        Returns:
-            CreateSessionResponse with session_id and first_turn
-
-        Raises:
-            GuidelineNotFoundException: If guideline_id not found
-        """
+        """Create a new learning session with the new tutor architecture."""
         # Validate guideline exists
         guideline = self.guideline_repo.get_guideline_by_id(request.goal.guideline_id)
         if not guideline:
             raise GuidelineNotFoundException(request.goal.guideline_id)
 
-        # Generate session ID
+        # Load study plan from DB if available
+        study_plan_record = (
+            self.db.query(StudyPlanRecord)
+            .filter(StudyPlanRecord.guideline_id == request.goal.guideline_id)
+            .first()
+        )
+
+        # Convert DB guideline to new Topic model
+        topic = convert_guideline_to_topic(guideline, study_plan_record)
+
+        # Create student context
+        student_context = StudentContext(
+            grade=request.student.grade,
+            board=request.goal.syllabus.split(" ")[0] if request.goal.syllabus else "CBSE",
+            language_level="simple" if request.student.grade <= 5 else "standard",
+        )
+
+        # Create SessionState
+        session = create_session(topic=topic, student_context=student_context)
         session_id = str(uuid4())
-        logger.info(f"Generated session_id: {session_id}")
+        session.session_id = session_id
 
-        # Initialize tutor state
-        tutor_state = TutorState(
-            session_id=session_id,
-            student=request.student,
-            goal=request.goal,
-            step_idx=0,
-            history=[],
-            evidence=[],
-            mastery_score=0.5,
-            last_grading=None,
-            next_action="present"
-        )
-        logger.info(f"Initialized tutor_state: {tutor_state}")
+        logger.info(f"Created session {session_id} for topic {topic.topic_name}")
 
-        # Generate first question using graph service
-        tutor_state = self.graph_service.execute_present_node(
-            tutor_state,
-            teaching_guideline=guideline.guideline
-        )
-        logger.info(f"Generated first question: {tutor_state}")
+        # Generate welcome message
+        import asyncio
+        welcome = asyncio.run(self.orchestrator.generate_welcome_message(session))
 
-        # Persist session
-        self.session_repo.create(
-            session_id=session_id,
-            state=tutor_state
-        )
+        # Add welcome message to conversation history
+        session.add_message(create_teacher_message(welcome))
+
+        # Persist to DB
+        self._persist_session(session_id, session, request)
 
         # Log event
         self.event_repo.log(
             session_id=session_id,
-            node="present",
-            step_idx=tutor_state.step_idx,
-            payload={"action": "initial_question"}
+            node="welcome",
+            step_idx=session.current_step,
+            payload={"action": "session_created"},
         )
 
-        # Build response
-        message, hints = extract_last_turn(tutor_state.history)
         first_turn = {
-            "message": message,
-            "hints": hints,
-            "step_idx": tutor_state.step_idx
+            "message": welcome,
+            "hints": [],
+            "step_idx": session.current_step,
         }
 
-        return CreateSessionResponse(
-            session_id=session_id,
-            first_turn=first_turn
-        )
+        return CreateSessionResponse(session_id=session_id, first_turn=first_turn)
 
     def process_step(self, session_id: str, request: StepRequest) -> StepResponse:
-        """
-        Process a student's answer and generate next turn.
-
-        Steps:
-        1. Load session
-        2. Add student reply to history
-        3. Execute graph workflow (check → route → advance/remediate → present)
-        4. Update session state
-        5. Log events
-        6. Return next turn
-
-        Args:
-            session_id: Session identifier
-            request: StepRequest with student_reply
-
-        Returns:
-            StepResponse with next_turn, routing, and last_grading
-
-        Raises:
-            SessionNotFoundException: If session_id not found
-        """
-        # Load session
-        session = self.session_repo.get_by_id(session_id)
-        if not session:
+        """Process a student's answer using the new orchestrator."""
+        # Load session from DB
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
             raise SessionNotFoundException(session_id)
 
-        tutor_state = TutorState.model_validate_json(session.state_json)
+        # Deserialize SessionState
+        session = SessionState.model_validate_json(db_session.state_json)
 
-        # Add student reply to history
-        tutor_state.history.append(HistoryEntry(
-            role="student",
-            msg=request.student_reply,
-            meta=None
-        ))
-
-        # Execute graph workflow
-        tutor_state, routing = self.graph_service.execute_step_workflow(
-            tutor_state,
-            student_reply=request.student_reply
+        # Process turn via orchestrator
+        import asyncio
+        turn_result = asyncio.run(
+            self.orchestrator.process_turn(session, request.student_reply)
         )
 
         # Update database
-        self.session_repo.update(
-            session_id=session_id,
-            state=tutor_state
-        )
+        self._update_session_db(session_id, session)
 
-        # Log events
+        # Log event
         self.event_repo.log(
             session_id=session_id,
-            node="check",
-            step_idx=tutor_state.step_idx,
-            payload={"grading": tutor_state.last_grading.model_dump() if tutor_state.last_grading else {}}
+            node="turn",
+            step_idx=session.current_step,
+            payload={
+                "intent": turn_result.intent,
+                "state_changed": turn_result.state_changed,
+            },
         )
 
-        self.event_repo.log(
-            session_id=session_id,
-            node=routing,
-            step_idx=tutor_state.step_idx,
-            payload={"routing": routing}
-        )
+        # Build response (maintain same REST contract)
+        next_turn = {
+            "message": turn_result.response,
+            "hints": [],
+            "step_idx": session.current_step,
+            "mastery_score": session.overall_mastery,
+            "is_complete": session.is_complete,
+        }
 
-        # Build response
-        next_turn = build_turn_response(
-            history=tutor_state.history,
-            step_idx=tutor_state.step_idx,
-            mastery_score=tutor_state.mastery_score
-        )
+        # Map intent to routing for backward compatibility
+        routing = "Advance" if turn_result.intent == "continuation" else "Continue"
+
+        # Build grading result if answer was evaluated
+        last_grading = None
+        if turn_result.intent == "answer":
+            logs = self.orchestrator.agent_logs.get_recent_logs(session.session_id, limit=1)
+            if logs:
+                output = logs[-1].output or {}
+                answer_correct = output.get("answer_correct")
+                if answer_correct is not None:
+                    last_grading = GradingResult(
+                        score=0.9 if answer_correct else 0.3,
+                        rationale=output.get("reasoning", ""),
+                        labels=output.get("misconceptions_detected", []),
+                        confidence=0.8,
+                    )
 
         return StepResponse(
             next_turn=next_turn,
-            routing=routing.capitalize(),
-            last_grading=tutor_state.last_grading
+            routing=routing,
+            last_grading=last_grading,
         )
 
     def get_summary(self, session_id: str) -> SummaryResponse:
-        """
-        Generate session summary with performance metrics and suggestions.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            SummaryResponse with steps, mastery, misconceptions, suggestions
-
-        Raises:
-            SessionNotFoundException: If session_id not found
-        """
-        session = self.session_repo.get_by_id(session_id)
-        if not session:
+        """Generate session summary."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
             raise SessionNotFoundException(session_id)
 
-        tutor_state = TutorState.model_validate_json(session.state_json)
+        session = SessionState.model_validate_json(db_session.state_json)
 
-        # Extract misconceptions from events
-        events = self.event_repo.get_for_session(session_id)
-        misconceptions_seen = set()
-
-        for event in events:
-            if event.node == "check" and event.payload_json:
-                import json
-                payload = json.loads(event.payload_json)
-                if "grading" in payload:
-                    grading = payload["grading"]
-                    misconceptions_seen.update(grading.get("labels", []))
-
-        # Generate suggestions based on mastery
-        suggestions = self._generate_suggestions(tutor_state, misconceptions_seen)
+        misconceptions_seen = [m.description for m in session.misconceptions]
+        suggestions = self._generate_suggestions(session, misconceptions_seen)
 
         return SummaryResponse(
-            steps_completed=tutor_state.step_idx,
-            mastery_score=round(tutor_state.mastery_score, 2),
-            misconceptions_seen=list(misconceptions_seen),
-            suggestions=suggestions
+            steps_completed=session.current_step - 1,
+            mastery_score=round(session.overall_mastery, 2),
+            misconceptions_seen=misconceptions_seen,
+            suggestions=suggestions,
         )
+
+    def _persist_session(
+        self,
+        session_id: str,
+        session: SessionState,
+        request: CreateSessionRequest,
+    ) -> None:
+        """Persist new session to DB using existing schema."""
+        from shared.models.entities import Session as SessionModel
+        from datetime import datetime
+
+        db_record = SessionModel(
+            id=session_id,
+            student_json=request.student.model_dump_json(),
+            goal_json=request.goal.model_dump_json(),
+            state_json=session.model_dump_json(),
+            mastery=session.overall_mastery,
+            step_idx=session.current_step,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        self.db.add(db_record)
+        self.db.commit()
+        self.db.refresh(db_record)
+
+    def _update_session_db(self, session_id: str, session: SessionState) -> None:
+        """Update existing session in DB."""
+        from shared.models.entities import Session as SessionModel
+        from datetime import datetime
+
+        db_record = self.db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if db_record:
+            db_record.state_json = session.model_dump_json()
+            db_record.mastery = session.overall_mastery
+            db_record.step_idx = session.current_step
+            db_record.updated_at = datetime.utcnow()
+            self.db.commit()
 
     def _generate_suggestions(
         self,
-        state: TutorState,
-        misconceptions: set
+        session: SessionState,
+        misconceptions: List[str],
     ) -> List[str]:
-        """
-        Generate personalized suggestions based on performance.
-
-        Args:
-            state: Current tutor state
-            misconceptions: Set of misconception labels seen
-
-        Returns:
-            List of suggestion strings
-        """
         suggestions = []
+        mastery = session.overall_mastery
+        topic_name = session.topic.topic_name if session.topic else "the topic"
 
-        if state.mastery_score >= MASTERY_COMPLETION_THRESHOLD:
-            suggestions.append(f"Excellent work on {state.goal.topic}!")
+        if mastery >= 0.85:
+            suggestions.append(f"Excellent work on {topic_name}!")
             suggestions.append("You're ready to move to more advanced topics.")
-        elif state.mastery_score >= 0.7:
+        elif mastery >= 0.7:
             suggestions.append("Good progress! Try 3-5 more practice problems.")
-            if state.goal.learning_objectives:
-                suggestions.append(f"Focus on: {state.goal.learning_objectives[0]}")
         else:
             suggestions.append("Keep practicing! Review the examples.")
-            suggestions.append(f"Revisit the concepts around {state.goal.topic}")
+            suggestions.append(f"Revisit the concepts around {topic_name}")
 
         if misconceptions:
-            top_misconceptions = list(misconceptions)[:2]
-            suggestions.append(f"Work on understanding: {', '.join(top_misconceptions)}")
+            top = misconceptions[:2]
+            suggestions.append(f"Work on understanding: {', '.join(top)}")
 
         return suggestions

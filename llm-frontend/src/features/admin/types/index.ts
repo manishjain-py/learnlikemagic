@@ -151,6 +151,83 @@ export interface GuidelineFilters {
   };
 }
 
+// ===== Evaluation Types =====
+
+export interface EvalRunSummary {
+  run_id: string;
+  timestamp: string;
+  topic_id: string;
+  message_count: number;
+  avg_score: number | null;
+  scores: Record<string, number>;
+  source?: string;
+  source_session_id?: string;
+}
+
+export interface EvalMessage {
+  role: string;
+  content: string;
+  turn: number;
+  timestamp: string;
+}
+
+export interface EvalProblem {
+  title: string;
+  turns: number[];
+  description: string;
+  quote: string;
+  severity: string;
+  root_cause: string;
+}
+
+export interface EvalResult {
+  scores: Record<string, number>;
+  dimension_analysis: Record<string, string>;
+  problems: EvalProblem[];
+  summary?: string;
+  avg_score: number;
+}
+
+export interface EvalRunDetail {
+  run_id: string;
+  config: Record<string, any>;
+  messages: EvalMessage[];
+  message_count: number;
+  evaluation: EvalResult | null;
+}
+
+export interface EvalStatus {
+  status: string;
+  run_id: string | null;
+  detail: string;
+  turn: number;
+  max_turns: number;
+  error: string | null;
+}
+
+export interface StartEvalRequest {
+  topic_id: string;
+  persona_file?: string;
+  max_turns?: number;
+}
+
+export interface SessionSummary {
+  session_id: string;
+  created_at: string | null;
+  topic_name: string | null;
+  message_count: number;
+  mastery: number;
+}
+
+export interface SessionListResponse {
+  sessions: SessionSummary[];
+  total: number;
+}
+
+export interface EvaluateSessionRequest {
+  session_id: string;
+}
+
 // ===== Study Plan Types =====
 
 export interface StudyPlanTodoItem {

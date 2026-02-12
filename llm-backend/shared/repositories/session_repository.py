@@ -1,9 +1,13 @@
 """Session data access layer."""
+import json
+import logging
 from typing import Optional
 from sqlalchemy.orm import Session as DBSession
 from datetime import datetime
 
 from shared.models import Session as SessionModel, TutorState
+
+logger = logging.getLogger(__name__)
 
 
 class SessionRepository:
@@ -69,6 +73,40 @@ class SessionRepository:
             session.step_idx = state.step_idx
             session.updated_at = datetime.utcnow()
             self.db.commit()
+
+    def list_all(self) -> list[dict]:
+        """Return lightweight session summaries for all sessions."""
+        rows = (
+            self.db.query(SessionModel)
+            .order_by(SessionModel.created_at.desc())
+            .all()
+        )
+        results = []
+        for row in rows:
+            try:
+                state = json.loads(row.state_json)
+            except Exception:
+                state = {}
+
+            # Extract topic name
+            topic_name = None
+            topic = state.get("topic")
+            if topic:
+                topic_name = topic.get("topic_name") or topic.get("name")
+
+            # Message count: prefer full_conversation_log, fall back to conversation_history
+            full_log = state.get("full_conversation_log", [])
+            conv_history = state.get("conversation_history", [])
+            message_count = len(full_log) if full_log else len(conv_history)
+
+            results.append({
+                "session_id": row.id,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "topic_name": topic_name,
+                "message_count": message_count,
+                "mastery": row.mastery or 0.0,
+            })
+        return results
 
     def delete(self, session_id: str) -> bool:
         """

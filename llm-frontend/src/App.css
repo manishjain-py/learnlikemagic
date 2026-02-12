@@ -123,6 +123,86 @@ body {
   color: white;
 }
 
+/* Markdown rendering inside chat messages */
+.message-content p {
+  margin: 0 0 0.5rem;
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.message-content li {
+  margin-bottom: 0.2rem;
+}
+
+.message-content strong {
+  font-weight: 600;
+}
+
+.message-content em {
+  font-style: italic;
+}
+
+.message-content code {
+  background: rgba(0, 0, 0, 0.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.message.student .message-content code {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.message-content blockquote {
+  margin: 0.5rem 0;
+  padding: 0.25rem 0.75rem;
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  opacity: 0.85;
+}
+
+.message.student .message-content blockquote {
+  border-left-color: rgba(255, 255, 255, 0.4);
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.message-content table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.9em;
+}
+
+.message-content th,
+.message-content td {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0.3rem 0.6rem;
+}
+
+.message.student .message-content th,
+.message.student .message-content td {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.message-content hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 0.5rem 0;
+}
+
 .message.loading {
   padding: 1rem;
 }

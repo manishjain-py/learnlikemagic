@@ -1,2 +1,2 @@
 """Tutor API routes."""
-from tutor.api import sessions, logs, curriculum
+from tutor.api import sessions, curriculum

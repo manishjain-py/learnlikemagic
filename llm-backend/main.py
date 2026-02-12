@@ -13,7 +13,8 @@ from database import get_db_manager
 from book_ingestion.api import routes as admin_routes
 from study_plans.api import admin as admin_guidelines
 from shared.api import health
-from tutor.api import curriculum, sessions, logs
+from tutor.api import curriculum, sessions
+from evaluation.api import router as evaluation_router
 
 # Validate configuration on startup
 validate_required_settings()
@@ -71,7 +72,7 @@ else:
 # Initialize FastAPI app
 app = FastAPI(
     title="LearnLikeMagic LLM Backend",
-    description="AI-powered adaptive tutoring API with LangGraph orchestration",
+    description="AI-powered adaptive tutoring API with single master tutor architecture",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -90,7 +91,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(curriculum.router)
 app.include_router(sessions.router)
-app.include_router(logs.router)  # Logs API endpoints
+app.include_router(evaluation_router)  # Evaluation pipeline endpoints
 app.include_router(admin_routes.router)  # Book ingestion admin routes
 app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
 

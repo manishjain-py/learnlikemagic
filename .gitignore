@@ -45,6 +45,9 @@ build/
 .DS_Store
 Thumbs.db
 
+# Evaluation runs (generated output)
+llm-backend/evaluation/runs/
+
 # Test coverage
 .coverage
 htmlcov/

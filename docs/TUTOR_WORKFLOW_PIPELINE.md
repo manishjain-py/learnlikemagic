@@ -8,17 +8,18 @@
 
 | Aspect | Details |
 |--------|---------|
-| **What it captures** | End-to-end workflow from topic selection -> session creation -> 3-agent teaching loop -> evaluation -> completion |
+| **What it captures** | End-to-end workflow from topic selection -> session creation -> single master tutor teaching loop -> completion |
 | **Audience** | New and existing developers needing complete context on this feature |
-| **Scope** | Frontend components, LangGraph workflow, 3 agents (PLANNER/EXECUTOR/EVALUATOR), state management, API endpoints |
+| **Scope** | Frontend components, single master tutor architecture, state management, REST + WebSocket APIs, evaluation pipeline |
 | **Maintenance** | Update this doc whenever tutor workflow code changes to keep it accurate |
 
 **Key Code Locations:**
 - Frontend Tutor: `llm-frontend/src/TutorApp.tsx`, `llm-frontend/src/api.ts`
 - Frontend Admin: `llm-frontend/src/features/admin/`
-- Backend Tutor: `llm-backend/tutor/` (agents, orchestration, services, api)
-- Backend Shared: `llm-backend/shared/` (llm_service, health api)
+- Backend Tutor: `llm-backend/tutor/` (agents, orchestration, services, api, models, prompts, utils)
+- Backend Shared: `llm-backend/shared/` (llm_service, anthropic_adapter, health api)
 - Backend Study Plans: `llm-backend/study_plans/services/`
+- Backend Evaluation: `llm-backend/evaluation/`
 - Admin API: `llm-backend/study_plans/api/admin.py`, `llm-backend/book_ingestion/api/routes.py`
 
 ---
@@ -31,47 +32,49 @@
 |   Routes: / (tutor), /admin/books, /admin/guidelines                     |
 |   Tutor: Subject -> Topic -> Subtopic Selection -> Chat Interface        |
 +-------------------------------------+-----------------------------------+
-                                      | REST API
+                                      | REST + WebSocket
 +-------------------------------------v-----------------------------------+
 |                         BACKEND (FastAPI)                                |
-|   Routes: /sessions, /sessions/{id}/step, /sessions/{id}/summary         |
-|           /curriculum, /admin/guidelines/*, /admin/books/*               |
+|   REST:  /sessions, /sessions/{id}/step, /sessions/{id}/summary         |
+|   WS:   /sessions/ws/{session_id}                                       |
+|   Eval: /api/evaluation/*                                               |
 |                                                                          |
-|   SessionService -> SessionWorkflowAdapter -> TutorWorkflow (LangGraph)  |
+|   SessionService -> TeacherOrchestrator -> Master Tutor Agent            |
 |                                                                          |
 |   +---------------------------------------------------------------+     |
-|   |                    LANGGRAPH WORKFLOW                          |     |
+|   |               SINGLE MASTER TUTOR ARCHITECTURE                |     |
 |   |                                                                |     |
-|   |  START -> ROUTER --+-> PLANNER -> EXECUTOR -+-> END            |     |
-|   |                    |                        |                  |     |
-|   |                    +-> EVALUATOR -+--> replan -> PLANNER       |     |
-|   |                    |              +--> continue -> EXECUTOR    |     |
-|   |                    |              +--> end -> END              |     |
-|   |                    |                                           |     |
-|   |                    +-> EXECUTOR (edge case)                    |     |
+|   |   Student Message                                              |     |
+|   |       |                                                        |     |
+|   |       v                                                        |     |
+|   |   SAFETY AGENT (fast gate)                                     |     |
+|   |       |                                                        |     |
+|   |       v                                                        |     |
+|   |   MASTER TUTOR (single LLM call handles everything)            |     |
+|   |       |                                                        |     |
+|   |       v                                                        |     |
+|   |   STATE UPDATES (mastery, misconceptions, step advance)        |     |
+|   |       |                                                        |     |
+|   |       v                                                        |     |
+|   |   Response to Student                                          |     |
 |   +---------------------------------------------------------------+     |
 +-----------------------------------------+-------------------------------+
                                           |
 +-----------------------------------------v-------------------------------+
-|   PostgreSQL: sessions, events, teaching_guidelines, checkpoint_*       |
+|   PostgreSQL: sessions, events, teaching_guidelines, study_plans         |
 +-------------------------------------------------------------------------+
 ```
 
-## The 3-Agent System
+## The Agent System
 
 | Agent | Model | Reasoning | Structured Output | Responsibility |
 |-------|-------|-----------|-------------------|----------------|
-| **PLANNER** | GPT-5.2 | high | json_schema (strict) | Creates/updates study plan (3-5 steps), adapts to student profile |
-| **EXECUTOR** | GPT-5.2 | none | json_schema (strict) | Generates teaching messages, questions, hints based on current plan |
-| **EVALUATOR** | GPT-5.2 | medium | json_schema (strict) | Evaluates responses, updates step statuses, decides routing |
+| **SAFETY** | GPT-5.2 | none | json_schema (strict) | Fast content moderation gate |
+| **MASTER TUTOR** | GPT-5.2 | none | json_schema (strict) | All teaching: explain, ask questions, evaluate answers, track mastery, advance steps |
 
-**Notes:**
-- A ROUTER node provides intelligent entry-point routing but is not an LLM-based agent
-- All agents use GPT-5.2 with strict `json_schema` structured output for guaranteed schema adherence
-- PLANNER uses "high" reasoning for deep strategic thinking; EXECUTOR uses "none" for low-latency execution; EVALUATOR uses "medium" for balanced evaluation
-- PLANNER has a safety guard: if plan exists and `replan_needed=False`, returns current state unchanged
-- PLANNER uses a hardcoded test student profile for experimentation (see `planner_agent.py:100-110`)
-- Pre-computed strict schemas are defined in `agents/llm_schemas.py`
+**Key difference from old architecture:** The old 3-agent pipeline (PLANNER -> EXECUTOR -> EVALUATOR) has been replaced with a single Master Tutor agent that handles all teaching in one LLM call, producing more natural conversations.
+
+**Provider support:** The system supports OpenAI (GPT-5.2) and Anthropic (Claude) via the `APP_LLM_PROVIDER` environment variable.
 
 ---
 
@@ -81,7 +84,8 @@
 |-------|--------|----------|---------|
 | 1 | Select Subject/Topic/Subtopic | `GET /curriculum` | TeachingGuidelineRepository |
 | 2 | Create Session | `POST /sessions` | SessionService.create_new_session() |
-| 3 | Submit Answer | `POST /sessions/{id}/step` | SessionService.process_step() |
+| 3 | Submit Answer (REST) | `POST /sessions/{id}/step` | SessionService.process_step() |
+| 3a | Chat (WebSocket) | `WS /sessions/ws/{id}` | websocket_endpoint() |
 | 4 | Get Summary | `GET /sessions/{id}/summary` | SessionService.get_summary() |
 
 ---
@@ -107,45 +111,18 @@ Frontend: TutorApp.tsx
     +-> Step 4: User selects subtopic -> Create session
 ```
 
-**Hardcoded Values (Frontend):**
-```typescript
-const COUNTRY = 'India';
-const BOARD = 'CBSE';
-const GRADE = 3;
-```
-
 ---
 
 ## Pre-Built Study Plans
 
-Before a session starts, the system attempts to load a **pre-built study plan** for faster session initialization. This is an optimization that avoids calling the PLANNER agent when a plan already exists.
+Before a session starts, the system loads a **pre-built study plan** from the database. The study plan defines the teaching sequence (explain -> check -> practice steps).
 
-### Study Plan Generation Pipeline
+### Study Plan Conversion
 ```
-Teaching Guideline -> Generator (GPT-5.2) -> Reviewer (GPT-4o) -> [Improver] -> DB
-```
-
-**Services:**
-| Service | Purpose |
-|---------|---------|
-| `StudyPlanOrchestrator` | Coordinates plan generation/storage, provides get/generate API |
-| `StudyPlanGeneratorService` | Generates plans using GPT-5.2 with high reasoning |
-| `StudyPlanReviewerService` | Reviews plans using GPT-4o, provides feedback |
-
-### Pre-Built Plan Loading Flow
-```
-SessionWorkflowAdapter.execute_present_node()
-    |
-    +-> 1. Check if pre-built plan exists for guideline_id
-    |       StudyPlanOrchestrator.get_study_plan(guideline_id)
-    |
-    +-> 2a. If plan exists: Pass to TutorWorkflow.start_session(prebuilt_plan=plan)
-    |       -> ROUTER -> EXECUTOR (skips PLANNER)
-    |
-    +-> 2b. If no plan: Generate on-demand or use PLANNER agent
+DB StudyPlan.plan_json -> topic_adapter.convert_guideline_to_topic() -> Topic model
 ```
 
-**Note:** Pre-built plans use the same structure as PLANNER output (`todo_list`, `metadata`).
+The `topic_adapter` converts the DB format (todo_list with title/description) into the new model format (StudyPlanStep with type/concept/content_hint).
 
 ---
 
@@ -164,69 +141,14 @@ Body: {
 ```
 SessionService.create_new_session()
     |
-    +-> 1. Load teaching guideline from DB (500-2000 words)
-    +-> 2. Generate session_id (UUID)
-    +-> 3. Initialize TutorState
-    |
-    +-> 4. SessionWorkflowAdapter.execute_present_node()
-            |
-            +-> 4a. Try to load pre-built study plan (if guideline_id provided)
-            |       StudyPlanOrchestrator.get_study_plan() or generate_study_plan()
-            |
-            +-> TutorWorkflow.start_session(prebuilt_plan=plan_or_None)
-                    |
-                    +-> If prebuilt_plan: ROUTER -> EXECUTOR -> END (skip PLANNER)
-                    +-> If no plan: ROUTER -> PLANNER -> EXECUTOR -> END
-```
-
-### LangGraph Execution (New Session)
-
-**ROUTER** (`route_entry`):
-```python
-if not study_plan.todo_list:
-    return "planner"  # New session -> create plan
-```
-
-**PLANNER** (`planner_agent.py`):
-```python
-# Input: guidelines, student_profile, topic_info
-# Output: study_plan with todo_list (3-5 steps)
-
-study_plan = {
-    "todo_list": [
-        {
-            "step_id": "uuid",
-            "title": "Pizza Fraction Fun",
-            "description": "Introduce fractions using pizza slices",
-            "teaching_approach": "Visual + gamification",
-            "success_criteria": "Student correctly compares 3 fraction pairs",
-            "status": "pending",  # pending | in_progress | completed | blocked
-            "status_info": {
-                "questions_asked": 0,
-                "questions_correct": 0,
-                "attempts": 0
-            }
-        },
-        # ... more steps
-    ],
-    "metadata": {
-        "plan_version": 1,
-        "replan_count": 0,
-        "max_replans": 3
-    }
-}
-```
-
-**EXECUTOR** (`executor_agent.py`):
-```python
-# Input: study_plan, current_step, conversation
-# Output: Teaching message added to conversation
-
-message = {
-    "role": "tutor",
-    "content": "Imagine a pizza cut into 4 equal slices...",
-    "timestamp": "2024-11-19T14:20:00Z"
-}
+    +-> 1. Load teaching guideline from DB
+    +-> 2. Load study plan from DB (if available)
+    +-> 3. Convert to Topic model via topic_adapter
+    +-> 4. Create StudentContext (grade, board, language_level)
+    +-> 5. Create SessionState
+    +-> 6. Generate welcome message via orchestrator
+    +-> 7. Persist session to DB
+    +-> 8. Return {session_id, first_turn}
 ```
 
 ### Response
@@ -234,10 +156,9 @@ message = {
 {
   "session_id": "uuid-456",
   "first_turn": {
-    "message": "Imagine a pizza...",
-    "hints": ["Count the slices each person has"],
-    "step_idx": 0,
-    "mastery_score": 0.5
+    "message": "Welcome! I'm excited to learn about fractions with you...",
+    "hints": [],
+    "step_idx": 1
   }
 }
 ```
@@ -246,103 +167,83 @@ message = {
 
 ## Phase 3: Student Response Loop
 
-### Entry Point
+### REST Entry Point
 ```
 POST /sessions/{session_id}/step
-Body: {student_reply: "I have 3 slices and you have 1, so I have more!"}
+Body: {student_reply: "I think 5/8 is bigger because 5 is more than 3"}
 ```
 
-### Flow
+### WebSocket Entry Point
 ```
-SessionService.process_step()
+WS /sessions/ws/{session_id}
+Send: {"type": "chat", "payload": {"message": "I think 5/8 is bigger..."}}
+```
+
+### Orchestrator Flow
+```
+TeacherOrchestrator.process_turn(session, student_message)
     |
-    +-> 1. Load session from DB
-    +-> 2. Add student message to history
+    +-> 1. Increment turn, add student message to history
+    +-> 2. Build AgentContext
     |
-    +-> 3. SessionWorkflowAdapter.execute_step_workflow()
-            |
-            +-> TutorWorkflow.submit_response()
-                    |
-                    +-> LangGraph: START -> ROUTER -> EVALUATOR -> [route] -> ...
+    +-> 3. SAFETY AGENT (fast check)
+    |       |-> If unsafe: return guidance, log safety flag
+    |       |-> If safe: continue
+    |
+    +-> 4. MASTER TUTOR AGENT (single LLM call)
+    |       Input: system prompt (study plan, guidelines, 8 teaching rules)
+    |              + turn prompt (current state, mastery, history, student message)
+    |       Output: TutorTurnOutput {
+    |           response,           # student-facing text
+    |           intent,             # answer/question/confusion/off_topic/continuation
+    |           answer_correct,     # true/false/null
+    |           misconceptions_detected,
+    |           mastery_signal,     # low/medium/high
+    |           advance_to_step,    # step number or null
+    |           mastery_updates,    # {concept: score}
+    |           question_asked,     # question text or null
+    |           expected_answer,    # expected answer or null
+    |           turn_summary,       # one-line summary
+    |           reasoning           # internal reasoning
+    |       }
+    |
+    +-> 5. APPLY STATE UPDATES
+    |       - Update mastery estimates
+    |       - Track misconceptions
+    |       - Track questions (set/clear)
+    |       - Advance step if needed
+    |       - Track off-topic count
+    |
+    +-> 6. Add teacher response to conversation history
+    +-> 7. Update session summary (turn timeline, progress trend)
+    +-> 8. Return TurnResult
 ```
 
-### LangGraph Execution (Student Response)
-
-**ROUTER** (`route_entry`):
-```python
-if conversation[-1].role == "student":
-    return "evaluator"  # Student answered -> evaluate
-```
-
-**EVALUATOR** (`evaluator_agent.py`) - The Traffic Controller:
-
-5 responsibilities in one LLM call:
-
-```python
-# Output structure:
-{
-    # 1. EVALUATION
-    "score": 0.95,              # 0.0-1.0
-    "feedback": "Excellent! You correctly compared...",
-    "reasoning": "Student understood numerator comparison",
-
-    # 2. STEP STATUS UPDATES
-    "updated_step_statuses": {
-        "step-uuid-1": "in_progress"  # or "completed" | "blocked"
-    },
-    "updated_status_info": {
-        "step-uuid-1": {
-            "questions_asked": 2,
-            "questions_correct": 2,
-            "attempts": 2
-        }
-    },
-
-    # 3. ASSESSMENT TRACKING
-    "assessment_note": "2024-11-19 14:30 - Student correctly compared fractions...",
-
-    # 4. OFF-TOPIC HANDLING
-    "was_off_topic": false,
-    "off_topic_response": null,  # or friendly redirect
-
-    # 5. REPLANNING DECISION
-    "replan_needed": false,
-    "replan_reason": null  # or "Student failed 3x on same concept"
-}
-```
-
-**Routing After Evaluation** (`route_after_evaluation`):
-```python
-if replan_needed and replan_count < max_replans:
-    return "replan"  # -> PLANNER (update plan)
-elif all_steps_completed:
-    return "end"     # -> Session complete
-else:
-    return "continue"  # -> EXECUTOR (next question)
-```
-
-**EXECUTOR** (if continuing):
-- Generates next question for current step
-- Or moves to next pending step if current completed
-
-### Response
+### REST Response
 ```json
 {
   "next_turn": {
-    "message": "Great! Now Maria has 2/4 of a chocolate bar...",
-    "hints": ["Compare the top numbers"],
-    "step_idx": 0,
+    "message": "Great job! You're right that 5/8 is bigger...",
+    "hints": [],
+    "step_idx": 1,
     "mastery_score": 0.68,
     "is_complete": false
   },
-  "routing": "Advance",
+  "routing": "Continue",
   "last_grading": {
-    "score": 0.95,
-    "rationale": "Student correctly identified...",
+    "score": 0.9,
+    "rationale": "Student correctly compared numerators",
     "labels": [],
-    "confidence": 0.9
+    "confidence": 0.8
   }
 }
+```
+
+### WebSocket Response
+```json
+{"type": "typing", "payload": {}}
+{"type": "assistant", "payload": {"message": "Great job! ..."}}
+{"type": "state_update", "payload": {"state": {"current_step": 1, ...}}}
 ```
 
 ---
@@ -350,9 +251,8 @@ else:
 ## Phase 4: Session Completion & Summary
 
 ### When Session Ends
-- All steps have `status: "completed"` -> EVALUATOR routes to END
-- Max replans exceeded -> END with intervention flag
-- Frontend detects `is_complete: true`
+- All study plan steps completed -> `session.is_complete` returns true
+- Frontend detects `is_complete: true` in response
 
 ### Summary Endpoint
 ```
@@ -367,8 +267,7 @@ GET /sessions/{session_id}/summary
   "misconceptions_seen": ["confusing_denominator_size"],
   "suggestions": [
     "Excellent work on Fractions!",
-    "Ready for more advanced topics",
-    "Review: denominator concepts"
+    "You're ready to move to more advanced topics."
   ]
 }
 ```
@@ -377,158 +276,143 @@ GET /sessions/{session_id}/summary
 
 ## State Management
 
-### SimplifiedState (LangGraph State)
+### SessionState (Pydantic Model)
 ```python
-class SimplifiedState(TypedDict):
-    # Session metadata
+class SessionState(BaseModel):
+    # Identification
     session_id: str
-    created_at: str
-    last_updated_at: str
+    created_at: datetime
+    updated_at: datetime
+    turn_count: int
 
-    # Immutable inputs
-    guidelines: str                    # Teaching guideline (500-2000 words)
-    student_profile: Dict[str, Any]    # {interests, learning_style, grade, ...}
-    topic_info: Dict[str, Any]         # {topic, subtopic, grade}
-    session_context: Dict[str, Any]    # {estimated_duration_minutes}
+    # Topic & Plan
+    topic: Optional[Topic]          # Topic with study plan and guidelines
 
-    # Dynamic state
-    study_plan: Dict[str, Any]         # SOURCE OF TRUTH (todo_list with statuses)
-    assessment_notes: str              # Accumulated text observations
-    conversation: Sequence[Dict]       # Append-only messages
+    # Progress
+    current_step: int               # 1-indexed
+    concepts_covered: List[str]
+    mastery_estimates: Dict[str, float]  # {concept: 0.0-1.0}
 
-    # Control flags
-    replan_needed: bool
-    replan_reason: Optional[str]
+    # Assessment
+    last_question: Optional[Question]
+    awaiting_response: bool
 
-    # Observability
-    agent_logs: Sequence[Dict]         # Append-only execution logs
+    # Memory
+    conversation_history: List[Message]  # Max 10 messages
+    session_summary: SessionSummary      # Turn timeline, concepts, examples, etc.
+
+    # Behavioral
+    off_topic_count: int
+    warning_count: int
+    safety_flags: List[str]
+
+    # Student Context
+    student_context: StudentContext      # grade, board, language_level
 ```
 
-### Step Status Flow
-```
-pending --first question--> in_progress
-                                |
-              +-----------------+-----------------+
-              |                 |                 |
-       success_criteria    needs_more_work     3+ failures
-       FULLY met              continue             |
-              |                 |                 v
-              v                 |             blocked
-         completed              |           (replan trigger)
-              |                 |
-              +--------<--------+
-```
-
-### Dynamic Current Step (No Manual Tracking)
+### Study Plan Model
 ```python
-def get_current_step(plan):
-    # Priority 1: Find step with status="in_progress"
-    # Priority 2: Find first step with status="pending"
-    # Default: None (all completed)
+class StudyPlan(BaseModel):
+    steps: List[StudyPlanStep]
+
+class StudyPlanStep(BaseModel):
+    step_id: int
+    type: str           # "explain", "check", or "practice"
+    concept: str
+    content_hint: Optional[str]
+    question_type: Optional[str]
+    question_count: Optional[int]
 ```
+
+### Step Advancement
+The Master Tutor decides when to advance steps via `advance_to_step` in its output. Step advancement is applied in `_apply_state_updates()`.
 
 ---
 
-## Replanning Logic
+## Master Tutor Prompt System
 
-### Triggers (EVALUATOR decides)
-- 3+ failures on same concept
-- Knowledge gap detected (missing prerequisite)
-- Student excelling (can skip steps)
-- Approach not working
+### System Prompt (set once per session)
+Contains:
+- Study plan (steps with types and concepts)
+- Topic guidelines (learning objectives, prerequisites, misconceptions, teaching approach)
+- 8 teaching rules:
+  1. Follow the study plan
+  2. Advance when student demonstrates understanding
+  3. Track questions asked
+  4. Evaluate answers
+  5. Vary explanation structure
+  6. Stay on topic
+  7. Update mastery signals
+  8. Sound human and natural
 
-### Does NOT Trigger
-- Single mistakes (normal learning)
-- Off-topic responses (redirect instead)
-- Normal progression
-
-### Replan Flow
-```
-EVALUATOR sets replan_needed=true, replan_reason="..."
-    |
-    v
-ROUTER detects replan_needed -> "replan"
-    |
-    v
-PLANNER receives:
-  - Original plan
-  - Assessment notes
-  - Replan reason
-  - Recent conversation
-    |
-    v
-PLANNER outputs:
-  - Updated todo_list (may insert prerequisite steps)
-  - Incremented plan_version
-  - Incremented replan_count
-    |
-    v
-EXECUTOR generates message for new/updated step
-```
+### Turn Prompt (per turn)
+Contains:
+- Current step info (type, concept, content hint)
+- Current mastery estimates
+- Known misconceptions
+- Awaiting answer section (if question was asked)
+- Recent conversation history
+- Current student message
 
 ---
 
 ## Key Files Reference
 
-### Backend - Workflow & State (`llm-backend/tutor/`)
-| File | Purpose |
-|------|---------|
-| `orchestration/tutor_workflow.py` | LangGraph workflow + TutorWorkflow class |
-| `orchestration/workflow_bridge.py` | SessionService ↔ TutorWorkflow bridge |
-| `orchestration/state_converter.py` | TutorState ↔ SimplifiedState conversion |
-| `orchestration/schemas.py` | Validation schemas |
-| `models/state.py` | SimplifiedState TypedDict |
-| `models/helpers.py` | get_current_step(), update_plan_statuses(), calculate_progress() |
-
 ### Backend - Agents (`llm-backend/tutor/agents/`)
 | File | Purpose |
 |------|---------|
-| `base.py` | BaseAgent abstract class with execution + logging |
-| `planner_agent.py` | PLANNER - creates/updates study plans (GPT-5.2 high reasoning) |
-| `executor_agent.py` | EXECUTOR - generates teaching messages (GPT-5.2 no reasoning) |
-| `evaluator_agent.py` | EVALUATOR - evaluates + routes (GPT-5.2 medium reasoning) |
-| `schemas.py` | Pydantic models + pre-computed strict schemas for GPT-5.2 structured output |
+| `base_agent.py` | BaseAgent ABC: execute(), build_prompt(), LLM call with strict schema |
+| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model |
+| `safety.py` | SafetyAgent: fast content moderation gate |
 
-### Backend - Prompts (`llm-backend/tutor/agents/prompts/`)
+### Backend - Orchestration (`llm-backend/tutor/orchestration/`)
 | File | Purpose |
 |------|---------|
-| `planner_initial.txt` | Initial planning prompt |
-| `planner_replan.txt` | Replanning prompt |
-| `executor.txt` | Message generation prompt |
-| `evaluator.txt` | Evaluation prompt (5 sections) |
+| `orchestrator.py` | TeacherOrchestrator: safety -> master_tutor -> state updates |
+
+### Backend - Models (`llm-backend/tutor/models/`)
+| File | Purpose |
+|------|---------|
+| `session_state.py` | SessionState, Question, Misconception, SessionSummary, create_session() |
+| `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep |
+| `messages.py` | Message, StudentContext, WebSocket DTOs, factory functions |
+| `agent_logs.py` | AgentLogEntry, AgentLogStore (in-memory, thread-safe) |
+
+### Backend - Prompts (`llm-backend/tutor/prompts/`)
+| File | Purpose |
+|------|---------|
+| `master_tutor_prompts.py` | System prompt (study plan + guidelines + rules) and turn prompt |
+| `orchestrator_prompts.py` | Welcome message and session summary prompts |
+| `templates.py` | PromptTemplate class, SAFETY_TEMPLATE |
+
+### Backend - Utils (`llm-backend/tutor/utils/`)
+| File | Purpose |
+|------|---------|
+| `schema_utils.py` | get_strict_schema(), make_schema_strict() for OpenAI structured output |
+| `prompt_utils.py` | format_conversation_history(), build_context_section() |
+| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step() |
 
 ### Backend - Services & API
 | File | Purpose |
 |------|---------|
-| `tutor/services/session_service.py` | Session orchestration |
-| `tutor/api/sessions.py` | Session endpoints |
+| `tutor/services/session_service.py` | Session creation, step processing, summary generation |
+| `tutor/services/topic_adapter.py` | DB guideline + study plan -> Topic model conversion |
+| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints |
 | `tutor/api/curriculum.py` | Curriculum discovery endpoints |
-| `tutor/api/logs.py` | Logs API (DEPRECATED - returns empty, logs go to stdout) |
-| `shared/services/llm_service.py` | LLM API wrapper (GPT-5.2 w/strict schema, GPT-5.1, GPT-4o, Gemini) |
-| `shared/api/health.py` | Health check endpoints |
-| `study_plans/api/admin.py` | Admin guidelines API + study plan endpoints |
-| `book_ingestion/api/routes.py` | Book ingestion & page management API |
-| `book_ingestion/services/topic_subtopic_summary_service.py` | Auto-summary generation |
+| `shared/services/llm_service.py` | LLM wrapper (GPT-5.2, GPT-5.1, GPT-4o, Gemini, Anthropic) |
+| `shared/services/anthropic_adapter.py` | Claude API adapter (thinking, tool_use structured output) |
 
-### Backend - Study Plans (`llm-backend/study_plans/services/`)
+### Backend - Evaluation (`llm-backend/evaluation/`)
 | File | Purpose |
 |------|---------|
-| `orchestrator.py` | Coordinates plan generation, storage, and retrieval |
-| `generator_service.py` | Generates plans using GPT-5.2 with strict schema |
-| `reviewer_service.py` | Reviews plans using GPT-4o, provides improvement feedback |
-
-### Frontend
-| File | Purpose |
-|------|---------|
-| `src/TutorApp.tsx` | Main tutor component (selection + chat) |
-| `src/api.ts` | Tutor API client with TypeScript interfaces |
-| `src/App.tsx` | Routing: `/` (tutor), `/admin/books`, `/admin/guidelines` |
-| `src/features/admin/pages/BooksDashboard.tsx` | Book list with status badges |
-| `src/features/admin/pages/BookDetail.tsx` | Book management (pages + guidelines) |
-| `src/features/admin/pages/GuidelinesReview.tsx` | Guidelines approval with filters |
-| `src/features/admin/components/GuidelinesPanel.tsx` | Generate -> Finalize -> Approve workflow |
-| `src/features/admin/api/adminApi.ts` | Admin API client |
-| `src/features/admin/types/index.ts` | TypeScript interfaces for admin |
+| `config.py` | EvalConfig: server, session, simulation, LLM settings |
+| `student_simulator.py` | LLM-powered student with persona (OpenAI or Anthropic) |
+| `session_runner.py` | Session lifecycle: create via REST, converse via WebSocket |
+| `evaluator.py` | 10-dimension LLM judge (coherence, naturalness, etc.) |
+| `report_generator.py` | Generates conversation.md, evaluation.json, review.md, problems.md |
+| `run_evaluation.py` | CLI: `python -m evaluation.run_evaluation` |
+| `api.py` | FastAPI endpoints for starting/monitoring evaluation runs |
+| `personas/average_student.json` | Default student persona |
 
 ---
 
@@ -536,22 +420,19 @@ EXECUTOR generates message for new/updated step
 
 | Agent | Model | Reasoning | Purpose | Output Schema |
 |-------|-------|-----------|---------|---------------|
-| PLANNER | GPT-5.2 | high | Create study plan | PlannerLLMOutput (strict json_schema) |
-| PLANNER | GPT-5.2 | high | Replan | PlannerLLMOutput (strict json_schema) |
-| EXECUTOR | GPT-5.2 | none | Generate message | ExecutorLLMOutput (strict json_schema) |
-| EVALUATOR | GPT-5.2 | medium | Evaluate + route | EvaluatorLLMOutput (strict json_schema) |
+| SAFETY | GPT-5.2 | none | Content moderation | SafetyOutput (strict) |
+| MASTER TUTOR | GPT-5.2 | none | All teaching | TutorTurnOutput (strict) |
+| WELCOME | GPT-5.2 | none | Welcome message | Plain text |
 
 **LLM Service Features:**
-- GPT-5.2 for all agents with strict `json_schema` structured output
-- Reasoning effort levels: none (fast), low, medium, high, xhigh (maximum)
-- GPT-5.2 fallback to GPT-5.1, then GPT-4o if unavailable
-- GPT-5.1 method with fallback to GPT-4o
-- GPT-4o for legacy support
-- Gemini support (gemini-3-pro-preview, via GEMINI_API_KEY)
-- Automatic retry: 3 attempts with exponential backoff (1s -> 2s -> 4s)
-- Timeout: 60 seconds per request
-- Handles: RateLimitError, APITimeoutError, OpenAIError
-- `make_schema_strict()` helper for Pydantic to OpenAI strict schema conversion
+- GPT-5.2 with strict `json_schema` structured output
+- Anthropic Claude support via AnthropicAdapter (thinking + tool_use)
+- Provider switching via `APP_LLM_PROVIDER` env var (openai/anthropic/anthropic-haiku)
+- Reasoning effort levels: none, low, medium, high, xhigh
+- GPT-5.2 fallback to GPT-5.1, then GPT-4o
+- Gemini support (gemini-3-pro-preview)
+- Automatic retry: 3 attempts with exponential backoff
+- `make_schema_strict()` for Pydantic to OpenAI strict schema conversion
 
 ---
 
@@ -560,7 +441,6 @@ EXECUTOR generates message for new/updated step
 ### Health & Status
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Health check: returns `{status: "ok"}` |
 | `GET` | `/health/db` | Database connectivity check |
 
 ### Session Management
@@ -570,6 +450,8 @@ EXECUTOR generates message for new/updated step
 | `POST` | `/sessions/{id}/step` | Submit student answer, get next turn |
 | `GET` | `/sessions/{id}/summary` | Get session performance summary |
 | `GET` | `/sessions/{id}` | Debug: Get full session state |
+| `GET` | `/sessions/{id}/agent-logs` | Get agent execution logs |
+| `WS` | `/sessions/ws/{id}` | WebSocket chat connection |
 
 ### Curriculum Discovery
 | Method | Endpoint | Description |
@@ -578,130 +460,54 @@ EXECUTOR generates message for new/updated step
 | `GET` | `/curriculum?...&subject=` | Get topics for a subject |
 | `GET` | `/curriculum?...&subject=&topic=` | Get subtopics with guideline IDs |
 
-### Logs API (DEPRECATED)
+### Evaluation Pipeline
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/sessions/logs` | Returns empty list (deprecated) |
-| `GET` | `/sessions/{id}/logs` | Returns empty (logs now go to stdout) |
-| `GET` | `/sessions/{id}/logs/text` | Returns deprecation message |
-| `GET` | `/sessions/{id}/logs/summary` | Returns empty summary |
-| `GET` | `/sessions/{id}/logs/stream` | Returns stream closed event |
-
-### Book Ingestion API (`/admin/books`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/admin/books` | Create new book |
-| `GET` | `/admin/books` | List books with filters (country, board, grade, subject) |
-| `GET` | `/admin/books/{id}` | Get book details |
-| `DELETE` | `/admin/books/{id}` | Delete book |
-| `POST` | `/admin/books/{id}/pages` | Upload page image (multipart/form-data) |
-| `PUT` | `/admin/books/{id}/pages/{num}/approve` | Approve page |
-| `DELETE` | `/admin/books/{id}/pages/{num}` | Delete page |
-| `GET` | `/admin/books/{id}/pages/{num}` | Get page details |
-| `POST` | `/admin/books/{id}/generate-guidelines` | Generate guidelines from pages |
-| `POST` | `/admin/books/{id}/finalize` | Finalize & refine guidelines |
-| `GET` | `/admin/books/{id}/guidelines` | List all guidelines for book |
-| `GET` | `/admin/books/{id}/guidelines/{topic}/{subtopic}` | Get specific guideline |
-| `PUT` | `/admin/books/{id}/guidelines/approve` | Approve & sync guidelines to DB |
-| `DELETE` | `/admin/books/{id}/guidelines` | Reject/delete all guidelines |
-
-### Admin Guidelines API (`/admin/guidelines`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/books` | List books with extraction status |
-| `GET` | `/books/{id}/topics` | Get topics with subtopics for a book |
-| `GET` | `/books/{id}/subtopics/{key}?topic_key=` | Get guideline details |
-| `PUT` | `/books/{id}/subtopics/{key}` | DISABLED (501) - use regeneration |
-| `GET` | `/books/{id}/page-assignments` | Get page-to-subtopic assignments |
-| `POST` | `/books/{id}/extract?start_page=&end_page=` | Run guideline extraction |
-| `POST` | `/books/{id}/finalize?auto_sync=` | Finalize guidelines |
-| `POST` | `/books/{id}/sync-to-database?status_filter=` | Sync to teaching_guidelines table |
-| `GET` | `/review` | List all guidelines for review with filters |
-| `GET` | `/review/filters` | Get filter options and counts |
-| `GET` | `/books/{id}/review` | List book guidelines for review |
-| `POST` | `/{guideline_id}/approve` | Approve or reject (body: `{approved: bool}`) |
-| `DELETE` | `/{guideline_id}` | Delete a guideline |
-| `POST` | `/{guideline_id}/generate-study-plan` | Generate study plan for guideline |
-| `GET` | `/{guideline_id}/study-plan` | Get existing study plan |
-| `POST` | `/bulk-generate-study-plans` | Bulk generate plans (body: `{guideline_ids: []}`) |
+| `POST` | `/api/evaluation/start` | Start evaluation run in background |
+| `GET` | `/api/evaluation/status` | Get current evaluation status |
+| `GET` | `/api/evaluation/runs` | List all evaluation runs |
+| `GET` | `/api/evaluation/runs/{id}` | Get specific run details |
+| `POST` | `/api/evaluation/runs/{id}/retry-evaluation` | Re-evaluate existing conversation |
 
 ---
 
-## Complete Flow Diagram
+## Evaluation Pipeline
 
+The evaluation pipeline simulates a tutoring session and evaluates quality across 10 dimensions.
+
+### Flow
 ```
-+-------------------------------------------------------------------------+
-|                          NEW SESSION FLOW                                |
-|                                                                          |
-|  POST /sessions                                                          |
-|       |                                                                  |
-|       v                                                                  |
-|  Load guideline from DB                                                  |
-|       |                                                                  |
-|       v                                                                  |
-|  +-------------------------------------------------------------+        |
-|  | LANGGRAPH: ROUTER -> PLANNER -> EXECUTOR -> END              |        |
-|  |                                                              |        |
-|  | ROUTER: No plan? -> "planner"                                |        |
-|  | PLANNER: Create 3-5 step plan                               |        |
-|  | EXECUTOR: Generate first question                           |        |
-|  +-------------------------------------------------------------+        |
-|       |                                                                  |
-|       v                                                                  |
-|  Return: {session_id, first_turn: {message, hints, step_idx}}           |
-+-------------------------------------------------------------------------+
-
-+-------------------------------------------------------------------------+
-|                       STUDENT RESPONSE FLOW                              |
-|                                                                          |
-|  POST /sessions/{id}/step                                                |
-|       |                                                                  |
-|       v                                                                  |
-|  Add student message to conversation                                     |
-|       |                                                                  |
-|       v                                                                  |
-|  +-------------------------------------------------------------+        |
-|  | LANGGRAPH: ROUTER -> EVALUATOR -> [route_after_evaluation]   |        |
-|  |                                                              |        |
-|  | ROUTER: Last msg is student? -> "evaluator"                  |        |
-|  | EVALUATOR:                                                   |        |
-|  |   - Score response (0.0-1.0)                                |        |
-|  |   - Generate feedback                                        |        |
-|  |   - Update step statuses                                     |        |
-|  |   - Track assessment notes                                   |        |
-|  |   - Decide: replan_needed?                                   |        |
-|  |                                                              |        |
-|  | ROUTING:                                                     |        |
-|  |   replan_needed=true -> PLANNER -> EXECUTOR -> END           |        |
-|  |   all_completed=true -> END                                  |        |
-|  |   else -> EXECUTOR -> END                                    |        |
-|  +-------------------------------------------------------------+        |
-|       |                                                                  |
-|       v                                                                  |
-|  Return: {next_turn: {message, hints, step_idx, is_complete}}           |
-+-------------------------------------------------------------------------+
+1. Load persona (simulated student profile)
+2. Create session via REST API
+3. Run conversation via WebSocket (student simulator <-> tutor)
+4. Evaluate conversation with LLM judge (10 dimensions)
+5. Generate reports (conversation.md, evaluation.json, review.md, problems.md)
 ```
 
----
+### 10 Evaluation Dimensions
+1. **Coherence** - Logical thread across turns
+2. **Non-Repetition** - Avoids repeating explanations
+3. **Natural Flow** - Feels like natural tutoring
+4. **Engagement** - Keeps student interested
+5. **Responsiveness** - Responds to student input
+6. **Pacing** - Appropriate speed
+7. **Grade Appropriateness** - Right level of complexity
+8. **Topic Coverage** - Covers learning objectives
+9. **Session Arc** - Natural beginning/middle/end
+10. **Overall Naturalness** - Human-like feel
 
-## Key Design Decisions
+### CLI Usage
+```bash
+cd llm-backend
+python -m evaluation.run_evaluation
+```
 
-| Decision | Rationale |
-|----------|-----------|
-| **Status-based navigation** | Plan is source of truth; no manual step tracking |
-| **3 separate agents** | Clear separation: planning vs execution vs evaluation |
-| **ROUTER node** | Smart entry-point routing prevents infinite loops |
-| **EVALUATOR as traffic controller** | Centralized routing decisions |
-| **LangGraph + PostgreSQL checkpoints** | Session persistence, resumability |
-| **Append-only conversation** | Never delete messages, maintain full context |
-| **Simple text assessment notes** | Flexible, readable, no rigid schema |
-| **5-section EVALUATOR prompt** | Structured output for all responsibilities |
-| **Hardcoded student profile** | Experimentation mode (PLANNER overrides with test profile) |
-| **Pre-built study plans** | Faster session start by skipping PLANNER when plan exists |
-| **Conversation context limiting** | Max 15 messages (first 3 + summary + last N) to prevent context overflow |
-| **Single in_progress step** | Only ONE step can be in_progress at a time (enforced in validation) |
-| **Auto-generated summaries** | Topic/subtopic summaries via gpt-4o-mini for token efficiency |
-| **Stdout logging** | Logs API deprecated; structured JSON logs go to stdout |
+### Environment Variables
+```bash
+EVAL_LLM_PROVIDER=openai      # or "anthropic"
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+```
 
 ---
 
@@ -711,111 +517,42 @@ EXECUTOR generates message for new/updated step
 | Table | Purpose |
 |-------|---------|
 | `sessions` | Session state: `id`, `student_json`, `goal_json`, `state_json`, `mastery`, `step_idx`, timestamps |
-| `events` | Audit log: `session_id`, `node`, `step_idx`, `payload_json`, indexed by (session_id, step_idx) |
-| `teaching_guidelines` | Guideline data with review workflow (see below) |
+| `events` | Audit log: `session_id`, `node`, `step_idx`, `payload_json` |
+| `teaching_guidelines` | Guideline data with review workflow |
 | `study_plans` | Pre-built study plans (1:1 with teaching_guidelines) |
 | `contents` | RAG corpus: `topic`, `grade`, `skill`, `text`, `tags` |
-| `checkpoint_*` | LangGraph PostgreSQL checkpoint tables |
 
-**teaching_guidelines columns:**
-- Identity: `id`, `country`, `board`, `grade`, `subject`, `topic`, `subtopic`
-- Content: `guideline` (main text), `metadata_json`
-- Keys: `topic_key`, `subtopic_key`, `topic_title`, `subtopic_title`
-- Summaries: `topic_summary`, `subtopic_summary` (auto-generated 15-40 words via gpt-4o-mini)
-- Source: `book_id`, `source_page_start`, `source_page_end`
-- Workflow: `status`, `review_status`, `version`
-
-**study_plans table:**
-- Identity: `id`, `guideline_id` (FK to teaching_guidelines, unique)
-- Content: `plan_json` (same structure as PLANNER output)
-- Generation: `generator_model`, `reviewer_model`, `generation_reasoning`, `reviewer_feedback`
-- Status: `was_revised`, `version`, `created_at`, `updated_at`
-
-**books table:**
-- Identity: `id`, `title`, `author`, `edition`, `edition_year`
-- Curriculum: `country`, `board`, `grade`, `subject`
-- Storage: `s3_prefix`, `cover_image_s3_key`
-- Stats: `page_count`, `guideline_count`, `approved_guideline_count`
-- Workflow: `has_active_job`, `created_at`, `updated_at`
-
-### Checkpointing
-- Uses `PostgresSaver` from `langgraph.checkpoint.postgres`
-- State auto-saved after each node execution
-- Resume from any checkpoint on failure
-- `thread_id` = `session_id` for LangGraph config
+**Note:** LangGraph checkpoint tables are no longer used. Session state is stored as serialized `SessionState` in `sessions.state_json`.
 
 ---
 
-## Logging & Observability
+## Key Design Decisions
 
-### Structured Logging to stdout
-All logging is done via structured JSON to stdout for cloud-native observability:
-
-```python
-# In main.py - JSONFormatter outputs structured logs
-{
-  "timestamp": "2024-11-19T14:30:00Z",
-  "level": "INFO",
-  "logger": "agents.evaluator_agent",
-  "step": "AGENT_EXECUTION:EVALUATOR",
-  "status": "complete",
-  "session_id": "uuid-123",
-  "agent": "evaluator",
-  "output": {...},
-  "duration_ms": 1234
-}
-```
-
-### Agent Execution Logs
-- Each agent logs start/complete events with timing
-- Full output and reasoning captured in `agent_logs` state field
-- Duration tracked for performance monitoring
-
-### Log Format Configuration
-```bash
-# Environment variables
-LOG_FORMAT=json  # or "text" for development
-LOG_LEVEL=INFO
-```
-
-**Note:** The `/sessions/logs` API endpoints are deprecated. They return empty responses. All logs are streamed to stdout.
+| Decision | Rationale |
+|----------|-----------|
+| **Single master tutor agent** | Replaces 3-agent pipeline for more natural, coherent conversations |
+| **Safety gate + master tutor** | Two-step: fast safety check, then full teaching in one call |
+| **Pydantic SessionState** | Clean, typed state model with serialization (replaces LangGraph state) |
+| **StudyPlan-driven teaching** | Pre-built study plans define the teaching sequence |
+| **Topic adapter pattern** | Bridges DB models to tutor models cleanly |
+| **WebSocket + REST** | REST for compatibility, WebSocket for real-time chat |
+| **In-memory agent logs** | Thread-safe log store for debugging, accessible via API |
+| **Evaluation pipeline** | Automated quality measurement with LLM judge |
+| **Anthropic provider support** | Configurable LLM provider (OpenAI or Claude) |
+| **Conversation window (10 msgs)** | Prevents context overflow while maintaining recent context |
+| **Session summary tracking** | Turn timeline, concepts taught, progress trend |
+| **Stdout structured logging** | JSON logs for cloud-native observability |
 
 ---
 
-## Admin Guideline Workflow
+## Configuration
 
-### Book Ingestion Pipeline
-```
-1. Create Book -> Upload Pages -> Approve Pages
-2. Generate Guidelines -> Finalize -> Approve & Sync
-```
-
-### Guideline Status Flow
-```
-open --------+---------> stable ---------> final ---------> [synced to DB]
-             |                              |
-             +-----> needs_review ----------+
-```
-
-### Frontend Admin Routes
-| Route | Component | Purpose |
-|-------|-----------|---------|
-| `/admin/books` | BooksDashboard | List books with status badges |
-| `/admin/books/new` | CreateBook | Create new book form |
-| `/admin/books/:id` | BookDetail | Manage pages and guidelines |
-| `/admin/guidelines` | GuidelinesReview | Review/approve DB guidelines |
-
-### Guideline Generation Workflow
-1. **Generate**: AI analyzes approved pages, creates subtopic guidelines
-2. **Finalize**: Improves names, merges duplicates, generates summaries, marks as 'final'
-3. **Approve & Sync**: Copies final guidelines to `teaching_guidelines` table with `review_status=TO_BE_REVIEWED`
-4. **Review**: Individual guidelines can be approved/rejected in GuidelinesReview
-
-### Book Status States
-| Status | Condition |
-|--------|-----------|
-| Draft | `page_count == 0` |
-| Ready for Extraction | `page_count > 0 && guideline_count == 0` |
-| Processing | `has_active_job == true` |
-| Pending Review | Guidelines exist, not all approved |
-| Approved | All guidelines approved |
+### Environment Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | (required) | OpenAI API key |
+| `ANTHROPIC_API_KEY` | "" | Anthropic API key (optional) |
+| `APP_LLM_PROVIDER` | "openai" | LLM provider: openai, anthropic, anthropic-haiku |
+| `DATABASE_URL` | postgresql://... | PostgreSQL connection URL |
+| `LOG_FORMAT` | "json" | Logging format: json or text |
+| `LOG_LEVEL` | "INFO" | Logging level |
