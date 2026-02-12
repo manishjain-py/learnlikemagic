@@ -121,18 +121,26 @@ resource "aws_apprunner_service" "backend" {
       image_configuration {
         port = "8000"
 
-        runtime_environment_variables = {
-          API_HOST     = "0.0.0.0"
-          API_PORT     = "8000"
-          DATABASE_URL = var.database_url
-          LLM_MODEL    = var.llm_model
-          ENVIRONMENT  = var.environment
-        }
+        runtime_environment_variables = merge(
+          {
+            API_HOST           = "0.0.0.0"
+            API_PORT           = "8000"
+            DATABASE_URL       = var.database_url
+            LLM_MODEL          = var.llm_model
+            ENVIRONMENT        = var.environment
+            TUTOR_LLM_PROVIDER = var.tutor_llm_provider
+          }
+        )
 
-        runtime_environment_secrets = {
-          OPENAI_API_KEY = var.openai_secret_arn
-          GEMINI_API_KEY = var.gemini_secret_arn
-        }
+        runtime_environment_secrets = merge(
+          {
+            OPENAI_API_KEY = var.openai_secret_arn
+            GEMINI_API_KEY = var.gemini_secret_arn
+          },
+          var.anthropic_secret_arn != "" ? {
+            ANTHROPIC_API_KEY = var.anthropic_secret_arn
+          } : {}
+        )
       }
     }
 

@@ -29,6 +29,18 @@ variable "gemini_secret_arn" {
   type        = string
 }
 
+variable "anthropic_secret_arn" {
+  description = "ARN of Anthropic API key secret in Secrets Manager"
+  type        = string
+  default     = ""
+}
+
+variable "tutor_llm_provider" {
+  description = "LLM provider for tutor workflow"
+  type        = string
+  default     = "anthropic-haiku"
+}
+
 variable "llm_model" {
   description = "OpenAI model to use"
   type        = string

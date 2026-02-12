@@ -65,6 +65,19 @@ variable "gemini_api_key" {
   sensitive   = true
 }
 
+variable "anthropic_api_key" {
+  description = "Anthropic API key for Claude models (sensitive)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "tutor_llm_provider" {
+  description = "LLM provider for tutor workflow: openai, anthropic, or anthropic-haiku"
+  type        = string
+  default     = "anthropic-haiku"
+}
+
 variable "llm_model" {
   description = "OpenAI model to use"
   type        = string
