@@ -51,15 +51,20 @@ class EvalConfig:
     evaluator_model: str = "gpt-5.2"
     evaluator_reasoning_effort: str = "high"
 
-    # Provider switch for evaluation pipeline
+    # Provider switch for evaluation pipeline (evaluator/judge)
     eval_llm_provider: str = field(
-        default_factory=lambda: os.environ.get("EVAL_LLM_PROVIDER", "openai")
+        default_factory=lambda: os.environ.get("EVAL_LLM_PROVIDER", "anthropic")
     )
 
-    # Anthropic models (used when eval_llm_provider == "anthropic")
+    # Anthropic models
     anthropic_evaluator_model: str = "claude-opus-4-6"
     anthropic_simulator_model: str = "claude-opus-4-6"
     anthropic_evaluator_thinking_budget: int = 20000
+
+    # Tutor model (read from env, for display/reporting only — actual model is set on the server)
+    tutor_llm_provider: str = field(
+        default_factory=lambda: os.environ.get("TUTOR_LLM_PROVIDER", os.environ.get("APP_LLM_PROVIDER", "openai"))
+    )
 
     # API Keys (not serialized)
     openai_api_key: str = field(
@@ -68,6 +73,22 @@ class EvalConfig:
     anthropic_api_key: str = field(
         default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", "")
     )
+
+    PROVIDER_LABELS = {
+        "openai": "GPT-5.2",
+        "anthropic": "Claude Opus 4.6",
+        "anthropic-haiku": "Claude Haiku 4.5",
+    }
+
+    @property
+    def tutor_model_label(self) -> str:
+        return self.PROVIDER_LABELS.get(self.tutor_llm_provider, self.tutor_llm_provider)
+
+    @property
+    def evaluator_model_label(self) -> str:
+        if self.eval_llm_provider == "anthropic":
+            return f"Claude Opus 4.6"
+        return self.evaluator_model
 
     @property
     def base_url(self) -> str:

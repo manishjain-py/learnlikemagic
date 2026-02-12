@@ -287,6 +287,32 @@ const RunDetailView: React.FC<{
             Topic: {run.config.topic_id}
           </span>
         )}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {run.config?.tutor_llm_provider && (
+            <span style={{
+              padding: '2px 8px',
+              background: '#EEF2FF',
+              color: '#4338CA',
+              borderRadius: '10px',
+              fontSize: '11px',
+              fontWeight: 500,
+            }}>
+              ⚡ Tutor: {({'openai': 'GPT-5.2', 'anthropic': 'Claude Opus 4.6', 'anthropic-haiku': 'Claude Haiku 4.5'} as Record<string, string>)[run.config.tutor_llm_provider] || run.config.tutor_llm_provider}
+            </span>
+          )}
+          {run.config?.eval_llm_provider && (
+            <span style={{
+              padding: '2px 8px',
+              background: '#FEF3C7',
+              color: '#92400E',
+              borderRadius: '10px',
+              fontSize: '11px',
+              fontWeight: 500,
+            }}>
+              🔍 Evaluator: {({'openai': 'GPT-5.2', 'anthropic': 'Claude Opus 4.6'} as Record<string, string>)[run.config.eval_llm_provider] || run.config.eval_llm_provider}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Score summary */}
