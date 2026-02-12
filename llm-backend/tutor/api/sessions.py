@@ -210,7 +210,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             api_key=settings.openai_api_key,
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
-            provider=settings.app_llm_provider,
+            provider=settings.resolved_tutor_provider,
         )
         orchestrator = TeacherOrchestrator(llm_service)
 

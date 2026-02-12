@@ -59,7 +59,15 @@ class Settings(BaseSettings):
     )
     app_llm_provider: str = Field(
         default="openai",
-        description="LLM provider for tutor: openai, anthropic, or anthropic-haiku"
+        description="[DEPRECATED] Use tutor_llm_provider instead. Kept for backward compatibility."
+    )
+    tutor_llm_provider: str = Field(
+        default="",
+        description="LLM provider for tutor workflow: openai (gpt-5.2), anthropic (opus-4.6), or anthropic-haiku (haiku-4.5). Falls back to app_llm_provider if empty."
+    )
+    ingestion_llm_provider: str = Field(
+        default="openai",
+        description="LLM provider for book ingestion workflow: openai (gpt-4o-mini). Anthropic support coming soon."
     )
 
     # Application Settings
@@ -86,6 +94,11 @@ class Settings(BaseSettings):
         description="S3 bucket name for book storage"
     )
     # AWS credentials are auto-detected from ~/.aws/credentials or environment
+
+    @property
+    def resolved_tutor_provider(self) -> str:
+        """Resolve tutor provider: tutor_llm_provider takes precedence, falls back to app_llm_provider."""
+        return self.tutor_llm_provider if self.tutor_llm_provider else self.app_llm_provider
 
     model_config = SettingsConfigDict(
         env_file=".env",
