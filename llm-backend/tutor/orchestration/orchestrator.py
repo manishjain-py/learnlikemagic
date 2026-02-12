@@ -106,7 +106,7 @@ class TeacherOrchestrator:
                 # Still record the student's message in history
                 session.add_message(create_student_message(student_message))
                 return TurnResult(
-                    response="This lesson is complete! Start a new session to keep learning. 🎉",
+                    response="We've wrapped up this lesson — great work! Start a new session whenever you're ready to keep going.",
                     intent="session_complete",
                     specialists_called=[],
                     state_changed=False,
