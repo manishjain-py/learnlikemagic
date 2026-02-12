@@ -101,6 +101,15 @@ class TeacherOrchestrator:
         )
 
         try:
+            # Check if session is already complete
+            if session.is_complete:
+                return TurnResult(
+                    response="This lesson is complete! Start a new session to keep learning. 🎉",
+                    intent="session_complete",
+                    specialists_called=[],
+                    state_changed=False,
+                )
+
             # Increment turn counter and add student message
             session.increment_turn()
             session.add_message(create_student_message(student_message))
@@ -160,6 +169,7 @@ class TeacherOrchestrator:
                     "answer_correct": tutor_output.answer_correct,
                     "advance_to_step": tutor_output.advance_to_step,
                     "question_asked": tutor_output.question_asked is not None,
+                    "session_complete": tutor_output.session_complete,
                 },
             )
 
@@ -258,6 +268,14 @@ class TeacherOrchestrator:
         # 5. Track off-topic
         if output.intent == "off_topic":
             session.off_topic_count += 1
+            changed = True
+
+        # 6. Handle session completion
+        if output.session_complete:
+            # Advance past final step to trigger is_complete
+            while not session.is_complete:
+                if not session.advance_step():
+                    break
             changed = True
 
         return changed
