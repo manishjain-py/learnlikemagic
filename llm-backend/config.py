@@ -62,8 +62,8 @@ class Settings(BaseSettings):
         description="[DEPRECATED] Use tutor_llm_provider instead. Kept for backward compatibility."
     )
     tutor_llm_provider: str = Field(
-        default="",
-        description="LLM provider for tutor workflow: openai (gpt-5.2), anthropic (opus-4.6), or anthropic-haiku (haiku-4.5). Falls back to app_llm_provider if empty."
+        default="anthropic-haiku",
+        description="LLM provider for tutor workflow: openai (gpt-5.2), anthropic (opus-4.6), or anthropic-haiku (haiku-4.5)."
     )
     ingestion_llm_provider: str = Field(
         default="openai",
