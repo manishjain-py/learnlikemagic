@@ -8,7 +8,8 @@
 | Uvicorn | ASGI server | Lightweight, high-performance, pairs with FastAPI |
 | Pydantic | Data validation | Type hints for validation, clear errors, schema gen |
 | SQLAlchemy | ORM | Mature, flexible, database-agnostic |
-| LangGraph | LLM agent orchestration | Graph-based state management for AI workflows |
+| OpenAI | LLM provider (GPT-4o, GPT-5.2) | Structured outputs, Responses API, reasoning models |
+| Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 
 ## Frontend
 

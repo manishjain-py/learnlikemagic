@@ -9,6 +9,7 @@ import {
   SummaryResponse,
   SubtopicInfo,
 } from './api';
+import DevToolsDrawer from './features/devtools/components/DevToolsDrawer';
 import './App.css';
 
 interface Message {
@@ -39,6 +40,7 @@ function App() {
   const [isComplete, setIsComplete] = useState(false);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [showHints, setShowHints] = useState<number | null>(null);
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fixed student profile (could be made configurable)
@@ -298,12 +300,33 @@ function App() {
 
   // Render chat screen (existing code)
   return (
+    <>
     <div className="app">
-      <header className="header">
+      <header className="header" style={{ position: 'relative' }}>
         <h1>Learn Like Magic</h1>
         <p className="subtitle">
           Grade {GRADE} • {selectedSubject} • {selectedTopic} • {selectedSubtopic?.subtopic}
         </p>
+        {sessionId && (
+          <button
+            onClick={() => setDevToolsOpen(true)}
+            style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              padding: '4px 10px',
+              background: 'rgba(255,255,255,0.2)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '4px',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Dev Tools
+          </button>
+        )}
       </header>
 
       <div className="progress-bar">
@@ -416,6 +439,14 @@ function App() {
         )}
       </div>
     </div>
+    {sessionId && (
+      <DevToolsDrawer
+        sessionId={sessionId}
+        isOpen={devToolsOpen}
+        onClose={() => setDevToolsOpen(false)}
+      />
+    )}
+    </>
   );
 }
 
