@@ -11,6 +11,7 @@ llm-backend/
 ├── tutor/                # Runtime tutoring sessions
 ├── book_ingestion/       # Book upload & guideline extraction
 ├── study_plans/          # Study plan generation
+├── evaluation/           # Session evaluation pipeline
 ├── shared/               # Cross-module utilities
 ├── api/                  # Root API (health, curriculum)
 ├── tests/
@@ -60,7 +61,7 @@ services/<domain>_service.py
 ### Agent
 **LLM-powered actor.** Has a persona, prompt, and structured output.
 
-- Roles: Planner, Executor, Evaluator
+- Roles: Safety (content moderation), Master Tutor (all teaching)
 - Stateless (takes state in, returns typed output)
 - Behavior defined via prompts, not code
 
@@ -71,12 +72,12 @@ agents/<role>_agent.py
 ### Orchestration
 **Agent coordination.** Defines execution flow and state transitions.
 
-- Uses LangGraph for state machine
-- Routes between agents based on conditions
-- Manages workflow state
+- Simple sequential pipeline: Safety check -> Master Tutor -> State update
+- Routes based on safety gate conditions
+- Manages session state
 
 ```
-orchestration/<workflow>_workflow.py
+orchestration/orchestrator.py
 ```
 
 ---
@@ -88,13 +89,14 @@ Real-time adaptive tutoring with students.
 
 ```
 tutor/
-├── agents/           # planner, executor, evaluator
-├── orchestration/    # LangGraph workflow
+├── agents/           # safety, master_tutor, base_agent
+├── orchestration/    # TeacherOrchestrator (safety -> master tutor pipeline)
 ├── services/         # session_service
-└── api/              # /sessions, /logs
+├── prompts/          # LLM prompt templates
+└── api/              # /sessions (WebSocket + REST)
 ```
 
-**Flow:** `Request → API → Service → Orchestration → Agents → Response`
+**Flow:** `Request → API → Service → Orchestration → Safety → Master Tutor → Response`
 
 ### Book Ingestion (Offline)
 Extract teaching guidelines from uploaded books.
@@ -119,12 +121,25 @@ study_plans/
 
 **Flow:** `Guidelines → AI Generation → AI Review → DB`
 
+### Evaluation
+Evaluate tutoring sessions (existing or simulated).
+
+```
+evaluation/
+├── api.py            # Evaluation endpoints
+├── evaluator.py      # LLM-based conversation evaluator
+├── report.py         # Report generation
+└── config.py         # Evaluation configuration
+```
+
+**Flow:** `Session messages → LLM Evaluator → Scores (10 dimensions) → Reports`
+
 ### Shared
 Cross-module components.
 
 ```
 shared/
-├── services/         # llm_service (OpenAI wrapper)
+├── services/         # llm_service (OpenAI), anthropic_adapter (Claude)
 ├── repositories/     # shared data access
 ├── models/           # common schemas
 ├── utils/            # constants, exceptions
@@ -164,8 +179,8 @@ Everything else?          → Service
 ## Tech Stack
 
 - **FastAPI** - Web framework
-- **LangGraph** - Agent orchestration
 - **OpenAI** - LLM provider (GPT-4o, GPT-5.2)
+- **Anthropic** - LLM provider (Claude)
 - **PostgreSQL** - Database (AWS Aurora)
 - **SQLAlchemy** - ORM
 - **Pydantic** - Data validation

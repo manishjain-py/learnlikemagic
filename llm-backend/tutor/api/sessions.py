@@ -109,6 +109,7 @@ def get_session_state(session_id: str, db: DBSession = Depends(get_db)):
 
 class AgentLogEntryDTO(BaseModel):
     timestamp: str
+    turn_id: str
     agent_name: str
     event_type: str
     input_summary: Optional[str] = None
@@ -151,6 +152,7 @@ def get_agent_logs(
     log_dtos = [
         AgentLogEntryDTO(
             timestamp=log.timestamp.isoformat(),
+            turn_id=log.turn_id,
             agent_name=log.agent_name,
             event_type=log.event_type,
             input_summary=log.input_summary,

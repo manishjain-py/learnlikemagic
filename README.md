@@ -1,19 +1,20 @@
 # Learn Like Magic
 
-AI-powered adaptive tutoring platform using LangGraph agents.
+AI-powered adaptive tutoring platform using a single master tutor agent.
 
 ## What It Does
 
-- **Adaptive Tutoring**: 3-agent system (Planner, Executor, Evaluator) dynamically adjusts to each student
+- **Adaptive Tutoring**: Single master tutor agent with safety gate dynamically adjusts to each student
 - **Structured Guidelines**: Expert-authored teaching guidelines for consistent instruction
 - **Real-time Assessment**: Instant grading with misconception identification
 - **Book Ingestion**: Extract teaching guidelines from uploaded textbooks via OCR + AI
+- **Evaluation Pipeline**: Evaluate tutoring sessions (existing or simulated) across 10 quality dimensions
 
 ## Project Structure
 
 ```
 learnlikemagic/
-├── llm-backend/      # FastAPI + LangGraph (Python)
+├── llm-backend/      # FastAPI backend (Python)
 ├── llm-frontend/     # React + TypeScript
 ├── infra/terraform/  # AWS infrastructure
 └── docs/             # Documentation
@@ -43,13 +44,13 @@ npm install && npm run dev  # http://localhost:5173
 | [Backend Architecture](docs/backend-architecture.md) | Code organization, key terms, file conventions |
 | [Dev Workflow](docs/dev-workflow.md) | Setup, testing, daily workflow |
 | [Deployment](docs/deployment.md) | AWS infrastructure, CI/CD |
-| [Tutor Pipeline](docs/TUTOR_WORKFLOW_PIPELINE.md) | 3-agent tutoring system |
+| [Tutor Pipeline](docs/TUTOR_WORKFLOW_PIPELINE.md) | Single master tutor agent with evaluation pipeline |
 | [Book Guidelines Pipeline](docs/BOOK_GUIDELINES_PIPELINE.md) | Book ingestion & extraction |
 | [Tech Stack](docs/tech-stack-rationale.md) | Technology choices |
 
 ## Tech Stack
 
-**Backend**: FastAPI, LangGraph, OpenAI (GPT-4o, GPT-5.2), PostgreSQL, SQLAlchemy
+**Backend**: FastAPI, OpenAI (GPT-4o, GPT-5.2), Anthropic (Claude), PostgreSQL, SQLAlchemy
 
 **Frontend**: React, TypeScript, Vite
 
