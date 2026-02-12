@@ -33,6 +33,16 @@ class StudentSimulator:
         examples = "\n".join(f'- "{e}"' for e in p["response_style"]["examples"])
         behavioral = "\n".join(f"- {b}" for b in p["behavioral_notes"])
 
+        # Add persona-specific behaviors if present
+        persona_behaviors = ""
+        if "persona_specific_behaviors" in p:
+            behaviors = []
+            for behavior, probability in p["persona_specific_behaviors"].items():
+                behavior_desc = behavior.replace("_", " ").replace("probability", "").strip()
+                behaviors.append(f"- {behavior_desc}: about {int(probability * 100)}% of the time")
+            if behaviors:
+                persona_behaviors = f"\n\nPERSONA-SPECIFIC BEHAVIORAL TENDENCIES:\n" + "\n".join(behaviors)
+
         return f"""You are roleplaying as {p['name']}, a {p['age']}-year-old grade {p['grade']} student in a tutoring session.
 
 PERSONALITY:
@@ -50,7 +60,10 @@ EXAMPLE RESPONSES (for tone reference):
 {examples}
 
 BEHAVIORAL GUIDELINES:
-{behavioral}
+{behavioral}{persona_behaviors}
+
+NATURAL VARIATION INSTRUCTION:
+Remember: you are a TENDENCY, not a script. Even though you have these personality traits and behaviors, you don't express them every single turn. Some turns you're more like your described personality, some turns less. Be naturally variable like a real person - even shy students sometimes speak up, even confident students sometimes hesitate.
 
 IMPORTANT RULES:
 1. You answer correctly about {int(p['correct_answer_probability'] * 100)}% of the time.

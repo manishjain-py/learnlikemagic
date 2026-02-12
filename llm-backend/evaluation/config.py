@@ -108,6 +108,26 @@ class EvalConfig:
         with open(persona_path, "r") as f:
             return json.load(f)
 
+    @classmethod
+    def all_personas(cls) -> list[dict]:
+        """Return all available personas."""
+        personas = []
+        if not PERSONAS_DIR.exists():
+            return personas
+        
+        for persona_file in PERSONAS_DIR.glob("*.json"):
+            try:
+                with open(persona_file, "r") as f:
+                    persona_data = json.load(f)
+                    persona_data["file"] = persona_file.name
+                    personas.append(persona_data)
+            except (json.JSONDecodeError, KeyError) as e:
+                # Skip invalid persona files
+                continue
+        
+        # Sort by persona_id for consistent ordering
+        return sorted(personas, key=lambda p: p.get("persona_id", ""))
+
     def to_dict(self) -> dict:
         """Serialize config for saving, excluding API keys."""
         d = asdict(self)

@@ -15,10 +15,11 @@ from evaluation.config import EvalConfig
 class ReportGenerator:
     """Generates all run artifacts: conversation, review, and problems files."""
 
-    def __init__(self, run_dir: Path, config: EvalConfig, started_at: str | None = None):
+    def __init__(self, run_dir: Path, config: EvalConfig, started_at: str | None = None, persona: dict | None = None):
         self.run_dir = run_dir
         self.config = config
         self.started_at = started_at or datetime.now().isoformat()
+        self.persona = persona
 
     def save_config(self):
         config_data = self.config.to_dict()
@@ -52,10 +53,21 @@ class ReportGenerator:
             f"**Tutor Model:** {self.config.tutor_model_label}",
             f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"**Total Messages:** {len(conversation)}",
+        ]
+        
+        # Add persona information if available
+        if self.persona:
+            lines.extend([
+                f"**Student Persona:** {self.persona['name']} ({self.persona['persona_id']})",
+                f"**Persona Description:** {self.persona.get('description', 'No description')}",
+                f"**Correct Answer Probability:** {int(self.persona.get('correct_answer_probability', 0.6) * 100)}%",
+            ])
+        
+        lines.extend([
             "",
             "---",
             "",
-        ]
+        ])
 
         for msg in conversation:
             role = "TUTOR" if msg["role"] == "tutor" else "STUDENT"
@@ -98,6 +110,17 @@ class ReportGenerator:
             f"**Tutor Model:** {self.config.tutor_model_label}",
             f"**Evaluator Model:** {self.config.evaluator_model_label}",
             f"**Average Score:** {avg_score:.1f}/10",
+        ]
+        
+        # Add persona information if available
+        if self.persona:
+            lines.extend([
+                f"**Student Persona:** {self.persona['name']} ({self.persona['persona_id']})",
+                f"**Persona Description:** {self.persona.get('description', 'No description')}",
+                f"**Correct Answer Probability:** {int(self.persona.get('correct_answer_probability', 0.6) * 100)}%",
+            ])
+        
+        lines.extend([
             "",
             "---",
             "",
@@ -111,7 +134,7 @@ class ReportGenerator:
             "",
             "| Dimension | Score |",
             "|-----------|-------|",
-        ]
+        ])
 
         for dim, score in scores.items():
             display_name = dim.replace("_", " ").title()
@@ -156,8 +179,16 @@ class ReportGenerator:
             "",
             f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"**Topic:** {self.config.topic_id}",
-            "",
         ]
+        
+        # Add persona information if available
+        if self.persona:
+            lines.extend([
+                f"**Student Persona:** {self.persona['name']} ({self.persona['persona_id']})",
+                f"**Persona Description:** {self.persona.get('description', 'No description')}",
+            ])
+        
+        lines.append("")
 
         if problems:
             lines.extend([

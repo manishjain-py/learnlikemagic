@@ -82,12 +82,12 @@ def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
 
         _update_eval_state(run_id=f"run_{timestamp}")
 
-        report = ReportGenerator(run_dir, config, started_at=started_at.isoformat())
-        report.save_config()
-
         _update_eval_state(status=EvalStatus.loading_persona, detail="Loading persona...")
         persona = config.load_persona()
         simulator = StudentSimulator(config, persona)
+        
+        report = ReportGenerator(run_dir, config, started_at=started_at.isoformat(), persona=persona)
+        report.save_config()
 
         _update_eval_state(
             status=EvalStatus.running_session,
@@ -113,7 +113,7 @@ def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
 
         _update_eval_state(status=EvalStatus.evaluating, detail="Running LLM evaluation...")
         evaluator = ConversationEvaluator(config)
-        evaluation = evaluator.evaluate(conversation)
+        evaluation = evaluator.evaluate(conversation, persona=persona)
 
         _update_eval_state(status=EvalStatus.generating_reports, detail="Generating reports...")
         report.save_evaluation_json(evaluation)
@@ -272,12 +272,19 @@ def _retry_evaluation(run_dir: Path):
             max_turns=config_data.get("max_turns", 20),
         )
 
+        # Load persona if available
+        persona = None
+        try:
+            persona = config.load_persona()
+        except:
+            pass  # Persona loading failed, continue without it
+
         _update_eval_state(status=EvalStatus.evaluating, detail="Running LLM evaluation...")
         evaluator = ConversationEvaluator(config)
-        evaluation = evaluator.evaluate(conversation)
+        evaluation = evaluator.evaluate(conversation, persona=persona)
 
         _update_eval_state(status=EvalStatus.generating_reports, detail="Generating reports...")
-        report = ReportGenerator(run_dir, config, started_at=config_data.get("started_at"))
+        report = ReportGenerator(run_dir, config, started_at=config_data.get("started_at"), persona=persona)
         report.save_evaluation_json(evaluation)
         report.save_review(evaluation)
         report.save_problems(evaluation)
