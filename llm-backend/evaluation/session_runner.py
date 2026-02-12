@@ -163,7 +163,8 @@ class SessionRunner:
 
             # Conversation loop
             turn = 1
-            while turn <= self.config.max_turns:
+            session_complete = False
+            while turn <= self.config.max_turns and not session_complete:
                 self._log(f"[Turn {turn}] Generating student response...")
                 t0 = time.time()
                 student_msg = self.simulator.generate_response(self.conversation)
@@ -193,7 +194,8 @@ class SessionRunner:
                     elif msg["type"] == "state_update":
                         state = msg["payload"].get("state", {})
                         if state.get("is_complete", False):
-                            self._log(f"[Turn {turn}] Session marked complete")
+                            self._log(f"[Turn {turn}] Session marked complete by tutor")
+                            session_complete = True
                         continue
                     elif msg["type"] == "assistant":
                         tutor_response = msg["payload"]["message"]
