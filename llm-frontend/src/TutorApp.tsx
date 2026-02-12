@@ -5,6 +5,7 @@ import {
   submitStep,
   getSummary,
   getCurriculum,
+  getModelConfig,
   Turn,
   SummaryResponse,
   SubtopicInfo,
@@ -41,6 +42,7 @@ function App() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [showHints, setShowHints] = useState<number | null>(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
+  const [modelLabel, setModelLabel] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fixed student profile (could be made configurable)
@@ -56,9 +58,12 @@ function App() {
     scrollToBottom();
   }, [messages]);
 
-  // Fetch subjects on mount
+  // Fetch subjects and model config on mount
   useEffect(() => {
     fetchSubjects();
+    getModelConfig()
+      .then((config) => setModelLabel(config.tutor.model_label))
+      .catch(() => setModelLabel(''));
   }, []);
 
   const fetchSubjects = async () => {
@@ -306,6 +311,19 @@ function App() {
         <h1>Learn Like Magic</h1>
         <p className="subtitle">
           Grade {GRADE} • {selectedSubject} • {selectedTopic} • {selectedSubtopic?.subtopic}
+          {modelLabel && (
+            <span style={{
+              marginLeft: '8px',
+              padding: '2px 8px',
+              background: 'rgba(255,255,255,0.15)',
+              borderRadius: '10px',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              letterSpacing: '0.02em',
+            }}>
+              ⚡ {modelLabel}
+            </span>
+          )}
         </p>
         {sessionId && (
           <button

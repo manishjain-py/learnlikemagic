@@ -128,6 +128,19 @@ export async function submitStep(
   return response.json();
 }
 
+export interface ModelConfig {
+  tutor: { provider: string; model_label: string };
+  ingestion: { provider: string; model_label: string };
+}
+
+export async function getModelConfig(): Promise<ModelConfig> {
+  const response = await fetch(`${API_BASE_URL}/config/models`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch model config: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function getSummary(sessionId: string): Promise<SummaryResponse> {
   const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/summary`);
 
