@@ -143,7 +143,7 @@ class SessionState(BaseModel):
     def advance_step(self) -> bool:
         if not self.topic:
             return False
-        if self.current_step < self.topic.study_plan.total_steps:
+        if self.current_step <= self.topic.study_plan.total_steps:
             self.current_step += 1
             self.updated_at = datetime.utcnow()
             return True

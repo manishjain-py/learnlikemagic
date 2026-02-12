@@ -64,6 +64,12 @@ class TutorTurnOutput(BaseModel):
         default=None, description="Which concept the question tests"
     )
 
+    # Session completion
+    session_complete: bool = Field(
+        default=False,
+        description="Set to true when the student has completed the final step and demonstrated understanding. This ends the session.",
+    )
+
     # Turn summary
     turn_summary: str = Field(description="One-sentence summary of this turn (max 80 chars)")
     reasoning: str = Field(default="", description="Your internal reasoning (not shown to student)")
