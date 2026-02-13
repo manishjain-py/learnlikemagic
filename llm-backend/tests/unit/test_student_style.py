@@ -70,8 +70,9 @@ class TestStudentStyle:
         agent = _make_agent()
         session = _make_session([
             _make_msg("Oh that's really interesting I think I understand now"),  # long
-            _make_msg("I see what you mean about that"),  # medium
-            _make_msg("ok"),  # short — disengaging
+            _make_msg("I see what you mean about that concept"),  # medium
+            _make_msg("Yeah I guess so"),  # shorter
+            _make_msg("ok"),  # very short — disengaging (< 40% of first, ≤5 words)
         ])
         result = agent._compute_student_style(session)
         assert "disengagement" in result.lower() or "shorter" in result.lower()

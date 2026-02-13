@@ -159,6 +159,7 @@ class SessionState(BaseModel):
         self.updated_at = datetime.utcnow()
 
     def clear_question(self) -> None:
+        self.last_question = None
         self.awaiting_response = False
         self.updated_at = datetime.utcnow()
 

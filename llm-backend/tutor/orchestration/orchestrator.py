@@ -103,7 +103,9 @@ class TeacherOrchestrator:
 
         try:
             # Check if session is already complete (allow extension for advanced students)
-            if session.is_complete and not session.allow_extension:
+            max_extension_turns = 10
+            extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
+            if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
                 # Still record the student's message in history
                 session.add_message(create_student_message(student_message))
                 response = await self._generate_post_completion_response(session, student_message)
@@ -358,6 +360,12 @@ class TeacherOrchestrator:
                 q.phase = "hint"
             else:
                 q.phase = "explain"
+            # If tutor asked a probing/follow-up question, update expected answer
+            # so the prompt shows the correct expected answer for the NEW question
+            if output.question_asked:
+                q.question_text = output.question_asked
+                if output.expected_answer:
+                    q.expected_answer = output.expected_answer
             return True
 
         # Case 2: Correct answer → clear, then maybe track new question
@@ -382,7 +390,8 @@ class TeacherOrchestrator:
 
         # Case 4: New question, different concept pending → replace
         if output.question_asked and has_pending:
-            if output.question_concept != session.last_question.concept:
+            new_concept = output.question_concept or current_concept
+            if new_concept != session.last_question.concept:
                 session.set_question(Question(
                     question_text=output.question_asked,
                     expected_answer=output.expected_answer or "",

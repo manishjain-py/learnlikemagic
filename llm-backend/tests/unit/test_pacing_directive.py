@@ -65,3 +65,11 @@ class TestPacingDirective:
         session = _make_session(mastery={"c1": 0.6}, trend="steady")
         result = agent._compute_pacing_directive(session)
         assert "STEADY" in result
+
+    def test_all_zero_mastery_is_steady_not_simplify(self):
+        """All-zero mastery (no real data yet) should be STEADY, not SIMPLIFY."""
+        agent = _make_agent()
+        session = _make_session(mastery={"c1": 0.0, "c2": 0.0, "c3": 0.0}, trend="steady")
+        result = agent._compute_pacing_directive(session)
+        assert "STEADY" in result
+        assert "SIMPLIFY" not in result

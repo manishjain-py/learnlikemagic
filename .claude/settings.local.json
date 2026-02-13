@@ -56,7 +56,11 @@
       "Bash(/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python:*)",
       "Bash(__NEW_LINE_076a9310e5009919__ echo \"\")",
       "Bash(__NEW_LINE_e00961edc69e4c19__ echo \"\")",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Bash(/Users/manishjain/repos/learnlikemagic/llm-backend/.venv/bin/python -m evaluation.run_evaluation:*)",
+      "Bash(ps:*)",
+      "Bash(pip3 show:*)",
+      "Bash(kill:*)"
     ],
     "deny": [],
     "ask": []

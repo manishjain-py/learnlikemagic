@@ -154,3 +154,33 @@ class TestQuestionLifecycle:
         # Should increment attempts but NOT replace question
         assert q.wrong_attempts == 1
         session.set_question.assert_not_called()
+
+    def test_probing_updates_expected_answer(self):
+        """When tutor asks probing Q after wrong answer, expected_answer is updated."""
+        q = Question(question_text="What is 3×100?", expected_answer="300", concept="multiplication")
+        session = _make_session(
+            last_question=q,
+            history=[_make_student_msg("30")]
+        )
+        orch = _make_orchestrator()
+        output = _make_output(
+            answer_correct=False,
+            question_asked="How many zeros does 100 have?",
+            expected_answer="2",
+            question_concept="multiplication"
+        )
+        orch._handle_question_lifecycle(session, output, "multiplication")
+        assert q.question_text == "How many zeros does 100 have?"
+        assert q.expected_answer == "2"
+        assert q.wrong_attempts == 1
+
+    def test_correct_answer_nulls_last_question(self):
+        """clear_question should null last_question so has_pending is False."""
+        from tutor.models.session_state import SessionState, Question as Q
+        from tutor.models.messages import StudentContext
+        session = SessionState(student_context=StudentContext(grade=5))
+        session.set_question(Q(question_text="Q?", expected_answer="A", concept="c"))
+        assert session.last_question is not None
+        session.clear_question()
+        assert session.last_question is None
+        assert session.awaiting_response is False

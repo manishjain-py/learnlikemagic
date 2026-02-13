@@ -117,7 +117,8 @@ class MasterTutorAgent(BaseAgent):
                 "Harder applications, curveballs. Keep responses concise."
             )
 
-        if avg_mastery < 0.4 or trend == "struggling":
+        has_real_data = any(v > 0 for v in mastery_values)
+        if (has_real_data and avg_mastery < 0.4) or trend == "struggling":
             return (
                 "PACING: SIMPLIFY — Student is struggling. Shorter sentences, 1-2 ideas "
                 "per response. Yes/no or simple-choice questions. More scaffolding."
@@ -142,11 +143,11 @@ class MasterTutorAgent(BaseAgent):
         uses_emojis = any(
             any(ord(c) > 0x1F600 for c in m.content) for m in student_msgs
         )
-        # Disengagement: are responses getting shorter?
+        # Disengagement: are responses getting shorter over 4+ messages?
         shortening = False
-        if len(word_counts) >= 3:
-            recent = word_counts[-3:]
-            shortening = recent[-1] < recent[0] * 0.5
+        if len(word_counts) >= 4:
+            recent = word_counts[-4:]
+            shortening = recent[-1] < recent[0] * 0.4 and recent[-1] <= 5
 
         parts = []
         if avg_words <= 5:
