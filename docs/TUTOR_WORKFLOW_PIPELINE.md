@@ -53,6 +53,9 @@
 |   |   MASTER TUTOR (single LLM call handles everything)            |     |
 |   |       |                                                        |     |
 |   |       v                                                        |     |
+|   |   SANITIZATION CHECK (detect leaked internal language)         |     |
+|   |       |                                                        |     |
+|   |       v                                                        |     |
 |   |   STATE UPDATES (mastery, misconceptions, step advance)        |     |
 |   |       |                                                        |     |
 |   |       v                                                        |     |
@@ -69,12 +72,10 @@
 
 | Agent | Model | Reasoning | Structured Output | Responsibility |
 |-------|-------|-----------|-------------------|----------------|
-| **SAFETY** | GPT-5.2 | none | json_schema (strict) | Fast content moderation gate |
-| **MASTER TUTOR** | GPT-5.2 | none | json_schema (strict) | All teaching: explain, ask questions, evaluate answers, track mastery, advance steps |
+| **SAFETY** | GPT-5.2 / Claude | none | json_schema (strict) | Fast content moderation gate |
+| **MASTER TUTOR** | GPT-5.2 / Claude | none | json_schema (strict) | All teaching: explain, ask questions, evaluate answers, track mastery, advance steps |
 
-**Key difference from old architecture:** The old 3-agent pipeline (PLANNER -> EXECUTOR -> EVALUATOR) has been replaced with a single Master Tutor agent that handles all teaching in one LLM call, producing more natural conversations.
-
-**Provider support:** The system supports OpenAI (GPT-5.2) and Anthropic (Claude) via the `APP_LLM_PROVIDER` environment variable.
+**Provider support:** The system supports OpenAI (GPT-5.2), Anthropic Claude Opus 4.6, and Anthropic Claude Haiku 4.5 via the `APP_LLM_PROVIDER` environment variable (`openai`, `anthropic`, `anthropic-haiku`).
 
 ---
 
@@ -183,6 +184,10 @@ Send: {"type": "chat", "payload": {"message": "I think 5/8 is bigger..."}}
 ```
 TeacherOrchestrator.process_turn(session, student_message)
     |
+    +-> 0. If session already complete:
+    |       -> Generate post-completion response via LLM (context-aware, not canned)
+    |       -> Return immediately
+    |
     +-> 1. Increment turn, add student message to history
     +-> 2. Build AgentContext
     |
@@ -191,21 +196,25 @@ TeacherOrchestrator.process_turn(session, student_message)
     |       |-> If safe: continue
     |
     +-> 4. MASTER TUTOR AGENT (single LLM call)
-    |       Input: system prompt (study plan, guidelines, 8 teaching rules)
+    |       Input: system prompt (study plan, guidelines, 11 teaching rules)
     |              + turn prompt (current state, mastery, history, student message)
     |       Output: TutorTurnOutput {
     |           response,           # student-facing text
     |           intent,             # answer/question/confusion/off_topic/continuation
     |           answer_correct,     # true/false/null
     |           misconceptions_detected,
-    |           mastery_signal,     # low/medium/high
+    |           mastery_signal,     # strong/adequate/needs_remediation
     |           advance_to_step,    # step number or null
-    |           mastery_updates,    # {concept: score}
+    |           mastery_updates,    # [{concept, score}]
     |           question_asked,     # question text or null
     |           expected_answer,    # expected answer or null
     |           turn_summary,       # one-line summary
-    |           reasoning           # internal reasoning
+    |           reasoning           # internal reasoning (not shown to student)
     |       }
+    |
+    +-> 4b. SANITIZATION CHECK (regex-based)
+    |       - Detect leaked internal language ("The student's...", "Assessment:...")
+    |       - Log warning if detected (prompt fix is primary defense)
     |
     +-> 5. APPLY STATE UPDATES
     |       - Update mastery estimates
@@ -213,6 +222,7 @@ TeacherOrchestrator.process_turn(session, student_message)
     |       - Track questions (set/clear)
     |       - Advance step if needed
     |       - Track off-topic count
+    |       - Handle session completion (only honored on final step)
     |
     +-> 6. Add teacher response to conversation history
     +-> 7. Update session summary (turn timeline, progress trend)
@@ -335,15 +345,18 @@ The Master Tutor decides when to advance steps via `advance_to_step` in its outp
 Contains:
 - Study plan (steps with types and concepts)
 - Topic guidelines (learning objectives, prerequisites, misconceptions, teaching approach)
-- 8 teaching rules:
-  1. Follow the study plan
-  2. Advance when student demonstrates understanding
+- 11 teaching rules:
+  1. Follow the study plan, hide scaffolding
+  2. Advance when ready + adaptive pacing (escalate on mastery, honor harder-material requests, simplify on struggles, match response length)
   3. Track questions asked
-  4. Evaluate answers
-  5. Vary explanation structure
-  6. Stay on topic
+  4. Evaluate answers carefully (verify correctness before praising — check specific values, not just approach)
+  5. Never repeat yourself — vary praise, structure, openings
+  6. Match the student's energy
   7. Update mastery signals
-  8. Sound human and natural
+  8. Be a real teacher — proportional praise, minimal emojis
+  9. End session naturally — personalized closing that acknowledges last message, reflects on specific learnings, never canned
+  10. Never leak internal language — response field is student-facing, use second person only, put analysis in reasoning field
+  11. Check for misconceptions before ending — ask for summary, correct misunderstandings before closing
 
 ### Turn Prompt (per turn)
 Contains:
@@ -405,30 +418,32 @@ Contains:
 ### Backend - Evaluation (`llm-backend/evaluation/`)
 | File | Purpose |
 |------|---------|
-| `config.py` | EvalConfig: server, session, simulation, LLM settings |
-| `student_simulator.py` | LLM-powered student with persona (OpenAI or Anthropic) |
+| `config.py` | EvalConfig: server, session, simulation, LLM settings, `all_personas()` |
+| `student_simulator.py` | LLM-powered student with persona and behavioral probabilities |
 | `session_runner.py` | Session lifecycle: create via REST, converse via WebSocket |
-| `evaluator.py` | 10-dimension LLM judge (coherence, naturalness, etc.) |
+| `evaluator.py` | 5-dimension persona-aware LLM judge |
 | `report_generator.py` | Generates conversation.md, evaluation.json, review.md, problems.md |
-| `run_evaluation.py` | CLI: `python -m evaluation.run_evaluation` |
-| `api.py` | FastAPI endpoints for starting/monitoring evaluation runs |
-| `personas/average_student.json` | Default student persona |
+| `run_evaluation.py` | CLI with multi-persona + multi-run support |
+| `api.py` | FastAPI endpoints for starting/monitoring/re-evaluating runs |
+| `personas/*.json` | 6 student personas (ace, average_student, confused_confident, distractor, quiet_one, struggler) |
 
 ---
 
 ## LLM Calls Summary
 
-| Agent | Model | Reasoning | Purpose | Output Schema |
-|-------|-------|-----------|---------|---------------|
-| SAFETY | GPT-5.2 | none | Content moderation | SafetyOutput (strict) |
-| MASTER TUTOR | GPT-5.2 | none | All teaching | TutorTurnOutput (strict) |
-| WELCOME | GPT-5.2 | none | Welcome message | Plain text |
+| Call | Model | Reasoning | Purpose | Output Schema |
+|------|-------|-----------|---------|---------------|
+| SAFETY | GPT-5.2 / Claude | none | Content moderation | SafetyOutput (strict) |
+| MASTER TUTOR | GPT-5.2 / Claude | none | All teaching | TutorTurnOutput (strict) |
+| WELCOME | GPT-5.2 / Claude | none | Welcome message | Plain text |
+| POST-COMPLETION | GPT-5.2 / Claude | none | Context-aware reply after session ends | Plain text |
 
 **LLM Service Features:**
 - GPT-5.2 with strict `json_schema` structured output
 - Anthropic Claude support via AnthropicAdapter (thinking + tool_use)
+  - Claude Opus 4.6 (`claude-opus-4-6`), Claude Haiku 4.5 (`claude-haiku-4-5-20251001`)
 - Provider switching via `APP_LLM_PROVIDER` env var (openai/anthropic/anthropic-haiku)
-- Reasoning effort levels: none, low, medium, high, xhigh
+- Reasoning effort levels: none, low, medium, high, xhigh (mapped to thinking budgets for Claude)
 - GPT-5.2 fallback to GPT-5.1, then GPT-4o
 - Gemini support (gemini-3-pro-preview)
 - Automatic retry: 3 attempts with exponential backoff
@@ -438,14 +453,17 @@ Contains:
 
 ## API Endpoints Reference
 
-### Health & Status
+### Health & Config
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/` | Health check (status, service name, version) |
 | `GET` | `/health/db` | Database connectivity check |
+| `GET` | `/config/models` | Model configuration per workflow (tutor provider + labels) |
 
 ### Session Management
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/sessions` | List all sessions with lightweight summaries |
 | `POST` | `/sessions` | Create new session, returns first question |
 | `POST` | `/sessions/{id}/step` | Submit student answer, get next turn |
 | `GET` | `/sessions/{id}/summary` | Get session performance summary |
@@ -463,6 +481,7 @@ Contains:
 ### Evaluation Pipeline
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `POST` | `/api/evaluation/evaluate-session` | Evaluate an existing session from DB |
 | `POST` | `/api/evaluation/start` | Start evaluation run in background |
 | `GET` | `/api/evaluation/status` | Get current evaluation status |
 | `GET` | `/api/evaluation/runs` | List all evaluation runs |
@@ -473,38 +492,67 @@ Contains:
 
 ## Evaluation Pipeline
 
-The evaluation pipeline simulates a tutoring session and evaluates quality across 10 dimensions.
+The evaluation pipeline simulates tutoring sessions using persona-driven student simulators and evaluates quality across 5 teaching-craft dimensions with a persona-aware LLM judge.
 
 ### Flow
 ```
-1. Load persona (simulated student profile)
+1. Load persona (simulated student profile with behavioral probabilities)
 2. Create session via REST API
 3. Run conversation via WebSocket (student simulator <-> tutor)
-4. Evaluate conversation with LLM judge (10 dimensions)
+4. Evaluate conversation with LLM judge (5 persona-aware dimensions)
 5. Generate reports (conversation.md, evaluation.json, review.md, problems.md)
+6. If multi-persona: generate comparison report (comparison.md, comparison.json)
 ```
 
-### 10 Evaluation Dimensions
-1. **Coherence** - Logical thread across turns
-2. **Non-Repetition** - Avoids repeating explanations
-3. **Natural Flow** - Feels like natural tutoring
-4. **Engagement** - Keeps student interested
-5. **Responsiveness** - Responds to student input
-6. **Pacing** - Appropriate speed
-7. **Grade Appropriateness** - Right level of complexity
-8. **Topic Coverage** - Covers learning objectives
-9. **Session Arc** - Natural beginning/middle/end
-10. **Overall Naturalness** - Human-like feel
+### 5 Evaluation Dimensions (Persona-Aware)
+1. **Responsiveness** - Does the tutor adapt to student signals?
+2. **Explanation Quality** - Does the tutor explain well and try different approaches?
+3. **Emotional Attunement** - Does the tutor read the room emotionally?
+4. **Pacing** - Is the tutor moving at the right speed for this student?
+5. **Authenticity** - Does this feel like a real teacher or a chatbot?
+
+Each dimension is scored 1-10. The same tutor behavior is judged differently based on the student persona. Problems are identified with severity (critical/major/minor) and root causes (missed_student_signal, wrong_pacing, repetitive_approach, emotional_mismatch, missed_misconception, etc.).
+
+### Student Personas (6 available)
+| Persona ID | Name | Correct% | Key Trait |
+|------------|------|----------|-----------|
+| ace | Arjun | 90% | Quick learner, gets bored easily |
+| average_student | Riya | 60% | Attentive but confused by new concepts |
+| confused_confident | Dev | 45% | Confident wrong answers, systematic misconceptions |
+| distractor | Kabir | 65% | Bright but scattered, goes off-topic |
+| quiet_one | Meera | 60% | Shy, minimal responses, needs to be drawn out |
+| struggler | Priya | 30% | Hardworking but confused, asks for help |
+
+Each persona has `persona_specific_behaviors` with probability-driven traits (boredom, off-topic, minimal responses, etc.).
 
 ### CLI Usage
 ```bash
 cd llm-backend
-python -m evaluation.run_evaluation
+
+# Single persona
+python -m evaluation.run_evaluation --topic-id <guideline_id> --persona ace.json --skip-server
+
+# All personas
+python -m evaluation.run_evaluation --topic-id <guideline_id> --persona all --skip-server
+
+# All personas, 3 runs each for noise reduction
+python -m evaluation.run_evaluation --topic-id <guideline_id> --persona all --runs-per-persona 3 --skip-server
 ```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--topic-id` | (required) | Guideline ID for the topic |
+| `--persona` | average_student.json | Persona file or `all` for all personas |
+| `--runs-per-persona` | 1 | Runs per persona (with `--persona all`) for noise reduction |
+| `--skip-server` | false | Use already-running server |
+| `--max-turns` | 20 | Max conversation turns |
+| `--grade` | 3 | Student grade |
+| `--provider` | (from env) | LLM provider for evaluator: `openai` or `anthropic` |
 
 ### Environment Variables
 ```bash
-EVAL_LLM_PROVIDER=openai      # or "anthropic"
+APP_LLM_PROVIDER=openai        # Tutor provider: openai, anthropic, anthropic-haiku
+EVAL_LLM_PROVIDER=anthropic    # Evaluator provider (defaults to anthropic)
 OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
@@ -537,8 +585,11 @@ ANTHROPIC_API_KEY=...
 | **Topic adapter pattern** | Bridges DB models to tutor models cleanly |
 | **WebSocket + REST** | REST for compatibility, WebSocket for real-time chat |
 | **In-memory agent logs** | Thread-safe log store for debugging, accessible via API |
-| **Evaluation pipeline** | Automated quality measurement with LLM judge |
-| **Anthropic provider support** | Configurable LLM provider (OpenAI or Claude) |
+| **Response sanitization** | Regex safety net to detect leaked internal/diagnostic language in tutor responses |
+| **Dynamic post-completion** | LLM-generated context-aware responses after session ends (replaces canned message) |
+| **Evaluation pipeline** | Automated quality measurement with persona-aware LLM judge (5 dimensions) |
+| **Multi-run eval noise reduction** | `--runs-per-persona` averages scores across runs to reduce eval variance |
+| **Anthropic provider support** | Configurable LLM provider (OpenAI, Claude Opus 4.6, Claude Haiku 4.5) |
 | **Conversation window (10 msgs)** | Prevents context overflow while maintaining recent context |
 | **Session summary tracking** | Turn timeline, concepts taught, progress trend |
 | **Stdout structured logging** | JSON logs for cloud-native observability |
@@ -552,7 +603,7 @@ ANTHROPIC_API_KEY=...
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | (required) | OpenAI API key |
 | `ANTHROPIC_API_KEY` | "" | Anthropic API key (optional) |
-| `APP_LLM_PROVIDER` | "openai" | LLM provider: openai, anthropic, anthropic-haiku |
+| `APP_LLM_PROVIDER` | "openai" | LLM provider: openai, anthropic (Opus 4.6), anthropic-haiku (Haiku 4.5) |
 | `DATABASE_URL` | postgresql://... | PostgreSQL connection URL |
 | `LOG_FORMAT` | "json" | Logging format: json or text |
 | `LOG_LEVEL` | "INFO" | Logging level |

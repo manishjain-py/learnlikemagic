@@ -5,6 +5,7 @@ Simplified architecture: Safety check -> Master Tutor -> State update.
 The master tutor handles all teaching responsibilities in a single LLM call.
 """
 
+import re
 import time
 import logging
 from typing import Dict, Any, Optional, List
@@ -105,8 +106,9 @@ class TeacherOrchestrator:
             if session.is_complete:
                 # Still record the student's message in history
                 session.add_message(create_student_message(student_message))
+                response = await self._generate_post_completion_response(session, student_message)
                 return TurnResult(
-                    response="We've wrapped up this lesson — great work! Start a new session whenever you're ready to keep going.",
+                    response=response,
                     intent="session_complete",
                     specialists_called=[],
                     state_changed=False,
@@ -175,6 +177,9 @@ class TeacherOrchestrator:
                 },
             )
 
+            # Step 2b: Sanitization check on tutor response
+            self._check_response_sanitization(session.session_id, turn_id, tutor_output.response)
+
             # Step 3: Apply state updates
             state_changed = self._apply_state_updates(session, tutor_output)
 
@@ -230,6 +235,49 @@ class TeacherOrchestrator:
                 intent="error",
                 specialists_called=[],
                 state_changed=False,
+            )
+
+    # Regex patterns that indicate system/diagnostic language leaked into student-facing response
+    _LEAK_PATTERNS = re.compile(
+        r"(?i)\b(?:the student'?s?|the message contains|the answer is incorrect because"
+        r"|assessment:|diagnostic:|the learner|student appears to|misconception detected"
+        r"|the response should)\b"
+    )
+
+    async def _generate_post_completion_response(self, session: SessionState, student_message: str) -> str:
+        """Generate a context-aware response to a student's post-session message."""
+        concepts = ", ".join(session.session_summary.concepts_taught) if session.session_summary.concepts_taught else "the topic"
+        prompt = (
+            f"You are a warm, friendly tutor. The tutoring session on '{session.topic.topic_name if session.topic else 'this topic'}' "
+            f"has already ended. The student just said: \"{student_message}\"\n\n"
+            f"Concepts covered: {concepts}\n\n"
+            f"Respond naturally to whatever the student said. If they asked a question, answer it briefly. "
+            f"If they said thanks, acknowledge warmly. Remind them they can start a new session to continue learning. "
+            f"Keep it to 1-2 sentences. Speak directly to the student (use 'you')."
+        )
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self.llm.call_gpt_5_2(
+                    prompt=prompt,
+                    reasoning_effort="none",
+                    json_mode=False,
+                ),
+            )
+            return result.get("output_text", "").strip() or "Feel free to start a new session whenever you're ready!"
+        except Exception as e:
+            logger.warning(f"Failed to generate post-completion response: {e}")
+            return "Feel free to start a new session whenever you're ready!"
+
+    def _check_response_sanitization(self, session_id: str, turn_id: str, response: str) -> None:
+        """Log a warning if the tutor response contains third-person diagnostic language."""
+        match = self._LEAK_PATTERNS.search(response)
+        if match:
+            logger.warning(
+                f"System note leak detected in response (session={session_id}, turn={turn_id}): "
+                f"matched '{match.group()}' — response may contain internal language shown to student"
             )
 
     def _apply_state_updates(self, session: SessionState, output: TutorTurnOutput) -> bool:
