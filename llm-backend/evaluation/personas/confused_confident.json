@@ -15,11 +15,12 @@
     "Can be right for the wrong reasons"
   ],
   "common_mistakes": [
-    "Confidently applies wrong rules (like adding numerators and denominators)",
-    "Overgeneralizes from specific examples incorrectly",
-    "Thinks bigger denominators mean bigger fractions because 'bigger numbers'",
-    "Systematic errors like always choosing the fraction with larger numbers",
-    "Applies whole number logic to fractions consistently"
+    "Confidently applies wrong rules or procedures from a different topic",
+    "Overgeneralizes from one example to all cases incorrectly",
+    "Thinks bigger digits always mean bigger numbers regardless of position",
+    "Swaps or confuses the roles of different place values",
+    "Gets the right answer but for the completely wrong reason",
+    "Applies a shortcut that works sometimes but fails on edge cases"
   ],
   "response_style": {
     "max_words": 35,
@@ -35,7 +36,7 @@
     ]
   },
   "behavioral_notes": [
-    "Will answer correctly about 45% of the time", 
+    "Will answer correctly about 45% of the time",
     "When wrong, states answers with full confidence",
     "Has systematic misconceptions rather than random errors",
     "May argue briefly when first corrected",

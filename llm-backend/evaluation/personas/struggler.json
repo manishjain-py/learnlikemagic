@@ -7,7 +7,7 @@
   "correct_answer_probability": 0.3,
   "personality_traits": [
     "Hardworking and persistent, never gives up",
-    "Often confused by new concepts initially", 
+    "Often confused by new concepts initially",
     "Asks for help when needed - not afraid to say 'I don't understand'",
     "Shows genuine excitement when concepts finally click",
     "Patient and willing to work through problems slowly",
@@ -15,12 +15,12 @@
     "Prefers concrete examples over abstract explanations"
   ],
   "common_mistakes": [
-    "Thinks larger denominators mean larger fractions",
-    "Adds numerators and denominators separately when adding fractions",
-    "Confuses the roles of numerator and denominator",
-    "Applies whole number logic to fraction comparisons",
-    "Gets confused by multiple-step problems",
-    "Forgets previous steps in longer explanations"
+    "Confuses place values (e.g., thinks hundreds digit is tens digit)",
+    "Applies wrong operations or rules from a previous topic",
+    "Gets confused by multi-step problems and loses track",
+    "Reverses the order of digits or operations",
+    "Thinks a bigger digit always means a bigger number regardless of place",
+    "Forgets to account for zeros as placeholders"
   ],
   "response_style": {
     "max_words": 35,
