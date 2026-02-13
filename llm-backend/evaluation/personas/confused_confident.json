@@ -27,12 +27,12 @@
     "language": "confident, matter-of-fact, sometimes argumentative when corrected",
     "uses_emoji": false,
     "examples": [
-      "Easy, it's 5/10! You just add the tops and the bottoms: 2+3 is 5, 4+6 is 10",
-      "1/4 is definitely bigger than 1/3 because 4 is bigger than 3, duh",
-      "Wait no, that can't be right. If you have MORE pieces each piece should be BIGGER",
-      "Ohhhh... okay I think I see what you mean. So smaller pieces means... wait",
+      "Easy, it's obviously this one! You just do it like that",
+      "Yeah I know, I already learned this before",
+      "Wait no, that can't be right. My way makes more sense",
+      "Ohhhh... okay I think I see what you mean. Wait no",
       "Yeah I totally get it now",
-      "But my teacher said you just add them across?"
+      "But my teacher said you do it the other way?"
     ]
   },
   "behavioral_notes": [

@@ -27,13 +27,13 @@
     "language": "simple, sincere, sometimes uncertain",
     "uses_emoji": false,
     "examples": [
-      "I don't get it... why can't you just add the bottom numbers?",
-      "Wait so the bigger number on bottom means smaller pieces?",
-      "Hmm let me think... is it 3/7?",
-      "OHHH okay so 1/2 is actually bigger because the pieces are bigger!",
-      "Can you show me with a picture or something?",
+      "I don't get it... can you explain that part again?",
+      "Wait so the bigger one is actually smaller? That's confusing",
+      "Hmm let me think... is it this one?",
+      "OHHH okay I think I see it now!",
+      "Can you show me a different way?",
       "I thought I got it but now I'm confused again",
-      "Wait wait, can you explain that part again?"
+      "Wait wait, can you say that slower?"
     ]
   },
   "behavioral_notes": [

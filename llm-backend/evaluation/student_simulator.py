@@ -10,11 +10,14 @@ The LLM receives explicit per-turn instructions: "THIS TURN you MUST
 answer incorrectly" or "THIS TURN you should answer correctly."
 """
 
+import logging
 import random
 import time
 from openai import OpenAI, RateLimitError
 
 from evaluation.config import EvalConfig
+
+logger = logging.getLogger(__name__)
 
 
 class StudentSimulator:
@@ -27,8 +30,8 @@ class StudentSimulator:
         self.correct_prob = persona.get("correct_answer_probability", 0.6)
         self.system_prompt = self._build_system_prompt()
         self.turn_count = 0
-        self.correct_count = 0
-        self.wrong_count = 0
+        # Track dice decisions for logging/debugging
+        self.turn_decisions: list[dict] = []
 
         if self.provider == "anthropic":
             import anthropic
@@ -66,18 +69,18 @@ YOUR RESPONSE STYLE:
 - Use {p['response_style']['language']}
 - You are a real student, not a chatbot. Sound natural.
 
-EXAMPLE RESPONSES (for tone reference):
+EXAMPLE RESPONSES (for tone reference — adapt to whatever topic is being taught):
 {examples}
 
 BEHAVIORAL GUIDELINES:
 {behavioral}{persona_behaviors}
 
 NATURAL VARIATION INSTRUCTION:
-Remember: you are a TENDENCY, not a script. Even though you have these personality traits and behaviors, you don't express them every single turn. Some turns you're more like your described personality, some turns less. Be naturally variable like a real person - even shy students sometimes speak up, even confident students sometimes hesitate.
+Remember: you are a TENDENCY, not a script. Even though you have these personality traits and behaviors, you don't express them every single turn. Some turns you're more like your described personality, some turns less. Be naturally variable like a real person.
 
 CRITICAL RULES:
-1. Each turn, you will receive a [TURN DIRECTIVE] telling you whether to answer correctly or incorrectly this turn. YOU MUST FOLLOW IT.
-2. When the directive says ANSWER INCORRECTLY: pick a mistake from your common mistakes list and give a WRONG answer confidently or hesitantly (matching your persona). Do NOT give the right answer. Make a SPECIFIC, CONCRETE wrong answer.
+1. Each turn, you will receive a [TURN DIRECTIVE] telling you whether to answer correctly or incorrectly this turn. YOU MUST FOLLOW IT EXACTLY.
+2. When the directive says ANSWER INCORRECTLY: pick a mistake from your common mistakes list and give a WRONG answer. Make a SPECIFIC, CONCRETE wrong answer. Do NOT hedge, do NOT self-correct, do NOT say "wait actually..." — commit fully to your wrong answer.
 3. When the directive says ANSWER CORRECTLY: give the right answer in your persona's style.
 4. If the tutor isn't asking a question (just explaining), respond naturally in character — the directive only applies to questions with answers.
 5. Never break character. You are {p['name']}, a {p['age']}-year-old.
@@ -88,30 +91,10 @@ CRITICAL RULES:
     def _should_answer_correctly(self) -> bool:
         """Programmatically decide if this turn should be correct.
         
-        Uses the persona's correct_answer_probability with a correction
-        mechanism to keep the running ratio close to the target.
+        Pure random roll against the persona's correct_answer_probability.
+        The law of large numbers handles convergence over multiple turns.
         """
-        self.turn_count += 1
-        
-        if self.turn_count <= 2:
-            # First couple turns: pure random
-            return random.random() < self.correct_prob
-        
-        # Adaptive correction: if we've been too correct, bias toward wrong (and vice versa)
-        total_answered = self.correct_count + self.wrong_count
-        if total_answered == 0:
-            return random.random() < self.correct_prob
-            
-        actual_ratio = self.correct_count / total_answered
-        target = self.correct_prob
-        
-        # If we're running too high, increase chance of wrong answer
-        # If we're running too low, increase chance of correct answer
-        adjustment = (target - actual_ratio) * 0.5  # gentle correction
-        adjusted_prob = target + adjustment
-        adjusted_prob = max(0.1, min(0.9, adjusted_prob))  # clamp
-        
-        return random.random() < adjusted_prob
+        return random.random() < self.correct_prob
 
     def _get_turn_directive(self, should_be_correct: bool) -> str:
         """Generate the per-turn directive injected into the conversation."""
@@ -124,26 +107,40 @@ CRITICAL RULES:
             mistake_hint = ""
             if mistakes:
                 chosen_mistake = random.choice(mistakes)
-                mistake_hint = f" Apply this type of mistake: '{chosen_mistake}'"
+                mistake_hint = f" Apply this type of mistake: '{chosen_mistake}'."
             
-            return f"[TURN DIRECTIVE: This turn, if the tutor asks you a question, you MUST ANSWER INCORRECTLY. Give a WRONG answer — make a specific concrete error, not a vague one.{mistake_hint} Remember: say your wrong answer naturally, as your character would. Don't hint that you know it's wrong (unless your persona would).]"
+            return (
+                f"[TURN DIRECTIVE: This turn, if the tutor asks you a question, you MUST ANSWER INCORRECTLY. "
+                f"Give a WRONG answer — make a specific concrete error, not a vague one.{mistake_hint} "
+                f"Say your wrong answer naturally as your character would. "
+                f"Do NOT self-correct in the same response. Do NOT say 'wait actually' or reveal the correct answer. "
+                f"Commit fully to the wrong answer.]"
+            )
 
     def generate_response(self, conversation: list[dict], topic_info: dict | None = None) -> str:
         """Generate a student response given the conversation so far."""
+        self.turn_count += 1
+        
         # Determine if this turn should be correct or incorrect
         should_be_correct = self._should_answer_correctly()
         directive = self._get_turn_directive(should_be_correct)
+        
+        # Log the decision
+        decision = {
+            "turn": self.turn_count,
+            "directive": "CORRECT" if should_be_correct else "INCORRECT",
+            "probability": self.correct_prob,
+        }
+        self.turn_decisions.append(decision)
+        logger.info(
+            f"[Turn {self.turn_count}] Dice roll: {decision['directive']} "
+            f"(target_prob={self.correct_prob})"
+        )
         
         if self.provider == "anthropic":
             response = self._generate_anthropic(conversation, topic_info, directive)
         else:
             response = self._generate_openai(conversation, topic_info, directive)
-        
-        # Track for adaptive correction (rough heuristic — we told it what to do)
-        if should_be_correct:
-            self.correct_count += 1
-        else:
-            self.wrong_count += 1
             
         return response
 
@@ -160,7 +157,7 @@ CRITICAL RULES:
             elif msg["role"] == "student":
                 messages.append({"role": "assistant", "content": msg["content"]})
 
-        # Inject the turn directive as the last system message
+        # Inject the turn directive as the last system message (close to generation)
         if directive:
             messages.append({"role": "system", "content": directive})
 
@@ -186,16 +183,21 @@ CRITICAL RULES:
         if topic_info:
             system += f"\n\n[Context: The tutoring session is about '{topic_info.get('topic_name', 'a topic')}' for grade {topic_info.get('grade_level', 5)}]"
 
-        # Append the turn directive to the system prompt
-        if directive:
-            system += f"\n\n{directive}"
-
         messages = []
         for msg in conversation:
             if msg["role"] == "tutor":
                 messages.append({"role": "user", "content": msg["content"]})
             elif msg["role"] == "student":
                 messages.append({"role": "assistant", "content": msg["content"]})
+
+        # Inject directive as the last user message so it's close to generation
+        # This is more effective than burying it in the system prompt for Claude
+        if directive:
+            # If the last message is from the tutor (user role), append directive to it
+            if messages and messages[-1]["role"] == "user":
+                messages[-1]["content"] += f"\n\n{directive}"
+            else:
+                messages.append({"role": "user", "content": directive})
 
         for attempt in range(3):
             try:
