@@ -34,6 +34,9 @@ class Question(BaseModel):
     rubric: str = Field(default="", description="Evaluation criteria")
     hints: list[str] = Field(default_factory=list, description="Available hints")
     hints_used: int = Field(default=0, description="Number of hints provided")
+    wrong_attempts: int = Field(default=0, description="Number of wrong attempts on this question")
+    previous_student_answers: list[str] = Field(default_factory=list, description="Student's previous wrong answers")
+    phase: str = Field(default="asked", description="Lifecycle phase: asked, probe, hint, explain")
 
 
 class SessionSummary(BaseModel):
@@ -76,6 +79,7 @@ class SessionState(BaseModel):
     # Assessment State
     last_question: Optional[Question] = None
     awaiting_response: bool = False
+    allow_extension: bool = Field(default=True, description="Allow tutor to continue past study plan for advanced students")
 
     # Mastery Tracking
     mastery_estimates: dict[str, float] = Field(default_factory=dict, description="Mastery score (0-1) per concept")

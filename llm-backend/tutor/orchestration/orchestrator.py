@@ -102,8 +102,8 @@ class TeacherOrchestrator:
         )
 
         try:
-            # Check if session is already complete
-            if session.is_complete:
+            # Check if session is already complete (allow extension for advanced students)
+            if session.is_complete and not session.allow_extension:
                 # Still record the student's message in history
                 session.add_message(create_student_message(student_message))
                 response = await self._generate_post_completion_response(session, student_message)
@@ -297,16 +297,8 @@ class TeacherOrchestrator:
             session.add_misconception(current_concept, misconception)
             changed = True
 
-        # 3. Track questions
-        if output.question_asked:
-            session.set_question(Question(
-                question_text=output.question_asked,
-                expected_answer=output.expected_answer or "",
-                concept=output.question_concept or current_concept,
-            ))
-            changed = True
-        elif output.answer_correct is not None:
-            session.clear_question()
+        # 3. Question lifecycle
+        if self._handle_question_lifecycle(session, output, current_concept):
             changed = True
 
         # 4. Advance step
@@ -335,6 +327,73 @@ class TeacherOrchestrator:
                 )
 
         return changed
+
+    def _handle_question_lifecycle(
+        self, session: SessionState, output: TutorTurnOutput, current_concept: str
+    ) -> bool:
+        """
+        Handle question tracking with lifecycle awareness.
+
+        Cases:
+        1. Wrong answer on pending question → increment attempts, DON'T clear
+        2. Correct answer → clear question (optionally track new one)
+        3. New question, no pending → track it
+        4. New question, different concept pending → replace
+        5. Same concept follow-up while pending → keep original lifecycle
+        """
+        has_pending = session.last_question is not None
+
+        # Case 1: Wrong answer on a pending question
+        if output.answer_correct is False and has_pending:
+            q = session.last_question
+            q.wrong_attempts += 1
+            # Record what the student said
+            last_student = [m for m in session.conversation_history if m.role == "student"]
+            if last_student:
+                q.previous_student_answers.append(last_student[-1].content[:200])
+            # Update phase
+            if q.wrong_attempts == 1:
+                q.phase = "probe"
+            elif q.wrong_attempts == 2:
+                q.phase = "hint"
+            else:
+                q.phase = "explain"
+            return True
+
+        # Case 2: Correct answer → clear, then maybe track new question
+        if output.answer_correct is True:
+            session.clear_question()
+            if output.question_asked:
+                session.set_question(Question(
+                    question_text=output.question_asked,
+                    expected_answer=output.expected_answer or "",
+                    concept=output.question_concept or current_concept,
+                ))
+            return True
+
+        # Case 3: New question, no pending
+        if output.question_asked and not has_pending:
+            session.set_question(Question(
+                question_text=output.question_asked,
+                expected_answer=output.expected_answer or "",
+                concept=output.question_concept or current_concept,
+            ))
+            return True
+
+        # Case 4: New question, different concept pending → replace
+        if output.question_asked and has_pending:
+            if output.question_concept != session.last_question.concept:
+                session.set_question(Question(
+                    question_text=output.question_asked,
+                    expected_answer=output.expected_answer or "",
+                    concept=output.question_concept or current_concept,
+                ))
+                return True
+            # Case 5: Same concept follow-up → keep existing lifecycle
+            return False
+
+        # No question change
+        return False
 
     def _handle_unsafe_message(self, session: SessionState, safety: SafetyOutput) -> str:
         session.safety_flags.append(safety.violation_type or "unknown")

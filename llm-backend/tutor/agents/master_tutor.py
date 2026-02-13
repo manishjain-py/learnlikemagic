@@ -31,7 +31,7 @@ class TutorTurnOutput(BaseModel):
 
     response: str = Field(description="Your response to the student as the tutor")
     intent: str = Field(
-        description="What the student was doing: answer, question, confusion, off_topic, or continuation"
+        description="What the student was doing: answer, answer_change, question, confusion, novel_strategy, off_topic, or continuation"
     )
 
     # Answer evaluation
@@ -91,6 +91,79 @@ class MasterTutorAgent(BaseAgent):
 
     def set_session(self, session: SessionState) -> None:
         self._session = session
+
+    def _compute_pacing_directive(self, session: SessionState) -> str:
+        """One-line pacing instruction based on session signals."""
+        turn = session.turn_count  # already 1 on first msg (orchestrator increments before tutor)
+        mastery_values = list(session.mastery_estimates.values())
+        avg_mastery = sum(mastery_values) / len(mastery_values) if mastery_values else 0.0
+        trend = session.session_summary.progress_trend
+
+        if turn == 1:
+            return (
+                "PACING: FIRST TURN — Keep opening to 2-3 sentences. Ask ONE simple "
+                "question to gauge level. Don't explain the topic yet."
+            )
+
+        if avg_mastery >= 0.8 and trend == "improving":
+            if session.is_complete:
+                return (
+                    "PACING: EXTEND — Student has aced the plan. Push to harder territory — "
+                    "bigger numbers, trickier problems, edge cases. Do NOT wrap up "
+                    "or defer to 'next session'. Challenge them. Keep responses concise."
+                )
+            return (
+                "PACING: ACCELERATE — Student is acing this. Skip easy checks, go deeper. "
+                "Harder applications, curveballs. Keep responses concise."
+            )
+
+        if avg_mastery < 0.4 or trend == "struggling":
+            return (
+                "PACING: SIMPLIFY — Student is struggling. Shorter sentences, 1-2 ideas "
+                "per response. Yes/no or simple-choice questions. More scaffolding."
+            )
+
+        return "PACING: STEADY — Progressing normally. One idea at a time."
+
+    def _compute_student_style(self, session: SessionState) -> str:
+        """Compute response-style guidance from student's communication patterns."""
+        student_msgs = [
+            m for m in session.conversation_history if m.role == "student"
+        ]
+        if not student_msgs:
+            return "STYLE: Unknown (first turn). Start short."
+
+        # Word count
+        word_counts = [len(m.content.split()) for m in student_msgs]
+        avg_words = sum(word_counts) / len(word_counts)
+
+        # Engagement signals
+        asks_questions = any("?" in m.content for m in student_msgs)
+        uses_emojis = any(
+            any(ord(c) > 0x1F600 for c in m.content) for m in student_msgs
+        )
+        # Disengagement: are responses getting shorter?
+        shortening = False
+        if len(word_counts) >= 3:
+            recent = word_counts[-3:]
+            shortening = recent[-1] < recent[0] * 0.5
+
+        parts = []
+        if avg_words <= 5:
+            parts.append(f"STYLE: QUIET ({avg_words:.0f} words/msg avg) — respond in 2-3 sentences MAX.")
+        elif avg_words <= 15:
+            parts.append(f"STYLE: Moderate ({avg_words:.0f} words/msg) — 3-5 sentences.")
+        else:
+            parts.append(f"STYLE: Expressive ({avg_words:.0f} words/msg) — can elaborate more.")
+
+        if asks_questions:
+            parts.append("Student asks questions — encourage this, answer them.")
+        if uses_emojis:
+            parts.append("Student uses emojis — you can mirror lightly.")
+        if shortening:
+            parts.append("⚠️ Responses getting shorter — possible disengagement. Re-engage: try a different angle or ask what they think.")
+
+        return " ".join(parts)
 
     def build_prompt(self, context: AgentContext) -> str:
         session = self._session
@@ -153,15 +226,34 @@ class MasterTutorAgent(BaseAgent):
 
         if session.awaiting_response and session.last_question:
             q = session.last_question
+            attempt_num = q.wrong_attempts + 1
+
+            if q.wrong_attempts == 0:
+                strategy = "Evaluate their answer."
+            elif q.wrong_attempts == 1:
+                strategy = "PROBING QUESTION — help them find the error."
+            elif q.wrong_attempts == 2:
+                strategy = "TARGETED HINT — point at the specific mistake."
+            else:
+                strategy = "EXPLAIN directly and warmly."
+
+            prev = ""
+            if q.previous_student_answers:
+                prev = f"\nPrevious wrong answers: {'; '.join(q.previous_student_answers[-3:])}"
+
             awaiting_answer_section = (
-                f"**IMPORTANT — Student is answering this question:**\n"
+                f"**IMPORTANT — Student is answering (attempt #{attempt_num}):**\n"
                 f"Question: {q.question_text}\n"
-                f"Expected Answer: {q.expected_answer}\n"
+                f"Expected: {q.expected_answer}\n"
                 f"Concept: {q.concept}\n"
-                f"Evaluate their answer and set answer_correct accordingly."
+                f"Strategy: {strategy}{prev}"
             )
         else:
             awaiting_answer_section = ""
+
+        # Compute dynamic signals
+        pacing_directive = self._compute_pacing_directive(session)
+        student_style = self._compute_student_style(session)
 
         conversation = format_conversation_history(session.conversation_history, max_turns=10)
         if not conversation.strip():
@@ -175,6 +267,8 @@ class MasterTutorAgent(BaseAgent):
             mastery_formatted=mastery_formatted,
             misconceptions=misconceptions,
             turn_timeline=turn_timeline,
+            pacing_directive=pacing_directive,
+            student_style=student_style,
             awaiting_answer_section=awaiting_answer_section,
             conversation_history=conversation,
             student_message=context.student_message,
