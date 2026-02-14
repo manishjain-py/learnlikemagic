@@ -101,9 +101,20 @@ class MasterTutorAgent(BaseAgent):
 
         if turn == 1:
             return (
-                "PACING: FIRST TURN — Keep opening to 2-3 sentences. Ask ONE simple "
-                "question to gauge level. Don't explain the topic yet."
+                "PACING: FIRST TURN — Keep opening to 2-3 sentences MAX. Ask ONE simple "
+                "question to gauge level. Don't explain the topic yet. No tables, no "
+                "multi-step walkthroughs. Just a brief hook and one question."
             )
+
+        # Also accelerate if most concepts are strong (early fast-track detection)
+        if mastery_values:
+            # Count concepts with mastery >= 0.7
+            strong_concepts = sum(1 for v in mastery_values if v >= 0.7)
+            total_concepts = len(mastery_values)
+            if strong_concepts >= total_concepts * 0.6 and total_concepts > 0:
+                # Most concepts are strong — treat as accelerate-eligible
+                if avg_mastery >= 0.65 and trend == "improving":
+                    avg_mastery = 0.8  # Force accelerate path
 
         if avg_mastery >= 0.8 and trend == "improving":
             if session.is_complete:
@@ -113,16 +124,31 @@ class MasterTutorAgent(BaseAgent):
                     "or defer to 'next session'. Challenge them. Keep responses concise."
                 )
             return (
-                "PACING: ACCELERATE — Student is acing this. Skip easy checks, go deeper. "
-                "Harder applications, curveballs. Keep responses concise."
+                "PACING: ACCELERATE — Student is acing this. Skip steps aggressively — "
+                "jump ahead in the plan, skip explanations entirely, go straight to hard "
+                "problems. Minimal scaffolding: 1-2 sentences max before the challenge. "
+                "No analogies or walkthroughs unless they ask. If they request harder "
+                "material, go BEYOND the study plan — larger numbers, edge cases, puzzles. "
+                "Cut praise to brief acknowledgments."
             )
 
         has_real_data = any(v > 0 for v in mastery_values)
         if (has_real_data and avg_mastery < 0.4) or trend == "struggling":
             return (
                 "PACING: SIMPLIFY — Student is struggling. Shorter sentences, 1-2 ideas "
-                "per response. Yes/no or simple-choice questions. More scaffolding."
+                "per response. Yes/no or simple-choice questions. ONE analogy max. "
+                "No tables or multi-step breakdowns. After a correct answer, give them "
+                "another similar problem to consolidate BEFORE introducing new concepts."
             )
+
+        # Check for recent breakthrough after struggle: consolidate
+        if has_real_data and 0.4 <= avg_mastery < 0.65 and trend == "steady":
+            if session.last_question and session.last_question.wrong_attempts >= 2:
+                return (
+                    "PACING: CONSOLIDATE — Student is getting it but still shaky. "
+                    "Give them a similar problem at the SAME level to build confidence. "
+                    "Don't introduce new concepts yet. Keep it short and encouraging."
+                )
 
         return "PACING: STEADY — Progressing normally. One idea at a time."
 
@@ -216,7 +242,19 @@ class MasterTutorAgent(BaseAgent):
             mastery_formatted = "  No data yet"
 
         if session.misconceptions:
-            misconceptions = ", ".join(m.description for m in session.misconceptions)
+            # Detect recurring misconceptions (mentioned 2+ times)
+            desc_counts: dict[str, int] = {}
+            for m in session.misconceptions:
+                desc_counts[m.description] = desc_counts.get(m.description, 0) + 1
+            recurring = [d for d, c in desc_counts.items() if c >= 2]
+            misconception_parts = [m.description for m in session.misconceptions]
+            misconceptions = ", ".join(misconception_parts)
+            if recurring:
+                misconceptions += (
+                    f"\n⚠️ RECURRING MISCONCEPTION(S): {'; '.join(recurring)} — "
+                    "this keeps reappearing. Name it explicitly to the student and "
+                    "create a targeted exercise to address it directly."
+                )
         else:
             misconceptions = "None detected"
 
@@ -235,8 +273,18 @@ class MasterTutorAgent(BaseAgent):
                 strategy = "PROBING QUESTION — help them find the error."
             elif q.wrong_attempts == 2:
                 strategy = "TARGETED HINT — point at the specific mistake."
+            elif q.wrong_attempts == 3:
+                strategy = (
+                    "EXPLAIN directly and warmly. Previous approaches haven't "
+                    "worked — try a COMPLETELY DIFFERENT method (e.g., simpler "
+                    "sub-problem, visual/hands-on activity, work backwards)."
+                )
             else:
-                strategy = "EXPLAIN directly and warmly."
+                strategy = (
+                    "⚠️ STRATEGY CHANGE NEEDED — Student has failed this 4+ times. "
+                    "STOP retrying the same problem. Step BACK to a simpler prerequisite "
+                    "skill, or break the problem into smaller pieces they can succeed at."
+                )
 
             prev = ""
             if q.previous_student_answers:
