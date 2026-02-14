@@ -60,7 +60,8 @@
       "Bash(/Users/manishjain/repos/learnlikemagic/llm-backend/.venv/bin/python -m evaluation.run_evaluation:*)",
       "Bash(ps:*)",
       "Bash(pip3 show:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(make run:*)"
     ],
     "deny": [],
     "ask": []

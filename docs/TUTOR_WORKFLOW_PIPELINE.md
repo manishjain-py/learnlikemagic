@@ -16,6 +16,7 @@
 **Key Code Locations:**
 - Frontend Tutor: `llm-frontend/src/TutorApp.tsx`, `llm-frontend/src/api.ts`
 - Frontend Admin: `llm-frontend/src/features/admin/`
+- Frontend DevTools: `llm-frontend/src/features/devtools/`
 - Backend Tutor: `llm-backend/tutor/` (agents, orchestration, services, api, models, prompts, utils)
 - Backend Shared: `llm-backend/shared/` (llm_service, anthropic_adapter, health api)
 - Backend Study Plans: `llm-backend/study_plans/services/`
@@ -29,7 +30,7 @@
 ```
 +-------------------------------------------------------------------------+
 |                         FRONTEND (React + React Router)                  |
-|   Routes: / (tutor), /admin/books, /admin/guidelines                     |
+|   Routes: / (tutor), /admin/books, /admin/guidelines, /admin/evaluation   |
 |   Tutor: Subject -> Topic -> Subtopic Selection -> Chat Interface        |
 +-------------------------------------+-----------------------------------+
                                       | REST + WebSocket
@@ -184,7 +185,7 @@ Send: {"type": "chat", "payload": {"message": "I think 5/8 is bigger..."}}
 ```
 TeacherOrchestrator.process_turn(session, student_message)
     |
-    +-> 0. If session already complete:
+    +-> 0. If session already complete (and no extension, or extension_turns > 10):
     |       -> Generate post-completion response via LLM (context-aware, not canned)
     |       -> Return immediately
     |
@@ -196,11 +197,12 @@ TeacherOrchestrator.process_turn(session, student_message)
     |       |-> If safe: continue
     |
     +-> 4. MASTER TUTOR AGENT (single LLM call)
-    |       Input: system prompt (study plan, guidelines, 11 teaching rules)
-    |              + turn prompt (current state, mastery, history, student message)
+    |       Input: system prompt (study plan, guidelines, 10 teaching rules)
+    |              + turn prompt (current state, mastery, pacing directive,
+    |                student style, history, student message)
     |       Output: TutorTurnOutput {
     |           response,           # student-facing text
-    |           intent,             # answer/question/confusion/off_topic/continuation
+    |           intent,             # answer/answer_change/question/confusion/novel_strategy/off_topic/continuation
     |           answer_correct,     # true/false/null
     |           misconceptions_detected,
     |           mastery_signal,     # strong/adequate/needs_remediation
@@ -208,6 +210,8 @@ TeacherOrchestrator.process_turn(session, student_message)
     |           mastery_updates,    # [{concept, score}]
     |           question_asked,     # question text or null
     |           expected_answer,    # expected answer or null
+    |           question_concept,   # which concept the question tests
+    |           session_complete,   # true when final step mastered
     |           turn_summary,       # one-line summary
     |           reasoning           # internal reasoning (not shown to student)
     |       }
@@ -219,7 +223,7 @@ TeacherOrchestrator.process_turn(session, student_message)
     +-> 5. APPLY STATE UPDATES
     |       - Update mastery estimates
     |       - Track misconceptions
-    |       - Track questions (set/clear)
+    |       - Handle question lifecycle (probe -> hint -> explain phases)
     |       - Advance step if needed
     |       - Track off-topic count
     |       - Handle session completion (only honored on final step)
@@ -261,7 +265,8 @@ TeacherOrchestrator.process_turn(session, student_message)
 ## Phase 4: Session Completion & Summary
 
 ### When Session Ends
-- All study plan steps completed -> `session.is_complete` returns true
+- All study plan steps completed -> `session.is_complete` returns true (`current_step > total_steps`)
+- Session extension: advanced students can continue up to 10 turns beyond `total_steps * 2` (controlled by `allow_extension`)
 - Frontend detects `is_complete: true` in response
 
 ### Summary Endpoint
@@ -296,19 +301,24 @@ class SessionState(BaseModel):
     turn_count: int
 
     # Topic & Plan
-    topic: Optional[Topic]          # Topic with study plan and guidelines
+    topic: Optional[Topic]              # Topic with study plan and guidelines
 
     # Progress
-    current_step: int               # 1-indexed
+    current_step: int                   # 1-indexed
     concepts_covered: List[str]
-    mastery_estimates: Dict[str, float]  # {concept: 0.0-1.0}
+    last_concept_taught: Optional[str]
+    mastery_estimates: Dict[str, float] # {concept: 0.0-1.0}
+    misconceptions: List[Misconception]
+    weak_areas: List[str]
 
     # Assessment
-    last_question: Optional[Question]
+    last_question: Optional[Question]   # Tracks question lifecycle (phase, wrong_attempts, previous_answers)
     awaiting_response: bool
+    allow_extension: bool               # Allow tutor to continue past study plan for advanced students
 
     # Memory
-    conversation_history: List[Message]  # Max 10 messages
+    conversation_history: List[Message]  # Sliding window (max 10 messages)
+    full_conversation_log: List[Message] # Complete history (no truncation)
     session_summary: SessionSummary      # Turn timeline, concepts, examples, etc.
 
     # Behavioral
@@ -316,8 +326,9 @@ class SessionState(BaseModel):
     warning_count: int
     safety_flags: List[str]
 
-    # Student Context
+    # Personalization
     student_context: StudentContext      # grade, board, language_level
+    pace_preference: str                 # slow/normal/fast
 ```
 
 ### Study Plan Model
@@ -334,8 +345,41 @@ class StudyPlanStep(BaseModel):
     question_count: Optional[int]
 ```
 
+### Question Lifecycle
+The `Question` model tracks multi-attempt interactions:
+```python
+class Question(BaseModel):
+    question_text: str
+    expected_answer: str
+    concept: str
+    wrong_attempts: int          # Number of wrong attempts
+    previous_student_answers: List[str]  # Student's previous wrong answers
+    phase: str                   # "asked" -> "probe" -> "hint" -> "explain"
+```
+
+Orchestrator `_handle_question_lifecycle()` manages phase progression:
+- 1st wrong → phase="probe" (ask probing question)
+- 2nd wrong → phase="hint" (give targeted hint)
+- 3rd+ wrong → phase="explain" (explain directly)
+- Correct answer → clear question
+
 ### Step Advancement
 The Master Tutor decides when to advance steps via `advance_to_step` in its output. Step advancement is applied in `_apply_state_updates()`.
+
+### Dynamic Prompt Signals
+The `MasterTutorAgent` computes two dynamic signals per turn:
+
+**Pacing Directive** (`_compute_pacing_directive`):
+- TURN 1: "Keep opening to 2-3 sentences. Ask ONE simple question."
+- ACCELERATE: avg_mastery >= 0.8 & improving → "Skip easy checks, go deeper."
+- EXTEND: aced plan & is_complete → "Push to harder territory."
+- SIMPLIFY: avg_mastery < 0.4 or struggling → "Shorter sentences, 1-2 ideas per response."
+- STEADY: default → "One idea at a time."
+
+**Student Style** (`_compute_student_style`):
+- Analyzes avg words/message, emoji usage, question-asking behavior
+- Detects disengagement (responses getting shorter over 4+ messages)
+- Adjusts response length guidance (QUIET ≤5 words → 2-3 sentences; Moderate → 3-5; Expressive → can elaborate)
 
 ---
 
@@ -345,25 +389,27 @@ The Master Tutor decides when to advance steps via `advance_to_step` in its outp
 Contains:
 - Study plan (steps with types and concepts)
 - Topic guidelines (learning objectives, prerequisites, misconceptions, teaching approach)
-- 11 teaching rules:
+- 10 teaching rules:
   1. Follow the study plan, hide scaffolding
-  2. Advance when ready + adaptive pacing (escalate on mastery, honor harder-material requests, simplify on struggles, match response length)
-  3. Track questions asked
-  4. Evaluate answers carefully (verify correctness before praising — check specific values, not just approach)
+  2. Advance when ready — honor harder-material requests
+  3. Track questions asked (question_asked, expected_answer, question_concept)
+  4. Guide discovery — don't just correct (1st wrong: probe, 2nd: hint, 3rd+: explain; verify correctness before praising)
   5. Never repeat yourself — vary praise, structure, openings
   6. Match the student's energy
-  7. Update mastery signals
-  8. Be a real teacher — proportional praise, minimal emojis
-  9. End session naturally — personalized closing that acknowledges last message, reflects on specific learnings, never canned
-  10. Never leak internal language — response field is student-facing, use second person only, put analysis in reasoning field
-  11. Check for misconceptions before ending — ask for summary, correct misunderstandings before closing
+  7. Update mastery (~0.3 wrong, ~0.6 partial, ~0.8 correct, ~0.95 correct with reasoning)
+  8. Be real — proportional praise, 0-2 emojis per response
+  9. End naturally — check for misconceptions first, personalized closing, set session_complete=true
+  10. Never leak internals — response is student-facing, put analysis in reasoning field
 
 ### Turn Prompt (per turn)
 Contains:
 - Current step info (type, concept, content hint)
 - Current mastery estimates
 - Known misconceptions
-- Awaiting answer section (if question was asked)
+- Turn timeline (session narrative so far)
+- Pacing directive (dynamic: TURN 1 / ACCELERATE / EXTEND / SIMPLIFY / STEADY)
+- Student style (dynamic: word count, engagement signals, disengagement detection)
+- Awaiting answer section (if question was asked — includes attempt #, phase, previous answers)
 - Recent conversation history
 - Current student message
 
@@ -401,9 +447,9 @@ Contains:
 ### Backend - Utils (`llm-backend/tutor/utils/`)
 | File | Purpose |
 |------|---------|
-| `schema_utils.py` | get_strict_schema(), make_schema_strict() for OpenAI structured output |
-| `prompt_utils.py` | format_conversation_history(), build_context_section() |
-| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step() |
+| `schema_utils.py` | get_strict_schema(), make_schema_strict(), validate_agent_output(), parse_json_safely(), extract_json_from_text() |
+| `prompt_utils.py` | format_conversation_history() |
+| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step(), get_mastery_level(), merge_misconceptions() |
 
 ### Backend - Services & API
 | File | Purpose |
@@ -422,7 +468,7 @@ Contains:
 | `student_simulator.py` | LLM-powered student with persona and behavioral probabilities |
 | `session_runner.py` | Session lifecycle: create via REST, converse via WebSocket |
 | `evaluator.py` | 5-dimension persona-aware LLM judge |
-| `report_generator.py` | Generates conversation.md, evaluation.json, review.md, problems.md |
+| `report_generator.py` | Generates conversation.{md,json}, evaluation.json, review.md, problems.md |
 | `run_evaluation.py` | CLI with multi-persona + multi-run support |
 | `api.py` | FastAPI endpoints for starting/monitoring/re-evaluating runs |
 | `personas/*.json` | 6 student personas (ace, average_student, confused_confident, distractor, quiet_one, struggler) |
@@ -500,7 +546,7 @@ The evaluation pipeline simulates tutoring sessions using persona-driven student
 2. Create session via REST API
 3. Run conversation via WebSocket (student simulator <-> tutor)
 4. Evaluate conversation with LLM judge (5 persona-aware dimensions)
-5. Generate reports (conversation.md, evaluation.json, review.md, problems.md)
+5. Generate reports (conversation.{md,json}, evaluation.json, review.md, problems.md)
 6. If multi-persona: generate comparison report (comparison.md, comparison.json)
 ```
 
@@ -590,7 +636,10 @@ ANTHROPIC_API_KEY=...
 | **Evaluation pipeline** | Automated quality measurement with persona-aware LLM judge (5 dimensions) |
 | **Multi-run eval noise reduction** | `--runs-per-persona` averages scores across runs to reduce eval variance |
 | **Anthropic provider support** | Configurable LLM provider (OpenAI, Claude Opus 4.6, Claude Haiku 4.5) |
-| **Conversation window (10 msgs)** | Prevents context overflow while maintaining recent context |
+| **Conversation window (10 msgs)** | Prevents context overflow while maintaining recent context; full_conversation_log keeps complete history |
+| **Session extension (10 turns)** | Allows advanced students to continue beyond study plan, max 10 extra turns |
+| **Dynamic pacing & style** | Per-turn pacing directive + student style analysis adapt to session dynamics |
+| **Question lifecycle phases** | probe → hint → explain phases track wrong attempts for graduated scaffolding |
 | **Session summary tracking** | Turn timeline, concepts taught, progress trend |
 | **Stdout structured logging** | JSON logs for cloud-native observability |
 

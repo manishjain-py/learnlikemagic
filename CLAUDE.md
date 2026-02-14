@@ -21,6 +21,7 @@ learnlikemagic/
 | `docs/deployment.md` | AWS infrastructure, CI/CD, production URLs, troubleshooting | Deploying, debugging prod issues, infrastructure questions |
 | `docs/tech-stack-rationale.md` | Why each technology was chosen | Understanding tech decisions |
 | `docs/TUTOR_WORKFLOW_PIPELINE.md` | Tutor feature: single master tutor agent, WebSocket + REST, evaluation pipeline | Working on tutoring sessions, agent logic, orchestration |
+| `docs/EVALUATION_PIPELINE.md` | Evaluation QA: persona simulation, LLM judge, 5-dimension scoring, report artifacts, viewing results | Working on evaluation pipeline, tutor quality, viewing eval results |
 | `docs/BOOK_GUIDELINES_PIPELINE.md` | Book ingestion feature: OCR, topic detection, guideline extraction | Working on book upload, content extraction |
 
 ## Key Conventions
