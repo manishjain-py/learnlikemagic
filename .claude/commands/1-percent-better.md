@@ -6,6 +6,23 @@ You are running a measure → analyze → fix → measure → compare cycle to i
 
 ---
 
+## AUTOMATION DIRECTIVE
+
+This is a **fully automated pipeline**. The user will NOT be present to review plans, approve decisions, or give go-ahead between steps.
+
+- **Do NOT** use `EnterPlanMode` or `AskUserQuestion` at any point.
+- **Do NOT** pause for user confirmation between steps.
+- Make all decisions autonomously based on the data (evaluation scores, problems, root causes).
+- Execute every step end-to-end without stopping.
+- If something fails (tests, evaluation run), attempt to fix it yourself and retry. Only stop if you've exhausted reasonable recovery attempts (3 max).
+- Log all decisions and rationale to the progress file (Step 0) so the user can review after the fact.
+
+---
+
+## Step 0: Create a json file in the root folder $ARGUMENTS.log. Keep updating the status/progress to this file. Anyone looking at this file should understand what is done, and what's going on currently and what's planned next.
+
+---
+
 ## Step 1: Find an available topic
 
 ```bash
@@ -15,8 +32,6 @@ from evaluation.config import EvalConfig
 # List available guideline/topic IDs from the database or config
 "
 ```
-
-If no topics are readily available from code, ask the user which topic/guideline ID to use. Do NOT guess.
 
 ---
 
@@ -30,6 +45,7 @@ python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.js
 python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json --skip-server
 ```
 
+Add skip-server flag only if the backend is running locally.
 Save the run directory names — you'll need them for comparison in Step 6.
 
 ---
@@ -57,22 +73,21 @@ Think deeply about what changes would address the identified problems.
 **Critical guardrails:**
 - The **master tutor LLM prompt** is the most sensitive file. Treat it like surgery — small, precise changes only.
 - Do NOT bloat the prompt. If adding instructions, consider removing or consolidating less effective ones.
-- Do NOT break what's already working well (high-scoring dimensions).
+- Do NOT break what's already working well (for example, high-scoring dimensions).
 - Prefer changes that fix root causes, not symptoms.
 - Keep changes minimal and focused — ideally touching 1-3 files max.
-
-Present your plan to the user and get confirmation before implementing.
 
 ---
 
 ## Step 5: Implement and verify
 
 1. Make the planned code changes.
-2. Run the existing test suite to make sure nothing is broken:
+2. Do a self code review to ensure nothing is broken. Do correction if needed.
+3. Run the existing test suite to make sure nothing is broken:
    ```bash
    cd llm-backend && python -m pytest tests/ -x -q
    ```
-3. If tests fail, fix before proceeding.
+4. If tests fail, fix before proceeding.
 
 ---
 
