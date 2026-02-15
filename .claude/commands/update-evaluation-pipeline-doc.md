@@ -1,7 +1,7 @@
-Update the Tutor Workflow Pipeline documentation (SSOT).
+Update the Evaluation Workflow Pipeline documentation (SSOT).
 
   **Task:**
-  1. Read the current documentation at: /Users/manishjain/repos/learnlikemagic/docs/TUTOR_WORKFLOW_PIPELINE.md
+  1. Read the current documentation at: /Users/manishjain/repos/learnlikemagic/docs/EVALUATION_PIPELINE.md
   2. Explore the actual code in these locations:
      - Frontend: llm-frontend
      - Backend: llm-backend
@@ -13,4 +13,4 @@ Update the Tutor Workflow Pipeline documentation (SSOT).
   4. Update the documentation to reflect the current state of the code
   5. Keep the document compact - don't repeat
   6. Make sure that the documentation is accurate.
-  7. Whatever change you make to the documentation, there should be a solid reason for it. So justify every change you make with evidence and capture that in tmp/TUTOR_WORKFLOW_DOC_CHANGES_JUSTIFICATION.md. Feel free to overwrite this file or create new if it doesn't exist.
+  7. Whatever change you make to the documentation, there should be a solid reason for it. So justify every change you make with evidence and capture that in tmp/EVALUATION_WORKFLOW_DOC_CHANGES_JUSTIFICATION.md. Feel free to overwrite this file or create new if it doesn't exist.
