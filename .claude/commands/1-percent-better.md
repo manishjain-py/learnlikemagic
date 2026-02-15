@@ -149,7 +149,7 @@ Read both the BASELINE (Step 2) and POST-CHANGE (Step 6) reports. Output a compa
 
 ## Step 8: Email the final report
 
-Send the comparison report from Step 7 via macOS Mail.app. The email subject should include the branch name and verdict.
+Send the comparison report (nicely formatted html report) from Step 7 via macOS Mail.app. The email subject should include the branch name and verdict.
 
 ```bash
 BRANCH=$(git branch --show-current)

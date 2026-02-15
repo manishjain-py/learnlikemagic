@@ -162,7 +162,7 @@ For each feedback item:
 
 ## Step 7: Email the final report
 
-Send the review report from Step 6 via macOS Mail.app. The email subject should include the branch name and verdict.
+Send the review report (nicely formatted html report) from Step 6 via macOS Mail.app. The email subject should include the branch name and verdict.
 
 ```bash
 BRANCH=$(git branch --show-current)

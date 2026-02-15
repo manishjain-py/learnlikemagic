@@ -62,7 +62,8 @@
       "Bash(pip3 show:*)",
       "Bash(kill:*)",
       "Bash(make run:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git merge:*)"
     ],
     "deny": [],
     "ask": []
