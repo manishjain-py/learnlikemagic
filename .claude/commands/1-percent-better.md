@@ -26,9 +26,11 @@ Run against **Struggler** and **Ace** personas (two extremes of student ability)
 
 ```bash
 cd llm-backend
-python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.json --skip-server
-python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json --skip-server
+python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.json
+python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json
 ```
+
+Add `--skip-server` only if the backend is already running locally.
 
 Save the run directory names — you'll need them for comparison in Step 6.
 
@@ -82,9 +84,11 @@ Run the same evaluation as Step 2 (same topic, same personas):
 
 ```bash
 cd llm-backend
-python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.json --skip-server
-python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json --skip-server
+python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.json
+python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json
 ```
+
+Add `--skip-server` only if the backend is already running locally.
 
 ---
 
