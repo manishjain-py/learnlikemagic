@@ -53,7 +53,7 @@ class EvalConfig:
 
     # Provider switch for evaluation pipeline (evaluator/judge)
     eval_llm_provider: str = field(
-        default_factory=lambda: os.environ.get("EVAL_LLM_PROVIDER", "anthropic")
+        default_factory=lambda: os.environ.get("EVAL_LLM_PROVIDER", "openai")
     )
 
     # Anthropic models

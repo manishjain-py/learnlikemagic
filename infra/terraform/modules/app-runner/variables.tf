@@ -38,7 +38,7 @@ variable "anthropic_secret_arn" {
 variable "tutor_llm_provider" {
   description = "LLM provider for tutor workflow"
   type        = string
-  default     = "anthropic"
+  default     = "openai"
 }
 
 variable "llm_model" {

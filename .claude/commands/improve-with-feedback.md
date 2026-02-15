@@ -168,17 +168,20 @@ Send the review report from Step 6 via macOS Mail.app. The email subject should 
 BRANCH=$(git branch --show-current)
 ```
 
-Then use AppleScript to send the email:
+Then use AppleScript to send the email with the log file attached:
 
 ```bash
+LOGFILE="$(pwd)/<LOGFILENAME>.log"
+
 osascript -e '
 tell application "Mail"
     set newMessage to make new outgoing message with properties {subject:"Improve with Feedback Report — '"$BRANCH"' — <VERDICT>", content:"<FULL_REVIEW_REPORT_FROM_STEP_6>", visible:false}
     tell newMessage
         make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
+        make new attachment with properties {file name:POSIX file "'"$LOGFILE"'"} at after the last paragraph
     end tell
     send newMessage
 end tell'
 ```
 
-Replace `<VERDICT>` with the actual verdict (ADDRESSED / PARTIALLY ADDRESSED / NOT ADDRESSED) and `<FULL_REVIEW_REPORT_FROM_STEP_6>` with the full review report text generated in Step 6.
+Replace `<VERDICT>` with the actual verdict (ADDRESSED / PARTIALLY ADDRESSED / NOT ADDRESSED), `<FULL_REVIEW_REPORT_FROM_STEP_6>` with the full review report text generated in Step 6, and `<LOGFILENAME>` with the `logfilename` argument value.

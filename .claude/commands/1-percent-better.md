@@ -155,14 +155,17 @@ Send the comparison report from Step 7 via macOS Mail.app. The email subject sho
 BRANCH=$(git branch --show-current)
 ```
 
-Then use AppleScript to send the email:
+Then use AppleScript to send the email with the log file attached:
 
 ```bash
+LOGFILE="$(pwd)/$ARGUMENTS.log"
+
 osascript -e '
 tell application "Mail"
     set newMessage to make new outgoing message with properties {subject:"1% Better Report — '"$BRANCH"' — <VERDICT>", content:"<FULL_COMPARISON_REPORT_FROM_STEP_7>", visible:false}
     tell newMessage
         make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
+        make new attachment with properties {file name:POSIX file "'"$LOGFILE"'"} at after the last paragraph
     end tell
     send newMessage
 end tell'

@@ -75,7 +75,7 @@ variable "anthropic_api_key" {
 variable "tutor_llm_provider" {
   description = "LLM provider for tutor workflow: openai, anthropic, or anthropic-haiku"
   type        = string
-  default     = "anthropic"
+  default     = "openai"
 }
 
 variable "llm_model" {
