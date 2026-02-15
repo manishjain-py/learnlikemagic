@@ -23,6 +23,17 @@ This is a **fully automated pipeline**. The user will NOT be present to review p
 
 ---
 
+## Step 0.5: Create a new branch from latest main
+
+```bash
+git checkout main && git pull origin main
+git checkout -b 1-percent-better/$(date +%Y%m%d-%H%M%S)
+```
+
+All changes in this run will be committed to this branch.
+
+---
+
 ## Step 1: Find an available topic
 
 ```bash
@@ -129,7 +140,32 @@ Read both the BASELINE (Step 2) and POST-CHANGE (Step 6) reports. Output a compa
 ### Problems resolved?
 (map original problems to whether they're fixed)
 
-### Verdict: KEEP / REVERT / PARTIAL
+### Verdict: IMPROVED / REGRESSED / MIXED
 ```
 
-**If scores regressed overall:** Recommend reverting the changes and explain why. Do NOT keep changes that make things worse.
+**If scores regressed:** Do NOT revert the changes. Report the regression clearly in the comparison report so the user can decide. All changes stay on the branch for review.
+
+---
+
+## Step 8: Email the final report
+
+Send the comparison report from Step 7 via macOS Mail.app. The email subject should include the branch name and verdict.
+
+```bash
+BRANCH=$(git branch --show-current)
+```
+
+Then use AppleScript to send the email:
+
+```bash
+osascript -e '
+tell application "Mail"
+    set newMessage to make new outgoing message with properties {subject:"1% Better Report — '"$BRANCH"' — <VERDICT>", content:"<FULL_COMPARISON_REPORT_FROM_STEP_7>", visible:false}
+    tell newMessage
+        make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
+    end tell
+    send newMessage
+end tell'
+```
+
+Replace `<VERDICT>` with the actual verdict (IMPROVED / REGRESSED / MIXED) and `<FULL_COMPARISON_REPORT_FROM_STEP_7>` with the full comparison report text generated in Step 7.
