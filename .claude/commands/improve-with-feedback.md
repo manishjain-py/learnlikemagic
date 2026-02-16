@@ -4,6 +4,23 @@ You are running a feedback → persona → fix → evaluate → review cycle to 
 
 **Reference:** Read `docs/EVALUATION_PIPELINE.md` for full pipeline details before starting.
 
+---
+
+## ENVIRONMENT SETUP
+
+**All Python commands MUST use the project virtual environment.** The venv is at `llm-backend/venv` (NOT `.venv`).
+
+For every `python` or `python -m` command in this pipeline, use:
+```bash
+cd llm-backend && source venv/bin/activate && python ...
+```
+
+Or use the full path: `llm-backend/venv/bin/python`
+
+Do NOT use bare `python` or `python3` — the system Python lacks project dependencies.
+
+---
+
 **Input arguments format:** `logfilename: <path> feedback: <user's feedback text>`
 
 Parse the arguments to extract:
@@ -90,7 +107,7 @@ Think deeply about what changes would address the user's feedback.
 2. Do a self code review to ensure nothing is broken. Do correction if needed.
 3. Run the existing test suite to make sure nothing is broken:
    ```bash
-   cd llm-backend && python -m pytest tests/ -x -q
+   cd llm-backend && source venv/bin/activate && python -m pytest tests/ -x -q
    ```
 4. If tests fail, fix before proceeding.
 
@@ -101,7 +118,7 @@ Think deeply about what changes would address the user's feedback.
 Run the evaluation using the topic identified in Step 1 and the custom persona created in Step 2:
 
 ```bash
-cd llm-backend
+cd llm-backend && source venv/bin/activate
 python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona <CUSTOM_PERSONA>.json --skip-server
 ```
 
