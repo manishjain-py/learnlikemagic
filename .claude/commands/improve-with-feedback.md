@@ -179,26 +179,29 @@ For each feedback item:
 
 ## Step 7: Email the final report
 
-Send the review report (nicely formatted html report) from Step 6 via macOS Mail.app. The email subject should include the branch name and verdict.
+1. Save the review report from Step 6 as a nicely formatted HTML file:
+   ```bash
+   REPORT_FILE="$(pwd)/<LOGFILENAME>-report.html"
+   ```
+   Write the full review report as a well-structured HTML document to this file (use proper `<html>`, `<head>`, `<body>` tags, and basic CSS for readability).
+
+2. Send the email via macOS Mail.app with both the HTML report and the log file as **attachments** (do NOT paste HTML into the email body):
 
 ```bash
 BRANCH=$(git branch --show-current)
-```
-
-Then use AppleScript to send the email with the log file attached:
-
-```bash
 LOGFILE="$(pwd)/<LOGFILENAME>.log"
+REPORT_FILE="$(pwd)/<LOGFILENAME>-report.html"
 
 osascript -e '
 tell application "Mail"
-    set newMessage to make new outgoing message with properties {subject:"Improve with Feedback Report — '"$BRANCH"' — <VERDICT>", content:"<FULL_REVIEW_REPORT_FROM_STEP_6>", visible:false}
+    set newMessage to make new outgoing message with properties {subject:"Improve with Feedback Report — '"$BRANCH"' — <VERDICT>", content:"See attached HTML report and log file.", visible:false}
     tell newMessage
         make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
+        make new attachment with properties {file name:POSIX file "'"$REPORT_FILE"'"} at after the last paragraph
         make new attachment with properties {file name:POSIX file "'"$LOGFILE"'"} at after the last paragraph
     end tell
     send newMessage
 end tell'
 ```
 
-Replace `<VERDICT>` with the actual verdict (ADDRESSED / PARTIALLY ADDRESSED / NOT ADDRESSED), `<FULL_REVIEW_REPORT_FROM_STEP_6>` with the full review report text generated in Step 6, and `<LOGFILENAME>` with the `logfilename` argument value.
+Replace `<VERDICT>` with the actual verdict (ADDRESSED / PARTIALLY ADDRESSED / NOT ADDRESSED) and `<LOGFILENAME>` with the `logfilename` argument value.

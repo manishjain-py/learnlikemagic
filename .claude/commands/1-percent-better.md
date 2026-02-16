@@ -164,26 +164,29 @@ Read both the BASELINE (Step 2) and POST-CHANGE (Step 6) reports. Output a compa
 
 ## Step 8: Email the final report
 
-Send the comparison report (nicely formatted html report) from Step 7 via macOS Mail.app. The email subject should include the branch name and verdict.
+1. Save the comparison report from Step 7 as a nicely formatted HTML file:
+   ```bash
+   REPORT_FILE="$(pwd)/$ARGUMENTS-report.html"
+   ```
+   Write the full comparison report as a well-structured HTML document to this file (use proper `<html>`, `<head>`, `<body>` tags, and basic CSS for readability).
+
+2. Send the email via macOS Mail.app with both the HTML report and the log file as **attachments** (do NOT paste HTML into the email body):
 
 ```bash
 BRANCH=$(git branch --show-current)
-```
-
-Then use AppleScript to send the email with the log file attached:
-
-```bash
 LOGFILE="$(pwd)/$ARGUMENTS.log"
+REPORT_FILE="$(pwd)/$ARGUMENTS-report.html"
 
 osascript -e '
 tell application "Mail"
-    set newMessage to make new outgoing message with properties {subject:"1% Better Report — '"$BRANCH"' — <VERDICT>", content:"<FULL_COMPARISON_REPORT_FROM_STEP_7>", visible:false}
+    set newMessage to make new outgoing message with properties {subject:"1% Better Report — '"$BRANCH"' — <VERDICT>", content:"See attached HTML report and log file.", visible:false}
     tell newMessage
         make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
+        make new attachment with properties {file name:POSIX file "'"$REPORT_FILE"'"} at after the last paragraph
         make new attachment with properties {file name:POSIX file "'"$LOGFILE"'"} at after the last paragraph
     end tell
     send newMessage
 end tell'
 ```
 
-Replace `<VERDICT>` with the actual verdict (IMPROVED / REGRESSED / MIXED) and `<FULL_COMPARISON_REPORT_FROM_STEP_7>` with the full comparison report text generated in Step 7.
+Replace `<VERDICT>` with the actual verdict (IMPROVED / REGRESSED / MIXED).
