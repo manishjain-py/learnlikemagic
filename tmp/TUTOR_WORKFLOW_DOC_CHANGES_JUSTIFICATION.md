@@ -1,6 +1,6 @@
 # Tutor Workflow Pipeline - Documentation Changes Justification
 
-**Date:** 2026-02-14
+**Date:** 2026-02-18
 **Document Updated:** `docs/TUTOR_WORKFLOW_PIPELINE.md`
 
 ---
@@ -9,132 +9,112 @@
 
 | # | Change | Evidence |
 |---|--------|----------|
-| 1 | Teaching rules: 11 → 10, updated descriptions to match code | `master_tutor_prompts.py` lines 27-69 |
-| 2 | TutorTurnOutput: added `question_concept`, `session_complete` fields | `master_tutor.py` lines 63-71 |
-| 3 | Intent values: added `answer_change` and `novel_strategy` | `master_tutor.py` lines 33-34 |
-| 4 | Frontend routes: added `/admin/evaluation` | `App.tsx` line 38 |
-| 5 | Key Code Locations: added Frontend DevTools path | `llm-frontend/src/features/devtools/` directory |
-| 6 | SessionState: added 6 missing fields | `session_state.py` lines 88-101 |
-| 7 | Question lifecycle: new section documenting phase progression | `session_state.py` Question model, `orchestrator.py` `_handle_question_lifecycle()` |
-| 8 | Dynamic pacing & student style: new section | `master_tutor.py` `_compute_pacing_directive()`, `_compute_student_style()` |
-| 9 | Session extension: documented 10-turn extension mechanism | `orchestrator.py` lines 106-108 |
-| 10 | `prompt_utils.py`: removed non-existent `build_context_section()` | Grep confirmed 0 results across codebase |
-| 11 | `schema_utils.py`: added 3 missing function references | `schema_utils.py` defines all 5 functions |
-| 12 | `state_utils.py`: added 2 missing function references | `state_utils.py` defines all 5 functions |
-| 13 | Evaluation reports: added `conversation.json` | `report_generator.py` `save_conversation_json()` |
-| 14 | Key Design Decisions: added 3 new entries, updated 1 | New code patterns found in exploration |
+| 1 | Frontend uses REST only, not WebSocket | `api.ts` has no WS code; grep for `WebSocket`/`ws://` across frontend returns 0 matches |
+| 2 | Phase 2 response: added `mastery_score` field | `api.ts` `Turn` type requires `mastery_score`; `TutorApp.tsx` reads it from `first_turn` |
+| 3 | Question model: added `rubric`, `hints`, `hints_used` fields | `session_state.py` lines 34-36 |
+| 4 | Pacing directive: added CONSOLIDATE case | `master_tutor.py` lines 145-151 |
+| 5 | ACCELERATE pacing: added early fast-track detection | `master_tutor.py` lines 110-117 |
+| 6 | Teaching rule 4: added strategy change + prerequisite gap | `master_tutor_prompts.py` lines 52-60 |
+| 7 | Teaching rule 8: 0-2 emojis -> 0-1, added praise calibration details | `master_tutor_prompts.py` lines 81-88 |
+| 8 | Teaching rule 9: updated session ending behavior | `master_tutor_prompts.py` lines 90-97 |
+| 9 | Added 2 new personas: simplicity_seeker, repetition_detector | `evaluation/personas/` directory has 8 files |
+| 10 | Report generator: added config.json to artifacts | `report_generator.py` generates config.json |
+| 11 | Teaching rules 1, 2, 5: minor wording alignment | `master_tutor_prompts.py` lines 29, 39-43, 68 |
 
 ---
 
 ## Detailed Justification
 
-### 1. Teaching rules: 11 → 10, updated descriptions
+### 1. Frontend uses REST only, not WebSocket
 
-**Evidence:** `master_tutor_prompts.py` `MASTER_TUTOR_SYSTEM_PROMPT` lines 27-69 defines exactly 10 numbered rules (1-10). The previous doc listed 11 rules where Rule 11 ("Check for misconceptions before ending") was actually a sub-point within Rule 9 in the code: "When the final step is mastered, check for misconceptions first (ask them to demonstrate understanding)."
+**What changed:** Updated architecture diagram ("REST only (frontend)"), Phase 3a label ("eval only"), WebSocket entry point heading, WebSocket response heading, WebSocket endpoint description in API table, and design decisions table.
 
-**Additional corrections:**
-- Rule 2: Doc said "Advance when ready + adaptive pacing" — code says just "Advance when ready." Pacing is handled by `_compute_pacing_directive()` dynamically per turn, not as a static prompt rule.
-- Rule 4: Doc said "Evaluate answers carefully" — code says "Guide discovery — don't just correct" with graduated scaffolding (1st wrong → probe, 2nd → hint, 3rd+ → explain).
+**Evidence:** `llm-frontend/src/api.ts` contains only REST functions: `getCurriculum()`, `createSession()`, `submitStep()`, `getModelConfig()`, `getSummary()`. Zero WebSocket code. `TutorApp.tsx` calls only `submitStep()` (REST POST `/sessions/{id}/step`) for chat. The WebSocket endpoint `WS /sessions/ws/{session_id}` is only consumed by `llm-backend/evaluation/session_runner.py` for running simulated evaluation sessions.
 
-### 2. TutorTurnOutput: added missing fields
+### 2. Phase 2 response: added `mastery_score`
 
-**Evidence:** `master_tutor.py` lines 63-71:
+**What changed:** Added `"mastery_score": 0.0` to the `first_turn` response example.
+
+**Evidence:** `llm-frontend/src/api.ts` defines `Turn` with `mastery_score: number` as a required field. `TutorApp.tsx` reads `data.first_turn.mastery_score` and sets it as state. The doc example was missing this field.
+
+### 3. Question model: added 3 missing fields
+
+**What changed:** Added `rubric: str = ""`, `hints: List[str] = []`, `hints_used: int = 0` to the Question model.
+
+**Evidence:** `llm-backend/tutor/models/session_state.py` lines 34-36:
 ```python
-question_concept: Optional[str] = Field(default=None, description="Which concept the question tests")
-session_complete: bool = Field(default=False, description="Set to true when the student has completed the final step...")
+rubric: str = Field(default="", description="Evaluation criteria")
+hints: list[str] = Field(default_factory=list, description="Available hints")
+hints_used: int = Field(default=0, description="Number of hints provided")
 ```
-Both fields exist in the actual Pydantic model but were missing from the doc's TutorTurnOutput listing.
 
-### 3. Intent values: added `answer_change` and `novel_strategy`
+### 4. Pacing directive: added CONSOLIDATE case
 
-**Evidence:** `master_tutor.py` line 33-34: `intent: str = Field(description="What the student was doing: answer, answer_change, question, confusion, novel_strategy, off_topic, or continuation")`. Doc listed only "answer/question/confusion/off_topic/continuation".
+**What changed:** Added CONSOLIDATE to the pacing directive list: "avg_mastery 0.4-0.65 & steady & 2+ wrong attempts -> Same-level problem to build confidence."
 
-### 4. Frontend routes: added `/admin/evaluation`
-
-**Evidence:** `App.tsx` line 38: `<Route path="/admin/evaluation" element={<EvaluationDashboard />} />`. The Architecture Overview diagram listed only `/ (tutor), /admin/books, /admin/guidelines` — missing the evaluation dashboard route.
-
-### 5. Key Code Locations: added Frontend DevTools
-
-**Evidence:** `llm-frontend/src/features/devtools/` contains:
-- `components/DevToolsDrawer.tsx` — slide-out drawer with 3 tabs
-- `components/StudyPlanPanel.tsx` — study plan visualization
-- `components/GuidelinesPanel.tsx` — guidelines display
-- `components/AgentLogsPanel.tsx` — agent log viewer with filters
-- `api/devToolsApi.ts` — API client for `/sessions/{id}` and `/sessions/{id}/agent-logs`
-- `types/index.ts` — TypeScript types for session state, agent logs
-
-This is a significant developer feature not referenced anywhere in the doc.
-
-### 6. SessionState: added 6 missing fields
-
-**Evidence:** `session_state.py` defines these fields that were absent from the doc's SessionState model:
-- `last_concept_taught: Optional[str]` — tracks the current concept being taught
-- `allow_extension: bool = True` — controls whether session can extend past study plan
-- `weak_areas: list[str]` — areas where student struggles
-- `pace_preference: Literal["slow", "normal", "fast"]` — personalization field
-- `full_conversation_log: list[Message]` — complete history (no truncation), distinct from the windowed `conversation_history`
-- `misconceptions: list[Misconception]` — was in the model but not in doc's SessionState listing
-
-### 7. Question lifecycle: new documentation section
-
-**Evidence:** `session_state.py` `Question` class includes:
-- `wrong_attempts: int = 0`
-- `previous_student_answers: list[str] = []`
-- `phase: str = "asked"` (values: "asked", "probe", "hint", "explain")
-
-`orchestrator.py` `_handle_question_lifecycle()` manages phase progression across 5 cases: wrong answer on pending → increment attempts; correct answer → clear; new question → track; different concept → replace; same concept follow-up → keep existing. This is a core pedagogical mechanism that was entirely undocumented.
-
-### 8. Dynamic pacing & student style: new documentation section
-
-**Evidence:** `master_tutor.py` defines:
-- `_compute_pacing_directive(session)` — returns one of 5 directives (TURN 1, ACCELERATE, EXTEND, SIMPLIFY, STEADY) based on turn_count, avg_mastery, progress_trend, and is_complete
-- `_compute_student_style(session)` — analyzes word count patterns, emoji usage, question-asking behavior, and detects disengagement (responses getting shorter over 4+ messages)
-
-These are injected into the turn prompt via `{pacing_directive}` and `{student_style}` placeholders in `master_tutor_prompts.py` lines 85-86. This is a core adaptive mechanism: the tutor adjusts response length and complexity per turn based on student signals.
-
-### 9. Session extension: documented mechanism
-
-**Evidence:** `orchestrator.py` lines 106-108:
+**Evidence:** `llm-backend/tutor/agents/master_tutor.py` lines 145-151:
 ```python
-max_extension_turns = 10
-extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2)
-if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
+if has_real_data and 0.4 <= avg_mastery < 0.65 and trend == "steady":
+    if session.last_question and session.last_question.wrong_attempts >= 2:
+        return (
+            "PACING: CONSOLIDATE — Student is getting it but still shaky. "
+            "Give them a similar problem at the SAME level to build confidence. "
+            "Don't introduce new concepts yet. Keep it short and encouraging."
+        )
 ```
-Advanced students can continue up to 10 turns beyond `total_steps * 2`. The EXTEND pacing directive pushes them to harder territory. Post-completion handler only fires after extension is exhausted. This was undocumented — the doc previously implied sessions end immediately when `is_complete` is true.
 
-### 10. Removed non-existent `build_context_section()` from prompt_utils.py
+### 5. ACCELERATE pacing: early fast-track detection
 
-**Evidence:** Grep for `build_context_section` across the entire codebase returned 0 results. `prompt_utils.py` only contains `format_conversation_history()`. The function was likely removed in a previous refactor but the doc reference was never cleaned up.
+**What changed:** Updated ACCELERATE description to mention the 60%+ strong concepts threshold.
 
-### 11. Added missing `schema_utils.py` function references
+**Evidence:** `llm-backend/tutor/agents/master_tutor.py` lines 110-117: When 60%+ of concepts have mastery >= 0.7, and avg_mastery >= 0.65 with improving trend, the system forces the ACCELERATE path even before the overall average hits 0.8. This is a meaningful detail for understanding when acceleration triggers.
 
-**Evidence:** `schema_utils.py` defines 5 functions, doc only listed 2:
-- `get_strict_schema()` — was documented
-- `make_schema_strict()` — was documented
-- `validate_agent_output()` — used by `BaseAgent.execute()` to validate LLM output
-- `parse_json_safely()` — used for safe JSON parsing with error context
-- `extract_json_from_text()` — extracts JSON from mixed text/code blocks
+### 6. Teaching rule 4: strategy change + prerequisite gap
 
-### 12. Added missing `state_utils.py` function references
+**What changed:** Added "2+ same: change strategy fundamentally; prerequisite gap detection after 3+ turns" to the rule 4 summary.
 
-**Evidence:** `state_utils.py` defines 5 functions, doc only listed 3:
-- `update_mastery_estimate()` — was documented
-- `calculate_overall_mastery()` — was documented
-- `should_advance_step()` — was documented
-- `get_mastery_level()` — converts scores to categorical levels (mastered/strong/adequate/developing/needs_work)
-- `merge_misconceptions()` — merges misconception lists with dedup and max_count
+**Evidence:** `llm-backend/tutor/prompts/master_tutor_prompts.py`:
+- Lines 52-56: "After 2+ wrong answers on the SAME question: CHANGE STRATEGY fundamentally. Don't reframe the same explanation — try a completely different approach."
+- Lines 57-60: "PREREQUISITE GAP: If repeated errors across 3+ turns reveal the student lacks a foundational skill...STOP the current topic."
 
-### 13. Evaluation reports: added `conversation.json`
+### 7. Teaching rule 8: emoji count and praise calibration
 
-**Evidence:** `report_generator.py` `save_conversation_json()` method generates `conversation.json` with config, message_count, messages, and session_metadata. Doc only listed `conversation.md` — the JSON variant provides machine-readable conversation data used for re-evaluation.
+**What changed:** Changed "0-2 emojis" to "0-1 emojis", added "no ALL CAPS, no stock phrases", changed "proportional praise" to "calibrate praise to difficulty and student level".
 
-### 14. Key Design Decisions: added 3 new entries
+**Evidence:** `llm-backend/tutor/prompts/master_tutor_prompts.py` lines 87-88: "Emojis: 0-1 per response. No ALL CAPS. No stock phrases." Line 81: "Be real — calibrate praise to difficulty and student level."
 
-**Evidence:**
-- **Session extension (10 turns)**: `orchestrator.py` extension logic (lines 106-108)
-- **Dynamic pacing & style**: `master_tutor.py` `_compute_pacing_directive()` and `_compute_student_style()` methods
-- **Question lifecycle phases**: `orchestrator.py` `_handle_question_lifecycle()` + `session_state.py` Question model with `phase` field
-- **Updated**: Conversation window decision now notes the dual-store pattern (`conversation_history` windowed + `full_conversation_log` complete)
+### 8. Teaching rule 9: session ending behavior
+
+**What changed:** Changed "check for misconceptions first, personalized closing" to "check if student wants to continue, respect goodbye".
+
+**Evidence:** `llm-backend/tutor/prompts/master_tutor_prompts.py` lines 90-97: "first check if the student wants to continue ('Want to try something harder?' or similar). If they do, keep going with extension material." And: "If the student says goodbye, RESPECT IT — don't reverse course and add more problems after they've signed off."
+
+### 9. Added 2 new student personas
+
+**What changed:** Updated persona count from 6 to 8. Added `simplicity_seeker` (Aanya, 50%) and `repetition_detector` (Vikram, 70%).
+
+**Evidence:** `llm-backend/evaluation/personas/` directory listing:
+```
+ace.json, average_student.json, confused_confident.json, distractor.json,
+quiet_one.json, repetition_detector.json, simplicity_seeker.json, struggler.json
+```
+- `simplicity_seeker.json`: persona_id "simplicity_seeker", name "Aanya", correct_answer_probability 0.5, key trait: "easily overwhelmed student who needs simple, concrete explanations"
+- `repetition_detector.json`: persona_id "repetition_detector", name "Vikram", correct_answer_probability 0.7, key trait: "notices and gets bored when the tutor keeps asking the same type of question"
+
+### 10. Report generator: added config.json
+
+**What changed:** Added `config.json` to report artifacts list in both the file reference table and the eval flow description.
+
+**Evidence:** `llm-backend/evaluation/report_generator.py` generates `config.json` via `EvalConfig.to_dict()` which serializes all config settings excluding API keys.
+
+### 11. Teaching rules: minor wording alignment
+
+**What changed:** Updated rule 1 to add "start simple", rule 2 to add "skip aggressively for strong students", rule 5 to say "vary structure AND question formats".
+
+**Evidence:** `llm-backend/tutor/prompts/master_tutor_prompts.py`:
+- Rule 1 (line 29): "Follow the plan, hide the scaffolding. Start simple."
+- Rule 2 (lines 39-43): "Don't linger. If the student explicitly requests harder material, HONOR IT — skip multiple steps if needed"
+- Rule 5 (line 68): "Never repeat yourself — vary your structure AND your questions formats."
 
 ---
 
@@ -144,19 +124,24 @@ Advanced students can continue up to 10 turns beyond `total_steps * 2`. The EXTE
 - Phase 1 selection flow: matches `TutorApp.tsx` and curriculum API
 - Phase 2 session creation flow: matches `session_service.py`
 - Study plan conversion: matches `topic_adapter.py`
-- REST/WebSocket response formats: match code DTOs
+- Orchestrator flow: matches `orchestrator.py`
+- REST response format: matches code DTOs
+- Session completion logic: matches code
+- SessionState model: matches `session_state.py` (all fields correct)
+- StudyPlan/StudyPlanStep models: match `study_plan.py`
 - Agent system table: matches code (Safety + Master Tutor)
-- Provider support description: matches `llm_service.py` and `anthropic_adapter.py`
-- Evaluation pipeline section: dimensions, personas, CLI args, env vars all match code
-- Database tables: match `entities.py`
-- API endpoints reference: all endpoints verified against code routes
+- Provider support: matches `llm_service.py` and `anthropic_adapter.py`
 - LLM calls summary: matches code
+- Evaluation dimensions (5): match `evaluator.py` EVALUATION_DIMENSIONS list
+- CLI arguments: match `run_evaluation.py`
+- API endpoints reference: all endpoints verified
+- Database tables: match code
+- Key files reference: correct
 - Configuration/env vars: match code
 
 ---
 
-## Previous Changes (preserved from earlier updates)
+## Previous Justification Records
 
-- 2026-02-13: Teaching rules 8→11, agent model corrections, evaluation dimensions 10→5, persona documentation, API endpoints additions
-- 2025-12-30: Backend path corrections after folder reorganization
-- 2025-12-28: Pre-Built Study Plans section, Phase 2 flow with plan loading
+- 2026-02-14: Teaching rules 11->10, TutorTurnOutput fields, intent values, routes, DevTools, SessionState fields, question lifecycle, pacing/style, session extension, utils cleanup, eval reports, design decisions
+- 2026-02-13: Teaching rules 8->11, agent model corrections, evaluation dimensions 10->5, persona docs, API endpoints

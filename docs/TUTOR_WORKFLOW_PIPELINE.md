@@ -33,7 +33,7 @@
 |   Routes: / (tutor), /admin/books, /admin/guidelines, /admin/evaluation   |
 |   Tutor: Subject -> Topic -> Subtopic Selection -> Chat Interface        |
 +-------------------------------------+-----------------------------------+
-                                      | REST + WebSocket
+                                      | REST only (frontend)
 +-------------------------------------v-----------------------------------+
 |                         BACKEND (FastAPI)                                |
 |   REST:  /sessions, /sessions/{id}/step, /sessions/{id}/summary         |
@@ -87,7 +87,7 @@
 | 1 | Select Subject/Topic/Subtopic | `GET /curriculum` | TeachingGuidelineRepository |
 | 2 | Create Session | `POST /sessions` | SessionService.create_new_session() |
 | 3 | Submit Answer (REST) | `POST /sessions/{id}/step` | SessionService.process_step() |
-| 3a | Chat (WebSocket) | `WS /sessions/ws/{id}` | websocket_endpoint() |
+| 3a | Chat (WebSocket, eval only) | `WS /sessions/ws/{id}` | websocket_endpoint() |
 | 4 | Get Summary | `GET /sessions/{id}/summary` | SessionService.get_summary() |
 
 ---
@@ -160,7 +160,8 @@ SessionService.create_new_session()
   "first_turn": {
     "message": "Welcome! I'm excited to learn about fractions with you...",
     "hints": [],
-    "step_idx": 1
+    "step_idx": 1,
+    "mastery_score": 0.0
   }
 }
 ```
@@ -175,7 +176,7 @@ POST /sessions/{session_id}/step
 Body: {student_reply: "I think 5/8 is bigger because 5 is more than 3"}
 ```
 
-### WebSocket Entry Point
+### WebSocket Entry Point (used by evaluation pipeline, not frontend)
 ```
 WS /sessions/ws/{session_id}
 Send: {"type": "chat", "payload": {"message": "I think 5/8 is bigger..."}}
@@ -253,7 +254,7 @@ TeacherOrchestrator.process_turn(session, student_message)
 }
 ```
 
-### WebSocket Response
+### WebSocket Response (evaluation pipeline)
 ```json
 {"type": "typing", "payload": {}}
 {"type": "assistant", "payload": {"message": "Great job! ..."}}
@@ -352,9 +353,12 @@ class Question(BaseModel):
     question_text: str
     expected_answer: str
     concept: str
-    wrong_attempts: int          # Number of wrong attempts
-    previous_student_answers: List[str]  # Student's previous wrong answers
-    phase: str                   # "asked" -> "probe" -> "hint" -> "explain"
+    rubric: str = ""             # Evaluation criteria
+    hints: List[str] = []        # Available hints
+    hints_used: int = 0          # Number of hints provided
+    wrong_attempts: int = 0      # Number of wrong attempts
+    previous_student_answers: List[str] = []  # Student's previous wrong answers
+    phase: str = "asked"         # "asked" -> "probe" -> "hint" -> "explain"
 ```
 
 Orchestrator `_handle_question_lifecycle()` manages phase progression:
@@ -371,9 +375,10 @@ The `MasterTutorAgent` computes two dynamic signals per turn:
 
 **Pacing Directive** (`_compute_pacing_directive`):
 - TURN 1: "Keep opening to 2-3 sentences. Ask ONE simple question."
-- ACCELERATE: avg_mastery >= 0.8 & improving → "Skip easy checks, go deeper."
+- ACCELERATE: avg_mastery >= 0.8 & improving (or 60%+ concepts >= 0.7 with avg >= 0.65) → "Skip steps aggressively, minimal scaffolding."
 - EXTEND: aced plan & is_complete → "Push to harder territory."
 - SIMPLIFY: avg_mastery < 0.4 or struggling → "Shorter sentences, 1-2 ideas per response."
+- CONSOLIDATE: avg_mastery 0.4-0.65 & steady & 2+ wrong attempts → "Same-level problem to build confidence."
 - STEADY: default → "One idea at a time."
 
 **Student Style** (`_compute_student_style`):
@@ -390,15 +395,15 @@ Contains:
 - Study plan (steps with types and concepts)
 - Topic guidelines (learning objectives, prerequisites, misconceptions, teaching approach)
 - 10 teaching rules:
-  1. Follow the study plan, hide scaffolding
-  2. Advance when ready — honor harder-material requests
+  1. Follow the study plan, hide scaffolding, start simple
+  2. Advance when ready — honor harder-material requests, skip aggressively for strong students
   3. Track questions asked (question_asked, expected_answer, question_concept)
-  4. Guide discovery — don't just correct (1st wrong: probe, 2nd: hint, 3rd+: explain; verify correctness before praising)
-  5. Never repeat yourself — vary praise, structure, openings
+  4. Guide discovery — don't just correct (1st wrong: probe, 2nd: hint, 3rd+: explain; 2+ same: change strategy fundamentally; prerequisite gap detection after 3+ turns; verify correctness before praising)
+  5. Never repeat yourself — vary structure AND question formats
   6. Match the student's energy
   7. Update mastery (~0.3 wrong, ~0.6 partial, ~0.8 correct, ~0.95 correct with reasoning)
-  8. Be real — proportional praise, 0-2 emojis per response
-  9. End naturally — check for misconceptions first, personalized closing, set session_complete=true
+  8. Be real — calibrate praise to difficulty and student level, 0-1 emojis per response, no ALL CAPS, no stock phrases
+  9. End naturally — check if student wants to continue, respect goodbye, set session_complete=true
   10. Never leak internals — response is student-facing, put analysis in reasoning field
 
 ### Turn Prompt (per turn)
@@ -407,7 +412,7 @@ Contains:
 - Current mastery estimates
 - Known misconceptions
 - Turn timeline (session narrative so far)
-- Pacing directive (dynamic: TURN 1 / ACCELERATE / EXTEND / SIMPLIFY / STEADY)
+- Pacing directive (dynamic: TURN 1 / ACCELERATE / EXTEND / SIMPLIFY / CONSOLIDATE / STEADY)
 - Student style (dynamic: word count, engagement signals, disengagement detection)
 - Awaiting answer section (if question was asked — includes attempt #, phase, previous answers)
 - Recent conversation history
@@ -468,10 +473,10 @@ Contains:
 | `student_simulator.py` | LLM-powered student with persona and behavioral probabilities |
 | `session_runner.py` | Session lifecycle: create via REST, converse via WebSocket |
 | `evaluator.py` | 5-dimension persona-aware LLM judge |
-| `report_generator.py` | Generates conversation.{md,json}, evaluation.json, review.md, problems.md |
+| `report_generator.py` | Generates config.json, conversation.{md,json}, evaluation.json, review.md, problems.md |
 | `run_evaluation.py` | CLI with multi-persona + multi-run support |
 | `api.py` | FastAPI endpoints for starting/monitoring/re-evaluating runs |
-| `personas/*.json` | 6 student personas (ace, average_student, confused_confident, distractor, quiet_one, struggler) |
+| `personas/*.json` | 8 student personas (ace, average_student, confused_confident, distractor, quiet_one, repetition_detector, simplicity_seeker, struggler) |
 
 ---
 
@@ -515,7 +520,7 @@ Contains:
 | `GET` | `/sessions/{id}/summary` | Get session performance summary |
 | `GET` | `/sessions/{id}` | Debug: Get full session state |
 | `GET` | `/sessions/{id}/agent-logs` | Get agent execution logs |
-| `WS` | `/sessions/ws/{id}` | WebSocket chat connection |
+| `WS` | `/sessions/ws/{id}` | WebSocket chat connection (used by eval pipeline, not frontend) |
 
 ### Curriculum Discovery
 | Method | Endpoint | Description |
@@ -546,7 +551,7 @@ The evaluation pipeline simulates tutoring sessions using persona-driven student
 2. Create session via REST API
 3. Run conversation via WebSocket (student simulator <-> tutor)
 4. Evaluate conversation with LLM judge (5 persona-aware dimensions)
-5. Generate reports (conversation.{md,json}, evaluation.json, review.md, problems.md)
+5. Generate reports (config.json, conversation.{md,json}, evaluation.json, review.md, problems.md)
 6. If multi-persona: generate comparison report (comparison.md, comparison.json)
 ```
 
@@ -559,7 +564,7 @@ The evaluation pipeline simulates tutoring sessions using persona-driven student
 
 Each dimension is scored 1-10. The same tutor behavior is judged differently based on the student persona. Problems are identified with severity (critical/major/minor) and root causes (missed_student_signal, wrong_pacing, repetitive_approach, emotional_mismatch, missed_misconception, etc.).
 
-### Student Personas (6 available)
+### Student Personas (8 available)
 | Persona ID | Name | Correct% | Key Trait |
 |------------|------|----------|-----------|
 | ace | Arjun | 90% | Quick learner, gets bored easily |
@@ -567,6 +572,8 @@ Each dimension is scored 1-10. The same tutor behavior is judged differently bas
 | confused_confident | Dev | 45% | Confident wrong answers, systematic misconceptions |
 | distractor | Kabir | 65% | Bright but scattered, goes off-topic |
 | quiet_one | Meera | 60% | Shy, minimal responses, needs to be drawn out |
+| repetition_detector | Vikram | 70% | Notices and calls out repetitive question patterns |
+| simplicity_seeker | Aanya | 50% | Easily overwhelmed, needs simple concrete explanations |
 | struggler | Priya | 30% | Hardworking but confused, asks for help |
 
 Each persona has `persona_specific_behaviors` with probability-driven traits (boredom, off-topic, minimal responses, etc.).
@@ -629,7 +636,7 @@ ANTHROPIC_API_KEY=...
 | **Pydantic SessionState** | Clean, typed state model with serialization (replaces LangGraph state) |
 | **StudyPlan-driven teaching** | Pre-built study plans define the teaching sequence |
 | **Topic adapter pattern** | Bridges DB models to tutor models cleanly |
-| **WebSocket + REST** | REST for compatibility, WebSocket for real-time chat |
+| **WebSocket + REST** | Frontend uses REST exclusively; WebSocket used by evaluation pipeline's session runner |
 | **In-memory agent logs** | Thread-safe log store for debugging, accessible via API |
 | **Response sanitization** | Regex safety net to detect leaked internal/diagnostic language in tutor responses |
 | **Dynamic post-completion** | LLM-generated context-aware responses after session ends (replaces canned message) |
@@ -638,7 +645,7 @@ ANTHROPIC_API_KEY=...
 | **Anthropic provider support** | Configurable LLM provider (OpenAI, Claude Opus 4.6, Claude Haiku 4.5) |
 | **Conversation window (10 msgs)** | Prevents context overflow while maintaining recent context; full_conversation_log keeps complete history |
 | **Session extension (10 turns)** | Allows advanced students to continue beyond study plan, max 10 extra turns |
-| **Dynamic pacing & style** | Per-turn pacing directive + student style analysis adapt to session dynamics |
+| **Dynamic pacing & style** | Per-turn pacing directive (TURN 1/ACCELERATE/EXTEND/SIMPLIFY/CONSOLIDATE/STEADY) + student style analysis adapt to session dynamics |
 | **Question lifecycle phases** | probe → hint → explain phases track wrong attempts for graduated scaffolding |
 | **Session summary tracking** | Turn timeline, concepts taught, progress trend |
 | **Stdout structured logging** | JSON logs for cloud-native observability |
