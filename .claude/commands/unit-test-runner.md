@@ -1,4 +1,4 @@
-# Unit Tester — Run Unit Tests + Coverage HTML + Email Report
+# Unit Test Runner — Run Unit Tests + Coverage HTML + Email Report
 
 Run all available unit tests in this repo, generate coverage artifacts, build a readable HTML summary, and email the report.
 
@@ -20,7 +20,7 @@ BRANCH="$(git -C "$ROOT" branch --show-current)"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)"
 NOW="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
-echo "[$NOW] unit-tester started on $BRANCH@$COMMIT" | tee "$LOG_FILE"
+echo "[$NOW] unit-test-runner started on $BRANCH@$COMMIT" | tee "$LOG_FILE"
 ```
 
 ## Step 1: Run backend unit tests + coverage (required)

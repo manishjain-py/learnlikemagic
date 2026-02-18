@@ -1,4 +1,4 @@
-# Code Coverage — Automated Unit Test Generation Pipeline
+# Unit Test Updater — Automated Unit Test Generation & Cleanup Pipeline
 
 You are running a measure → prioritize → generate tests → validate → re-measure → report cycle to achieve ≥80% unit test coverage across the backend.
 
@@ -166,7 +166,7 @@ Create a JSON log file at `$ARGUMENTS.log` in the root folder. Keep updating sta
 
 ```bash
 git checkout main && git pull origin main
-git checkout -b code-coverage/$(date +%Y%m%d-%H%M%S)
+git checkout -b unit-test-updater/$(date +%Y%m%d-%H%M%S)
 ```
 
 All changes in this run will be committed to this branch.
@@ -272,8 +272,8 @@ python -m pytest tests/unit/ -v --cov=. --cov-report=term-missing --cov-report=j
 Parse the final JSON coverage report and compare with baseline.
 
 **Separation of concerns:**
-- `code-coverage` is responsible for generating/updating/refactoring unit tests and validating those test changes.
-- `unit-tester` is responsible for routine “run current unit tests + coverage report” execution.
+- `unit-test-updater` is responsible for generating/updating/refactoring unit tests and validating those test changes.
+- `unit-test-runner` is responsible for routine “run current unit tests + coverage report” execution.
 
 ---
 
