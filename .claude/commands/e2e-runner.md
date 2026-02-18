@@ -1,10 +1,10 @@
-# Manual QA — Full App E2E Testing Pipeline
+# E2E Runner — Full App E2E Testing Pipeline
 
 Run the full application locally, execute all E2E test scenarios via Playwright, capture screenshots of every flow, visually inspect each screen, and produce a comprehensive HTML QA report with email delivery.
 
 ## Input
 - Optional `$ARGUMENTS` = report slug
-- Default slug: `manual-qa-$(date +%Y%m%d-%H%M%S)`
+- Default slug: `e2e-runner-$(date +%Y%m%d-%H%M%S)`
 
 ## ENVIRONMENT SETUP
 
@@ -30,9 +30,9 @@ This is a **fully automated pipeline**. The user will NOT be present to review p
 ## Step 0: Initialize
 
 ```bash
-SLUG="${ARGUMENTS:-manual-qa-$(date +%Y%m%d-%H%M%S)}"
+SLUG="${ARGUMENTS:-e2e-runner-$(date +%Y%m%d-%H%M%S)}"
 ROOT="$(pwd)"
-REPORT_DIR="$ROOT/reports/manual-qa"
+REPORT_DIR="$ROOT/reports/e2e-runner"
 SCREENSHOT_DIR="$REPORT_DIR/screenshots"
 mkdir -p "$SCREENSHOT_DIR"
 LOG_FILE="$REPORT_DIR/${SLUG}.log"
@@ -43,7 +43,7 @@ BRANCH="$(git -C "$ROOT" branch --show-current)"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)"
 NOW="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
-echo "[$NOW] manual-qa started on $BRANCH@$COMMIT" | tee "$LOG_FILE"
+echo "[$NOW] e2e-runner started on $BRANCH@$COMMIT" | tee "$LOG_FILE"
 echo '{"status":"running","step":"init","branch":"'"$BRANCH"'","commit":"'"$COMMIT"'","started":"'"$NOW"'"}' > "$PROGRESS_FILE"
 ```
 
@@ -157,8 +157,8 @@ echo "E2E tests exited with code $E2E_EXIT" | tee -a "$LOG_FILE"
 This executes all scenarios from `e2e/scenarios.json`, capturing screenshots at every labeled step. Failed tests automatically get a failure screenshot.
 
 After Playwright completes, read:
-- `reports/manual-qa/scenario-results.json` — per-scenario pass/fail with screenshot filenames
-- `reports/manual-qa/test-results.json` — Playwright's full JSON report
+- `reports/e2e-runner/scenario-results.json` — per-scenario pass/fail with screenshot filenames
+- `reports/e2e-runner/test-results.json` — Playwright's full JSON report
 
 ---
 
@@ -228,7 +228,7 @@ EXTRA_ATTACH=""
 
 python scripts/send_coverage_report.py \
   --to "manishjain.py@gmail.com" \
-  --subject "Manual QA Report — $BRANCH — $(date +%Y-%m-%d) — <VERDICT>" \
+  --subject "E2E Runner Report — $BRANCH — $(date +%Y-%m-%d) — <VERDICT>" \
   --report "$SUMMARY_HTML" \
   --log "$LOG_FILE" \
   $EXTRA_ATTACH
@@ -242,7 +242,7 @@ Fallback (macOS Mail.app):
 if [ "$EMAIL_EXIT" -ne 0 ]; then
   osascript <<OSA
 tell application "Mail"
-  set newMessage to make new outgoing message with properties {subject:"Manual QA Report — $BRANCH — $(date +%Y-%m-%d) — <VERDICT>", content:"See attached QA report and log.", visible:false}
+  set newMessage to make new outgoing message with properties {subject:"E2E Runner Report — $BRANCH — $(date +%Y-%m-%d) — <VERDICT>", content:"See attached QA report and log.", visible:false}
   tell newMessage
     make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
     make new attachment with properties {file name:POSIX file "$SUMMARY_HTML"} at after the last paragraph
