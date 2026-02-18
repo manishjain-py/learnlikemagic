@@ -260,9 +260,9 @@ Rules:
 
 ---
 
-## Step 4: Run full test suite and measure POST coverage
+## Step 4: Measure POST coverage (unit tests only)
 
-After all test files are written:
+After all test files are written/updated:
 
 ```bash
 cd llm-backend && source venv/bin/activate
@@ -270,6 +270,10 @@ python -m pytest tests/unit/ -v --cov=. --cov-report=term-missing --cov-report=j
 ```
 
 Parse the final JSON coverage report and compare with baseline.
+
+**Separation of concerns:**
+- `code-coverage` is responsible for generating/updating/refactoring unit tests and validating those test changes.
+- `unit-tester` is responsible for routine “run current unit tests + coverage report” execution.
 
 ---
 
@@ -285,16 +289,17 @@ If overall coverage is still below 80%:
 
 ---
 
-## Step 6: Final validation
+## Step 6: Final validation (changed/targeted unit tests only)
 
-1. Run the complete test suite (unit + integration) to make sure nothing is broken:
+1. Run only relevant unit tests for files changed in this run:
+   - newly created/updated unit test files
+   - any unit test files cleaned/refactored
    ```bash
    cd llm-backend && source venv/bin/activate
-   python -m pytest tests/ -x -q --no-header 2>&1
+   python -m pytest <changed-test-files> -v --no-header -q 2>&1
    ```
-   (Integration tests may be skipped if they require external services. That's OK — focus on unit tests passing.)
 
-2. Verify no test relies on external services (no real LLM calls, no real DB, no real S3).
+2. Verify no new/updated test relies on external services (no real LLM calls, no real DB, no real S3).
 
 3. Commit all test changes (new tests + cleaned/refactored tests):
    ```bash
@@ -306,7 +311,7 @@ If overall coverage is still below 80%:
 
 ## Step 7: Generate the coverage comparison report
 
-Produce a detailed comparison report:
+Produce a detailed comparison report focused only on work performed by this skill (test generation/updates/cleanup/refactors + coverage deltas). Do not include unrelated “run all tests” operational stats.
 
 ```
 ## Code Coverage Report
