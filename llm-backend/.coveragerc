@@ -1,0 +1,31 @@
+[run]
+source = .
+omit =
+    tests/*
+    tests/**/*
+    */__pycache__/*
+    */venv/*
+    */migrations/*
+    scripts/*
+    evaluation/run_evaluation.py
+    book_ingestion/utils/setup_s3.py
+    book_ingestion/utils/create_bucket.py
+    db.py
+    database.py
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+omit =
+    tests/*
+    tests/**/*
+    */__pycache__/*
+    */venv/*
+    */migrations/*
+    scripts/*
+    evaluation/run_evaluation.py
+    book_ingestion/utils/setup_s3.py
+    book_ingestion/utils/create_bucket.py
+    db.py
+    database.py

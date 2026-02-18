@@ -11,6 +11,7 @@ def _make_session(turn_count=5, mastery=None, trend="steady", is_complete=False)
     session.mastery_estimates = mastery or {"concept1": 0.5}
     session.session_summary.progress_trend = trend
     session.is_complete = is_complete
+    session.last_question = None  # Avoid MagicMock comparison errors
     return session
 
 
