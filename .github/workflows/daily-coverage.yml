@@ -1,0 +1,231 @@
+name: Daily Code Coverage Report
+
+on:
+  schedule:
+    # Run daily at 6:00 AM UTC (11:30 AM IST)
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Run Coverage and Email Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: llm-backend/requirements*.txt
+
+      - name: Install dependencies
+        working-directory: llm-backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests with coverage
+        working-directory: llm-backend
+        run: |
+          python -m pytest tests/unit/ \
+            --cov=. \
+            --cov-report=term-missing \
+            --cov-report=json:coverage-report.json \
+            --cov-report=html:htmlcov \
+            --cov-config=pytest.ini \
+            -v --no-header -q 2>&1 | tee coverage-output.txt || true
+
+      - name: Generate HTML coverage report
+        working-directory: llm-backend
+        run: |
+          python -c "
+          import json
+          from pathlib import Path
+          from datetime import datetime
+
+          # Load coverage data
+          cov_file = Path('coverage-report.json')
+          if not cov_file.exists():
+              print('No coverage data found')
+              exit(1)
+
+          with open(cov_file) as f:
+              data = json.load(f)
+
+          totals = data.get('totals', {})
+          files = data.get('files', {})
+
+          overall_pct = totals.get('percent_covered', 0)
+          total_stmts = totals.get('num_statements', 0)
+          covered_stmts = totals.get('covered_lines', 0)
+          missing_stmts = totals.get('missing_lines', 0)
+
+          # Priority tiers
+          p0_patterns = ['tutor/orchestration/', 'tutor/services/', 'tutor/agents/', 'tutor/models/', 'shared/services/', 'shared/repositories/']
+          p1_patterns = ['shared/models/', 'shared/utils/', 'shared/prompts/', 'tutor/utils/', 'tutor/prompts/', 'study_plans/']
+          p2_patterns = ['book_ingestion/']
+          p3_patterns = ['config.py', 'database.py', 'main.py', 'tutor/api/', 'evaluation/']
+
+          def classify(path):
+              for p in p0_patterns:
+                  if p in path: return 'P0'
+              for p in p1_patterns:
+                  if p in path: return 'P1'
+              for p in p2_patterns:
+                  if p in path: return 'P2'
+              for p in p3_patterns:
+                  if p in path: return 'P3'
+              return 'P3'
+
+          tier_stats = {'P0': {'covered': 0, 'total': 0}, 'P1': {'covered': 0, 'total': 0}, 'P2': {'covered': 0, 'total': 0}, 'P3': {'covered': 0, 'total': 0}}
+
+          file_rows = []
+          for filepath, fdata in sorted(files.items()):
+              if filepath.startswith('tests/') or filepath.startswith('venv/'):
+                  continue
+              summary = fdata.get('summary', {})
+              stmts = summary.get('num_statements', 0)
+              covered = summary.get('covered_lines', 0)
+              pct = summary.get('percent_covered', 0)
+              missing = summary.get('missing_lines', [])
+
+              tier = classify(filepath)
+              tier_stats[tier]['covered'] += covered
+              tier_stats[tier]['total'] += stmts
+
+              if stmts > 0:
+                  status = '✅' if pct >= 80 else '⚠️' if pct >= 50 else '❌'
+                  file_rows.append((filepath, stmts, covered, pct, status, tier))
+
+          # Sort: P0 first, then by coverage ascending
+          tier_order = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+          file_rows.sort(key=lambda r: (tier_order[r[5]], r[3]))
+
+          tier_targets = {'P0': 90, 'P1': 80, 'P2': 70, 'P3': 60}
+          tier_names = {'P0': 'Critical Runtime', 'P1': 'Business Logic', 'P2': 'Offline Pipeline', 'P3': 'Infrastructure'}
+
+          now = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+
+          html = f'''<!DOCTYPE html>
+          <html><head><meta charset=\"utf-8\"><title>Code Coverage Report</title>
+          <style>
+          body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
+          h1 {{ color: #1a1a2e; border-bottom: 3px solid #16213e; padding-bottom: 10px; }}
+          h2 {{ color: #16213e; margin-top: 30px; }}
+          table {{ border-collapse: collapse; width: 100%; margin: 15px 0; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }}
+          th {{ background: #16213e; color: white; padding: 12px 15px; text-align: left; }}
+          td {{ padding: 10px 15px; border-bottom: 1px solid #eee; }}
+          tr:nth-child(even) {{ background: #f8f9fa; }}
+          tr:hover {{ background: #e8f4f8; }}
+          .metric {{ display: inline-block; background: white; padding: 20px; margin: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; min-width: 150px; }}
+          .metric .value {{ font-size: 2em; font-weight: bold; }}
+          .metric .label {{ color: #666; font-size: 0.9em; }}
+          .good {{ color: #28a745; }}
+          .warn {{ color: #ffc107; }}
+          .bad {{ color: #dc3545; }}
+          .summary {{ display: flex; flex-wrap: wrap; justify-content: center; margin: 20px 0; }}
+          footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.85em; }}
+          </style></head><body>
+          <h1>Code Coverage Report</h1>
+          <p>Generated: {now}</p>
+
+          <div class=\"summary\">
+            <div class=\"metric\">
+              <div class=\"value {\"good\" if overall_pct >= 80 else \"warn\" if overall_pct >= 60 else \"bad\"}\">{overall_pct:.1f}%</div>
+              <div class=\"label\">Overall Coverage</div>
+            </div>
+            <div class=\"metric\">
+              <div class=\"value\">{total_stmts}</div>
+              <div class=\"label\">Total Statements</div>
+            </div>
+            <div class=\"metric\">
+              <div class=\"value good\">{covered_stmts}</div>
+              <div class=\"label\">Covered</div>
+            </div>
+            <div class=\"metric\">
+              <div class=\"value bad\">{missing_stmts}</div>
+              <div class=\"label\">Missing</div>
+            </div>
+          </div>
+
+          <h2>Coverage by Priority Tier</h2>
+          <table>
+          <tr><th>Tier</th><th>Category</th><th>Target</th><th>Achieved</th><th>Status</th></tr>'''
+
+          for tier in ['P0', 'P1', 'P2', 'P3']:
+              stats = tier_stats[tier]
+              pct = (stats['covered'] / stats['total'] * 100) if stats['total'] > 0 else 0
+              target = tier_targets[tier]
+              status = '✅ Met' if pct >= target else '❌ Below'
+              html += f'<tr><td><strong>{tier}</strong></td><td>{tier_names[tier]}</td><td>{target}%</td><td>{pct:.1f}%</td><td>{status}</td></tr>'
+
+          html += '</table>'
+
+          html += '<h2>Per-File Coverage</h2><table>'
+          html += '<tr><th>File</th><th>Tier</th><th>Statements</th><th>Covered</th><th>Coverage</th><th>Status</th></tr>'
+
+          for filepath, stmts, covered, pct, status, tier in file_rows:
+              html += f'<tr><td><code>{filepath}</code></td><td>{tier}</td><td>{stmts}</td><td>{covered}</td><td>{pct:.1f}%</td><td>{status}</td></tr>'
+
+          html += '''</table>
+          <footer>
+          <p>LearnLikeMagic — Automated Code Coverage Report</p>
+          <p>Target: 80% overall | P0 ≥ 90% | P1 ≥ 80% | P2 ≥ 70% | P3 ≥ 60%</p>
+          </footer></body></html>'''
+
+          with open('daily-coverage-report.html', 'w') as f:
+              f.write(html)
+
+          print(f'Report generated: daily-coverage-report.html')
+          print(f'Overall coverage: {overall_pct:.1f}%')
+          "
+
+      - name: Send email report
+        working-directory: llm-backend
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          python scripts/send_coverage_report.py \
+            --to "manishjain.py@gmail.com" \
+            --subject "Daily Code Coverage Report — $(date +%Y-%m-%d)" \
+            --report "daily-coverage-report.html" \
+            --log "coverage-output.txt"
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.run_number }}
+          path: |
+            llm-backend/daily-coverage-report.html
+            llm-backend/coverage-report.json
+            llm-backend/coverage-output.txt
+            llm-backend/htmlcov/
+          retention-days: 30
+
+      - name: Coverage threshold check
+        working-directory: llm-backend
+        run: |
+          python -c "
+          import json, sys
+          with open('coverage-report.json') as f:
+              data = json.load(f)
+          pct = data.get('totals', {}).get('percent_covered', 0)
+          print(f'Overall coverage: {pct:.1f}%')
+          if pct < 80:
+              print(f'WARNING: Coverage {pct:.1f}% is below 80% target')
+              sys.exit(1)
+          else:
+              print(f'Coverage target met!')
+          "
