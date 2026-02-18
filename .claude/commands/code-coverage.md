@@ -238,6 +238,28 @@ For each file in the work queue:
 
 ---
 
+## Step 3.5: Review existing unit tests for cleanup/refactoring
+
+After generating or updating tests, review the existing `tests/unit/` suite and improve quality where needed.
+
+Focus on high-value cleanup/refactoring:
+1. Remove duplicate or redundant tests.
+2. Consolidate repeated setup into fixtures.
+3. Rename unclear test names to descriptive behavior-oriented names.
+4. Replace brittle assertions with behavior-based assertions.
+5. Eliminate dead/commented code and obsolete mocks.
+6. Refactor repetitive helper logic into shared utilities when justified.
+
+Rules:
+- Keep behavior coverage intact (do not reduce meaningful test intent).
+- Prefer small, safe refactors over broad rewrites.
+- Re-run affected test files immediately after each cleanup/refactor.
+- Log every cleanup/refactor decision in the progress file under two lists:
+  - `refactors_done`
+  - `tests_cleaned`
+
+---
+
 ## Step 4: Run full test suite and measure POST coverage
 
 After all test files are written:
@@ -274,10 +296,10 @@ If overall coverage is still below 80%:
 
 2. Verify no test relies on external services (no real LLM calls, no real DB, no real S3).
 
-3. Commit all new test files:
+3. Commit all test changes (new tests + cleaned/refactored tests):
    ```bash
-   git add tests/unit/test_*.py
-   git commit -m "Add unit tests to achieve 80%+ code coverage"
+   git add tests/unit/test_*.py tests/unit/**/*.py
+   git commit -m "Improve unit coverage: add tests + cleanup/refactor existing test suite"
    ```
 
 ---
@@ -296,6 +318,9 @@ Produce a detailed comparison report:
 | Files with 0% coverage | N | M | -K |
 | Total test files | A | B | +C |
 | Total test functions | D | E | +F |
+| New tests added (count) | — | G | +G |
+| Existing tests cleaned up (count) | — | H | +H |
+| Test refactors performed (count) | — | I | +I |
 
 ### Coverage by Priority Tier
 | Tier | Target | Achieved | Status |
@@ -313,6 +338,12 @@ Produce a detailed comparison report:
 
 ### New Test Files Created
 (list each new test file and what it covers)
+
+### Existing Tests Cleaned Up
+(list cleaned tests and what was cleaned: dedupe, naming, fixture extraction, brittle assertion fixes, dead code removal)
+
+### Test Refactoring Done
+(list structural refactors made in tests and why they improve maintainability/reliability)
 
 ### Known Gaps
 (list any files that couldn't be fully tested and why — e.g., requires integration test, too tightly coupled)
