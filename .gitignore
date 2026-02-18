@@ -52,6 +52,7 @@ llm-backend/evaluation/runs/
 .coverage
 htmlcov/
 .pytest_cache/
+coverage-*.json
 
 # Runtime logs
 logs/
