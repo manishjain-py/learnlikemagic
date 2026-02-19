@@ -187,7 +187,8 @@ class ScorecardService:
 #### `_load_user_sessions(user_id)`
 ```python
 def _load_user_sessions(self, user_id: str) -> list:
-    """Load all sessions for the user, ordered by created_at ascending."""
+    """Load all sessions for the user, ordered by created_at ascending.
+    Secondary sort by id for deterministic ordering when timestamps match."""
     return (
         self.db.query(
             SessionModel.id,
@@ -197,7 +198,7 @@ def _load_user_sessions(self, user_id: str) -> list:
             SessionModel.created_at,
         )
         .filter(SessionModel.user_id == user_id)
-        .order_by(SessionModel.created_at.asc())
+        .order_by(SessionModel.created_at.asc(), SessionModel.id.asc())
         .all()
     )
 ```
@@ -274,6 +275,10 @@ def _group_sessions(self, sessions, guideline_lookup) -> tuple[dict, dict]:
     grouped = defaultdict(lambda: defaultdict(lambda: {"topic_name": "", "subtopics": {}}))
     trends_raw = defaultdict(list)
 
+    # Determine if sessions span multiple calendar years (for date_label format)
+    years = {s.created_at.year for s in sessions if s.created_at}
+    span_years = len(years) > 1
+
     for session_row in sessions:
         try:
             state = json.loads(session_row.state_json)
@@ -316,9 +321,11 @@ def _group_sessions(self, sessions, guideline_lookup) -> tuple[dict, dict]:
 
         misconceptions = state.get("misconceptions", [])
         session_date = session_row.created_at.isoformat() if session_row.created_at else None
-        # Pre-formatted label for chart axis (e.g., "Feb 15") — avoids noisy ISO timestamps
+        # Pre-formatted label for chart axis — avoids noisy ISO timestamps
+        # Uses "%b %d" within a single year, "%b %d, %Y" when sessions span multiple years
+        # (span_years is computed once before the loop — see below)
         date_label = (
-            session_row.created_at.strftime("%b %d")
+            session_row.created_at.strftime("%b %d, %Y" if span_years else "%b %d")
             if session_row.created_at else None
         )
 
