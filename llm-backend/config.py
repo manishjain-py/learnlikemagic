@@ -95,6 +95,20 @@ class Settings(BaseSettings):
     )
     # AWS credentials are auto-detected from ~/.aws/credentials or environment
 
+    # Cognito Configuration (for authentication)
+    cognito_user_pool_id: str = Field(
+        default="",
+        description="AWS Cognito User Pool ID"
+    )
+    cognito_app_client_id: str = Field(
+        default="",
+        description="AWS Cognito App Client ID"
+    )
+    cognito_region: str = Field(
+        default="us-east-1",
+        description="AWS Cognito region"
+    )
+
     @property
     def resolved_tutor_provider(self) -> str:
         """Resolve tutor provider: tutor_llm_provider takes precedence, falls back to app_llm_provider."""

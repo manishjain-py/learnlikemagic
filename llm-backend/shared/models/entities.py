@@ -1,10 +1,39 @@
 """SQLAlchemy ORM database models."""
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+
+class User(Base):
+    """User table - stores student profiles linked to Cognito."""
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True)
+    cognito_sub = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=True)
+    phone = Column(String, unique=True, nullable=True)
+    auth_provider = Column(String, nullable=False)  # 'email', 'phone', 'google'
+    name = Column(String, nullable=True)
+    age = Column(Integer, nullable=True)
+    grade = Column(Integer, nullable=True)
+    board = Column(String, nullable=True)
+    school_name = Column(String, nullable=True)
+    about_me = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    onboarding_complete = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login_at = Column(DateTime, nullable=True)
+
+    sessions = relationship("Session", back_populates="user")
+
+    __table_args__ = (
+        Index("idx_cognito_sub", "cognito_sub"),
+        Index("idx_user_email", "email"),
+    )
 
 
 class Session(Base):
@@ -17,10 +46,13 @@ class Session(Base):
     state_json = Column(Text, nullable=False)    # Full TutorState serialized
     mastery = Column(Float, default=0.0)  # Matches production database column name
     step_idx = Column(Integer, default=0)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    subject = Column(String, nullable=True)  # Denormalized for history filtering
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     events = relationship("Event", back_populates="session", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="sessions")
 
 
 class Event(Base):

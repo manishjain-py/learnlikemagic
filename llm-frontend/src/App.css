@@ -431,3 +431,490 @@ body {
   background: #f5f5f5;
   border-color: #999;
 }
+
+/* ──────────────────────────────────────────────
+   Auth & Profile Pages
+   ────────────────────────────────────────────── */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 1rem;
+}
+
+.auth-container {
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.auth-logo {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-logo h1 {
+  font-size: 1.8rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.auth-tagline {
+  color: #666;
+  font-size: 1rem;
+}
+
+.auth-title {
+  font-size: 1.5rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.auth-subtitle {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-error {
+  background: #fff5f5;
+  color: #e53e3e;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  border: 1px solid #fed7d7;
+}
+
+.auth-success {
+  background: #f0fff4;
+  color: #38a169;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  border: 1px solid #c6f6d5;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-field label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #555;
+}
+
+.auth-field input,
+.auth-field select,
+.auth-field textarea {
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.auth-field input:focus,
+.auth-field select:focus,
+.auth-field textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.auth-field input:disabled,
+.auth-field select:disabled,
+.auth-field textarea:disabled {
+  background: #f7f7f7;
+  color: #666;
+}
+
+.auth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-btn {
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.auth-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.auth-btn-phone {
+  background: #25D366;
+  color: white;
+}
+
+.auth-btn-phone:hover {
+  background: #20bd5a;
+}
+
+.auth-btn-email {
+  background: #667eea;
+  color: white;
+}
+
+.auth-btn-email:hover {
+  background: #5a6fd6;
+}
+
+.auth-btn-google {
+  background: white;
+  color: #333;
+  border: 2px solid #e0e0e0;
+}
+
+.auth-btn-google:hover {
+  border-color: #4285F4;
+  background: #f8f9ff;
+}
+
+.auth-btn-outline {
+  background: white;
+  color: #333;
+  border: 2px solid #e0e0e0;
+}
+
+.auth-btn-outline:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.auth-btn-outline.selected {
+  border-color: #667eea;
+  background: #f0f3ff;
+  color: #667eea;
+}
+
+.auth-btn-danger {
+  background: white;
+  color: #e53e3e;
+  border: 2px solid #fed7d7;
+}
+
+.auth-btn-danger:hover {
+  background: #fff5f5;
+}
+
+.auth-back-btn {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.auth-back-btn:hover {
+  color: #764ba2;
+}
+
+.auth-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.auth-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.auth-link:disabled {
+  color: #999;
+  cursor: default;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.75rem;
+  color: #999;
+}
+
+/* OTP Input */
+.otp-container {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.otp-input {
+  width: 48px;
+  height: 56px;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.otp-input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Onboarding */
+.onboarding-progress {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.onboarding-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  transition: background 0.3s;
+}
+
+.onboarding-dot.active {
+  background: #667eea;
+  transform: scale(1.2);
+}
+
+.onboarding-dot.completed {
+  background: #4caf50;
+}
+
+.onboarding-step {
+  text-align: center;
+}
+
+.onboarding-input {
+  text-align: center;
+  font-size: 1.2rem;
+  padding: 14px;
+}
+
+.onboarding-textarea {
+  text-align: left;
+  font-size: 1rem;
+}
+
+.grade-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+.grade-btn {
+  padding: 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  background: white;
+  font-size: 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.grade-btn:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.grade-btn.selected {
+  border-color: #667eea;
+  background: #667eea;
+  color: white;
+}
+
+.board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+.done-step {
+  padding: 2rem 0;
+}
+
+.skip-btn {
+  margin-top: 8px;
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+/* Profile Page */
+.profile-page {
+  max-width: 480px;
+}
+
+.profile-header {
+  margin-bottom: 1rem;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.profile-actions .auth-btn {
+  flex: 1;
+}
+
+.profile-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+}
+
+.profile-section h3 {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+}
+
+.profile-info {
+  font-size: 0.85rem;
+  color: #999;
+}
+
+/* Session History */
+.history-page {
+  max-width: 520px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  background: #f8f9ff;
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #667eea;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-card {
+  background: #fafafa;
+  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid #eee;
+}
+
+.session-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.session-topic {
+  font-weight: 500;
+  color: #333;
+}
+
+.session-mastery {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.session-card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.session-subject {
+  background: #f0f3ff;
+  color: #667eea;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+  font-size: 0.85rem;
+  color: #666;
+}

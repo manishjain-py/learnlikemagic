@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   createSession,
@@ -10,6 +11,7 @@ import {
   SummaryResponse,
   SubtopicInfo,
 } from './api';
+import { useAuth } from './contexts/AuthContext';
 import DevToolsDrawer from './features/devtools/components/DevToolsDrawer';
 import './App.css';
 
@@ -20,6 +22,10 @@ interface Message {
 }
 
 function App() {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
   // Selection state
   const [selectionStep, setSelectionStep] = useState<
     'subject' | 'topic' | 'subtopic' | 'chat'
@@ -45,10 +51,10 @@ function App() {
   const [modelLabel, setModelLabel] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fixed student profile (could be made configurable)
+  // Student profile from authenticated user (replaces hardcoded values)
   const COUNTRY = 'India';
-  const BOARD = 'CBSE';
-  const GRADE = 3;
+  const BOARD = user?.board || 'CBSE';
+  const GRADE = user?.grade || 3;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -134,7 +140,7 @@ function App() {
     try {
       const response = await createSession({
         student: {
-          id: 's1',
+          id: user?.id || 's1',
           grade: GRADE,
           prefs: { style: 'standard', lang: 'en' },
         },
@@ -216,15 +222,62 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  // User menu component
+  const UserMenu = () => (
+    <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+      <button
+        onClick={() => setShowUserMenu(!showUserMenu)}
+        style={{
+          padding: '6px 12px',
+          background: 'rgba(255,255,255,0.2)',
+          color: 'white',
+          border: '1px solid rgba(255,255,255,0.4)',
+          borderRadius: '20px',
+          fontSize: '0.8rem',
+          fontWeight: 500,
+          cursor: 'pointer',
+        }}
+      >
+        {user?.name || 'Menu'}
+      </button>
+      {showUserMenu && (
+        <div style={{
+          position: 'absolute',
+          top: '40px',
+          right: 0,
+          background: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          minWidth: '160px',
+          zIndex: 100,
+          overflow: 'hidden',
+        }}>
+          <button onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
+            style={menuItemStyle}>Profile</button>
+          <button onClick={() => { setShowUserMenu(false); navigate('/history'); }}
+            style={menuItemStyle}>My Sessions</button>
+          <button onClick={handleLogout}
+            style={{ ...menuItemStyle, color: '#e53e3e' }}>Log Out</button>
+        </div>
+      )}
+    </div>
+  );
+
   // Render selection screen
   if (selectionStep !== 'chat') {
     return (
       <div className="app">
-        <header className="header">
-          <h1>Learn Like Magic</h1>
+        <header className="header" style={{ position: 'relative' }}>
+          <h1>{user?.name ? `Hi, ${user.name}!` : 'Learn Like Magic'}</h1>
           <p className="subtitle">
             {BOARD} • Grade {GRADE} • {COUNTRY}
           </p>
+          <UserMenu />
         </header>
 
         <div className="selection-container">
@@ -467,5 +520,17 @@ function App() {
     </>
   );
 }
+
+const menuItemStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: '10px 16px',
+  border: 'none',
+  background: 'none',
+  textAlign: 'left' as const,
+  fontSize: '0.9rem',
+  cursor: 'pointer',
+  color: '#333',
+};
 
 export default App;

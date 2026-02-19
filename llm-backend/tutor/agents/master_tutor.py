@@ -213,15 +213,33 @@ class MasterTutorAgent(BaseAgent):
 
         misconceptions = format_list_for_prompt(topic.guidelines.common_misconceptions)
 
+        # Build personalization block from profile data
+        personalization_block = self._build_personalization_block(session.student_context)
+
         return MASTER_TUTOR_SYSTEM_PROMPT.render(
             grade=session.student_context.grade,
             language_level=session.student_context.language_level,
             preferred_examples=", ".join(session.student_context.preferred_examples),
+            personalization_block=personalization_block,
             topic_name=topic.topic_name,
             teaching_approach=topic.guidelines.teaching_approach,
             steps_formatted=steps_formatted,
             common_misconceptions=misconceptions,
         )
+
+    @staticmethod
+    def _build_personalization_block(ctx) -> str:
+        """Build a personalization section from student context profile data."""
+        lines = []
+        if getattr(ctx, 'student_name', None):
+            lines.append(f"The student's name is {ctx.student_name}. Address them by name.")
+        if getattr(ctx, 'student_age', None):
+            lines.append(f"The student is {ctx.student_age} years old.")
+        if getattr(ctx, 'about_me', None):
+            lines.append(f"About the student: {ctx.about_me}")
+        if not lines:
+            return ""
+        return "## Student Profile\n" + "\n".join(lines) + "\n"
 
     def _build_turn_prompt(self, session: SessionState, context: AgentContext) -> str:
         current_step = session.current_step_data

@@ -28,6 +28,7 @@ from tutor.models.messages import (
 )
 from shared.utils.exceptions import LearnLikeMagicException
 from shared.repositories import SessionRepository
+from auth.middleware.auth_middleware import get_optional_user, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -39,20 +40,90 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 # ──────────────────────────────────────────────
 
 
+def _check_session_ownership(session, current_user) -> None:
+    """
+    Verify that the caller owns the session.
+    - If the session is linked to a user, the caller must be that user.
+    - If the session is anonymous (user_id=None), allow access (backward compat).
+    - If no auth token is provided (current_user=None) but the session IS user-linked, deny.
+    """
+    if session.user_id is None:
+        return  # Anonymous session — allow
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required for this session")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your session")
+
+
 @router.get("")
-def list_sessions(db: DBSession = Depends(get_db)):
-    """List all sessions with lightweight summaries."""
+def list_sessions(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List sessions for the current user."""
     repo = SessionRepository(db)
-    sessions = repo.list_all()
+    sessions = repo.list_by_user(current_user.id)
     return {"sessions": sessions, "total": len(sessions)}
 
 
+@router.get("/history")
+def get_session_history(
+    subject: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List current user's past sessions, paginated."""
+    repo = SessionRepository(db)
+    sessions = repo.list_by_user(
+        user_id=current_user.id,
+        subject=subject,
+        offset=(page - 1) * page_size,
+        limit=page_size,
+    )
+    total = repo.count_by_user(current_user.id, subject=subject)
+    return {"sessions": sessions, "page": page, "page_size": page_size, "total": total}
+
+
+@router.get("/stats")
+def get_learning_stats(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Aggregated learning stats for the current user."""
+    repo = SessionRepository(db)
+    return repo.get_user_stats(current_user.id)
+
+
+@router.get("/{session_id}/replay")
+def get_session_replay(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Get full conversation replay for a session owned by the current user."""
+    repo = SessionRepository(db)
+    session = repo.get_by_id(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your session")
+
+    return json.loads(session.state_json)
+
+
 @router.post("", response_model=CreateSessionResponse)
-def create_session(request: CreateSessionRequest, db: DBSession = Depends(get_db)):
+def create_session(
+    request: CreateSessionRequest,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
     """Create a new learning session and get the first question."""
     try:
         service = SessionService(db)
-        return service.create_new_session(request)
+        return service.create_new_session(request, user_id=current_user.id if current_user else None)
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:
@@ -65,11 +136,24 @@ def create_session(request: CreateSessionRequest, db: DBSession = Depends(get_db
 
 
 @router.post("/{session_id}/step", response_model=StepResponse)
-def submit_step(session_id: str, request: StepRequest, db: DBSession = Depends(get_db)):
+def submit_step(
+    session_id: str,
+    request: StepRequest,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
     """Submit a student answer and get the next turn."""
     try:
+        repo = SessionRepository(db)
+        session = repo.get_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        _check_session_ownership(session, current_user)
+
         service = SessionService(db)
         return service.process_step(session_id, request)
+    except HTTPException:
+        raise
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:
@@ -79,11 +163,23 @@ def submit_step(session_id: str, request: StepRequest, db: DBSession = Depends(g
 
 
 @router.get("/{session_id}/summary", response_model=SummaryResponse)
-def get_summary(session_id: str, db: DBSession = Depends(get_db)):
+def get_summary(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
     """Get session summary with performance metrics and suggestions."""
     try:
+        repo = SessionRepository(db)
+        session = repo.get_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        _check_session_ownership(session, current_user)
+
         service = SessionService(db)
         return service.get_summary(session_id)
+    except HTTPException:
+        raise
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:
@@ -93,12 +189,17 @@ def get_summary(session_id: str, db: DBSession = Depends(get_db)):
 
 
 @router.get("/{session_id}")
-def get_session_state(session_id: str, db: DBSession = Depends(get_db)):
-    """Get full session state (debug endpoint)."""
+def get_session_state(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
+    """Get full session state (debug endpoint). Requires ownership for user-linked sessions."""
     repo = SessionRepository(db)
     session = repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session, current_user)
     return json.loads(session.state_json)
 
 
@@ -134,13 +235,15 @@ def get_agent_logs(
     agent_name: Optional[str] = None,
     limit: int = 100,
     db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ):
     """Get agent execution logs for a session."""
-    # Validate session exists
+    # Validate session exists + ownership
     repo = SessionRepository(db)
     session = repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session, current_user)
 
     log_store = get_agent_log_store()
 
@@ -180,23 +283,49 @@ def get_agent_logs(
 
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time chat with the tutor."""
-    await websocket.accept()
-    logger.info(f"WebSocket connected: {session_id}")
+    """
+    WebSocket endpoint for real-time chat with the tutor.
 
-    # We need a fresh DB session for the WebSocket lifecycle
+    Auth: pass access token as query param ``?token=<jwt>``.
+    For user-linked sessions, the token must belong to the session owner.
+    Anonymous sessions (user_id=None) are allowed without a token for backward compat.
+    """
     from database import get_db_manager
+    from auth.middleware.auth_middleware import _verify_cognito_token
+    from auth.repositories.user_repository import UserRepository
 
     db_manager = get_db_manager()
     db = db_manager.session_factory()
 
     try:
+        # 1. Look up session
         repo = SessionRepository(db)
         db_session = repo.get_by_id(session_id)
         if not db_session:
-            await websocket.send_json(create_error_response("Session not found").model_dump())
-            await websocket.close()
+            await websocket.close(code=4004, reason="Session not found")
             return
+
+        # 2. Auth + ownership check (before accepting the connection)
+        if db_session.user_id is not None:
+            token = websocket.query_params.get("token")
+            if not token:
+                await websocket.close(code=4001, reason="Authentication required")
+                return
+            try:
+                claims = await _verify_cognito_token(token, expected_token_use="access")
+                cognito_sub = claims.get("sub")
+                user_repo = UserRepository(db)
+                user = user_repo.get_by_cognito_sub(cognito_sub) if cognito_sub else None
+                if not user or user.id != db_session.user_id:
+                    await websocket.close(code=4003, reason="Not your session")
+                    return
+            except Exception:
+                await websocket.close(code=4001, reason="Invalid token")
+                return
+
+        # 3. Auth passed — accept connection
+        await websocket.accept()
+        logger.info(f"WebSocket connected: {session_id}")
 
         session = SessionState.model_validate_json(db_session.state_json)
 
