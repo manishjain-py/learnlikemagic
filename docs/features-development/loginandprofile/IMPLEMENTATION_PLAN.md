@@ -1,8 +1,24 @@
 # Login & User Profile — Technical Implementation Plan
 
-**Status:** Draft
+**Status:** Draft (v2 — updated from PR review)
 **Date:** 2026-02-19
 **PRD:** [PRD.md](./PRD.md)
+
+---
+
+## Changelog (v2)
+
+Fixes from PR #10 review:
+
+| # | Issue | What Changed |
+|---|-------|-------------|
+| 1 | Token contract inconsistency | Explicitly distinguish ID token (for `/auth/sync`) vs access token (for all other endpoints). Middleware validates `token_use` claim. Access tokens validate `client_id`; ID tokens validate `aud`. |
+| 2 | Path naming mismatch | Split into two routers: `auth_routes.py` (prefix `/auth`) and `profile_routes.py` (prefix `/profile`). Endpoints are now `/auth/sync`, `GET /profile`, `PUT /profile`. |
+| 3 | Cognito `name` required | Changed `required = false` in Cognito schema. Phone OTP users won't have a name at signup; it's collected during onboarding (Phase 5). |
+| 4 | JWKS cache no TTL | Added 1-hour TTL + refresh-on-kid-miss. If a `kid` isn't found in cache, refetch JWKS once before returning 401. Handles Cognito key rotation without restart. |
+| 5 | String boolean columns | Changed `is_active` and `onboarding_complete` from `Column(String)` to `Column(Boolean)`. Removed all `== "true"` string comparisons. |
+| 6 | Client-provided `auth_provider` | Removed `auth_provider` from `SyncRequest` body. Added `_derive_auth_provider()` that inspects Cognito token claims (`identities` for Google, `phone_number_verified` for phone, fallback to email). |
+| 7 | Brittle subject filter | Added denormalized `subject` column to `sessions` table. Populated at creation from the guideline's subject field. History filtering uses exact column match instead of `goal_json.contains()`. |
 
 ---
 
@@ -89,12 +105,17 @@
 
 **Revised backend auth endpoints (replaces PRD section 7.1):**
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/sync` | Called after Cognito login; creates/updates user row in our DB. Accepts Cognito access token. Returns user profile. |
-| GET | `/profile` | Get current user's profile |
-| PUT | `/profile` | Update profile fields |
-| PUT | `/profile/password` | Change password (proxies to Cognito) |
+| Method | Path | Token Type | Description |
+|--------|------|-----------|-------------|
+| POST | `/auth/sync` | **ID token** | Called after Cognito login; creates/updates user row in our DB. Uses ID token because it contains `email`, `phone_number`, `name` claims needed for sync. |
+| GET | `/profile` | Access token | Get current user's profile |
+| PUT | `/profile` | Access token | Update profile fields |
+| PUT | `/profile/password` | Access token | Change password (proxies to Cognito) |
+
+**Token contract (important):**
+- **ID token** (`token_use: "id"`): Contains user attributes (email, phone, name). Has `aud` claim = app client ID. Used only for `/auth/sync`.
+- **Access token** (`token_use: "access"`): Authorizes API calls. Has `client_id` claim (not `aud`). Used for all other authenticated endpoints.
+- The middleware MUST validate `token_use` to ensure the correct token type is used per endpoint.
 
 All other auth operations (signup, login, OTP, Google OAuth, forgot password, token refresh) happen client-side via the Cognito SDK.
 
@@ -108,21 +129,29 @@ llm-backend/
 │   ├── __init__.py
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── routes.py       # /auth/sync, /profile, /profile/password
+│   │   ├── auth_routes.py    # /auth/sync (auth operations)
+│   │   └── profile_routes.py # /profile, /profile/password (separate router)
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── auth_service.py  # JWT validation, user sync
-│   │   └── profile_service.py  # Profile CRUD
+│   │   ├── auth_service.py   # JWT validation, user sync
+│   │   └── profile_service.py # Profile CRUD
 │   ├── repositories/
 │   │   ├── __init__.py
-│   │   └── user_repository.py  # User table CRUD
+│   │   └── user_repository.py # User table CRUD
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── schemas.py       # Pydantic request/response models
+│   │   └── schemas.py        # Pydantic request/response models
 │   └── middleware/
 │       ├── __init__.py
-│       └── auth_middleware.py  # get_current_user dependency
+│       └── auth_middleware.py # get_current_user dependency
 ```
+
+**Path mapping (two separate routers to avoid prefix confusion):**
+
+| Router file | Prefix | Endpoints |
+|------------|--------|-----------|
+| `auth_routes.py` | `/auth` | `POST /auth/sync` |
+| `profile_routes.py` | `/profile` | `GET /profile`, `PUT /profile`, `PUT /profile/password` |
 
 ### AD-4: Frontend auth approach
 
@@ -203,12 +232,14 @@ resource "aws_cognito_user_pool" "main" {
     email_sending_account = "COGNITO_DEFAULT"  # Switch to SES for production
   }
 
-  # Schema: custom attributes for profile data we want Cognito to know about
+  # Schema: name is NOT required at Cognito level because phone OTP signup
+  # does not collect a name. Name is collected during our onboarding wizard
+  # (Phase 5) and stored in our users table, not in Cognito.
   schema {
     name                = "name"
     attribute_data_type = "String"
     mutable             = true
-    required            = true
+    required            = false
   }
 
   # Lambda triggers (future: post-confirmation, pre-sign-up)
@@ -438,6 +469,10 @@ This is the core piece — a FastAPI dependency that validates Cognito JWTs.
 """
 JWT validation middleware for AWS Cognito tokens.
 
+Token types:
+  - Access token (token_use="access"): Used for all API calls. Has `client_id` claim.
+  - ID token (token_use="id"): Used only for /auth/sync. Has `aud` claim + user attributes.
+
 Usage:
     @router.get("/protected")
     def protected_endpoint(current_user: User = Depends(get_current_user)):
@@ -445,13 +480,12 @@ Usage:
 """
 
 import logging
-from typing import Optional
+import time
+from typing import Optional, Literal
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError, jwk
-from jose.utils import base64url_decode
+from jose import jwt, JWTError
 import httpx
-import json
 
 from config import get_settings
 from auth.repositories.user_repository import UserRepository
@@ -462,14 +496,24 @@ logger = logging.getLogger("auth.middleware")
 
 security = HTTPBearer(auto_error=False)
 
-# Cache JWKS keys in memory
+# JWKS cache with TTL
 _jwks_cache: Optional[dict] = None
+_jwks_fetched_at: float = 0
+JWKS_TTL_SECONDS = 3600  # Re-fetch keys every hour
 
 
-async def _get_jwks() -> dict:
-    """Fetch and cache Cognito JWKS (JSON Web Key Set)."""
-    global _jwks_cache
-    if _jwks_cache:
+async def _get_jwks(force_refresh: bool = False) -> dict:
+    """
+    Fetch and cache Cognito JWKS (JSON Web Key Set).
+
+    Uses a TTL-based cache (1 hour) with refresh-on-miss:
+    - Normal: serve from cache if within TTL
+    - force_refresh=True: bypass cache (used when kid not found, indicating key rotation)
+    """
+    global _jwks_cache, _jwks_fetched_at
+    now = time.time()
+
+    if _jwks_cache and not force_refresh and (now - _jwks_fetched_at < JWKS_TTL_SECONDS):
         return _jwks_cache
 
     settings = get_settings()
@@ -481,12 +525,23 @@ async def _get_jwks() -> dict:
     async with httpx.AsyncClient() as client:
         response = await client.get(jwks_url)
         _jwks_cache = response.json()
+        _jwks_fetched_at = now
 
+    logger.info("JWKS cache refreshed")
     return _jwks_cache
 
 
-async def _verify_cognito_token(token: str) -> dict:
-    """Verify a Cognito JWT and return claims."""
+async def _verify_cognito_token(
+    token: str,
+    expected_token_use: Literal["access", "id"] = "access",
+) -> dict:
+    """
+    Verify a Cognito JWT and return claims.
+
+    Args:
+        token: The JWT string
+        expected_token_use: "access" for API calls, "id" for /auth/sync
+    """
     settings = get_settings()
     jwks = await _get_jwks()
 
@@ -501,21 +556,51 @@ async def _verify_cognito_token(token: str) -> dict:
             key = k
             break
 
+    # Key not found — might be a key rotation. Refresh JWKS once and retry.
     if not key:
-        raise HTTPException(status_code=401, detail="Invalid token: key not found")
+        logger.warning(f"kid '{kid}' not found in JWKS cache, refreshing...")
+        jwks = await _get_jwks(force_refresh=True)
+        for k in jwks.get("keys", []):
+            if k["kid"] == kid:
+                key = k
+                break
 
-    # Verify token
+    if not key:
+        raise HTTPException(status_code=401, detail="Invalid token: key not found after refresh")
+
+    # Verify token — audience/client_id validation differs by token type
+    issuer = f"https://cognito-idp.{settings.cognito_region}.amazonaws.com/{settings.cognito_user_pool_id}"
+
     try:
-        claims = jwt.decode(
-            token,
-            key,
-            algorithms=["RS256"],
-            audience=settings.cognito_app_client_id,
-            issuer=f"https://cognito-idp.{settings.cognito_region}.amazonaws.com/{settings.cognito_user_pool_id}",
-        )
-        return claims
+        if expected_token_use == "id":
+            # ID tokens have `aud` = app client ID
+            claims = jwt.decode(
+                token, key, algorithms=["RS256"],
+                audience=settings.cognito_app_client_id,
+                issuer=issuer,
+            )
+        else:
+            # Access tokens have `client_id` (not `aud`) — skip audience check in decode,
+            # validate client_id manually after
+            claims = jwt.decode(
+                token, key, algorithms=["RS256"],
+                issuer=issuer,
+                options={"verify_aud": False},
+            )
+            if claims.get("client_id") != settings.cognito_app_client_id:
+                raise HTTPException(status_code=401, detail="Invalid token: wrong client_id")
     except JWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+    # Validate token_use claim
+    actual_token_use = claims.get("token_use")
+    if actual_token_use != expected_token_use:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid token: expected token_use='{expected_token_use}', got '{actual_token_use}'"
+        )
+
+    return claims
 
 
 async def get_current_user(
@@ -524,15 +609,13 @@ async def get_current_user(
     db: DBSession = Depends(get_db),
 ):
     """
-    FastAPI dependency: extract and validate JWT, return User from DB.
-
-    Returns None if no token provided (for optional auth on some endpoints).
-    Raises 401 if token is invalid.
+    FastAPI dependency: extract and validate access token, return User from DB.
+    Raises 401 if token is missing or invalid.
     """
     if not credentials:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    claims = await _verify_cognito_token(credentials.credentials)
+    claims = await _verify_cognito_token(credentials.credentials, expected_token_use="access")
     cognito_sub = claims.get("sub")
 
     if not cognito_sub:
@@ -563,7 +646,7 @@ async def get_optional_user(
         return None
 
     try:
-        claims = await _verify_cognito_token(credentials.credentials)
+        claims = await _verify_cognito_token(credentials.credentials, expected_token_use="access")
         cognito_sub = claims.get("sub")
         if cognito_sub:
             repo = UserRepository(db)
@@ -579,6 +662,8 @@ async def get_optional_user(
 Add to `shared/models/entities.py`:
 
 ```python
+from sqlalchemy import Boolean
+
 class User(Base):
     """User table - stores student profiles linked to Cognito."""
     __tablename__ = "users"
@@ -587,15 +672,15 @@ class User(Base):
     cognito_sub = Column(String, unique=True, nullable=False)  # Cognito user UUID
     email = Column(String, unique=True, nullable=True)
     phone = Column(String, unique=True, nullable=True)
-    auth_provider = Column(String, nullable=False)  # 'email', 'phone', 'google'
+    auth_provider = Column(String, nullable=False)  # 'email', 'phone', 'google' (derived server-side)
     name = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
     grade = Column(Integer, nullable=True)
     board = Column(String, nullable=True)
     school_name = Column(String, nullable=True)
     about_me = Column(Text, nullable=True)
-    is_active = Column(String, default="true")
-    onboarding_complete = Column(String, default="false")  # Track if profile is filled
+    is_active = Column(Boolean, default=True, nullable=False)
+    onboarding_complete = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login_at = Column(DateTime, nullable=True)
@@ -608,13 +693,19 @@ class User(Base):
     )
 ```
 
-Add `user_id` FK to existing `Session` model:
+Add `user_id` FK and denormalized `subject` column to existing `Session` model:
 
 ```python
 class Session(Base):
     # ... existing fields ...
     user_id = Column(String, ForeignKey("users.id"), nullable=True)
     # nullable=True preserves existing anonymous sessions
+
+    # Denormalized subject for efficient filtering in session history.
+    # Populated at session creation from goal_json. Avoids brittle
+    # substring matching on JSON text (e.g. goal_json.contains("Math")
+    # would also match "Mathematics" or unrelated fields).
+    subject = Column(String, nullable=True)
 
     user = relationship("User", back_populates="sessions")
 ```
@@ -703,13 +794,46 @@ class AuthService:
         self.db = db
         self.user_repo = UserRepository(db)
 
-    def sync_user(self, cognito_sub: str, email: Optional[str],
-                  phone: Optional[str], auth_provider: str,
-                  name: Optional[str] = None):
+    @staticmethod
+    def _derive_auth_provider(claims: dict) -> str:
+        """
+        Derive auth_provider from Cognito token claims (server-side).
+
+        This is NOT taken from the client request body to prevent spoofing.
+
+        Cognito claim inspection:
+        - Google federated users have an `identities` claim with providerName="Google"
+        - Phone users have `phone_number_verified=true` and cognito:username starts with "+"
+        - Email users have `email_verified=true` as default fallback
+        """
+        # Check for federated identity (Google OAuth)
+        identities = claims.get("identities", [])
+        if identities:
+            provider = identities[0].get("providerName", "")
+            if provider == "Google":
+                return "google"
+
+        # Check for phone-based signup
+        if claims.get("phone_number_verified"):
+            return "phone"
+        username = claims.get("cognito:username", "")
+        if username.startswith("+"):
+            return "phone"
+
+        # Default: email
+        return "email"
+
+    def sync_user(self, claims: dict):
         """
         Create or update user record after Cognito authentication.
-        Called from /auth/sync endpoint.
+        Called from /auth/sync endpoint with the full decoded ID token claims.
         """
+        cognito_sub = claims["sub"]
+        email = claims.get("email")
+        phone = claims.get("phone_number")
+        name = claims.get("name")
+        auth_provider = self._derive_auth_provider(claims)
+
         existing = self.user_repo.get_by_cognito_sub(cognito_sub)
 
         if existing:
@@ -731,10 +855,10 @@ class AuthService:
             )
 ```
 
-### 2.7 Auth API routes: `auth/api/routes.py`
+### 2.7 Auth API routes: `auth/api/auth_routes.py`
 
 ```python
-"""Auth API endpoints."""
+"""Auth API endpoints — sync Cognito user to local DB."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
@@ -743,16 +867,11 @@ from typing import Optional
 
 from database import get_db
 from auth.services.auth_service import AuthService
-from auth.middleware.auth_middleware import get_current_user, _verify_cognito_token
+from auth.middleware.auth_middleware import _verify_cognito_token
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
-
-
-class SyncRequest(BaseModel):
-    """Sent by frontend after Cognito login."""
-    auth_provider: str  # 'email', 'phone', 'google'
 
 
 class UserProfileResponse(BaseModel):
@@ -771,24 +890,24 @@ class UserProfileResponse(BaseModel):
 
 @router.post("/sync", response_model=UserProfileResponse)
 async def sync_user(
-    request: SyncRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: DBSession = Depends(get_db),
 ):
     """
     Sync Cognito user to local DB.
     Called by frontend after successful Cognito authentication.
+
+    Accepts an ID token (not access token) because ID tokens contain
+    email, phone_number, and name claims needed for user creation.
+
+    auth_provider is derived server-side from token claims, not from
+    the client request body, to prevent spoofing.
     """
-    claims = await _verify_cognito_token(credentials.credentials)
+    # Validate as ID token (has user attributes in claims)
+    claims = await _verify_cognito_token(credentials.credentials, expected_token_use="id")
 
     service = AuthService(db)
-    user = service.sync_user(
-        cognito_sub=claims["sub"],
-        email=claims.get("email"),
-        phone=claims.get("phone_number"),
-        auth_provider=request.auth_provider,
-        name=claims.get("name"),
-    )
+    user = service.sync_user(claims=claims)
 
     return UserProfileResponse(
         id=user.id,
@@ -800,17 +919,19 @@ async def sync_user(
         board=user.board,
         school_name=user.school_name,
         about_me=user.about_me,
-        onboarding_complete=user.onboarding_complete == "true",
+        onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )
 ```
 
-### 2.8 Register auth router in `main.py`
+### 2.8 Register routers in `main.py`
 
 ```python
-from auth.api.routes import router as auth_router
+from auth.api.auth_routes import router as auth_router
+from auth.api.profile_routes import router as profile_router
 
-app.include_router(auth_router)
+app.include_router(auth_router)      # /auth/sync
+app.include_router(profile_router)   # /profile, /profile/password
 ```
 
 ---
@@ -856,16 +977,33 @@ class ProfileService:
 
         # Check if onboarding is now complete (all required fields filled)
         if user and user.name and user.age and user.grade and user.board:
-            if user.onboarding_complete != "true":
-                self.user_repo.update_profile(user_id, onboarding_complete="true")
-                user.onboarding_complete = "true"
+            if not user.onboarding_complete:
+                self.user_repo.update_profile(user_id, onboarding_complete=True)
+                user.onboarding_complete = True
 
         return user
 ```
 
-### 3.2 Profile API endpoints (add to `auth/api/routes.py`)
+### 3.2 Profile API: `auth/api/profile_routes.py`
+
+Profile endpoints live under their own `/profile` prefix (separate from `/auth`) to keep paths clean and intuitive for frontend developers.
 
 ```python
+"""Profile API endpoints."""
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session as DBSession
+from pydantic import BaseModel
+from typing import Optional
+
+from database import get_db
+from auth.services.profile_service import ProfileService
+from auth.middleware.auth_middleware import get_current_user
+from auth.api.auth_routes import UserProfileResponse  # Shared response model
+
+router = APIRouter(prefix="/profile", tags=["profile"])
+
+
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = None
     age: Optional[int] = None
@@ -875,7 +1013,7 @@ class UpdateProfileRequest(BaseModel):
     about_me: Optional[str] = None
 
 
-@router.get("/profile", response_model=UserProfileResponse)
+@router.get("", response_model=UserProfileResponse)
 async def get_profile(current_user = Depends(get_current_user)):
     """Get the current user's profile."""
     return UserProfileResponse(
@@ -888,12 +1026,12 @@ async def get_profile(current_user = Depends(get_current_user)):
         board=current_user.board,
         school_name=current_user.school_name,
         about_me=current_user.about_me,
-        onboarding_complete=current_user.onboarding_complete == "true",
+        onboarding_complete=current_user.onboarding_complete,
         auth_provider=current_user.auth_provider,
     )
 
 
-@router.put("/profile", response_model=UserProfileResponse)
+@router.put("", response_model=UserProfileResponse)
 async def update_profile(
     request: UpdateProfileRequest,
     current_user = Depends(get_current_user),
@@ -910,7 +1048,19 @@ async def update_profile(
         school_name=request.school_name,
         about_me=request.about_me,
     )
-    # ... return UserProfileResponse
+    return UserProfileResponse(
+        id=user.id,
+        email=user.email,
+        phone=user.phone,
+        name=user.name,
+        age=user.age,
+        grade=user.grade,
+        board=user.board,
+        school_name=user.school_name,
+        about_me=user.about_me,
+        onboarding_complete=user.onboarding_complete,
+        auth_provider=user.auth_provider,
+    )
 ```
 
 ### 3.3 Modify session creation to link user
@@ -919,6 +1069,18 @@ In `tutor/services/session_service.py`, modify `_persist_session`:
 
 ```python
 def _persist_session(self, session_id, session, request, user_id=None):
+    # Extract subject from goal for denormalized column (enables efficient history filtering)
+    subject = None
+    if hasattr(request.goal, 'syllabus') and request.goal.syllabus:
+        # syllabus is e.g. "CBSE-G3", topic is e.g. "Fractions"
+        # The actual subject comes from the curriculum selection flow
+        pass
+    # Prefer reading from the guideline's subject field
+    if request.goal.guideline_id:
+        guideline = self.guideline_repo.get_guideline_by_id(request.goal.guideline_id)
+        if guideline:
+            subject = guideline.subject  # e.g. "Mathematics"
+
     db_record = SessionModel(
         id=session_id,
         student_json=request.student.model_dump_json(),
@@ -926,7 +1088,8 @@ def _persist_session(self, session_id, session, request, user_id=None):
         state_json=session.model_dump_json(),
         mastery=session.overall_mastery,
         step_idx=session.current_step,
-        user_id=user_id,  # NEW: link session to user
+        user_id=user_id,    # NEW: link session to user
+        subject=subject,    # NEW: denormalized for history filtering
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -1347,7 +1510,8 @@ def list_by_user(self, user_id: str, subject: Optional[str] = None,
                  offset: int = 0, limit: int = 20):
     query = self.db.query(Session).filter(Session.user_id == user_id)
     if subject:
-        query = query.filter(Session.goal_json.contains(subject))
+        # Use the denormalized subject column — exact match, indexable
+        query = query.filter(Session.subject == subject)
     return query.order_by(Session.created_at.desc()).offset(offset).limit(limit).all()
 
 def get_user_stats(self, user_id: str) -> dict:
@@ -1358,11 +1522,8 @@ def get_user_stats(self, user_id: str) -> dict:
 
     total = len(sessions)
     avg_mastery = sum(s.mastery or 0 for s in sessions) / total
-    # Extract unique topics from goal_json
-    topics = set()
-    for s in sessions:
-        goal = json.loads(s.goal_json)
-        topics.add(goal.get("topic", ""))
+    # Use denormalized subject column for distinct topics
+    topics = set(s.subject for s in sessions if s.subject)
 
     return {
         "total_sessions": total,
@@ -1399,9 +1560,17 @@ Manual migration SQL:
 
 ```sql
 -- Phase 2: Create users table (handled by create_all)
--- Phase 3: Add user_id to sessions (manual)
+
+-- Phase 3: Add user_id and subject to sessions (manual, since create_all
+-- doesn't add columns to existing tables)
 ALTER TABLE sessions ADD COLUMN user_id VARCHAR REFERENCES users(id);
+ALTER TABLE sessions ADD COLUMN subject VARCHAR;
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX idx_sessions_subject ON sessions(subject);
+
+-- Backfill subject for existing sessions (one-time)
+-- This extracts subject from the linked guideline via goal_json's guideline_id
+-- Can be run as a Python script if SQL JSON extraction is too complex
 ```
 
 ### Consider adding Alembic
@@ -1493,7 +1662,8 @@ infra/terraform/modules/cognito/outputs.tf
 # Backend auth module
 llm-backend/auth/__init__.py
 llm-backend/auth/api/__init__.py
-llm-backend/auth/api/routes.py
+llm-backend/auth/api/auth_routes.py
+llm-backend/auth/api/profile_routes.py
 llm-backend/auth/services/__init__.py
 llm-backend/auth/services/auth_service.py
 llm-backend/auth/services/profile_service.py
