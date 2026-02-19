@@ -4,6 +4,8 @@
 **PRD:** `docs/feature-development/STUDENT_SCORECARD_PRD.md`
 **Branch:** `claude/plan-student-scorecard-6ttw7`
 
+> **Docs path note:** This feature uses `docs/feature-development/` (singular), established by the PRD in PR #12. The repo also has `docs/features-development/` (plural) from an earlier convention. Both coexist; this feature follows the PRD's path.
+
 ---
 
 ## Table of Contents
@@ -206,12 +208,18 @@ def _build_guideline_lookup(self, sessions) -> dict:
     """
     Build guideline_id → hierarchy info by collecting all topic_ids from sessions
     and batch-querying teaching_guidelines.
+
+    Uses V2 fields (topic_title/subtopic_title) with fallback to V1 (topic/subtopic).
     """
     # Collect unique guideline_ids from parsed state_json
     guideline_ids = set()
     for s in sessions:
-        state = json.loads(s.state_json)
-        topic = state.get("topic", {})
+        try:
+            state = json.loads(s.state_json)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Skipping session {s.id}: malformed state_json")
+            continue
+        topic = state.get("topic") or {}
         topic_id = topic.get("topic_id")
         if topic_id:
             guideline_ids.add(topic_id)
@@ -219,12 +227,14 @@ def _build_guideline_lookup(self, sessions) -> dict:
     if not guideline_ids:
         return {}
 
-    # Batch query teaching_guidelines
+    # Batch query teaching_guidelines — include V2 title fields
     guidelines = (
         self.db.query(
             TeachingGuideline.id,
             TeachingGuideline.topic,
             TeachingGuideline.subtopic,
+            TeachingGuideline.topic_title,
+            TeachingGuideline.subtopic_title,
             TeachingGuideline.topic_key,
             TeachingGuideline.subtopic_key,
         )
@@ -234,10 +244,11 @@ def _build_guideline_lookup(self, sessions) -> dict:
 
     return {
         g.id: {
-            "topic": g.topic,
-            "subtopic": g.subtopic,
-            "topic_key": g.topic_key or g.topic.lower().replace(" ", "-"),
-            "subtopic_key": g.subtopic_key or g.subtopic.lower().replace(" ", "-"),
+            # Prefer V2 fields, fall back to V1
+            "topic": g.topic_title or g.topic,
+            "subtopic": g.subtopic_title or g.subtopic,
+            "topic_key": g.topic_key or (g.topic_title or g.topic).lower().replace(" ", "-"),
+            "subtopic_key": g.subtopic_key or (g.subtopic_title or g.subtopic).lower().replace(" ", "-"),
         }
         for g in guidelines
     }
@@ -264,8 +275,12 @@ def _group_sessions(self, sessions, guideline_lookup) -> tuple[dict, dict]:
     trends_raw = defaultdict(list)
 
     for session_row in sessions:
-        state = json.loads(session_row.state_json)
-        topic_data = state.get("topic", {})
+        try:
+            state = json.loads(session_row.state_json)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Skipping session {session_row.id}: malformed state_json")
+            continue
+        topic_data = state.get("topic") or {}
         if not topic_data:
             continue
 
@@ -301,6 +316,11 @@ def _group_sessions(self, sessions, guideline_lookup) -> tuple[dict, dict]:
 
         misconceptions = state.get("misconceptions", [])
         session_date = session_row.created_at.isoformat() if session_row.created_at else None
+        # Pre-formatted label for chart axis (e.g., "Feb 15") — avoids noisy ISO timestamps
+        date_label = (
+            session_row.created_at.strftime("%b %d")
+            if session_row.created_at else None
+        )
 
         # Group (latest session wins — sessions are ordered by created_at ASC)
         grouped[subject][topic_key]["topic_name"] = topic_name
@@ -318,9 +338,10 @@ def _group_sessions(self, sessions, guideline_lookup) -> tuple[dict, dict]:
                 .get(subtopic_key, {}).get("session_count", 0) + 1,
         }
 
-        # Trend data
+        # Trend data — include both ISO date and chart-friendly label
         trends_raw[subject].append({
             "date": session_date,
+            "date_label": date_label,
             "score": round(overall_mastery, 2),
         })
 
@@ -468,8 +489,11 @@ def get_subtopic_progress(self, user_id: str) -> dict:
     progress = {}  # guideline_id → latest data
 
     for session_row in sessions:
-        state = json.loads(session_row.state_json)
-        topic_data = state.get("topic", {})
+        try:
+            state = json.loads(session_row.state_json)
+        except (json.JSONDecodeError, TypeError):
+            continue  # Skip malformed sessions
+        topic_data = state.get("topic") or {}
         topic_id = topic_data.get("topic_id")
         if not topic_id:
             continue
@@ -488,9 +512,21 @@ def get_subtopic_progress(self, user_id: str) -> dict:
     return {"user_progress": progress}
 ```
 
-### 3.4 Pydantic Response Models (optional, for documentation)
+**API contract note:** The `user_progress` dict only contains entries for subtopics with at least one session (status `"mastered"` or `"in_progress"`). **Absence of a `guideline_id` key means "Not Started"** — the frontend should treat missing keys as the default/unstudied state with no indicator. This avoids bloating the response with every curriculum subtopic the user hasn't touched.
 
-Add to `shared/models/schemas.py`:
+### 3.4 Pydantic Response Models
+
+Add to `shared/models/schemas.py` and wire into exports:
+
+**Step 1:** Add models to `shared/models/schemas.py`:
+**Step 2:** Export from `shared/models/__init__.py` (add `from shared.models.schemas import ScorecardResponse, SubtopicProgressResponse`)
+**Step 3:** Use as `response_model` on API routes:
+```python
+@router.get("/scorecard", response_model=ScorecardResponse)
+@router.get("/subtopic-progress", response_model=SubtopicProgressResponse)
+```
+
+Models to add in `shared/models/schemas.py`:
 
 ```python
 class ScorecardMisconception(BaseModel):
@@ -514,7 +550,8 @@ class ScorecardTopic(BaseModel):
     subtopics: List[ScorecardSubtopic]
 
 class ScorecardTrendPoint(BaseModel):
-    date: str
+    date: str                                # ISO timestamp for sorting/filtering
+    date_label: str                          # Pre-formatted for chart axis (e.g., "Feb 15")
     score: float
 
 class ScorecardSubject(BaseModel):
@@ -598,7 +635,8 @@ export interface ScorecardTopic {
 }
 
 export interface ScorecardTrendPoint {
-  date: string;
+  date: string;        // ISO timestamp
+  date_label: string;  // Pre-formatted for chart axis (e.g., "Feb 15")
   score: number;
 }
 
@@ -713,22 +751,50 @@ function getMasteryLabel(score: number): { label: string; color: string } {
 }
 ```
 
-### 4.6 "Practice Again" Navigation
+### 4.6 "Practice Again" Flow
 
-When user taps "Practice Again" on a subtopic, navigate to the home page with pre-selected topic:
+The "Practice Again" button needs to create a new session for a specific subtopic (identified by `guideline_id`). The current `POST /sessions` endpoint already accepts `guideline_id` inside the `goal` payload, so **no new backend endpoint is needed**. However, the frontend currently builds the `goal` payload from the topic selection flow state (subject name, topic name, etc.). The scorecard only has `guideline_id`.
 
-```typescript
-// Option A: Navigate with state
-navigate('/', {
-  state: {
-    autoStart: true,
-    guideline_id: subtopic.guideline_id,
-    subject: currentSubject,
+**Backend contract (existing, reused):**
+```
+POST /sessions
+{
+  "student": { "id": "<user_id>", "grade": <grade> },
+  "goal": {
+    "topic": "<subtopic_name>",           // from scorecard data
+    "syllabus": "<board> Grade <grade>",   // from user profile
+    "learning_objectives": [],             // can be empty — session_service fills from guideline
+    "guideline_id": "<guideline_id>"       // THIS is the key field
   }
-});
+}
 ```
 
-This requires TutorApp to check `location.state` on mount and auto-create a session if `autoStart` is set. This is a lightweight addition to TutorApp.
+The `SessionService.create_new_session()` already loads the guideline by `guideline_id` (line 53) and constructs the full `Topic` model from it. The `topic` and `learning_objectives` fields in the goal are informational — the real data comes from the guideline lookup. So this contract works as-is.
+
+**Frontend implementation:**
+
+```typescript
+// In ScorecardPage, "Practice Again" handler:
+const handlePracticeAgain = async (subtopic: ScorecardSubtopic, subject: string) => {
+  try {
+    const response = await createSession({
+      student: { id: user.id, grade: user.grade },
+      goal: {
+        topic: subtopic.subtopic,
+        syllabus: `${user.board} Grade ${user.grade}`,
+        learning_objectives: [],
+        guideline_id: subtopic.guideline_id!,
+      },
+    });
+    // Navigate to tutor with the new session
+    navigate('/', { state: { sessionId: response.session_id } });
+  } catch (err) {
+    console.error('Failed to start session:', err);
+  }
+};
+```
+
+**TutorApp change:** Check `location.state?.sessionId` on mount. If present, skip topic selection and load the existing session directly into chat mode. This is a small addition (~10 lines) to the existing mount logic.
 
 ### 4.7 Topic Selection Coverage Indicators
 
@@ -744,12 +810,14 @@ const [subtopicProgress, setSubtopicProgress] = useState<Record<string, Subtopic
 getSubtopicProgress().then(setSubtopicProgress).catch(() => {});
 
 // In subtopic rendering, overlay status indicator:
+// Convention: if guideline_id is NOT in subtopicProgress, status = "Not Started" (no indicator shown)
 {subtopicProgress[st.guideline_id] && (
   <span className={`subtopic-status ${subtopicProgress[st.guideline_id].status}`}>
     {subtopicProgress[st.guideline_id].status === 'mastered' ? '✓' : '●'}
     {(subtopicProgress[st.guideline_id].score * 100).toFixed(0)}%
   </span>
 )}
+// Absence of key → Not Started → no indicator rendered (matches PRD Section 14.1)
 ```
 
 ### 4.8 Navigation Links
@@ -779,7 +847,7 @@ function TrendChart({ subjects }: { subjects: ScorecardSubject[] }) {
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={chartData}>
         <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" tickFormatter={formatDate} />
+        <XAxis dataKey="date_label" />
         <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
         <Tooltip formatter={(v: number) => `${v}%`} />
         {subjects.map((subject, i) => (
@@ -872,6 +940,16 @@ class TestScorecardGuidelineLookup:
     """Test topic hierarchy resolution."""
     def test_hierarchy_from_guideline_table(self, db_session): ...
     def test_fallback_to_topic_name_split(self, db_session): ...
+    def test_v2_fields_preferred_over_v1(self, db_session): ...
+    """Verify topic_title/subtopic_title used when available, fallback to topic/subtopic."""
+
+class TestScorecardResilience:
+    """Test graceful handling of malformed/legacy data."""
+    def test_malformed_state_json_skipped_not_500(self, db_session): ...
+    def test_missing_topic_in_state_json_skipped(self, db_session): ...
+    def test_empty_mastery_estimates_uses_session_mastery(self, db_session): ...
+    def test_mixed_valid_and_invalid_sessions(self, db_session): ...
+    """Verify valid sessions still aggregated when some are malformed."""
 
 class TestSubtopicProgress:
     """Test the lightweight subtopic progress endpoint."""
@@ -929,8 +1007,9 @@ Manual testing via dev server:
 
 | File | Change |
 |------|--------|
-| `llm-backend/tutor/api/sessions.py` | Add `GET /scorecard` and `GET /subtopic-progress` endpoints |
+| `llm-backend/tutor/api/sessions.py` | Add `GET /scorecard` and `GET /subtopic-progress` endpoints (with `response_model=`) |
 | `llm-backend/shared/models/schemas.py` | Add `ScorecardResponse` and related Pydantic models |
+| `llm-backend/shared/models/__init__.py` | Export new Scorecard response models |
 | `llm-frontend/src/App.tsx` | Add `/scorecard` route |
 | `llm-frontend/src/api.ts` | Add scorecard types and API functions |
 | `llm-frontend/src/TutorApp.tsx` | Add subtopic progress indicators, scorecard nav link, Practice Again support |
@@ -1001,7 +1080,8 @@ All data already exists in the `sessions` table (`state_json`, `mastery`, `subje
 | `topic_name` doesn't contain ` - ` separator | Use full name as both topic and subtopic |
 | `mastery_estimates` is empty | Use `sessions.mastery` column as fallback |
 | User has sessions in only one subject | Show single subject, no multi-subject chart |
-| Very old sessions with different state_json schema | Graceful JSON parsing with defaults |
+| Malformed/corrupt state_json | Per-session try/except, log warning, skip — never 500 the endpoint |
+| Very old sessions with different state_json schema | Graceful JSON parsing with `.get()` defaults; missing fields → skip |
 | Sessions without `user_id` (anonymous) | Excluded by `WHERE user_id = ?` filter |
 
 ### Performance
