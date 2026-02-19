@@ -1061,7 +1061,54 @@ async def update_profile(
         onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    previous_password: str
+    proposed_password: str
+
+
+class ChangePasswordResponse(BaseModel):
+    success: bool
+    message: str
+
+
+@router.put("/password", response_model=ChangePasswordResponse)
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user = Depends(get_current_user),
+):
+    """
+    Change password for email-based users.
+    Proxies to Cognito's ChangePassword API.
+    Only available for auth_provider='email' (Google/phone users
+    don't have a Cognito-managed password).
+    """
+    if current_user.auth_provider != "email":
+        raise HTTPException(
+            status_code=400,
+            detail="Password change is only available for email-based accounts."
+        )
+
+    # Cognito ChangePassword requires the user's access token.
+    # The frontend should pass the access token (not ID token) for this call.
+    import boto3
+    from config import get_settings
+    client = boto3.client("cognito-idp", region_name=get_settings().cognito_region)
+    try:
+        client.change_password(
+            PreviousPassword=request.previous_password,
+            ProposedPassword=request.proposed_password,
+            AccessToken=_get_raw_token_from_request(),  # Extract from Authorization header
+        )
+        return ChangePasswordResponse(success=True, message="Password changed successfully.")
+    except client.exceptions.NotAuthorizedException:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    except client.exceptions.InvalidPasswordException as e:
+        raise HTTPException(status_code=400, detail=f"New password does not meet requirements: {e}")
 ```
+
+> **Note:** The password change endpoint proxies to Cognito's `ChangePassword` API. An alternative is to let the frontend call Cognito directly via the SDK (like all other auth operations). This backend proxy exists so profile-related operations are consolidated under one API. Either approach works — decide during implementation based on frontend complexity.
 
 ### 3.3 Modify session creation to link user
 
@@ -1549,12 +1596,14 @@ Show aggregated stats (total sessions, topics, average mastery, study streak) on
 
 ### Migration approach
 
-The project uses `db.py --migrate` with `Base.metadata.create_all()` (no Alembic). This approach auto-creates new tables and columns.
+The project uses `db.py --migrate` with `Base.metadata.create_all()` (no Alembic).
+
+**Important:** `create_all()` only creates **new tables** that don't exist yet. It does **not** add columns to existing tables, modify column types, or make any schema changes to tables that already exist. Any changes to existing tables require manual `ALTER TABLE` statements.
 
 ### Migration steps
 
-1. **Add `User` model to `entities.py`** — `create_all()` creates the `users` table
-2. **Add `user_id` column to `sessions`** — Requires a manual ALTER TABLE since `create_all()` doesn't add columns to existing tables
+1. **Add `User` model to `entities.py`** — `create_all()` creates the new `users` table (since it doesn't exist yet)
+2. **Add `user_id` and `subject` columns to `sessions`** — Requires manual `ALTER TABLE` because the `sessions` table already exists and `create_all()` won't touch it
 
 Manual migration SQL:
 
