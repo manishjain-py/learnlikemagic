@@ -1,6 +1,6 @@
 """Auth API endpoints — sync Cognito user to local DB."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -47,3 +47,19 @@ async def sync_user(
         onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )
+
+
+@router.delete("/admin/user")
+async def delete_user(
+    cognito_sub: str = Query(..., description="Cognito sub of the user to delete"),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Delete a user from both the local DB and Cognito.
+    Admin-only endpoint for dev/testing cleanup.
+    """
+    service = AuthService(db)
+    deleted = service.delete_user(cognito_sub)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "deleted", "cognito_sub": cognito_sub}

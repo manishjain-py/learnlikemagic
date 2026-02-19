@@ -1,7 +1,9 @@
 """Auth service — handles user sync from Cognito."""
 
 import logging
+import boto3
 from sqlalchemy.orm import Session as DBSession
+from config import get_settings
 from auth.repositories.user_repository import UserRepository
 
 logger = logging.getLogger("auth.service")
@@ -47,10 +49,6 @@ class AuthService:
         """
         Create or update user record after Cognito authentication.
         Called from /auth/sync endpoint with the full decoded ID token claims.
-
-        Handles re-registration: if a user deleted their Cognito account and
-        re-signed up, the email/phone stays in the DB with an old cognito_sub.
-        We update the sub to link the existing row to the new Cognito identity.
         """
         cognito_sub = claims["sub"]
         email = claims.get("email")
@@ -58,35 +56,49 @@ class AuthService:
         name = claims.get("name")
         auth_provider = self._derive_auth_provider(claims)
 
-        # 1. Try matching by cognito_sub (normal case)
         existing = self.user_repo.get_by_cognito_sub(cognito_sub)
 
         if existing:
+            # Update last login, merge any new data
             self.user_repo.update_last_login(existing.id)
             if email and not existing.email:
                 self.user_repo.update_profile(existing.id, email=email)
             if phone and not existing.phone:
                 self.user_repo.update_profile(existing.id, phone=phone)
             return existing
+        else:
+            # First login — create user row
+            return self.user_repo.create(
+                cognito_sub=cognito_sub,
+                email=email,
+                phone=phone,
+                auth_provider=auth_provider,
+                name=name,
+            )
 
-        # 2. Try matching by email or phone (re-registration with new cognito_sub)
-        existing = None
-        if email:
-            existing = self.user_repo.get_by_email(email)
-        if not existing and phone:
-            existing = self.user_repo.get_by_phone(phone)
+    def delete_user(self, cognito_sub: str) -> bool:
+        """
+        Delete a user from both the local DB and Cognito.
+        Returns True if user was found and deleted.
+        """
+        settings = get_settings()
+        user = self.user_repo.get_by_cognito_sub(cognito_sub)
+        if not user:
+            return False
 
-        if existing:
-            logger.info(f"Re-linking user {existing.id} to new cognito_sub {cognito_sub}")
-            self.user_repo.update_profile(existing.id, cognito_sub=cognito_sub)
-            self.user_repo.update_last_login(existing.id)
-            return existing
-
-        # 3. Brand new user
-        return self.user_repo.create(
-            cognito_sub=cognito_sub,
-            email=email,
-            phone=phone,
-            auth_provider=auth_provider,
-            name=name,
+        # Delete from Cognito
+        cognito = boto3.client(
+            "cognito-idp", region_name=settings.cognito_region
         )
+        try:
+            cognito.admin_delete_user(
+                UserPoolId=settings.cognito_user_pool_id,
+                Username=cognito_sub,
+            )
+        except cognito.exceptions.UserNotFoundException:
+            logger.warning(f"User {cognito_sub} not found in Cognito, deleting DB row only")
+
+        # Delete from DB
+        self.user_repo.delete(user.id)
+        logger.info(f"Deleted user {user.id} (sub={cognito_sub})")
+        return True

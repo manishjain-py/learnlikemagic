@@ -60,3 +60,11 @@ class UserRepository:
         if user:
             user.last_login_at = datetime.utcnow()
             self.db.commit()
+
+    def delete(self, user_id: str) -> bool:
+        user = self.get_by_id(user_id)
+        if not user:
+            return False
+        self.db.delete(user)
+        self.db.commit()
+        return True
