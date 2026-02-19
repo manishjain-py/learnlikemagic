@@ -470,7 +470,7 @@ Follow existing patterns — pure CSS in `App.css` with class names prefixed `sc
 |---|----------|----------|
 | 1 | Show unstudied subtopics in scorecard? | **No.** Scorecard only shows what the student has covered. Instead, the **topic selection screen** gets color-coded indicators showing covered / in-progress / not-started topics (see Section 14). |
 | 2 | Trend chart granularity? | **One data point per session.** Each session's end mastery score is a point on the chart. |
-| 3 | "Practice Again" button behavior? | **TBD** — pending product decision. |
+| 3 | "Practice Again" button behavior? | **Direct session creation** with the same `guideline_id`. One tap from scorecard → new tutor session on that subtopic. |
 
 ## 14. Topic Selection Screen — Coverage Indicators
 
