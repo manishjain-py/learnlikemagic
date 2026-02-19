@@ -464,8 +464,71 @@ Follow existing patterns — pure CSS in `App.css` with class names prefixed `sc
 - **Re-engagement**: Do students who view their scorecard start more sessions on weak topics?
 - **Retention**: Correlation between scorecard usage and 30-day retention
 
-## 13. Open Questions
+## 13. Resolved Questions
 
-1. Should we show subtopics the student has *not* studied yet (from the curriculum) as "Not started" in the scorecard? This gives a sense of coverage but adds complexity.
-2. For the trend chart, should we show one data point per session or aggregate to one point per day/week?
-3. Should the "Practice Again" button create a session with the same guideline_id, or let the student pick from the curriculum flow?
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Show unstudied subtopics in scorecard? | **No.** Scorecard only shows what the student has covered. Instead, the **topic selection screen** gets color-coded indicators showing covered / in-progress / not-started topics (see Section 14). |
+| 2 | Trend chart granularity? | **One data point per session.** Each session's end mastery score is a point on the chart. |
+| 3 | "Practice Again" button behavior? | **TBD** — pending product decision. |
+
+## 14. Topic Selection Screen — Coverage Indicators
+
+As a companion to the scorecard, the existing **topic/subtopic selection screen** (curriculum picker) gets color-coded status indicators so students can see at a glance what they've covered, what's in progress, and what's new.
+
+### 14.1 Status Definitions
+
+| Status | Condition | Visual |
+|--------|-----------|--------|
+| **Mastered** | Latest session mastery >= 0.85 | Green dot / checkmark |
+| **In Progress** | At least one session exists, mastery < 0.85 | Orange/blue dot |
+| **Not Started** | No session exists for this subtopic | No indicator (default) |
+
+### 14.2 Wireframe — Subtopic Selection with Indicators
+
+```
+┌──────────────────────────────────────────┐
+│  Select a subtopic                       │
+│  Mathematics > Fractions                 │
+├──────────────────────────────────────────┤
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │  ● Comparing Fractions    ✓ 92%   │  │  ← Green: Mastered
+│  │    Compare fractions with like...  │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │  ● Adding Fractions        68%    │  │  ← Blue: In Progress
+│  │    Add fractions with like and...  │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │    Subtracting Fractions           │  │  ← No indicator: Not Started
+│  │    Subtract fractions with...      │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │    Multiplying Fractions           │  │  ← No indicator: Not Started
+│  │    Multiply simple fractions...    │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+└──────────────────────────────────────────┘
+```
+
+### 14.3 Data Requirement
+
+The topic selection screen needs a lightweight lookup of "which guideline_ids has this user completed sessions for, and what was the latest mastery?" This can be served by a new endpoint or piggybacked onto the existing `/curriculum` response when a user is authenticated:
+
+```json
+// Additional field in curriculum response when authenticated
+"user_progress": {
+  "guid-123": {"score": 0.92, "session_count": 3, "status": "mastered"},
+  "guid-456": {"score": 0.68, "session_count": 1, "status": "in_progress"}
+}
+```
+
+### 14.4 Implementation
+
+- Backend: Add a `get_user_subtopic_progress(user_id)` method that returns `{guideline_id → {score, session_count, status}}`
+- Frontend: Overlay status indicators on existing subtopic selection cards
+- This is a lightweight addition — no new page, just enriching the existing curriculum picker
