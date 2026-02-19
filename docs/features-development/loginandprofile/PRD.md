@@ -227,7 +227,83 @@ When a session is created:
 
 ---
 
-## 9. Out of Scope (for now)
+## 9. Session History
+
+### 9.1 What's Stored Per Session (already exists)
+
+| Data | Source | What It Tells Us |
+|------|--------|-----------------|
+| Full conversation | `sessions.state_json` | Every tutor and student message, in order |
+| Tutor actions | `events` table | Each pedagogical step — Present, Check, Diagnose, Remediate, Advance |
+| Mastery score | `sessions.mastery` | How well the student understood the topic (0–1) |
+| Misconceptions | Inside `state_json` | What the student got wrong and why |
+| Topic studied | `sessions.goal_json` | Subject, topic, subtopic, guideline used |
+| Step count | `sessions.step_idx` | How many interaction steps occurred |
+| Timestamps | `created_at`, `updated_at` | When the session started and last activity |
+
+Adding `user_id` to sessions is the only change needed — all the rich data above becomes queryable per student.
+
+### 9.2 "My Sessions" Page
+
+A page accessible from the nav bar where students see their learning history.
+
+**List View — all past sessions:**
+
+| Column | Source |
+|--------|--------|
+| Subject + Topic | `goal_json.topic` |
+| Date | `created_at` |
+| Duration | `updated_at - created_at` |
+| Mastery | `mastery` score shown as a visual indicator (e.g., color dot or progress ring) |
+| Steps completed | `step_idx` |
+
+- Sorted by most recent first
+- Filterable by subject
+- Clicking a session opens the detail view
+
+**Detail View — single session:**
+
+- Full conversation replay (read-only, rendered from `state_json`)
+- Mastery score with breakdown
+- Misconceptions identified during the session
+- "Continue" or "Retry this topic" button to start a new session on the same topic
+
+### 9.3 Cross-Session Insights (on profile/home)
+
+Aggregated stats derived from session history, shown on the student's home or profile page:
+
+| Insight | How It's Computed |
+|---------|-------------------|
+| Total sessions | `COUNT(sessions) WHERE user_id = X` |
+| Topics covered | `DISTINCT topics from goal_json` |
+| Average mastery | `AVG(mastery) across sessions` |
+| Weak areas | Topics with mastery < 0.5 |
+| Study streak | Consecutive days with at least one session |
+| Time spent learning | `SUM(updated_at - created_at)` |
+
+These are computed on-read (no new tables needed). Can be cached later if performance requires it.
+
+### 9.4 Session History API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/sessions/history` | List current user's sessions (paginated, filterable by subject) |
+| GET | `/sessions/{session_id}/replay` | Full conversation replay for a session owned by the user |
+| GET | `/profile/stats` | Aggregated learning stats for the current user |
+
+### 9.5 How History Feeds Back Into Tutoring
+
+When starting a new session, the backend can optionally pull from past sessions:
+
+1. **Weak areas** — if the student scored low on a topic before, the tutor can reference it
+2. **Known misconceptions** — avoid re-explaining things the student already understands, focus on past mistakes
+3. **Learning preferences** — over time, session data reveals whether the student responds better to examples, analogies, or direct explanations
+
+This cross-session context is injected into the tutor's system prompt alongside `about_me`.
+
+---
+
+## 10. Out of Scope (for now)
 
 - Parent/guardian accounts with multi-child profiles
 - Role-based access control (admin vs student)
@@ -238,7 +314,7 @@ When a session is created:
 
 ---
 
-## 10. Success Metrics
+## 11. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -249,55 +325,4 @@ When a session is created:
 
 ---
 
-## 11. Owner Setup Checklist
-
-Things **you** need to configure/set up (the code won't handle these):
-
-### AWS Cognito Setup
-1. **Create a Cognito User Pool** in AWS Console (us-east-1)
-   - Enable phone number as a sign-in attribute
-   - Enable email as a sign-in attribute
-   - Set password policy: minimum 8 characters
-   - Enable self-signup
-
-2. **Configure SMS (for phone OTP)**
-   - Set up Amazon SNS for SMS delivery
-   - Request SMS spending limit increase if needed (default is $1/month)
-   - Set an origination number or sender ID for your region
-   - Verify SMS sandbox if in sandbox mode (add test phone numbers)
-
-3. **Configure Email (for verification & password reset)**
-   - Use Cognito's default email (limited to 50/day) OR
-   - Set up Amazon SES for production email delivery:
-     - Verify your domain in SES
-     - Move SES out of sandbox mode
-     - Configure Cognito to use SES as email provider
-
-4. **Set up Google OAuth**
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create OAuth 2.0 Client ID (Web application type)
-   - Set authorized redirect URI to your Cognito domain
-   - Add the Google Client ID and Secret to Cognito as an identity provider
-
-5. **Create a Cognito App Client**
-   - Generate an app client (no client secret for public SPA)
-   - Set callback URLs: `http://localhost:3000` (dev), `https://your-domain.com` (prod)
-   - Enable the auth flows: `ALLOW_USER_SRP_AUTH`, `ALLOW_REFRESH_TOKEN_AUTH`
-
-6. **Set a Cognito Domain**
-   - Either use Cognito's hosted domain (`your-app.auth.us-east-1.amazoncognito.com`)
-   - Or configure a custom domain with ACM certificate
-
-### Environment Variables to Add
-```
-COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
-COGNITO_APP_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
-COGNITO_REGION=us-east-1
-GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
-```
-
-### Database Migration
-- Run the migration script (will be provided) to create the `users` table and add `user_id` column to `sessions`
-
-### DNS / Domain (Optional)
-- If you want login on a custom domain, configure Route53 or your DNS provider
+> **Owner Setup:** External services (Cognito, Google OAuth, SNS, SES) require manual configuration. See **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** for step-by-step instructions.
