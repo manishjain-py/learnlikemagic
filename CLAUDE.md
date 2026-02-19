@@ -23,6 +23,7 @@ learnlikemagic/
 | `docs/TUTOR_WORKFLOW_PIPELINE.md` | Tutor feature: single master tutor agent, WebSocket + REST, evaluation pipeline | Working on tutoring sessions, agent logic, orchestration |
 | `docs/EVALUATION_PIPELINE.md` | Evaluation QA: persona simulation, LLM judge, 5-dimension scoring, report artifacts, viewing results | Working on evaluation pipeline, tutor quality, viewing eval results |
 | `docs/BOOK_GUIDELINES_PIPELINE.md` | Book ingestion feature: OCR, topic detection, guideline extraction | Working on book upload, content extraction |
+| `docs/UX_PRINCIPLES.md` | App-wide UX principles: mobile-first, friendly language, minimal typing, accessibility | Building any user-facing feature or screen |
 
 ## Key Conventions
 

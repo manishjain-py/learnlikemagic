@@ -25,18 +25,15 @@ Currently, sessions are anonymous (UUID-based, no user identity). This means:
 
 ## 3. UX Principles
 
-The primary users are **students (kids)**. Every screen must be effortless.
+All screens in this feature must follow the app-wide **[UX Principles](../../UX_PRINCIPLES.md)**.
 
-| Principle | What It Means In Practice |
-|-----------|--------------------------|
-| **One thing per screen** | Don't cram phone, email, and Google into a busy form. Show clear, big buttons — one per auth method. Each flow gets its own focused screen. |
-| **Minimal typing** | Auto-detect country code, auto-advance OTP fields on input, auto-submit when OTP is complete. Prefill what you can. |
-| **Friendly language** | No jargon. Say "What's your name?" not "Enter display name". Say "How old are you?" not "Date of birth". |
-| **Forgiving inputs** | Accept phone numbers with or without spaces/dashes. Don't reject "class 5" if they type it instead of selecting 5. Show inline validation, not error popups. |
-| **Fast** | Login/signup should take under 30 seconds. Onboarding (name, age, grade, board) under 60 seconds. No loading spinners longer than 2 seconds. |
-| **Skippable where possible** | "About me" is optional — show a clear "Skip for now" button, not a tiny link. Never block the student from reaching the tutor longer than necessary. |
-| **Mobile-first** | Big tap targets, no tiny links, works well on a phone screen. Most students will likely use mobile. |
-| **Warm and encouraging** | After signup, say something like "You're all set! Let's start learning." Not a cold "Account created successfully." |
+Key applications for login/profile specifically:
+- **One thing per screen** — Welcome screen shows auth method buttons only. Each auth flow (phone, email, Google) gets its own screen.
+- **Minimal typing** — Auto-detect country code, auto-advance OTP fields, auto-submit on OTP complete.
+- **Friendly language** — "What's your name?" not "Enter display name". "How old are you?" not "Date of birth".
+- **Fast** — Signup under 30 seconds. Onboarding (name, age, grade, board) under 60 seconds.
+- **Skippable** — "About me" gets a prominent "Skip for now" button, not a tiny link.
+- **Warm** — After signup: "You're all set! Let's start learning." not "Account created successfully."
 
 ---
 
