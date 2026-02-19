@@ -114,3 +114,4 @@
 | Date | Session | Work Done |
 |------|---------|-----------|
 | 2026-02-19 | Session 1 | Full implementation: Phases 2-7 complete. Backend auth module (JWT, user model, sync, profile, session linking, personalization, history API). Frontend auth screens (login, signup, phone OTP, Google OAuth, forgot password), onboarding flow, profile page, session history page. Updated App.tsx routing, TutorApp.tsx with profile data and user menu, api.ts with auth headers. |
+| 2026-02-19 | Session 1 (cont.) | PR review fixes: (1) OAuth token persistence via completeOAuthLogin, (2) session endpoint ownership checks, (3) agent-logs auth, (4) WebSocket pre-accept auth. Server testing: PostgreSQL 16 started, DB created, migrations run, backend + frontend started. Fixed runtime crash when Cognito not configured (CognitoUserPool null guard). All auth endpoints return 401 correctly. Frontend build clean (305 modules, 0 errors). |
