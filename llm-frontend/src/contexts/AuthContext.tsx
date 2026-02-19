@@ -216,20 +216,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const sendOTP = async (phone: string) => {
     if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
+
+    // Ensure user exists in Cognito (sign up if new, ignore if already exists).
+    // Pre Sign-Up Lambda auto-confirms phone users instantly.
+    await new Promise<void>((resolve) => {
+      const attrs = [
+        new CognitoUserAttribute({ Name: 'phone_number', Value: phone }),
+      ];
+      // Random password — phone users authenticate via OTP, not password
+      const tempPassword = `P${Math.random().toString(36).slice(2)}!1aA`;
+      userPool.signUp(phone, tempPassword, attrs, [], (err) => {
+        // Ignore "User already exists" — that's fine, we just need the user to exist
+        if (err && err.name !== 'UsernameExistsException') {
+          console.warn('Phone signup warning:', err.message);
+        }
+        resolve();
+      });
+    });
+
+    // Now initiate custom auth (OTP) flow
     return new Promise<void>((resolve, reject) => {
       const cognitoUser = new CognitoUser({
         Username: phone,
         Pool: userPool,
       });
 
-      // Use custom auth flow for phone OTP
       cognitoUser.initiateAuth(
         new AuthenticationDetails({
           Username: phone,
         }),
         {
           onSuccess: () => {
-            // Shouldn't happen for OTP flow
             resolve();
           },
           onFailure: (err: Error) => {
