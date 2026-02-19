@@ -22,6 +22,9 @@ class UserRepository:
     def get_by_email(self, email: str) -> Optional[User]:
         return self.db.query(User).filter(User.email == email).first()
 
+    def get_by_phone(self, phone: str) -> Optional[User]:
+        return self.db.query(User).filter(User.phone == phone).first()
+
     def create(self, cognito_sub: str, email: Optional[str], phone: Optional[str],
                auth_provider: str, name: Optional[str] = None) -> User:
         user = User(

@@ -47,6 +47,10 @@ class AuthService:
         """
         Create or update user record after Cognito authentication.
         Called from /auth/sync endpoint with the full decoded ID token claims.
+
+        Handles re-registration: if a user deleted their Cognito account and
+        re-signed up, the email/phone stays in the DB with an old cognito_sub.
+        We update the sub to link the existing row to the new Cognito identity.
         """
         cognito_sub = claims["sub"]
         email = claims.get("email")
@@ -54,22 +58,35 @@ class AuthService:
         name = claims.get("name")
         auth_provider = self._derive_auth_provider(claims)
 
+        # 1. Try matching by cognito_sub (normal case)
         existing = self.user_repo.get_by_cognito_sub(cognito_sub)
 
         if existing:
-            # Update last login, merge any new data
             self.user_repo.update_last_login(existing.id)
             if email and not existing.email:
                 self.user_repo.update_profile(existing.id, email=email)
             if phone and not existing.phone:
                 self.user_repo.update_profile(existing.id, phone=phone)
             return existing
-        else:
-            # First login — create user row
-            return self.user_repo.create(
-                cognito_sub=cognito_sub,
-                email=email,
-                phone=phone,
-                auth_provider=auth_provider,
-                name=name,
-            )
+
+        # 2. Try matching by email or phone (re-registration with new cognito_sub)
+        existing = None
+        if email:
+            existing = self.user_repo.get_by_email(email)
+        if not existing and phone:
+            existing = self.user_repo.get_by_phone(phone)
+
+        if existing:
+            logger.info(f"Re-linking user {existing.id} to new cognito_sub {cognito_sub}")
+            self.user_repo.update_profile(existing.id, cognito_sub=cognito_sub)
+            self.user_repo.update_last_login(existing.id)
+            return existing
+
+        # 3. Brand new user
+        return self.user_repo.create(
+            cognito_sub=cognito_sub,
+            email=email,
+            phone=phone,
+            auth_provider=auth_provider,
+            name=name,
+        )
