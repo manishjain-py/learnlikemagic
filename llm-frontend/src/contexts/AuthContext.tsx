@@ -22,11 +22,14 @@ import { setAccessToken } from '../api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// Initialize Cognito User Pool
-const userPool = new CognitoUserPool({
-  UserPoolId: cognitoConfig.UserPoolId,
-  ClientId: cognitoConfig.ClientId,
-});
+// Initialize Cognito User Pool (may be null if credentials not configured)
+const isCognitoConfigured = !!(cognitoConfig.UserPoolId && cognitoConfig.ClientId);
+const userPool = isCognitoConfigured
+  ? new CognitoUserPool({
+      UserPoolId: cognitoConfig.UserPoolId,
+      ClientId: cognitoConfig.ClientId,
+    })
+  : null;
 
 export interface UserProfile {
   id: string;
@@ -104,6 +107,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Check for existing session on mount
   useEffect(() => {
+    if (!userPool) {
+      setIsLoading(false);
+      return;
+    }
     const currentUser = userPool.getCurrentUser();
     if (currentUser) {
       currentUser.getSession(async (err: Error | null, session: CognitoUserSession | null) => {
@@ -126,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [syncUser]);
 
   const loginWithEmail = async (email: string, password: string) => {
+    if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
     return new Promise<void>((resolve, reject) => {
       const cognitoUser = new CognitoUser({
         Username: email,
@@ -156,6 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signupWithEmail = async (email: string, password: string) => {
+    if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
     return new Promise<void>((resolve, reject) => {
       const attributeList = [
         new CognitoUserAttribute({ Name: 'email', Value: email }),
@@ -174,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendOTP = async (phone: string) => {
+    if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
     return new Promise<void>((resolve, reject) => {
       const cognitoUser = new CognitoUser({
         Username: phone,
@@ -241,6 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Called by OAuthCallbackPage after Cognito redirect.
     // Retrieves the session from the SDK and runs the same syncUser flow
     // as all other login paths, ensuring token is persisted in AuthContext + api.ts.
+    if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
     return new Promise<void>((resolve, reject) => {
       const currentUser = userPool.getCurrentUser();
       if (!currentUser) {
@@ -265,7 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    const currentUser = userPool.getCurrentUser();
+    const currentUser = userPool?.getCurrentUser();
     if (currentUser) {
       currentUser.signOut();
     }
