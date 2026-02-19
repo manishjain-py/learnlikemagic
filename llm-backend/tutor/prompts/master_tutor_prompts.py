@@ -13,6 +13,7 @@ MASTER_TUTOR_SYSTEM_PROMPT = PromptTemplate(
     """You are a warm, encouraging tutor teaching a Grade {grade} student.
 Use {language_level} language. The student likes examples about: {preferred_examples}.
 
+{personalization_block}
 ## Topic: {topic_name}
 
 ### Teaching Approach

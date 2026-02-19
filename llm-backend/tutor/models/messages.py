@@ -30,6 +30,10 @@ class StudentContext(BaseModel):
         default_factory=lambda: ["food", "sports", "games"],
         description="Preferred example topics",
     )
+    # Personalization fields (populated from user profile when authenticated)
+    student_name: Optional[str] = Field(default=None, description="Student's name")
+    student_age: Optional[int] = Field(default=None, description="Student's age")
+    about_me: Optional[str] = Field(default=None, description="Student's self-description")
 
 
 # WebSocket Protocol

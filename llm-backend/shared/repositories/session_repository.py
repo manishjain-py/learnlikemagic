@@ -108,6 +108,67 @@ class SessionRepository:
             })
         return results
 
+    def list_by_user(self, user_id: str, subject: Optional[str] = None,
+                     offset: int = 0, limit: int = 20) -> list[dict]:
+        """List sessions for a specific user, with optional subject filter."""
+        query = self.db.query(SessionModel).filter(SessionModel.user_id == user_id)
+        if subject:
+            query = query.filter(SessionModel.subject == subject)
+        rows = query.order_by(SessionModel.created_at.desc()).offset(offset).limit(limit).all()
+
+        results = []
+        for row in rows:
+            try:
+                state = json.loads(row.state_json)
+            except Exception:
+                state = {}
+
+            topic_name = None
+            topic = state.get("topic")
+            if topic:
+                topic_name = topic.get("topic_name") or topic.get("name")
+
+            results.append({
+                "session_id": row.id,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "topic_name": topic_name,
+                "subject": row.subject,
+                "mastery": row.mastery or 0.0,
+                "step_idx": row.step_idx or 0,
+            })
+        return results
+
+    def count_by_user(self, user_id: str, subject: Optional[str] = None) -> int:
+        """Count sessions for a specific user."""
+        query = self.db.query(SessionModel).filter(SessionModel.user_id == user_id)
+        if subject:
+            query = query.filter(SessionModel.subject == subject)
+        return query.count()
+
+    def get_user_stats(self, user_id: str) -> dict:
+        """Get aggregated learning stats for a user."""
+        sessions = self.db.query(SessionModel).filter(SessionModel.user_id == user_id).all()
+        if not sessions:
+            return {
+                "total_sessions": 0,
+                "average_mastery": 0,
+                "topics_covered": [],
+                "total_steps": 0,
+            }
+
+        total = len(sessions)
+        avg_mastery = sum(s.mastery or 0 for s in sessions) / total
+        topics = set(s.subject for s in sessions if s.subject)
+        total_steps = sum(s.step_idx or 0 for s in sessions)
+
+        return {
+            "total_sessions": total,
+            "average_mastery": round(avg_mastery, 2),
+            "topics_covered": sorted(list(topics)),
+            "total_steps": total_steps,
+        }
+
     def delete(self, session_id: str) -> bool:
         """
         Delete a session.

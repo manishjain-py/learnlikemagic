@@ -47,7 +47,7 @@ class SessionService:
         )
         self.orchestrator = TeacherOrchestrator(self.llm_service)
 
-    def create_new_session(self, request: CreateSessionRequest) -> CreateSessionResponse:
+    def create_new_session(self, request: CreateSessionRequest, user_id: Optional[str] = None) -> CreateSessionResponse:
         """Create a new learning session with the new tutor architecture."""
         # Validate guideline exists
         guideline = self.guideline_repo.get_guideline_by_id(request.goal.guideline_id)
@@ -64,12 +64,15 @@ class SessionService:
         # Convert DB guideline to new Topic model
         topic = convert_guideline_to_topic(guideline, study_plan_record)
 
-        # Create student context
-        student_context = StudentContext(
-            grade=request.student.grade,
-            board=request.goal.syllabus.split(" ")[0] if request.goal.syllabus else "CBSE",
-            language_level="simple" if request.student.grade <= 5 else "standard",
-        )
+        # Create student context — use profile data if authenticated
+        if user_id:
+            student_context = self._build_student_context_from_profile(user_id, request)
+        else:
+            student_context = StudentContext(
+                grade=request.student.grade,
+                board=request.goal.syllabus.split(" ")[0] if request.goal.syllabus else "CBSE",
+                language_level="simple" if request.student.grade <= 5 else "standard",
+            )
 
         # Create SessionState
         session = create_session(topic=topic, student_context=student_context)
@@ -86,7 +89,7 @@ class SessionService:
         session.add_message(create_teacher_message(welcome))
 
         # Persist to DB
-        self._persist_session(session_id, session, request)
+        self._persist_session(session_id, session, request, user_id=user_id, subject=guideline.subject if guideline else None)
 
         # Log event
         self.event_repo.log(
@@ -190,6 +193,8 @@ class SessionService:
         session_id: str,
         session: SessionState,
         request: CreateSessionRequest,
+        user_id: Optional[str] = None,
+        subject: Optional[str] = None,
     ) -> None:
         """Persist new session to DB using existing schema."""
         from shared.models.entities import Session as SessionModel
@@ -202,12 +207,35 @@ class SessionService:
             state_json=session.model_dump_json(),
             mastery=session.overall_mastery,
             step_idx=session.current_step,
+            user_id=user_id,
+            subject=subject,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
         self.db.add(db_record)
         self.db.commit()
         self.db.refresh(db_record)
+
+    def _build_student_context_from_profile(self, user_id: str, request: CreateSessionRequest) -> StudentContext:
+        """Build StudentContext from user profile data when authenticated."""
+        from auth.repositories.user_repository import UserRepository
+        user_repo = UserRepository(self.db)
+        user = user_repo.get_by_id(user_id)
+        if user and user.grade and user.board:
+            return StudentContext(
+                grade=user.grade,
+                board=user.board,
+                language_level="simple" if (user.age and user.age <= 10) else "standard",
+                student_name=user.name,
+                student_age=user.age,
+                about_me=user.about_me,
+            )
+        # Fallback to request data if profile is incomplete
+        return StudentContext(
+            grade=request.student.grade,
+            board=request.goal.syllabus.split(" ")[0] if request.goal.syllabus else "CBSE",
+            language_level="simple" if request.student.grade <= 5 else "standard",
+        )
 
     def _update_session_db(self, session_id: str, session: SessionState) -> None:
         """Update existing session in DB."""

@@ -1,8 +1,53 @@
 /**
- * API client for Adaptive Tutor backend
+ * API client for Adaptive Tutor backend.
+ *
+ * All authenticated requests include the access token via Authorization header.
+ * On 401 responses, redirects to /login.
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// Token storage — set by AuthContext after login
+let _accessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  _accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return _accessToken;
+}
+
+/**
+ * Wrapper around fetch that adds auth headers and handles 401s.
+ */
+async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+
+  if (_accessToken) {
+    headers['Authorization'] = `Bearer ${_accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    // Token expired or invalid — redirect to login
+    window.location.href = '/login';
+    throw new Error('Authentication required');
+  }
+
+  return response;
+}
+
+// ──────────────────────────────────────────────
+// Existing interfaces (unchanged)
+// ──────────────────────────────────────────────
 
 export interface Student {
   id: string;
@@ -67,6 +112,10 @@ export interface CurriculumResponse {
   subtopics?: SubtopicInfo[];
 }
 
+// ──────────────────────────────────────────────
+// API functions (updated to use apiFetch)
+// ──────────────────────────────────────────────
+
 export async function getCurriculum(params: {
   country: string;
   board: string;
@@ -82,7 +131,7 @@ export async function getCurriculum(params: {
     ...(params.topic && { topic: params.topic }),
   });
 
-  const response = await fetch(`${API_BASE_URL}/curriculum?${queryParams}`);
+  const response = await apiFetch(`/curriculum?${queryParams}`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch curriculum: ${response.statusText}`);
@@ -94,11 +143,8 @@ export async function getCurriculum(params: {
 export async function createSession(
   request: CreateSessionRequest
 ): Promise<CreateSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/sessions`, {
+  const response = await apiFetch('/sessions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(request),
   });
 
@@ -113,11 +159,8 @@ export async function submitStep(
   sessionId: string,
   studentReply: string
 ): Promise<StepResponse> {
-  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/step`, {
+  const response = await apiFetch(`/sessions/${sessionId}/step`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({ student_reply: studentReply }),
   });
 
@@ -134,7 +177,7 @@ export interface ModelConfig {
 }
 
 export async function getModelConfig(): Promise<ModelConfig> {
-  const response = await fetch(`${API_BASE_URL}/config/models`);
+  const response = await apiFetch('/config/models');
   if (!response.ok) {
     throw new Error(`Failed to fetch model config: ${response.statusText}`);
   }
@@ -142,7 +185,7 @@ export async function getModelConfig(): Promise<ModelConfig> {
 }
 
 export async function getSummary(sessionId: string): Promise<SummaryResponse> {
-  const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/summary`);
+  const response = await apiFetch(`/sessions/${sessionId}/summary`);
 
   if (!response.ok) {
     throw new Error(`Failed to get summary: ${response.statusText}`);
