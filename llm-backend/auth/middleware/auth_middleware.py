@@ -114,10 +114,13 @@ async def _verify_cognito_token(
     try:
         if expected_token_use == "id":
             # ID tokens have `aud` = app client ID
+            # Skip at_hash verification — it requires the access_token to be passed
+            # to decode(), but we validate both tokens independently.
             claims = jwt.decode(
                 token, key, algorithms=["RS256"],
                 audience=settings.cognito_app_client_id,
                 issuer=issuer,
+                options={"verify_at_hash": False},
             )
         else:
             # Access tokens have `client_id` (not `aud`) — skip audience check in decode,

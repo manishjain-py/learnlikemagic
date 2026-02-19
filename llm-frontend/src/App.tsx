@@ -26,6 +26,7 @@ import PhoneLoginPage from './pages/PhoneLoginPage';
 import OTPVerifyPage from './pages/OTPVerifyPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
+import EmailVerifyPage from './pages/EmailVerifyPage';
 
 // Protected pages
 import OnboardingFlow from './pages/OnboardingFlow';
@@ -50,6 +51,7 @@ function App() {
           <Route path="/login/phone" element={<PhoneLoginPage />} />
           <Route path="/login/phone/verify" element={<OTPVerifyPage />} />
           <Route path="/signup/email" element={<EmailSignupPage />} />
+          <Route path="/signup/email/verify" element={<EmailVerifyPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/auth/callback" element={<OAuthCallbackPage />} />
 

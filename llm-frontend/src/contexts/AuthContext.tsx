@@ -53,6 +53,8 @@ interface AuthContextType {
   needsOnboarding: boolean;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   signupWithEmail: (email: string, password: string) => Promise<void>;
+  confirmSignUp: (email: string, code: string) => Promise<void>;
+  resendConfirmationCode: (email: string) => Promise<void>;
   sendOTP: (phone: string) => Promise<void>;
   verifyOTP: (code: string) => Promise<void>;
   loginWithGoogle: () => void;
@@ -93,7 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
       if (!response.ok) {
-        throw new Error('Failed to sync user');
+        const body = await response.text();
+        throw new Error(`Failed to sync user: ${response.status} ${body}`);
       }
       const profile: UserProfile = await response.json();
       setUser(profile);
@@ -168,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return new Promise<void>((resolve, reject) => {
       const attributeList = [
         new CognitoUserAttribute({ Name: 'email', Value: email }),
+        new CognitoUserAttribute({ Name: 'name', Value: email.split('@')[0] }),
       ];
 
       userPool.signUp(email, password, attributeList, [], (err, result) => {
@@ -177,6 +181,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         // After signup, user needs to verify email before logging in
         // For now, we'll auto-login after signup (Cognito handles verification)
+        resolve();
+      });
+    });
+  };
+
+  const confirmSignUp = async (email: string, code: string) => {
+    if (!userPool) throw new Error('Authentication is not configured.');
+    return new Promise<void>((resolve, reject) => {
+      const cognitoUser = new CognitoUser({ Username: email, Pool: userPool });
+      cognitoUser.confirmRegistration(code, true, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve();
+      });
+    });
+  };
+
+  const resendConfirmationCode = async (email: string) => {
+    if (!userPool) throw new Error('Authentication is not configured.');
+    return new Promise<void>((resolve, reject) => {
+      const cognitoUser = new CognitoUser({ Username: email, Pool: userPool });
+      cognitoUser.resendConfirmationCode((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
         resolve();
       });
     });
@@ -249,30 +281,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeOAuthLogin = async () => {
     // Called by OAuthCallbackPage after Cognito redirect.
-    // Retrieves the session from the SDK and runs the same syncUser flow
-    // as all other login paths, ensuring token is persisted in AuthContext + api.ts.
+    // Cognito redirects with ?code=xxx which we exchange for tokens
+    // via the /oauth2/token endpoint, then sync with our backend.
     if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
-    return new Promise<void>((resolve, reject) => {
-      const currentUser = userPool.getCurrentUser();
-      if (!currentUser) {
-        reject(new Error('No Cognito session after OAuth redirect'));
-        return;
-      }
-      currentUser.getSession(async (err: Error | null, session: CognitoUserSession | null) => {
-        if (err || !session || !session.isValid()) {
-          reject(new Error('Invalid session after OAuth redirect'));
-          return;
-        }
-        try {
-          const idToken = session.getIdToken().getJwtToken();
-          const accessToken = session.getAccessToken().getJwtToken();
-          await syncUser(idToken, accessToken);
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    if (!code) throw new Error('No authorization code in redirect URL');
+
+    const domain = cognitoConfig.Domain;
+    const region = cognitoConfig.Region;
+    const clientId = cognitoConfig.ClientId;
+    const redirectUri = `${window.location.origin}/auth/callback`;
+    const tokenUrl = `https://${domain}.auth.${region}.amazoncognito.com/oauth2/token`;
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        code,
+      }),
     });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Token exchange failed: ${err}`);
+    }
+
+    const tokens = await response.json();
+    await syncUser(tokens.id_token, tokens.access_token);
+
+    // Store tokens in Cognito SDK storage so getCurrentUser() works for session restore
+    const idTokenPayload = JSON.parse(atob(tokens.id_token.split('.')[1]));
+    const username = idTokenPayload['cognito:username'] || idTokenPayload.sub;
+    const keyPrefix = `CognitoIdentityServiceProvider.${clientId}`;
+    const storage = window.localStorage;
+    storage.setItem(`${keyPrefix}.${username}.idToken`, tokens.id_token);
+    storage.setItem(`${keyPrefix}.${username}.accessToken`, tokens.access_token);
+    storage.setItem(`${keyPrefix}.${username}.refreshToken`, tokens.refresh_token);
+    storage.setItem(`${keyPrefix}.LastAuthUser`, username);
   };
 
   const logout = () => {
@@ -310,6 +360,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     needsOnboarding,
     loginWithEmail,
     signupWithEmail,
+    confirmSignUp,
+    resendConfirmationCode,
     sendOTP,
     verifyOTP,
     loginWithGoogle,

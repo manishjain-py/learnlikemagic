@@ -225,19 +225,31 @@ python -m alembic upgrade head
 
 ## 7. Checklist
 
-Use this to track your progress:
+### Dev Setup (completed 2026-02-19)
 
-- [ ] AWS Cognito user pool created
-- [ ] App client created (no client secret)
-- [ ] Cognito domain configured
-- [ ] SNS sandbox: test phone numbers added
-- [ ] Google Cloud project created
-- [ ] Google OAuth credentials created
-- [ ] Google added as Cognito identity provider
-- [ ] Backend `.env` updated with Cognito values
-- [ ] Frontend `.env` updated with Cognito + Google values
-- [ ] (Production) SNS sandbox exit approved
-- [ ] (Production) SES domain verified and sandbox exit approved
-- [ ] (Production) SES connected to Cognito for email
-- [ ] (Production) Google OAuth app published
-- [ ] (Production) Production callback URLs added to Cognito + Google
+- [x] AWS Cognito user pool created — `us-east-1_bcCiF7myD`
+- [x] App client created (no client secret) — `6jae1kj5sp5slr9sobi7phk60`
+- [x] Cognito domain configured — `learnlikemagic.auth.us-east-1.amazoncognito.com`
+- [x] SNS sandbox: test phone number added — `+919704983498`
+- [x] Backend `.env` updated with Cognito values
+- [x] Frontend `.env` updated with Cognito values
+- [x] Database migration applied (`python db.py --migrate`)
+- [x] IAM role created for Cognito SMS — `cognito-sns-role`
+- [x] Email signup + verification flow tested end-to-end
+
+### Google OAuth (completed 2026-02-19)
+
+- [x] Google Cloud project created — `learnlikemagic`
+- [x] Google OAuth credentials created — `888542865092-vn7id06u7gc89b2vvq82pe6h72v0qdsa.apps.googleusercontent.com`
+- [x] Google added as Cognito identity provider
+- [x] Frontend `.env` updated with `VITE_GOOGLE_CLIENT_ID`
+- [x] Google OAuth app published
+
+### Production Readiness
+
+- [ ] **SNS sandbox exit** — Go to SNS Console → Text messaging → Exit SMS sandbox. Use case: "Authentication OTPs for an education platform." AWS reviews in 1-2 business days. After approval, set monthly SMS spend limit (default $1, raise to ~$100).
+- [ ] **SES domain verified** — Verify `learnlikemagic.com` in SES, add DKIM DNS records.
+- [ ] **SES sandbox exit** — Request production access in SES console. Mail type: Transactional. AWS reviews in 1-2 business days.
+- [ ] **SES connected to Cognito** — Switch Cognito email provider from "Cognito default" to SES. Set FROM address to `noreply@learnlikemagic.com`.
+- [ ] **Google OAuth app published** — Go to Google Cloud Console → OAuth consent screen → Publish App.
+- [ ] **Production callback URLs** — Add production domain to Cognito app client callback/signout URLs and Google OAuth authorized redirect URIs.

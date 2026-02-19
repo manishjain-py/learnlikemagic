@@ -21,8 +21,9 @@ export default function OAuthCallbackPage() {
       try {
         await completeOAuthLogin();
         if (!cancelled) navigate('/');
-      } catch {
-        if (!cancelled) setError('Failed to complete sign-in. Please try again.');
+      } catch (err: any) {
+        console.error('OAuth callback error:', err);
+        if (!cancelled) setError(err?.message || 'Failed to complete sign-in. Please try again.');
       }
     };
 

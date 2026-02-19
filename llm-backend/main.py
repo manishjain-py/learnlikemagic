@@ -121,7 +121,7 @@ if __name__ == "__main__":
     settings = get_settings()
     uvicorn.run(
         "main:app",
-        host=settings.API_HOST,
-        port=settings.API_PORT,
+        host=settings.api_host,
+        port=settings.api_port,
         reload=True
     )
