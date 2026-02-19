@@ -40,11 +40,29 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 # ──────────────────────────────────────────────
 
 
+def _check_session_ownership(session, current_user) -> None:
+    """
+    Verify that the caller owns the session.
+    - If the session is linked to a user, the caller must be that user.
+    - If the session is anonymous (user_id=None), allow access (backward compat).
+    - If no auth token is provided (current_user=None) but the session IS user-linked, deny.
+    """
+    if session.user_id is None:
+        return  # Anonymous session — allow
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required for this session")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your session")
+
+
 @router.get("")
-def list_sessions(db: DBSession = Depends(get_db)):
-    """List all sessions with lightweight summaries."""
+def list_sessions(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List sessions for the current user."""
     repo = SessionRepository(db)
-    sessions = repo.list_all()
+    sessions = repo.list_by_user(current_user.id)
     return {"sessions": sessions, "total": len(sessions)}
 
 
@@ -118,11 +136,24 @@ def create_session(
 
 
 @router.post("/{session_id}/step", response_model=StepResponse)
-def submit_step(session_id: str, request: StepRequest, db: DBSession = Depends(get_db)):
+def submit_step(
+    session_id: str,
+    request: StepRequest,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
     """Submit a student answer and get the next turn."""
     try:
+        repo = SessionRepository(db)
+        session = repo.get_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        _check_session_ownership(session, current_user)
+
         service = SessionService(db)
         return service.process_step(session_id, request)
+    except HTTPException:
+        raise
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:
@@ -132,11 +163,23 @@ def submit_step(session_id: str, request: StepRequest, db: DBSession = Depends(g
 
 
 @router.get("/{session_id}/summary", response_model=SummaryResponse)
-def get_summary(session_id: str, db: DBSession = Depends(get_db)):
+def get_summary(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
     """Get session summary with performance metrics and suggestions."""
     try:
+        repo = SessionRepository(db)
+        session = repo.get_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        _check_session_ownership(session, current_user)
+
         service = SessionService(db)
         return service.get_summary(session_id)
+    except HTTPException:
+        raise
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:
@@ -146,12 +189,17 @@ def get_summary(session_id: str, db: DBSession = Depends(get_db)):
 
 
 @router.get("/{session_id}")
-def get_session_state(session_id: str, db: DBSession = Depends(get_db)):
-    """Get full session state (debug endpoint)."""
+def get_session_state(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
+    """Get full session state (debug endpoint). Requires ownership for user-linked sessions."""
     repo = SessionRepository(db)
     session = repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session, current_user)
     return json.loads(session.state_json)
 
 

@@ -53,6 +53,7 @@ interface AuthContextType {
   sendOTP: (phone: string) => Promise<void>;
   verifyOTP: (code: string) => Promise<void>;
   loginWithGoogle: () => void;
+  completeOAuthLogin: () => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
 }
@@ -236,6 +237,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = url;
   };
 
+  const completeOAuthLogin = async () => {
+    // Called by OAuthCallbackPage after Cognito redirect.
+    // Retrieves the session from the SDK and runs the same syncUser flow
+    // as all other login paths, ensuring token is persisted in AuthContext + api.ts.
+    return new Promise<void>((resolve, reject) => {
+      const currentUser = userPool.getCurrentUser();
+      if (!currentUser) {
+        reject(new Error('No Cognito session after OAuth redirect'));
+        return;
+      }
+      currentUser.getSession(async (err: Error | null, session: CognitoUserSession | null) => {
+        if (err || !session || !session.isValid()) {
+          reject(new Error('Invalid session after OAuth redirect'));
+          return;
+        }
+        try {
+          const idToken = session.getIdToken().getJwtToken();
+          const accessToken = session.getAccessToken().getJwtToken();
+          await syncUser(idToken, accessToken);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+  };
+
   const logout = () => {
     const currentUser = userPool.getCurrentUser();
     if (currentUser) {
@@ -274,6 +302,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sendOTP,
     verifyOTP,
     loginWithGoogle,
+    completeOAuthLogin,
     logout,
     refreshProfile,
   };

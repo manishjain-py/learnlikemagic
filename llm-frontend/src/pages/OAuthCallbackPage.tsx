@@ -1,61 +1,38 @@
 /**
  * OAuthCallbackPage — Handles the redirect after Google OAuth.
- * Cognito redirects here with an authorization code, which the SDK exchanges for tokens.
+ *
+ * Uses AuthContext.completeOAuthLogin() to ensure the access token is
+ * persisted into AuthContext + api.ts, consistent with all other login paths.
  */
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CognitoUserPool } from 'amazon-cognito-identity-js';
-import { cognitoConfig } from '../config/auth';
 import { useAuth } from '../contexts/AuthContext';
-
-const userPool = new CognitoUserPool({
-  UserPoolId: cognitoConfig.UserPoolId,
-  ClientId: cognitoConfig.ClientId,
-});
 
 export default function OAuthCallbackPage() {
   const navigate = useNavigate();
-  const { refreshProfile } = useAuth();
+  const { completeOAuthLogin } = useAuth();
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // The Cognito SDK handles token exchange automatically when using hosted UI.
-    // After redirect, check if session is now available.
-    const currentUser = userPool.getCurrentUser();
-    if (currentUser) {
-      currentUser.getSession(async (err: Error | null, session: any) => {
-        if (err || !session || !session.isValid()) {
-          setError('Authentication failed. Please try again.');
-          return;
-        }
-        // Sync user profile with backend
-        try {
-          const idToken = session.getIdToken().getJwtToken();
-          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-          await fetch(`${API_BASE_URL}/auth/sync`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${idToken}`,
-            },
-          });
-          await refreshProfile();
-          navigate('/');
-        } catch {
-          setError('Failed to complete sign-in. Please try again.');
-        }
-      });
-    } else {
-      // No session yet — might still be processing
-      setTimeout(() => {
-        const user = userPool.getCurrentUser();
-        if (!user) {
-          setError('Authentication failed. Please try again.');
-        }
-      }, 3000);
-    }
-  }, [navigate, refreshProfile]);
+    let cancelled = false;
+
+    const complete = async () => {
+      try {
+        await completeOAuthLogin();
+        if (!cancelled) navigate('/');
+      } catch {
+        if (!cancelled) setError('Failed to complete sign-in. Please try again.');
+      }
+    };
+
+    // Small delay to let the Cognito SDK process the authorization code
+    const timer = setTimeout(complete, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [navigate, completeOAuthLogin]);
 
   if (error) {
     return (
