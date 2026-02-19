@@ -235,13 +235,15 @@ def get_agent_logs(
     agent_name: Optional[str] = None,
     limit: int = 100,
     db: DBSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ):
     """Get agent execution logs for a session."""
-    # Validate session exists
+    # Validate session exists + ownership
     repo = SessionRepository(db)
     session = repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session, current_user)
 
     log_store = get_agent_log_store()
 
