@@ -8,10 +8,13 @@ import { CognitoUser } from 'amazon-cognito-identity-js';
 import { cognitoConfig } from '../config/auth';
 import { CognitoUserPool } from 'amazon-cognito-identity-js';
 
-const userPool = new CognitoUserPool({
-  UserPoolId: cognitoConfig.UserPoolId,
-  ClientId: cognitoConfig.ClientId,
-});
+const isCognitoConfigured = !!(cognitoConfig.UserPoolId && cognitoConfig.ClientId);
+const userPool = isCognitoConfigured
+  ? new CognitoUserPool({
+      UserPoolId: cognitoConfig.UserPoolId,
+      ClientId: cognitoConfig.ClientId,
+    })
+  : null;
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -27,6 +30,12 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    if (!userPool) {
+      setError('Authentication is not configured. Please set Cognito credentials.');
+      setLoading(false);
+      return;
+    }
 
     const cognitoUser = new CognitoUser({ Username: email, Pool: userPool });
 
@@ -52,6 +61,12 @@ export default function ForgotPasswordPage() {
     }
 
     setLoading(true);
+
+    if (!userPool) {
+      setError('Authentication is not configured. Please set Cognito credentials.');
+      setLoading(false);
+      return;
+    }
 
     const cognitoUser = new CognitoUser({ Username: email, Pool: userPool });
 
