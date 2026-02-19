@@ -283,23 +283,49 @@ def get_agent_logs(
 
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time chat with the tutor."""
-    await websocket.accept()
-    logger.info(f"WebSocket connected: {session_id}")
+    """
+    WebSocket endpoint for real-time chat with the tutor.
 
-    # We need a fresh DB session for the WebSocket lifecycle
+    Auth: pass access token as query param ``?token=<jwt>``.
+    For user-linked sessions, the token must belong to the session owner.
+    Anonymous sessions (user_id=None) are allowed without a token for backward compat.
+    """
     from database import get_db_manager
+    from auth.middleware.auth_middleware import _verify_cognito_token
+    from auth.repositories.user_repository import UserRepository
 
     db_manager = get_db_manager()
     db = db_manager.session_factory()
 
     try:
+        # 1. Look up session
         repo = SessionRepository(db)
         db_session = repo.get_by_id(session_id)
         if not db_session:
-            await websocket.send_json(create_error_response("Session not found").model_dump())
-            await websocket.close()
+            await websocket.close(code=4004, reason="Session not found")
             return
+
+        # 2. Auth + ownership check (before accepting the connection)
+        if db_session.user_id is not None:
+            token = websocket.query_params.get("token")
+            if not token:
+                await websocket.close(code=4001, reason="Authentication required")
+                return
+            try:
+                claims = await _verify_cognito_token(token, expected_token_use="access")
+                cognito_sub = claims.get("sub")
+                user_repo = UserRepository(db)
+                user = user_repo.get_by_cognito_sub(cognito_sub) if cognito_sub else None
+                if not user or user.id != db_session.user_id:
+                    await websocket.close(code=4003, reason="Not your session")
+                    return
+            except Exception:
+                await websocket.close(code=4001, reason="Invalid token")
+                return
+
+        # 3. Auth passed — accept connection
+        await websocket.accept()
+        logger.info(f"WebSocket connected: {session_id}")
 
         session = SessionState.model_validate_json(db_session.state_json)
 
