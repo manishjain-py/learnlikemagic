@@ -19,12 +19,30 @@ Currently, sessions are anonymous (UUID-based, no user identity). This means:
 2. Let students **build a profile** (age, grade, board, about themselves)
 3. Use profile data to **personalize** tutoring sessions and study plans
 4. **Persist** session history across devices tied to a user account
+5. Keep login, signup, and profile screens **dead simple** — minimal friction, zero confusion (see UX principles below)
 
 ---
 
-## 3. Login & Signup
+## 3. UX Principles
 
-### 3.1 Auth Methods
+The primary users are **students (kids)**. Every screen must be effortless.
+
+| Principle | What It Means In Practice |
+|-----------|--------------------------|
+| **One thing per screen** | Don't cram phone, email, and Google into a busy form. Show clear, big buttons — one per auth method. Each flow gets its own focused screen. |
+| **Minimal typing** | Auto-detect country code, auto-advance OTP fields on input, auto-submit when OTP is complete. Prefill what you can. |
+| **Friendly language** | No jargon. Say "What's your name?" not "Enter display name". Say "How old are you?" not "Date of birth". |
+| **Forgiving inputs** | Accept phone numbers with or without spaces/dashes. Don't reject "class 5" if they type it instead of selecting 5. Show inline validation, not error popups. |
+| **Fast** | Login/signup should take under 30 seconds. Onboarding (name, age, grade, board) under 60 seconds. No loading spinners longer than 2 seconds. |
+| **Skippable where possible** | "About me" is optional — show a clear "Skip for now" button, not a tiny link. Never block the student from reaching the tutor longer than necessary. |
+| **Mobile-first** | Big tap targets, no tiny links, works well on a phone screen. Most students will likely use mobile. |
+| **Warm and encouraging** | After signup, say something like "You're all set! Let's start learning." Not a cold "Account created successfully." |
+
+---
+
+## 4. Login & Signup
+
+### 4.1 Auth Methods
 
 | Method | Flow |
 |--------|------|
@@ -34,7 +52,7 @@ Currently, sessions are anonymous (UUID-based, no user identity). This means:
 
 All three methods result in a single unified user account. If a user signs up with phone and later tries Google (same email on Google account), they should be prompted to link accounts.
 
-### 3.2 Auth Screens
+### 4.2 Auth Screens
 
 | Screen | Elements |
 |--------|----------|
@@ -45,7 +63,7 @@ All three methods result in a single unified user account. If a user signs up wi
 | **Email Login** | Email input, password input, "Log In" button, "Forgot password?" |
 | **Forgot Password** | Email input → send reset link → new password screen |
 
-### 3.3 Auth Rules
+### 4.3 Auth Rules
 
 - OTP expires after **5 minutes**
 - Max **5 OTP attempts** per phone number per hour
@@ -55,7 +73,7 @@ All three methods result in a single unified user account. If a user signs up wi
 - All authenticated API requests carry `Authorization: Bearer <token>` header
 - Logout clears tokens client-side and invalidates refresh token server-side
 
-### 3.4 Auth Provider
+### 4.4 Auth Provider
 
 **Recommendation: AWS Cognito** — aligns with existing AWS infrastructure (App Runner, Aurora, S3). Cognito handles:
 - User pool management
@@ -68,9 +86,9 @@ Alternative: Firebase Auth (simpler phone OTP setup, but adds a non-AWS dependen
 
 ---
 
-## 4. User (Student) Profile
+## 5. User (Student) Profile
 
-### 4.1 Profile Fields
+### 5.1 Profile Fields
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
@@ -81,7 +99,7 @@ Alternative: Firebase Auth (simpler phone OTP setup, but adds a non-AWS dependen
 | `school_name` | String | No | Optional context |
 | `about_me` | Text | No | Free-form: "I like cricket, I learn better with stories, I'm shy but curious" |
 
-### 4.2 Profile Flow
+### 5.2 Profile Flow
 
 **Post-signup onboarding (first login only):**
 
@@ -99,7 +117,7 @@ Signup complete
 - "About me" is **optional** — can be filled later from profile settings
 - Profile can be **edited anytime** from a profile/settings page
 
-### 4.3 How Profile Data Is Used
+### 5.3 How Profile Data Is Used
 
 | Field | Used For |
 |-------|----------|
@@ -108,7 +126,7 @@ Signup complete
 | `about_me` | Injected into tutor system prompt for personalization (interests, learning style, personality) |
 | `name` | Tutor addresses student by name |
 
-### 4.4 Profile Settings Page
+### 5.4 Profile Settings Page
 
 Accessible from a user icon/menu in the top nav. Contains:
 - View and edit all profile fields
@@ -118,9 +136,9 @@ Accessible from a user icon/menu in the top nav. Contains:
 
 ---
 
-## 5. Data Model
+## 6. Data Model
 
-### 5.1 New Database Tables
+### 6.1 New Database Tables
 
 ```
 users
@@ -144,7 +162,7 @@ users
 
 > Note: If using AWS Cognito, core auth fields (phone, email, google_id, password_hash) live in Cognito's user pool. The `users` table stores the profile and links to Cognito via `cognito_sub` (Cognito's user UUID) instead of duplicating auth fields.
 
-### 5.2 Schema Changes to Existing Tables
+### 6.2 Schema Changes to Existing Tables
 
 ```
 sessions (existing)
@@ -159,9 +177,9 @@ sessions (existing)
 
 ---
 
-## 6. API Endpoints
+## 7. API Endpoints
 
-### 6.1 Auth Endpoints
+### 7.1 Auth Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -175,7 +193,7 @@ sessions (existing)
 | POST | `/auth/forgot-password` | Send password reset email |
 | POST | `/auth/reset-password` | Set new password with reset token |
 
-### 6.2 Profile Endpoints
+### 7.2 Profile Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -183,7 +201,7 @@ sessions (existing)
 | PUT | `/profile` | Update profile fields |
 | PUT | `/profile/password` | Change password |
 
-### 6.3 Auth Middleware
+### 7.3 Auth Middleware
 
 - All existing endpoints (sessions, curriculum, etc.) become **authenticated**
 - Add `get_current_user` dependency that validates JWT and returns user
@@ -192,9 +210,9 @@ sessions (existing)
 
 ---
 
-## 7. Frontend Changes
+## 8. Frontend Changes
 
-### 7.1 New Pages/Components
+### 8.1 New Pages/Components
 
 | Component | Purpose |
 |-----------|---------|
@@ -206,7 +224,7 @@ sessions (existing)
 | `AuthProvider` | React context for auth state (user, tokens, login/logout functions) |
 | `ProtectedRoute` | Route wrapper that redirects unauthenticated users to login |
 
-### 7.2 Changes to Existing Components
+### 8.2 Changes to Existing Components
 
 - **`TutorApp.tsx`**: Remove hardcoded `COUNTRY`, `BOARD`, `GRADE` — read from user profile
 - **`App.tsx`**: Add auth routes, wrap app in `AuthProvider`, add `ProtectedRoute`
@@ -215,7 +233,7 @@ sessions (existing)
 
 ---
 
-## 8. Integration with Tutor
+## 9. Integration with Tutor
 
 When a session is created:
 
@@ -227,9 +245,9 @@ When a session is created:
 
 ---
 
-## 9. Session History
+## 10. Session History
 
-### 9.1 What's Stored Per Session (already exists)
+### 10.1 What's Stored Per Session (already exists)
 
 | Data | Source | What It Tells Us |
 |------|--------|-----------------|
@@ -243,7 +261,7 @@ When a session is created:
 
 Adding `user_id` to sessions is the only change needed — all the rich data above becomes queryable per student.
 
-### 9.2 "My Sessions" Page
+### 10.2 "My Sessions" Page
 
 A page accessible from the nav bar where students see their learning history.
 
@@ -268,7 +286,7 @@ A page accessible from the nav bar where students see their learning history.
 - Misconceptions identified during the session
 - "Continue" or "Retry this topic" button to start a new session on the same topic
 
-### 9.3 Cross-Session Insights (on profile/home)
+### 10.3 Cross-Session Insights (on profile/home)
 
 Aggregated stats derived from session history, shown on the student's home or profile page:
 
@@ -283,7 +301,7 @@ Aggregated stats derived from session history, shown on the student's home or pr
 
 These are computed on-read (no new tables needed). Can be cached later if performance requires it.
 
-### 9.4 Session History API
+### 10.4 Session History API
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -291,7 +309,7 @@ These are computed on-read (no new tables needed). Can be cached later if perfor
 | GET | `/sessions/{session_id}/replay` | Full conversation replay for a session owned by the user |
 | GET | `/profile/stats` | Aggregated learning stats for the current user |
 
-### 9.5 How History Feeds Back Into Tutoring
+### 10.5 How History Feeds Back Into Tutoring
 
 When starting a new session, the backend can optionally pull from past sessions:
 
@@ -303,7 +321,7 @@ This cross-session context is injected into the tutor's system prompt alongside 
 
 ---
 
-## 10. Out of Scope (for now)
+## 11. Out of Scope (for now)
 
 - Parent/guardian accounts with multi-child profiles
 - Role-based access control (admin vs student)
@@ -314,7 +332,7 @@ This cross-session context is injected into the tutor's system prompt alongside 
 
 ---
 
-## 11. Success Metrics
+## 12. Success Metrics
 
 | Metric | Target |
 |--------|--------|
