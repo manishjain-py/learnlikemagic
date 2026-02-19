@@ -76,6 +76,50 @@ class AuthService:
                 name=name,
             )
 
+    @staticmethod
+    def provision_phone_user(phone: str) -> None:
+        """
+        Ensure a Cognito user exists for this phone number.
+        Uses admin API to bypass required email/name schema constraints.
+        Idempotent — silently ignores if user already exists.
+        """
+        import secrets
+        settings = get_settings()
+        cognito = boto3.client("cognito-idp", region_name=settings.cognito_region)
+
+        try:
+            cognito.admin_get_user(
+                UserPoolId=settings.cognito_user_pool_id,
+                Username=phone,
+            )
+            return  # User already exists
+        except cognito.exceptions.UserNotFoundException:
+            pass
+
+        # Create user with placeholder email (required by schema) and phone
+        phone_digits = phone.replace("+", "")
+        cognito.admin_create_user(
+            UserPoolId=settings.cognito_user_pool_id,
+            Username=phone,
+            UserAttributes=[
+                {"Name": "phone_number", "Value": phone},
+                {"Name": "phone_number_verified", "Value": "true"},
+                {"Name": "email", "Value": f"phone_{phone_digits}@placeholder.local"},
+                {"Name": "name", "Value": phone},
+            ],
+            MessageAction="SUPPRESS",
+        )
+
+        # Set password to move from FORCE_CHANGE_PASSWORD to CONFIRMED
+        temp_password = f"P{secrets.token_urlsafe(16)}!1a"
+        cognito.admin_set_user_password(
+            UserPoolId=settings.cognito_user_pool_id,
+            Username=phone,
+            Password=temp_password,
+            Permanent=True,
+        )
+        logger.info(f"Provisioned phone user {phone}")
+
     def delete_user(self, cognito_sub: str) -> bool:
         """
         Delete a user from both the local DB and Cognito.

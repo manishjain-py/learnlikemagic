@@ -217,22 +217,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const sendOTP = async (phone: string) => {
     if (!userPool) throw new Error('Authentication is not configured. Please set Cognito credentials.');
 
-    // Ensure user exists in Cognito (sign up if new, ignore if already exists).
-    // Pre Sign-Up Lambda auto-confirms phone users instantly.
-    await new Promise<void>((resolve) => {
-      const attrs = [
-        new CognitoUserAttribute({ Name: 'phone_number', Value: phone }),
-      ];
-      // Random password — phone users authenticate via OTP, not password
-      const tempPassword = `P${Math.random().toString(36).slice(2)}!1aA`;
-      userPool.signUp(phone, tempPassword, attrs, [], (err) => {
-        // Ignore "User already exists" — that's fine, we just need the user to exist
-        if (err && err.name !== 'UsernameExistsException') {
-          console.warn('Phone signup warning:', err.message);
-        }
-        resolve();
-      });
+    // Ensure user exists in Cognito via backend admin API
+    // (client-side signUp can't work because email/name are required schema attributes)
+    const provisionRes = await fetch(`${API_BASE_URL}/auth/phone/provision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
     });
+    if (!provisionRes.ok) {
+      const err = await provisionRes.text();
+      throw new Error(`Failed to provision phone user: ${err}`);
+    }
 
     // Now initiate custom auth (OTP) flow
     return new Promise<void>((resolve, reject) => {

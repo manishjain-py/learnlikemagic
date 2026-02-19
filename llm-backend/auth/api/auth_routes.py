@@ -1,6 +1,7 @@
 """Auth API endpoints — sync Cognito user to local DB."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -47,6 +48,22 @@ async def sync_user(
         onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )
+
+
+class PhoneProvisionRequest(BaseModel):
+    phone: str
+
+
+@router.post("/phone/provision")
+async def provision_phone_user(body: PhoneProvisionRequest):
+    """
+    Ensure a Cognito user exists for this phone number.
+    Called by frontend before initiating custom auth (OTP) flow.
+    Uses admin API to bypass required email/name schema constraints.
+    """
+    service = AuthService.__new__(AuthService)
+    service.provision_phone_user(body.phone)
+    return {"status": "ok"}
 
 
 @router.delete("/admin/user")
