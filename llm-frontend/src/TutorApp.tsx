@@ -243,14 +243,23 @@ function App() {
 
   const toggleRecording = async () => {
     if (isRecording) {
-      // Stop recording — mediaRecorder.onstop will handle transcription
+      // Stop recording — onstop callback handles transcription
       mediaRecorderRef.current?.stop();
+      setIsRecording(false);
       return;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+      // Pick a supported MIME type; fall back to browser default
+      const preferredTypes = ['audio/webm', 'audio/mp4', 'audio/ogg'];
+      const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t));
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      const activeMime = mediaRecorder.mimeType || 'audio/webm';
+
       audioChunksRef.current = [];
       const baseInput = input; // snapshot before recording starts
 
@@ -261,8 +270,9 @@ function App() {
       mediaRecorder.onstop = async () => {
         // Stop all mic tracks so the browser indicator goes away
         stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
 
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioBlob = new Blob(audioChunksRef.current, { type: activeMime });
         if (audioBlob.size === 0) return;
 
         setIsTranscribing(true);

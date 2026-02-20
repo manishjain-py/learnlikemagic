@@ -274,8 +274,15 @@ export async function getSubtopicProgress(): Promise<Record<string, SubtopicProg
 // ──────────────────────────────────────────────
 
 export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  // Derive file extension from the blob's actual MIME type
+  const extMap: Record<string, string> = {
+    'audio/webm': 'webm', 'audio/mp4': 'mp4', 'audio/ogg': 'ogg',
+    'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/flac': 'flac',
+  };
+  const ext = extMap[audioBlob.type] || 'webm';
+
   const formData = new FormData();
-  formData.append('file', audioBlob, 'recording.webm');
+  formData.append('file', audioBlob, `recording.${ext}`);
 
   // Can't use apiFetch here — it forces Content-Type: application/json.
   // FormData needs the browser to set multipart/form-data with boundary.
