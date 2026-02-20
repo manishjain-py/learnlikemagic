@@ -8,6 +8,7 @@ import {
   getCurriculum,
   getModelConfig,
   getSubtopicProgress,
+  transcribeAudio,
   Turn,
   SummaryResponse,
   SubtopicInfo,
@@ -54,7 +55,9 @@ function App() {
   const [modelLabel, setModelLabel] = useState<string>('');
   const [subtopicProgress, setSubtopicProgress] = useState<Record<string, SubtopicProgress>>({});
   const [isRecording, setIsRecording] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Student profile from authenticated user (replaces hardcoded values)
@@ -238,53 +241,50 @@ function App() {
     setShowHints(showHints === index ? null : index);
   };
 
-  const speechSupported = typeof window !== 'undefined' &&
-    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (isRecording) {
-      recognitionRef.current?.stop();
+      // Stop recording — mediaRecorder.onstop will handle transcription
+      mediaRecorderRef.current?.stop();
       return;
     }
 
-    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionAPI) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      audioChunksRef.current = [];
+      const baseInput = input; // snapshot before recording starts
 
-    const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-IN';
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
 
-    const baseInput = input; // snapshot before recording starts
-    let finalTranscript = '';
+      mediaRecorder.onstop = async () => {
+        // Stop all mic tracks so the browser indicator goes away
+        stream.getTracks().forEach((t) => t.stop());
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += t;
-        } else {
-          interim += t;
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioBlob.size === 0) return;
+
+        setIsTranscribing(true);
+        try {
+          const text = await transcribeAudio(audioBlob);
+          if (text) {
+            const spacer = baseInput && !baseInput.endsWith(' ') ? ' ' : '';
+            setInput(`${baseInput}${spacer}${text}`);
+          }
+        } catch (err) {
+          console.error('Transcription failed:', err);
+        } finally {
+          setIsTranscribing(false);
         }
-      }
-      const spacer = baseInput && !baseInput.endsWith(' ') ? ' ' : '';
-      setInput(`${baseInput}${spacer}${finalTranscript || interim}`);
-    };
+      };
 
-    recognition.onerror = () => {
-      setIsRecording(false);
-      recognitionRef.current = null;
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-      recognitionRef.current = null;
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsRecording(true);
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+    }
   };
 
   const handleBack = () => {
@@ -547,28 +547,33 @@ function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isRecording ? 'Listening...' : 'Type your answer...'}
-              disabled={loading}
+              placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+              disabled={loading || isTranscribing}
               className={`input-field${isRecording ? ' recording' : ''}`}
             />
-            {speechSupported && (
-              <button
-                type="button"
-                onClick={toggleRecording}
-                disabled={loading}
-                className={`mic-button${isRecording ? ' recording' : ''}`}
-                title={isRecording ? 'Stop recording' : 'Voice input'}
-                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-              >
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={loading || isTranscribing}
+              className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+              title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+              aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+            >
+              {isTranscribing ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+              ) : (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <line x1="12" y1="19" x2="12" y2="23" />
                   <line x1="8" y1="23" x2="16" y2="23" />
                 </svg>
-              </button>
-            )}
-            <button type="submit" disabled={loading || !input.trim()} className="send-button">
+              )}
+            </button>
+            <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button">
               Send
             </button>
           </form>

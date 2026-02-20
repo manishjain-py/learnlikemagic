@@ -268,3 +268,37 @@ export async function getSubtopicProgress(): Promise<Record<string, SubtopicProg
   const data = await response.json();
   return data.user_progress;
 }
+
+// ──────────────────────────────────────────────
+// Audio transcription
+// ──────────────────────────────────────────────
+
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'recording.webm');
+
+  // Can't use apiFetch here — it forces Content-Type: application/json.
+  // FormData needs the browser to set multipart/form-data with boundary.
+  const headers: Record<string, string> = {};
+  if (_accessToken) {
+    headers['Authorization'] = `Bearer ${_accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/transcribe`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (response.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Authentication required');
+  }
+
+  if (!response.ok) {
+    throw new Error(`Transcription failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.text;
+}

@@ -13,7 +13,7 @@ from database import get_db_manager
 from book_ingestion.api import routes as admin_routes
 from study_plans.api import admin as admin_guidelines
 from shared.api import health
-from tutor.api import curriculum, sessions
+from tutor.api import curriculum, sessions, transcription
 from evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
 from auth.api.profile_routes import router as profile_router
@@ -94,6 +94,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(curriculum.router)
 app.include_router(sessions.router)
+app.include_router(transcription.router)  # Audio-to-text via Whisper
 app.include_router(evaluation_router)  # Evaluation pipeline endpoints
 app.include_router(admin_routes.router)  # Book ingestion admin routes
 app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
