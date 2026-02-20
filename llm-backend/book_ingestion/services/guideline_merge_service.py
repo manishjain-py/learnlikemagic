@@ -25,15 +25,16 @@ class GuidelineMergeService:
     Replaces V1's rule-based array appending with intelligent text merging.
     """
 
-    def __init__(self, openai_client: Optional[OpenAI] = None):
+    def __init__(self, openai_client: Optional[OpenAI] = None, *, model: str):
         """
         Initialize guideline merge service.
 
         Args:
             openai_client: Optional OpenAI client (if None, creates new one)
+            model: LLM model name from DB config (required)
         """
         self.client = openai_client or OpenAI()
-        self.model = "gpt-4o-mini"
+        self.model = model
         self.max_tokens = 1500  # Merged guidelines can be lengthy
         self.prompt_template = self._load_prompt_template()
 

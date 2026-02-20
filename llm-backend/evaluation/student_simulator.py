@@ -26,7 +26,7 @@ class StudentSimulator:
     def __init__(self, config: EvalConfig, persona: dict):
         self.config = config
         self.persona = persona
-        self.provider = config.eval_llm_provider
+        self.provider = config.simulator_provider
         self.correct_prob = persona.get("correct_answer_probability", 0.6)
         self.system_prompt = self._build_system_prompt()
         self.turn_count = 0

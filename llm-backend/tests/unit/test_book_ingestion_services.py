@@ -79,7 +79,7 @@ class TestBoundaryDetectionService:
             return_value="Grade: {grade}, Subject: {subject}, Board: {board}, Page: {current_page}\n{open_topics}\n{recent_summaries}\n{page_text}"
         ):
             from book_ingestion.services.boundary_detection_service import BoundaryDetectionService
-            service = BoundaryDetectionService(openai_client=mock_client)
+            service = BoundaryDetectionService(openai_client=mock_client, model="gpt-4o-mini")
         return service, mock_client
 
     def test_detect_new_topic(self):
@@ -225,7 +225,7 @@ class TestTopicDeduplicationService:
             return_value="Grade: {grade}, Subject: {subject}\n{topics_summary}"
         ):
             from book_ingestion.services.topic_deduplication_service import TopicDeduplicationService
-            service = TopicDeduplicationService(openai_client=mock_client)
+            service = TopicDeduplicationService(openai_client=mock_client, model="gpt-4o-mini")
         return service, mock_client
 
     def test_empty_shards(self):
@@ -348,7 +348,7 @@ class TestTopicNameRefinementService:
             )
         ):
             from book_ingestion.services.topic_name_refinement_service import TopicNameRefinementService
-            service = TopicNameRefinementService(openai_client=mock_client)
+            service = TopicNameRefinementService(openai_client=mock_client, model="gpt-4o-mini")
         return service, mock_client
 
     def test_refine_names_success(self):
@@ -400,7 +400,7 @@ class TestTopicSubtopicSummaryService:
             return_value="Summarize: {subtopic_title}\n{guidelines}"
         ):
             from book_ingestion.services.topic_subtopic_summary_service import TopicSubtopicSummaryService
-            service = TopicSubtopicSummaryService(openai_client=mock_client)
+            service = TopicSubtopicSummaryService(openai_client=mock_client, model="gpt-4o-mini")
         return service, mock_client
 
     def test_generate_subtopic_summary(self):
@@ -467,7 +467,7 @@ class TestMinisummaryService:
             return_value="Summarize: {page_text}"
         ):
             from book_ingestion.services.minisummary_service import MinisummaryService
-            service = MinisummaryService(openai_client=mock_client)
+            service = MinisummaryService(openai_client=mock_client, model="gpt-4o-mini")
         return service, mock_client
 
     def test_generate_summary(self):
@@ -563,7 +563,7 @@ class TestGuidelineMergeService:
             )
         ):
             from book_ingestion.services.guideline_merge_service import GuidelineMergeService
-            service = GuidelineMergeService(openai_client=mock_client)
+            service = GuidelineMergeService(openai_client=mock_client, model="gpt-4o-mini")
         return service, mock_client
 
     def test_merge_success(self):
@@ -1162,7 +1162,7 @@ class TestOCRService:
         )
 
         from book_ingestion.services.ocr_service import OCRService
-        service = OCRService()
+        service = OCRService(model="gpt-4o-mini")
 
         result = service.extract_text_from_image(image_bytes=b"fake image bytes")
 
@@ -1175,7 +1175,7 @@ class TestOCRService:
         MockOpenAI.return_value = MagicMock()
 
         from book_ingestion.services.ocr_service import OCRService
-        service = OCRService()
+        service = OCRService(model="gpt-4o-mini")
 
         with pytest.raises(ValueError, match="Either image_path or image_bytes"):
             service.extract_text_from_image()
@@ -1187,7 +1187,7 @@ class TestOCRService:
         MockOpenAI.return_value = MagicMock()
 
         from book_ingestion.services.ocr_service import OCRService
-        service = OCRService()
+        service = OCRService(model="gpt-4o-mini")
 
         result = service.encode_bytes_to_base64(b"hello")
 
@@ -1205,7 +1205,7 @@ class TestOCRService:
         )
 
         from book_ingestion.services.ocr_service import OCRService
-        service = OCRService()
+        service = OCRService(model="gpt-4o-mini")
 
         result = service.extract_text_with_retry(image_bytes=b"img", max_retries=2)
 
@@ -1223,7 +1223,7 @@ class TestOCRService:
         ]
 
         from book_ingestion.services.ocr_service import OCRService
-        service = OCRService()
+        service = OCRService(model="gpt-4o-mini")
 
         result = service.extract_text_with_retry(image_bytes=b"img", max_retries=2)
 
@@ -1238,7 +1238,7 @@ class TestOCRService:
         mock_client.chat.completions.create.side_effect = Exception("Permanent failure")
 
         from book_ingestion.services.ocr_service import OCRService
-        service = OCRService()
+        service = OCRService(model="gpt-4o-mini")
 
         with pytest.raises(Exception, match="failed after"):
             service.extract_text_with_retry(image_bytes=b"img", max_retries=1)

@@ -26,6 +26,7 @@ from book_ingestion.models.guideline_models import (
 )
 from study_plans.services.orchestrator import StudyPlanOrchestrator
 from shared.services import LLMService
+from shared.services.llm_config_service import LLMConfigService
 from config import get_settings
 
 router = APIRouter(prefix="/admin/guidelines", tags=["Admin - Guidelines"])
@@ -110,9 +111,28 @@ class ApprovalRequest(BaseModel):
 # ENDPOINTS
 # ============================================================================
 
-def get_llm_service():
+def _build_study_plan_orchestrator(db: Session) -> StudyPlanOrchestrator:
+    """Create a StudyPlanOrchestrator with separate LLM configs for generator and reviewer."""
     settings = get_settings()
-    return LLMService(api_key=settings.openai_api_key, gemini_api_key=settings.gemini_api_key)
+    config_service = LLMConfigService(db)
+
+    gen_cfg = config_service.get_config("study_plan_generator")
+    rev_cfg = config_service.get_config("study_plan_reviewer")
+
+    generator_llm = LLMService(
+        api_key=settings.openai_api_key,
+        gemini_api_key=settings.gemini_api_key,
+        provider=gen_cfg["provider"],
+        model_id=gen_cfg["model_id"],
+    )
+    reviewer_llm = LLMService(
+        api_key=settings.openai_api_key,
+        gemini_api_key=settings.gemini_api_key,
+        provider=rev_cfg["provider"],
+        model_id=rev_cfg["model_id"],
+    )
+
+    return StudyPlanOrchestrator(db, generator_llm, reviewer_llm)
 
 @router.get("/books", response_model=List[BookGuidelineStatus])
 async def list_books_with_guidelines(
@@ -394,12 +414,15 @@ async def extract_guidelines_for_pages(
         raise HTTPException(409, str(e))
 
     try:
-        # Initialize orchestrator
+        # Initialize orchestrator — read model from DB config
         from book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+        from shared.services.llm_config_service import LLMConfigService
+        ingestion_config = LLMConfigService(db).get_config("book_ingestion")
         s3 = S3Client()
         orchestrator = GuidelineExtractionOrchestrator(
             s3_client=s3,
-            db_session=db
+            db_session=db,
+            model=ingestion_config["model_id"],
         )
 
         # Get page count from S3 metadata
@@ -462,12 +485,15 @@ async def finalize_book_guidelines(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    # Initialize orchestrator
+    # Initialize orchestrator — read model from DB config
     from book_ingestion.services.guideline_extraction_orchestrator import GuidelineExtractionOrchestrator
+    from shared.services.llm_config_service import LLMConfigService
+    ingestion_config = LLMConfigService(db).get_config("book_ingestion")
     s3 = S3Client()
     orchestrator = GuidelineExtractionOrchestrator(
         s3_client=s3,
-        db_session=db
+        db_session=db,
+        model=ingestion_config["model_id"],
     )
 
     # Check for active job
@@ -727,11 +753,10 @@ async def generate_study_plan(
     guideline_id: str,
     force_regenerate: bool = Query(False, description="Force regeneration even if plan exists"),
     db: Session = Depends(get_db),
-    llm_service: LLMService = Depends(get_llm_service)
 ):
     """
     Generate a generic study plan for a guideline.
-    
+
     Uses AI-to-AI review loop (Generator -> Reviewer -> Improver).
     """
     # Verify guideline exists first
@@ -739,7 +764,7 @@ async def generate_study_plan(
     if not guideline:
         raise HTTPException(status_code=404, detail="Guideline not found")
 
-    orchestrator = StudyPlanOrchestrator(db, llm_service)
+    orchestrator = _build_study_plan_orchestrator(db)
     try:
         plan = orchestrator.generate_study_plan(guideline_id, force_regenerate)
         return plan
@@ -753,12 +778,11 @@ async def generate_study_plan(
 async def get_study_plan(
     guideline_id: str,
     db: Session = Depends(get_db),
-    llm_service: LLMService = Depends(get_llm_service)
 ):
     """
     Get the existing study plan for a guideline.
     """
-    orchestrator = StudyPlanOrchestrator(db, llm_service)
+    orchestrator = _build_study_plan_orchestrator(db)
     plan = orchestrator.get_study_plan(guideline_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Study plan not found")
@@ -773,12 +797,11 @@ class BulkGenerateRequest(BaseModel):
 async def bulk_generate_study_plans(
     request: BulkGenerateRequest,
     db: Session = Depends(get_db),
-    llm_service: LLMService = Depends(get_llm_service)
 ):
     """
     Generate study plans for multiple guidelines.
     """
-    orchestrator = StudyPlanOrchestrator(db, llm_service)
+    orchestrator = _build_study_plan_orchestrator(db)
     results = {
         "success": [],
         "failed": [],

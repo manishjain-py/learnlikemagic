@@ -21,15 +21,16 @@ class OCRService:
     including drawings, diagrams, formulas, and captions.
     """
 
-    def __init__(self):
+    def __init__(self, *, model: str):
         """
         Initialize OCR service with OpenAI client.
 
-        Uses settings from config (OPENAI_API_KEY).
+        Args:
+            model: LLM model name from DB config (required)
         """
         settings = get_settings()
         self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = "gpt-4o-mini"  # Vision-capable model, cost-effective
+        self.model = model
         self.max_tokens = 4096
 
         logger.info(f"OCR service initialized with model: {self.model}")

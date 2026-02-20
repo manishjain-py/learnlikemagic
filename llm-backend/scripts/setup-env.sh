@@ -21,16 +21,14 @@ DB_USER=$(grep '^db_user' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
 DB_PASSWORD=$(grep '^db_password' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
 DB_NAME=$(grep '^db_name' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
 OPENAI_API_KEY=$(grep '^openai_api_key' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
-LLM_MODEL=$(grep '^llm_model' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
 
 # Database endpoint (from production)
 DB_ENDPOINT="learnlikemagic-production.cluster-cgp4ua06a7ei.us-east-1.rds.amazonaws.com"
 
 # Create .env file
 cat > "$BACKEND_DIR/.env" << EOF
-# LLM Configuration
+# LLM API Keys (provider/model selection is in DB llm_config table)
 OPENAI_API_KEY=$OPENAI_API_KEY
-LLM_MODEL=$LLM_MODEL
 
 # Database (Production PostgreSQL)
 DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@$DB_ENDPOINT:5432/$DB_NAME

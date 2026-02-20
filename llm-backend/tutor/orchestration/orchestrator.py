@@ -262,7 +262,7 @@ class TeacherOrchestrator:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: self.llm.call_gpt_5_2(
+                lambda: self.llm.call(
                     prompt=prompt,
                     reasoning_effort="none",
                     json_mode=False,
@@ -442,7 +442,7 @@ class TeacherOrchestrator:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self.llm.call_gpt_5_2(
+            lambda: self.llm.call(
                 prompt=prompt,
                 reasoning_effort="none",
                 json_mode=False,

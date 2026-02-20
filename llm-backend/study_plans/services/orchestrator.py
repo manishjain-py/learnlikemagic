@@ -15,12 +15,12 @@ class StudyPlanOrchestrator:
     Orchestrates the creation and lifecycle of study plans.
     """
 
-    def __init__(self, db: Session, llm_service: LLMService):
+    def __init__(self, db: Session, generator_llm: LLMService, reviewer_llm: LLMService):
         self.db = db
-        self.llm_service = llm_service
-        self.prompt_loader = PromptLoader() # Assuming this standard loader works
-        self.generator = StudyPlanGeneratorService(llm_service, self.prompt_loader)
-        self.reviewer = StudyPlanReviewerService(llm_service, self.prompt_loader)
+        self.reviewer_llm = reviewer_llm
+        self.prompt_loader = PromptLoader()
+        self.generator = StudyPlanGeneratorService(generator_llm, self.prompt_loader)
+        self.reviewer = StudyPlanReviewerService(reviewer_llm, self.prompt_loader)
 
     def get_study_plan(self, guideline_id: str) -> dict | None:
         """Get existing study plan for a guideline."""
@@ -125,8 +125,8 @@ class StudyPlanOrchestrator:
             suggested_improvements=json.dumps(review_result["suggested_improvements"], indent=2)
         )
 
-        # Call GPT-4o with JSON mode
-        response_text = self.llm_service.call_gpt_4o(
+        # Call LLM with JSON mode
+        response_text = self.reviewer_llm.call(
             prompt=prompt,
             max_tokens=4096,
             json_mode=True

@@ -44,15 +44,16 @@ class DescriptionGenerator:
     TARGET_MAX_WORDS = 300
     MAX_WORDS = 350
 
-    def __init__(self, openai_client: Optional[OpenAI] = None):
+    def __init__(self, openai_client: Optional[OpenAI] = None, *, model: str):
         """
         Initialize description generator.
 
         Args:
             openai_client: Optional OpenAI client (if None, creates new one)
+            model: LLM model name from DB config (required)
         """
         self.client = openai_client or OpenAI()
-        self.model = "gpt-4o-mini"
+        self.model = model
         self.max_tokens = 600  # ~450 words max (with buffer)
 
         # Load prompt template

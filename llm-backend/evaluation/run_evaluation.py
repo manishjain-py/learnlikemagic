@@ -63,7 +63,8 @@ def run_all_personas(args):
                 persona_file=persona_file,
             )
             if args.provider:
-                config.eval_llm_provider = args.provider
+                config.evaluator_provider = args.provider
+                config.simulator_provider = args.provider
 
             started_at = datetime.now()
             timestamp = started_at.strftime("%Y%m%d_%H%M%S")
@@ -278,13 +279,14 @@ def main():
         persona_file=args.persona,
     )
     if args.provider:
-        config.eval_llm_provider = args.provider
+        config.evaluator_provider = args.provider
+        config.simulator_provider = args.provider
 
-    if config.eval_llm_provider == "anthropic":
+    if config.evaluator_provider == "anthropic" or config.simulator_provider == "anthropic":
         if not config.anthropic_api_key:
             print("ERROR: ANTHROPIC_API_KEY not found in environment. Check your .env file.")
             sys.exit(1)
-    else:
+    if config.evaluator_provider != "anthropic" or config.simulator_provider != "anthropic":
         if not config.openai_api_key:
             print("ERROR: OPENAI_API_KEY not found in environment. Check your .env file.")
             sys.exit(1)

@@ -37,13 +37,16 @@ class SessionService:
         self.event_repo = EventRepository(db)
         self.guideline_repo = TeachingGuidelineRepository(db)
 
-        # Initialize LLM service and orchestrator
+        # Initialize LLM service — read config from DB (once at session start)
+        from shared.services.llm_config_service import LLMConfigService
         settings = get_settings()
+        tutor_config = LLMConfigService(db).get_config("tutor")
         self.llm_service = LLMService(
             api_key=settings.openai_api_key,
+            provider=tutor_config["provider"],
+            model_id=tutor_config["model_id"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
-            provider=settings.resolved_tutor_provider,
         )
         self.orchestrator = TeacherOrchestrator(self.llm_service)
 

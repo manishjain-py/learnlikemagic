@@ -39,15 +39,16 @@ class TeachingDescriptionGenerator:
     - How to check comprehension
     """
 
-    def __init__(self, openai_client: Optional[OpenAI] = None):
+    def __init__(self, openai_client: Optional[OpenAI] = None, *, model: str):
         """
         Initialize teaching description generator.
 
         Args:
             openai_client: Optional OpenAI client (if None, creates new one)
+            model: LLM model name from DB config (required)
         """
         self.client = openai_client or OpenAI()
-        self.model = "gpt-4o-mini"
+        self.model = model
         self.max_tokens = 400  # ~100 words (3-6 lines)
 
         # Load prompt template

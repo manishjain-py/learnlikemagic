@@ -29,6 +29,5 @@ DEFAULT_GUIDELINE = "Teach this topic step by step using grade-appropriate langu
 DEFAULT_MESSAGE = "Hello!"
 
 # LLM settings
-DEFAULT_LLM_MODEL = "gpt-4o-mini"
 MAX_MESSAGE_LENGTH = 80  # words for teaching messages
 MAX_REMEDIATION_LENGTH = 60  # words for remediation messages

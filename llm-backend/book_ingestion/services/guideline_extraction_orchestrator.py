@@ -82,7 +82,9 @@ class GuidelineExtractionOrchestrator:
         self,
         s3_client: S3Client,
         openai_client: Optional[OpenAI] = None,
-        db_session: Optional[Session] = None
+        db_session: Optional[Session] = None,
+        *,
+        model: str,
     ):
         """
         Initialize V2 orchestrator with component services.
@@ -91,23 +93,24 @@ class GuidelineExtractionOrchestrator:
             s3_client: S3 client for reading/writing files
             openai_client: Optional OpenAI client (if None, creates new one)
             db_session: Optional database session (if None, DB sync disabled)
+            model: LLM model name from DB config (required, no default)
         """
         self.s3 = s3_client
         self.openai_client = openai_client or OpenAI()
         self.db_session = db_session
 
-        # Initialize V2 component services
-        self.minisummary = MinisummaryService(self.openai_client)
+        # Initialize V2 component services — all use the same model from DB config
+        self.minisummary = MinisummaryService(self.openai_client, model=model)
         self.context_pack = ContextPackService(self.s3)
-        self.boundary_detector = BoundaryDetectionService(self.openai_client)
-        self.merge_service = GuidelineMergeService(self.openai_client)
-        self.dedup_service = TopicDeduplicationService(self.openai_client)
-        self.name_refinement = TopicNameRefinementService(self.openai_client)
+        self.boundary_detector = BoundaryDetectionService(self.openai_client, model=model)
+        self.merge_service = GuidelineMergeService(self.openai_client, model=model)
+        self.dedup_service = TopicDeduplicationService(self.openai_client, model=model)
+        self.name_refinement = TopicNameRefinementService(self.openai_client, model=model)
         self.index_manager = IndexManagementService(self.s3)
         self.db_sync = DBSyncService(self.db_session) if self.db_session else None
-        self.summary_service = TopicSubtopicSummaryService(self.openai_client)
+        self.summary_service = TopicSubtopicSummaryService(self.openai_client, model=model)
 
-        logger.info("Initialized GuidelineExtractionOrchestrator with all V2 services")
+        logger.info(f"Initialized GuidelineExtractionOrchestrator with model={model}")
 
     async def extract_guidelines_for_book(
         self,

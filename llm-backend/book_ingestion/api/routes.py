@@ -434,12 +434,15 @@ async def generate_guidelines(
             "total_pages": total_pages
         }
 
-        # Initialize orchestrator
+        # Initialize orchestrator — read model from DB config
+        from shared.services.llm_config_service import LLMConfigService
+        ingestion_config = LLMConfigService(db).get_config("book_ingestion")
         openai_client = OpenAI()
         orchestrator = GuidelineExtractionOrchestrator(
             s3_client=s3_client,
             openai_client=openai_client,
-            db_session=db
+            db_session=db,
+            model=ingestion_config["model_id"],
         )
 
         # Extract guidelines
@@ -532,13 +535,16 @@ async def finalize_guidelines(
             "country": book.country
         }
 
-        # Initialize V2 orchestrator
+        # Initialize V2 orchestrator — read model from DB config
+        from shared.services.llm_config_service import LLMConfigService
+        ingestion_config = LLMConfigService(db).get_config("book_ingestion")
         s3_client = S3Client()
         openai_client = OpenAI()
         orchestrator = GuidelineExtractionOrchestrator(
             s3_client=s3_client,
             openai_client=openai_client,
-            db_session=db
+            db_session=db,
+            model=ingestion_config["model_id"],
         )
 
         # Run finalization

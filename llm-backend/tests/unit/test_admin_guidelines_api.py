@@ -51,7 +51,7 @@ for mod_name in [
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from study_plans.api.admin import router, get_llm_service
+from study_plans.api.admin import router
 
 # Build test app
 app = FastAPI()
@@ -67,12 +67,7 @@ def override_get_db():
     return _mock_db_session
 
 
-def override_llm_service():
-    return MagicMock()
-
-
 app.dependency_overrides[get_db] = override_get_db
-app.dependency_overrides[get_llm_service] = override_llm_service
 
 client = TestClient(app)
 

@@ -15,6 +15,16 @@ from fastapi.testclient import TestClient
 
 
 # ---------------------------------------------------------------------------
+# Fake user object returned by auth dependency overrides.
+# ---------------------------------------------------------------------------
+
+class _FakeUser:
+    """Minimal user object for dependency override."""
+    def __init__(self, user_id="test-user-1"):
+        self.id = user_id
+
+
+# ---------------------------------------------------------------------------
 # Build a minimal FastAPI app that includes only the sessions router,
 # with all heavy dependencies mocked out.
 # ---------------------------------------------------------------------------
@@ -55,13 +65,37 @@ def _build_app_and_client():
 
     app.dependency_overrides[get_db] = override_get_db
 
+    # Override auth dependencies so endpoints don't require real JWT tokens.
+    from auth.middleware.auth_middleware import get_current_user, get_optional_user
+
+    fake_user = _FakeUser()
+
+    def override_get_current_user():
+        return fake_user
+
+    def override_get_optional_user():
+        return fake_user
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_optional_user] = override_get_optional_user
+
     client = TestClient(app)
     return app, client, {
         "db": mock_db,
+        "fake_user": fake_user,
         "session_service_cls": mock_session_service_cls,
         "session_repo_cls": mock_session_repo_cls,
         "agent_log_store_fn": mock_agent_log_store_fn,
     }
+
+
+def _make_anonymous_session_mock(**kwargs):
+    """Create a mock DB session row with user_id=None (anonymous) to pass ownership checks."""
+    mock_session = MagicMock()
+    mock_session.user_id = None
+    for k, v in kwargs.items():
+        setattr(mock_session, k, v)
+    return mock_session
 
 
 # ===========================================================================
@@ -73,11 +107,11 @@ class TestListSessions:
 
     @patch("tutor.api.sessions.SessionRepository")
     def test_list_sessions(self, MockRepo):
-        _, client, _ = _build_app_and_client()
+        _, client, mocks = _build_app_and_client()
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
-        mock_repo.list_all.return_value = [
+        mock_repo.list_by_user.return_value = [
             {"session_id": "s1", "created_at": "2024-01-01", "topic_name": "Math", "message_count": 5, "mastery": 0.7},
         ]
 
@@ -86,14 +120,15 @@ class TestListSessions:
         data = resp.json()
         assert data["total"] == 1
         assert data["sessions"][0]["session_id"] == "s1"
+        mock_repo.list_by_user.assert_called_once_with(mocks["fake_user"].id)
 
     @patch("tutor.api.sessions.SessionRepository")
     def test_list_sessions_empty(self, MockRepo):
-        _, client, _ = _build_app_and_client()
+        _, client, mocks = _build_app_and_client()
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
-        mock_repo.list_all.return_value = []
+        mock_repo.list_by_user.return_value = []
 
         resp = client.get("/sessions")
         assert resp.status_code == 200
@@ -170,8 +205,14 @@ class TestCreateSession:
 class TestSubmitStep:
 
     @patch("tutor.api.sessions.SessionService")
-    def test_submit_step_success(self, MockService):
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_submit_step_success(self, MockRepo, MockService):
         _, client, _ = _build_app_and_client()
+
+        # Repo lookup must succeed (ownership check happens before SessionService)
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+        mock_repo.get_by_id.return_value = _make_anonymous_session_mock()
 
         mock_svc = MagicMock()
         MockService.return_value = mock_svc
@@ -189,15 +230,14 @@ class TestSubmitStep:
         data = resp.json()
         assert data["routing"] == "Advance"
 
-    @patch("tutor.api.sessions.SessionService")
-    def test_submit_step_session_not_found(self, MockService):
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_submit_step_session_not_found(self, MockRepo):
         _, client, _ = _build_app_and_client()
 
-        from shared.utils.exceptions import SessionNotFoundException
-
-        mock_svc = MagicMock()
-        MockService.return_value = mock_svc
-        mock_svc.process_step.side_effect = SessionNotFoundException("sess-999")
+        # The endpoint now checks the repo directly before calling SessionService
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+        mock_repo.get_by_id.return_value = None
 
         resp = client.post(
             "/sessions/sess-999/step",
@@ -206,8 +246,13 @@ class TestSubmitStep:
         assert resp.status_code == 404
 
     @patch("tutor.api.sessions.SessionService")
-    def test_submit_step_generic_error(self, MockService):
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_submit_step_generic_error(self, MockRepo, MockService):
         _, client, _ = _build_app_and_client()
+
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+        mock_repo.get_by_id.return_value = _make_anonymous_session_mock()
 
         mock_svc = MagicMock()
         MockService.return_value = mock_svc
@@ -223,8 +268,14 @@ class TestSubmitStep:
 class TestGetSummary:
 
     @patch("tutor.api.sessions.SessionService")
-    def test_get_summary_success(self, MockService):
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_get_summary_success(self, MockRepo, MockService):
         _, client, _ = _build_app_and_client()
+
+        # Repo lookup must succeed (ownership check happens before SessionService)
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+        mock_repo.get_by_id.return_value = _make_anonymous_session_mock()
 
         mock_svc = MagicMock()
         MockService.return_value = mock_svc
@@ -241,15 +292,14 @@ class TestGetSummary:
         assert data["steps_completed"] == 5
         assert data["mastery_score"] == 0.8
 
-    @patch("tutor.api.sessions.SessionService")
-    def test_get_summary_not_found(self, MockService):
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_get_summary_not_found(self, MockRepo):
         _, client, _ = _build_app_and_client()
 
-        from shared.utils.exceptions import SessionNotFoundException
-
-        mock_svc = MagicMock()
-        MockService.return_value = mock_svc
-        mock_svc.get_summary.side_effect = SessionNotFoundException("sess-bad")
+        # The endpoint now checks the repo directly before calling SessionService
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+        mock_repo.get_by_id.return_value = None
 
         resp = client.get("/sessions/sess-bad/summary")
         assert resp.status_code == 404
@@ -263,8 +313,9 @@ class TestGetSessionState:
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
-        mock_session = MagicMock()
-        mock_session.state_json = json.dumps({"session_id": "s1", "step": 3})
+        mock_session = _make_anonymous_session_mock(
+            state_json=json.dumps({"session_id": "s1", "step": 3}),
+        )
         mock_repo.get_by_id.return_value = mock_session
 
         resp = client.get("/sessions/s1")
@@ -292,7 +343,7 @@ class TestGetAgentLogs:
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
-        mock_repo.get_by_id.return_value = MagicMock()  # session exists
+        mock_repo.get_by_id.return_value = _make_anonymous_session_mock()
 
         from datetime import datetime
 
@@ -326,7 +377,7 @@ class TestGetAgentLogs:
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
-        mock_repo.get_by_id.return_value = MagicMock()
+        mock_repo.get_by_id.return_value = _make_anonymous_session_mock()
 
         mock_store = MagicMock()
         mock_log_store_fn.return_value = mock_store

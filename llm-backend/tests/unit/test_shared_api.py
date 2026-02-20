@@ -52,54 +52,28 @@ class TestRootHealthCheck:
 # ============================================================================
 
 class TestModelConfig:
-    @patch("config.get_settings")
-    def test_returns_model_config_openai(self, mock_settings, health_client):
-        settings = MagicMock()
-        settings.resolved_tutor_provider = "openai"
-        settings.ingestion_llm_provider = "openai"
-        mock_settings.return_value = settings
+    @patch("shared.services.llm_config_service.LLMConfigService")
+    def test_returns_model_config_from_db(self, mock_cls, health_client):
+        mock_service = MagicMock()
+        mock_service.get_all_configs.return_value = [
+            {"component_key": "tutor", "provider": "openai", "model_id": "gpt-5.2", "description": "Tutor"},
+            {"component_key": "book_ingestion", "provider": "openai", "model_id": "gpt-4o-mini", "description": "Ingestion"},
+        ]
+        mock_cls.return_value = mock_service
 
-        resp = health_client.get("/config/models")
+        # Need to override get_db since the endpoint now requires DB
+        from database import get_db
+        app = FastAPI()
+        app.include_router(health_router)
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        client = TestClient(app)
+
+        resp = client.get("/config/models")
         assert resp.status_code == 200
         data = resp.json()
         assert data["tutor"]["provider"] == "openai"
-        assert data["tutor"]["model_label"] == "GPT-5.2"
-        assert data["ingestion"]["provider"] == "openai"
-        assert data["ingestion"]["model_label"] == "GPT-4o Mini"
-
-    @patch("config.get_settings")
-    def test_returns_model_config_anthropic(self, mock_settings, health_client):
-        settings = MagicMock()
-        settings.resolved_tutor_provider = "anthropic"
-        settings.ingestion_llm_provider = "openai"
-        mock_settings.return_value = settings
-
-        resp = health_client.get("/config/models")
-        data = resp.json()
-        assert data["tutor"]["provider"] == "anthropic"
-        assert data["tutor"]["model_label"] == "Claude Opus 4.6"
-
-    @patch("config.get_settings")
-    def test_returns_model_config_anthropic_haiku(self, mock_settings, health_client):
-        settings = MagicMock()
-        settings.resolved_tutor_provider = "anthropic-haiku"
-        settings.ingestion_llm_provider = "openai"
-        mock_settings.return_value = settings
-
-        resp = health_client.get("/config/models")
-        data = resp.json()
-        assert data["tutor"]["model_label"] == "Claude Haiku 4.5"
-
-    @patch("config.get_settings")
-    def test_unknown_provider_label(self, mock_settings, health_client):
-        settings = MagicMock()
-        settings.resolved_tutor_provider = "some-new-provider"
-        settings.ingestion_llm_provider = "openai"
-        mock_settings.return_value = settings
-
-        resp = health_client.get("/config/models")
-        data = resp.json()
-        assert data["tutor"]["model_label"] == "some-new-provider"
+        assert data["tutor"]["model_id"] == "gpt-5.2"
+        assert data["book_ingestion"]["model_id"] == "gpt-4o-mini"
 
 
 # ============================================================================

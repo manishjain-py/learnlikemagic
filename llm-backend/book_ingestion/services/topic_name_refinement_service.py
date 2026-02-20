@@ -25,9 +25,9 @@ class TopicNameRefinementService:
     Called during finalize_book() to improve names based on full guideline content.
     """
 
-    def __init__(self, openai_client: OpenAI):
+    def __init__(self, openai_client: OpenAI, *, model: str):
         self.client = openai_client
-        self.model = "gpt-4o-mini"
+        self.model = model
         self.prompt_template = self._load_prompt_template()
 
     def _load_prompt_template(self) -> str:

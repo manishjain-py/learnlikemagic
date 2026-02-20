@@ -139,7 +139,7 @@ class ConversationEvaluator:
 
     def __init__(self, config: EvalConfig):
         self.config = config
-        self.provider = config.eval_llm_provider
+        self.provider = config.evaluator_provider
 
         if self.provider == "anthropic":
             import anthropic

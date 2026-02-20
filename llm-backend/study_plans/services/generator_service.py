@@ -98,8 +98,8 @@ class StudyPlanGeneratorService:
                 "reasoning_effort": "high"
             }))
 
-            # 3. Call LLM (GPT-5.2 with high reasoning and strict schema)
-            response = self.llm_service.call_gpt_5_2(
+            # 3. Call LLM (uses provider/model from DB config)
+            response = self.llm_service.call(
                 prompt=prompt,
                 reasoning_effort="high",
                 json_schema=self._study_plan_schema,
