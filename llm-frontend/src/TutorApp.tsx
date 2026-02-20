@@ -255,25 +255,21 @@ function App() {
     recognition.interimResults = true;
     recognition.lang = 'en-IN';
 
+    const baseInput = input; // snapshot before recording starts
     let finalTranscript = '';
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
+        const t = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += transcript;
+          finalTranscript += t;
         } else {
-          interim += transcript;
+          interim += t;
         }
       }
-      // Show interim results while speaking, final when done
-      setInput((prev) => {
-        const base = prev.endsWith(' ') || prev === '' ? prev : prev + ' ';
-        return finalTranscript
-          ? base + finalTranscript
-          : base + interim;
-      });
+      const spacer = baseInput && !baseInput.endsWith(' ') ? ' ' : '';
+      setInput(`${baseInput}${spacer}${finalTranscript || interim}`);
     };
 
     recognition.onerror = () => {
