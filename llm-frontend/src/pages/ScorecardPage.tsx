@@ -507,8 +507,9 @@ export default function ScorecardPage() {
           guideline_id: subtopic.guideline_id,
         },
       });
-      // Navigate to tutor with the new session
-      navigate('/', { state: { sessionId: response.session_id } });
+      // Navigate to tutor with the new session — pass firstTurn so TutorApp
+      // can skip topic selection and load directly into chat mode.
+      navigate('/', { state: { sessionId: response.session_id, firstTurn: response.first_turn } });
     } catch (err) {
       console.error('Failed to start session:', err);
     } finally {

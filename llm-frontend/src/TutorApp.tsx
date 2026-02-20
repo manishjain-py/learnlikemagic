@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   createSession,
@@ -25,6 +25,7 @@ interface Message {
 
 function App() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -73,6 +74,24 @@ function App() {
     getModelConfig()
       .then((config) => setModelLabel(config.tutor.model_label))
       .catch(() => setModelLabel(''));
+  }, []);
+
+  // Handle incoming session from "Practice Again" (scorecard navigation)
+  useEffect(() => {
+    const state = location.state as { sessionId?: string; firstTurn?: Turn } | null;
+    if (state?.sessionId && state?.firstTurn) {
+      setSessionId(state.sessionId);
+      setMessages([{
+        role: 'teacher',
+        content: state.firstTurn.message,
+        hints: state.firstTurn.hints,
+      }]);
+      setStepIdx(state.firstTurn.step_idx);
+      setMastery(state.firstTurn.mastery_score);
+      setSelectionStep('chat');
+      // Clear location state so a page refresh doesn't re-trigger
+      navigate('/', { replace: true, state: null });
+    }
   }, []);
 
   const fetchSubjects = async () => {
