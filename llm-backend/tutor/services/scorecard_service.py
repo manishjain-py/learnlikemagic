@@ -51,7 +51,7 @@ class ScorecardService:
             key=lambda x: x["score"],
         )[:5]
 
-        subject_scores = [s["score"] for s in subjects_data if s["score"] > 0]
+        subject_scores = [s["score"] for s in subjects_data]
         overall_score = sum(subject_scores) / len(subject_scores) if subject_scores else 0.0
 
         total_sessions = len(sessions)
@@ -273,7 +273,7 @@ class ScorecardService:
                         "misconceptions": sub_info["misconceptions"],
                     })
 
-                subtopic_scores = [s["score"] for s in subtopics_data if s["score"] > 0]
+                subtopic_scores = [s["score"] for s in subtopics_data]
                 topic_score = sum(subtopic_scores) / len(subtopic_scores) if subtopic_scores else 0.0
 
                 topics_data.append({
@@ -283,7 +283,7 @@ class ScorecardService:
                     "subtopics": subtopics_data,
                 })
 
-            topic_scores = [t["score"] for t in topics_data if t["score"] > 0]
+            topic_scores = [t["score"] for t in topics_data]
             subject_score = sum(topic_scores) / len(topic_scores) if topic_scores else 0.0
 
             session_count = sum(

@@ -314,6 +314,34 @@ class TestScorecardMultipleSessions:
         assert "Mathematics" in subject_names
         assert "Science" in subject_names
 
+    def test_zero_score_included_in_averages(self, db_session):
+        """Regression: subtopics with score 0.0 must count in averages, not be excluded."""
+        _create_user(db_session)
+        _create_guideline(db_session, guideline_id="g1", subtopic="Easy",
+                          subtopic_key="easy", topic_key="t")
+        _create_guideline(db_session, guideline_id="g2", subtopic="Hard",
+                          subtopic_key="hard", topic_key="t")
+
+        _create_session(db_session, guideline_id="g1",
+                        topic_name="Fractions - Easy", mastery=1.0)
+        # mastery_estimates={} avoids the `not overall_mastery` fallback path
+        _create_session(db_session, guideline_id="g2",
+                        topic_name="Fractions - Hard", mastery=0.0,
+                        mastery_estimates={})
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        # Topic average: (1.0 + 0.0) / 2 = 0.5 — NOT 1.0
+        topic = result["subjects"][0]["topics"][0]
+        assert topic["score"] == 0.5
+
+        # Subject average should propagate the same
+        assert result["subjects"][0]["score"] == 0.5
+
+        # Overall average should propagate the same
+        assert result["overall_score"] == 0.5
+
     def test_trend_data_includes_all_sessions(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
