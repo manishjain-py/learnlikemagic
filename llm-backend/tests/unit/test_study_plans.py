@@ -176,7 +176,7 @@ class TestStudyPlanReviewerService:
             "suggested_improvements": [],
             "overall_rating": 8,
         }
-        llm.call.return_value = json.dumps(review_result)
+        llm.call.return_value = {"output_text": json.dumps(review_result), "reasoning": None}
         llm.parse_json_response.return_value = review_result
 
         svc = StudyPlanReviewerService(llm, loader)
@@ -200,7 +200,7 @@ class TestStudyPlanReviewerService:
             "suggested_improvements": ["Add more steps"],
             "overall_rating": 4,
         }
-        llm.call.return_value = json.dumps(review_result)
+        llm.call.return_value = {"output_text": json.dumps(review_result), "reasoning": None}
         llm.parse_json_response.return_value = review_result
 
         svc = StudyPlanReviewerService(llm, loader)

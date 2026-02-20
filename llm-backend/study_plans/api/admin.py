@@ -122,12 +122,14 @@ def _build_study_plan_orchestrator(db: Session) -> StudyPlanOrchestrator:
     generator_llm = LLMService(
         api_key=settings.openai_api_key,
         gemini_api_key=settings.gemini_api_key,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         provider=gen_cfg["provider"],
         model_id=gen_cfg["model_id"],
     )
     reviewer_llm = LLMService(
         api_key=settings.openai_api_key,
         gemini_api_key=settings.gemini_api_key,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         provider=rev_cfg["provider"],
         model_id=rev_cfg["model_id"],
     )

@@ -126,11 +126,10 @@ class StudyPlanOrchestrator:
         )
 
         # Call LLM with JSON mode
-        response_text = self.reviewer_llm.call(
+        response = self.reviewer_llm.call(
             prompt=prompt,
-            max_tokens=4096,
             json_mode=True
         )
 
         # Parse and return
-        return self.llm_service.parse_json_response(response_text)
+        return self.reviewer_llm.parse_json_response(response["output_text"])
