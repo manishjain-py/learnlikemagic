@@ -958,3 +958,398 @@ body {
   font-size: 0.85rem;
   color: #666;
 }
+
+/* ──────────────────────────────────────────────
+   Scorecard Page
+   ────────────────────────────────────────────── */
+
+.scorecard-page {
+  max-width: 520px;
+}
+
+/* Hero card */
+.scorecard-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #f8f9ff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 1.5rem;
+}
+
+.scorecard-hero-score {
+  flex-shrink: 0;
+}
+
+.scorecard-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scorecard-hero-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.scorecard-hero-stats {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+/* Sections */
+.scorecard-section {
+  margin-bottom: 1.5rem;
+}
+
+.scorecard-section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+/* Highlights (strengths / needs-practice) */
+.scorecard-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scorecard-highlight-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.scorecard-highlights.strength .scorecard-highlight-icon {
+  color: #38a169;
+  font-weight: 700;
+}
+
+.scorecard-highlights.needs-practice .scorecard-highlight-icon {
+  color: #ff9800;
+}
+
+.scorecard-highlight-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.scorecard-highlight-score {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* Subject cards grid */
+.scorecard-subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.scorecard-subject-card {
+  padding: 16px;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scorecard-subject-card:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.scorecard-subject-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.scorecard-subject-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+}
+
+.scorecard-subject-score {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.scorecard-subject-meta {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+/* Mastery bar (reusable) */
+.mastery-bar {
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mastery-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Mastery badge (reusable) */
+.mastery-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mastery-badge.mastered {
+  background: #f0fff4;
+  color: #38a169;
+}
+
+.mastery-badge.getting-strong {
+  background: #f0f3ff;
+  color: #667eea;
+}
+
+.mastery-badge.getting-there {
+  background: #fff8e1;
+  color: #f57c00;
+}
+
+.mastery-badge.needs-practice {
+  background: #fff5f5;
+  color: #e53e3e;
+}
+
+/* Chart container */
+.scorecard-chart {
+  background: #fafafa;
+  border-radius: 10px;
+  padding: 12px 8px 4px;
+  border: 1px solid #eee;
+}
+
+/* Subject detail header */
+.scorecard-subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.scorecard-subject-detail-score {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+/* Topic section */
+.scorecard-topic-section {
+  background: white;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.scorecard-topic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.scorecard-topic-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #333;
+}
+
+.scorecard-topic-score {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* Subtopic rows */
+.scorecard-subtopic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scorecard-subtopic-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scorecard-subtopic-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scorecard-subtopic-name {
+  font-size: 0.9rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.scorecard-subtopic-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scorecard-subtopic-score {
+  font-weight: 700;
+  font-size: 0.85rem;
+  min-width: 36px;
+  text-align: right;
+}
+
+.scorecard-chevron {
+  font-size: 0.65rem;
+  color: #999;
+}
+
+/* Subtopic detail (expanded) */
+.scorecard-subtopic-detail {
+  padding: 10px 0 4px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.scorecard-detail-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.scorecard-concepts {
+  margin-bottom: 10px;
+}
+
+.scorecard-concept-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.85rem;
+}
+
+.scorecard-concept-name {
+  color: #555;
+}
+
+.scorecard-concept-score {
+  font-weight: 600;
+}
+
+/* Misconceptions */
+.scorecard-misconceptions,
+.scorecard-misconceptions-list {
+  margin-bottom: 10px;
+}
+
+.scorecard-misconception {
+  padding: 8px 10px;
+  background: #fff8e1;
+  border-left: 3px solid #ff9800;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.scorecard-misconception.resolved {
+  background: #f0fff4;
+  border-left-color: #38a169;
+}
+
+.scorecard-misconception-status,
+.scorecard-misconception-meta {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 4px;
+}
+
+.scorecard-subtopic-meta {
+  font-size: 0.8rem;
+  color: #888;
+  margin: 8px 0;
+}
+
+/* Practice Again button */
+.practice-again-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  margin-top: 4px;
+}
+
+.practice-again-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.practice-again-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Subtopic status indicators (topic selection) */
+.subtopic-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-left: 8px;
+}
+
+.subtopic-status.mastered {
+  color: #38a169;
+  background: #f0fff4;
+}
+
+.subtopic-status.in_progress {
+  color: #667eea;
+  background: #f0f3ff;
+}

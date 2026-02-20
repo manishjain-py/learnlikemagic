@@ -32,6 +32,7 @@ import EmailVerifyPage from './pages/EmailVerifyPage';
 import OnboardingFlow from './pages/OnboardingFlow';
 import ProfilePage from './pages/ProfilePage';
 import SessionHistoryPage from './pages/SessionHistoryPage';
+import ScorecardPage from './pages/ScorecardPage';
 
 // Admin pages
 import BooksDashboard from './features/admin/pages/BooksDashboard';
@@ -80,6 +81,12 @@ function App() {
           <Route path="/history" element={
             <ProtectedRoute>
               <SessionHistoryPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/scorecard" element={
+            <ProtectedRoute>
+              <ScorecardPage />
             </ProtectedRoute>
           } />
 
