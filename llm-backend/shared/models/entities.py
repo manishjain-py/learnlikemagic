@@ -186,4 +186,21 @@ class StudyPlan(Base):
     )
 
 
+
+class LLMConfig(Base):
+    """Centralized LLM model configuration per component.
+
+    Single source of truth for which provider+model each component uses.
+    Managed via /admin/llm-config UI. No fallbacks — missing config = error.
+    """
+    __tablename__ = "llm_config"
+
+    component_key = Column(String, primary_key=True)  # e.g. "tutor", "book_ingestion"
+    provider = Column(String, nullable=False)           # "openai", "anthropic", "google"
+    model_id = Column(String, nullable=False)           # "gpt-5.2", "claude-opus-4-6", etc.
+    description = Column(String, nullable=True)         # Human-readable description
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String, nullable=True)
+
+
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model

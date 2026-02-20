@@ -89,11 +89,11 @@ class BaseAgent(ABC):
             output_model = self.get_output_model()
             schema = get_strict_schema(output_model)
 
-            # Use existing LLMService.call_gpt_5_2 with strict schema
+            # Call LLM with strict schema — routes via provider/model from DB config
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
-                lambda: self.llm.call_gpt_5_2(
+                lambda: self.llm.call(
                     prompt=prompt,
                     reasoning_effort=self._reasoning_effort,
                     json_schema=schema,

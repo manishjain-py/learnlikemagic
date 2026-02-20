@@ -557,11 +557,23 @@ class TestRetryEvaluation:
 
 
 class TestRunEvaluationPipeline:
+    def _mock_db_for_eval(self, provider="openai", eval_model="gpt-5.2", sim_model="gpt-4o"):
+        """Helper: patch get_db_manager so from_db() returns a config with the given provider."""
+        mock_db = MagicMock()
+        mock_config_service = MagicMock()
+        mock_config_service.get_config.side_effect = lambda key: {
+            "eval_evaluator": {"provider": provider, "model_id": eval_model},
+            "eval_simulator": {"provider": provider, "model_id": sim_model},
+        }[key]
+        return patch("database.get_db_manager", return_value=MagicMock(session_factory=MagicMock(return_value=mock_db))), \
+               patch("shared.services.llm_config_service.LLMConfigService", return_value=mock_config_service)
+
     def test_pipeline_fails_on_missing_openai_key(self):
         """When OPENAI_API_KEY is empty, pipeline should set status=failed."""
         import evaluation.api as api_mod
 
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "", "EVAL_LLM_PROVIDER": "openai"}):
+        db_patch, svc_patch = self._mock_db_for_eval(provider="openai")
+        with db_patch, svc_patch, patch.dict("os.environ", {"OPENAI_API_KEY": ""}):
             api_mod._run_evaluation_pipeline("topic-1", "average_student.json", 5)
 
         with _eval_lock:
@@ -572,7 +584,8 @@ class TestRunEvaluationPipeline:
         """When ANTHROPIC_API_KEY is missing for anthropic provider."""
         import evaluation.api as api_mod
 
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "", "EVAL_LLM_PROVIDER": "anthropic"}):
+        db_patch, svc_patch = self._mock_db_for_eval(provider="anthropic", eval_model="claude-opus-4-6", sim_model="claude-opus-4-6")
+        with db_patch, svc_patch, patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
             api_mod._run_evaluation_pipeline("topic-1", "average_student.json", 5)
 
         with _eval_lock:

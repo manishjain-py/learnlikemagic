@@ -115,7 +115,7 @@ class TestTeachingDescriptionGenerator:
             from book_ingestion.services.teaching_description_generator import (
                 TeachingDescriptionGenerator,
             )
-            gen = TeachingDescriptionGenerator()
+            gen = TeachingDescriptionGenerator(model="gpt-4o-mini")
             assert gen.model == "gpt-4o-mini"
 
     @patch(
@@ -128,7 +128,7 @@ class TestTeachingDescriptionGenerator:
             TeachingDescriptionGenerator,
         )
         custom = MagicMock()
-        gen = TeachingDescriptionGenerator(openai_client=custom)
+        gen = TeachingDescriptionGenerator(openai_client=custom, model="gpt-4o-mini")
         assert gen.client is custom
 
     @patch(
@@ -144,7 +144,7 @@ class TestTeachingDescriptionGenerator:
             TeachingDescriptionGenerator,
         )
         mock_client = MagicMock()
-        gen = TeachingDescriptionGenerator(openai_client=mock_client)
+        gen = TeachingDescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         response_text = (
             "Line one: teach the concept.\n"
@@ -167,7 +167,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         shard = _make_v1_shard(objectives=[])
         with pytest.raises(ValueError, match="no objectives"):
             gen.generate(shard, grade=3, subject="Math")
@@ -185,7 +185,7 @@ class TestTeachingDescriptionGenerator:
             TeachingDescriptionGenerator,
         )
         mock_client = MagicMock()
-        gen = TeachingDescriptionGenerator(openai_client=mock_client)
+        gen = TeachingDescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         lines = [f"Line {i}: content here about teaching." for i in range(10)]
         mock_client.chat.completions.create.return_value = _mock_openai_response(
@@ -210,7 +210,7 @@ class TestTeachingDescriptionGenerator:
             TeachingDescriptionGenerator,
         )
         mock_client = MagicMock()
-        gen = TeachingDescriptionGenerator(openai_client=mock_client)
+        gen = TeachingDescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
         mock_client.chat.completions.create.side_effect = RuntimeError("API down")
 
         shard = _make_v1_shard()
@@ -228,7 +228,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         desc = (
             "First, teach the concept of fractions using visual models.\n"
             "Then, demonstrate examples with number lines and pie charts.\n"
@@ -247,7 +247,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         is_valid, errors = gen.validate_teaching_description("One line only about teaching.")
         assert is_valid is False
         assert any("Too few lines" in e for e in errors)
@@ -261,7 +261,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         desc = "Teach the concept of fractions.\nUse examples.\nShort.\nCheck understanding via tests."
         is_valid, errors = gen.validate_teaching_description(desc)
         assert is_valid is False
@@ -275,7 +275,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         desc = "\n".join(
             [f"Line {i}: teach the concept in great detail " * 3 for i in range(5)]
         )
@@ -293,7 +293,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         desc = (
             "The sky is blue and the grass is green today.\n"
             "Lorem ipsum dolor sit amet consectetur.\n"
@@ -318,7 +318,7 @@ class TestTeachingDescriptionGenerator:
             TeachingDescriptionGenerator,
         )
         mock_client = MagicMock()
-        gen = TeachingDescriptionGenerator(openai_client=mock_client)
+        gen = TeachingDescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         good = (
             "First, teach the concept of fractions.\n"
@@ -345,7 +345,7 @@ class TestTeachingDescriptionGenerator:
             TeachingDescriptionGenerator,
         )
         mock_client = MagicMock()
-        gen = TeachingDescriptionGenerator(openai_client=mock_client)
+        gen = TeachingDescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         bad = "Too short for teaching."
         mock_client.chat.completions.create.return_value = _mock_openai_response(bad)
@@ -366,7 +366,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         shard = _make_v1_shard(
             objectives=["Obj1", "Obj2"],
             examples=["Ex1", "Ex2", "Ex3", "Ex4", "Ex5", "Ex6"],
@@ -389,7 +389,7 @@ class TestTeachingDescriptionGenerator:
         from book_ingestion.services.teaching_description_generator import (
             TeachingDescriptionGenerator,
         )
-        gen = TeachingDescriptionGenerator(openai_client=MagicMock())
+        gen = TeachingDescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         shard = _make_v1_shard(objectives=[], examples=[], misconceptions=[], assessments=[])
         ctx = gen._build_context_from_shard(shard)
         assert ctx["objectives_str"] == "(None)"
@@ -413,7 +413,7 @@ class TestDescriptionGenerator:
     def test_init_default(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
         with patch("book_ingestion.services.description_generator.OpenAI"):
-            gen = DescriptionGenerator()
+            gen = DescriptionGenerator(model="gpt-4o-mini")
             assert gen.model == "gpt-4o-mini"
 
     @patch(
@@ -424,7 +424,7 @@ class TestDescriptionGenerator:
     def test_init_custom_client(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
         custom = MagicMock()
-        gen = DescriptionGenerator(openai_client=custom)
+        gen = DescriptionGenerator(openai_client=custom, model="gpt-4o-mini")
         assert gen.client is custom
 
     @patch(
@@ -438,7 +438,7 @@ class TestDescriptionGenerator:
     def test_generate_happy_path(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
         mock_client = MagicMock()
-        gen = DescriptionGenerator(openai_client=mock_client)
+        gen = DescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         # 200+ words
         words = " ".join(["word"] * 220)
@@ -455,7 +455,7 @@ class TestDescriptionGenerator:
     )
     def test_generate_no_objectives_raises(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
-        gen = DescriptionGenerator(openai_client=MagicMock())
+        gen = DescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         shard = _make_v1_shard(objectives=[])
         with pytest.raises(ValueError, match="no objectives"):
             gen.generate(shard, grade=3, subject="Math")
@@ -471,7 +471,7 @@ class TestDescriptionGenerator:
     def test_generate_llm_error_raises(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
         mock_client = MagicMock()
-        gen = DescriptionGenerator(openai_client=mock_client)
+        gen = DescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
         mock_client.chat.completions.create.side_effect = RuntimeError("API fail")
         shard = _make_v1_shard()
         with pytest.raises(ValueError, match="Description generation failed"):
@@ -488,7 +488,7 @@ class TestDescriptionGenerator:
     def test_generate_with_validation_accepts_in_range(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
         mock_client = MagicMock()
-        gen = DescriptionGenerator(openai_client=mock_client)
+        gen = DescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         # 250 words -- in target range
         text = " ".join(["word"] * 250)
@@ -509,7 +509,7 @@ class TestDescriptionGenerator:
     def test_generate_with_validation_retries(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
         mock_client = MagicMock()
-        gen = DescriptionGenerator(openai_client=mock_client)
+        gen = DescriptionGenerator(openai_client=mock_client, model="gpt-4o-mini")
 
         # 100 words -- too short, all attempts
         text = " ".join(["word"] * 100)
@@ -529,7 +529,7 @@ class TestDescriptionGenerator:
     )
     def test_build_context_empty_fields(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
-        gen = DescriptionGenerator(openai_client=MagicMock())
+        gen = DescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         shard = _make_v1_shard(objectives=[], examples=[], misconceptions=[], assessments=[])
         ctx = gen._build_context_from_shard(shard)
         assert ctx["objectives_str"] == "None specified"
@@ -544,7 +544,7 @@ class TestDescriptionGenerator:
     )
     def test_build_context_with_data(self, mock_load):
         from book_ingestion.services.description_generator import DescriptionGenerator
-        gen = DescriptionGenerator(openai_client=MagicMock())
+        gen = DescriptionGenerator(openai_client=MagicMock(), model="gpt-4o-mini")
         shard = _make_v1_shard()
         ctx = gen._build_context_from_shard(shard)
         assert "Understand adding fractions" in ctx["objectives_str"]
@@ -765,7 +765,7 @@ class TestFactsExtractionService:
     def test_init(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
         mock_client = MagicMock()
-        svc = FactsExtractionService(openai_client=mock_client)
+        svc = FactsExtractionService(openai_client=mock_client, model="gpt-4o-mini")
         assert svc.client is mock_client
         assert svc.model == "gpt-4o-mini"
 
@@ -777,7 +777,7 @@ class TestFactsExtractionService:
     def test_extract_happy_path(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
         mock_client = MagicMock()
-        svc = FactsExtractionService(openai_client=mock_client)
+        svc = FactsExtractionService(openai_client=mock_client, model="gpt-4o-mini")
 
         resp_json = json.dumps({
             "objectives_add": ["Learn fractions"],
@@ -798,7 +798,7 @@ class TestFactsExtractionService:
     )
     def test_extract_empty_text_raises(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
-        svc = FactsExtractionService(openai_client=MagicMock())
+        svc = FactsExtractionService(openai_client=MagicMock(), model="gpt-4o-mini")
         with pytest.raises(ValueError, match="cannot be empty"):
             svc.extract("", "Topic", grade=3, subject="Math")
 
@@ -809,7 +809,7 @@ class TestFactsExtractionService:
     )
     def test_extract_whitespace_only_raises(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
-        svc = FactsExtractionService(openai_client=MagicMock())
+        svc = FactsExtractionService(openai_client=MagicMock(), model="gpt-4o-mini")
         with pytest.raises(ValueError, match="cannot be empty"):
             svc.extract("   \n\t  ", "Topic", grade=3, subject="Math")
 
@@ -821,7 +821,7 @@ class TestFactsExtractionService:
     def test_extract_invalid_json_returns_empty(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
         mock_client = MagicMock()
-        svc = FactsExtractionService(openai_client=mock_client)
+        svc = FactsExtractionService(openai_client=mock_client, model="gpt-4o-mini")
         mock_client.chat.completions.create.return_value = _mock_openai_response("not json {{{")
         result = svc.extract("text", "Topic", grade=3, subject="Math")
         assert result.objectives_add == []
@@ -834,7 +834,7 @@ class TestFactsExtractionService:
     def test_extract_llm_error_returns_empty(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
         mock_client = MagicMock()
-        svc = FactsExtractionService(openai_client=mock_client)
+        svc = FactsExtractionService(openai_client=mock_client, model="gpt-4o-mini")
         mock_client.chat.completions.create.side_effect = RuntimeError("API down")
         result = svc.extract("text", "Topic", grade=3, subject="Math")
         assert result.objectives_add == []
@@ -847,7 +847,7 @@ class TestFactsExtractionService:
     def test_extract_batch_happy_path(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
         mock_client = MagicMock()
-        svc = FactsExtractionService(openai_client=mock_client)
+        svc = FactsExtractionService(openai_client=mock_client, model="gpt-4o-mini")
 
         resp_json = json.dumps({
             "objectives_add": ["Obj"],
@@ -870,7 +870,7 @@ class TestFactsExtractionService:
     )
     def test_extract_batch_mismatched_lengths_raises(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
-        svc = FactsExtractionService(openai_client=MagicMock())
+        svc = FactsExtractionService(openai_client=MagicMock(), model="gpt-4o-mini")
         with pytest.raises(ValueError, match="same length"):
             svc.extract_batch(["t1"], ["s1", "s2"], grade=3, subject="Math")
 
@@ -882,7 +882,7 @@ class TestFactsExtractionService:
     def test_extract_batch_partial_failure(self, mock_load):
         from book_ingestion.services.facts_extraction_service import FactsExtractionService
         mock_client = MagicMock()
-        svc = FactsExtractionService(openai_client=mock_client)
+        svc = FactsExtractionService(openai_client=mock_client, model="gpt-4o-mini")
 
         good_json = json.dumps({
             "objectives_add": ["Obj"],

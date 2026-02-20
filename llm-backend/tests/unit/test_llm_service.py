@@ -39,7 +39,7 @@ class TestLLMServiceInit:
     @patch("shared.services.llm_service.OpenAI")
     def test_init_with_only_api_key(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         mock_openai_cls.assert_called_once_with(api_key="fake-key")
         assert service.has_gemini is False
@@ -49,7 +49,7 @@ class TestLLMServiceInit:
     @patch("shared.services.llm_service.OpenAI")
     def test_init_with_gemini_key(self, mock_openai_cls, mock_genai):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key", gemini_api_key="gemini-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", gemini_api_key="gemini-key")
 
         assert service.has_gemini is True
         mock_genai.Client.assert_called_once_with(api_key="gemini-key")
@@ -57,7 +57,7 @@ class TestLLMServiceInit:
     @patch("shared.services.llm_service.OpenAI")
     def test_init_without_optional_keys(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         assert service.has_gemini is False
         assert service.anthropic_adapter is None
@@ -79,7 +79,7 @@ class TestCallGpt52:
         mock_result = _make_responses_result('{"answer": "42"}')
         mock_client.responses.create.return_value = mock_result
 
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         result = service.call_gpt_5_2(prompt="What is the meaning of life?")
 
         assert result["output_text"] == '{"answer": "42"}'
@@ -93,7 +93,7 @@ class TestCallGpt52:
         mock_result = _make_responses_result('{"field": "val"}')
         mock_client.responses.create.return_value = mock_result
 
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         schema = {"type": "object", "properties": {"field": {"type": "string"}}}
         result = service.call_gpt_5_2(
             prompt="test",
@@ -116,7 +116,7 @@ class TestCallGpt52:
         mock_result.reasoning.summary = "I thought about it"
         mock_client.responses.create.return_value = mock_result
 
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         result = service.call_gpt_5_2(prompt="test", reasoning_effort="high")
 
         assert result["reasoning"] == "I thought about it"
@@ -134,7 +134,7 @@ class TestCallGpt52AnthropicDelegation:
     def test_delegates_to_anthropic_when_provider_set(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
 
-        service = LLMService(api_key="fake-key", provider="anthropic")
+        service = LLMService(api_key="fake-key", provider="anthropic", model_id="claude-opus-4-6")
         # Manually set up the adapter mock
         mock_adapter = Mock()
         mock_adapter.call_sync.return_value = {"output_text": "claude says hi", "reasoning": None}
@@ -160,7 +160,7 @@ class TestCallGpt51:
         mock_result = _make_responses_result('{"plan": "step1"}')
         mock_client.responses.create.return_value = mock_result
 
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         result = service.call_gpt_5_1(prompt="Plan a lesson")
 
         assert result["output_text"] == '{"plan": "step1"}'
@@ -181,7 +181,7 @@ class TestCallGpt4o:
         mock_response = _make_chat_response('{"result": "ok"}')
         mock_client.chat.completions.create.return_value = mock_response
 
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         result = service.call_gpt_4o(prompt="Generate a response")
 
         assert result == '{"result": "ok"}'
@@ -195,7 +195,7 @@ class TestCallGpt4o:
         mock_response = _make_chat_response("plain text")
         mock_client.chat.completions.create.return_value = mock_response
 
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         service.call_gpt_4o(prompt="test", json_mode=False)
 
         call_kwargs = mock_client.chat.completions.create.call_args
@@ -220,7 +220,7 @@ class TestCallGemini:
         mock_response.text = '{"plan": "gemini output"}'
         mock_gemini_client.models.generate_content.return_value = mock_response
 
-        service = LLMService(api_key="fake-key", gemini_api_key="gemini-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", gemini_api_key="gemini-key")
         result = service.call_gemini(prompt="Generate a plan")
 
         assert result == '{"plan": "gemini output"}'
@@ -229,7 +229,7 @@ class TestCallGemini:
     @patch("shared.services.llm_service.OpenAI")
     def test_raises_when_not_configured(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         with pytest.raises(LLMServiceError, match="Gemini API key not configured"):
             service.call_gemini(prompt="test")
@@ -306,7 +306,7 @@ class TestExecuteWithRetry:
     @patch("shared.services.llm_service.OpenAI")
     def test_succeeds_on_first_try(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         fn = Mock(return_value="success")
         result = service._execute_with_retry(fn, "TestModel")
@@ -322,7 +322,7 @@ class TestExecuteWithRetry:
 
         from openai import RateLimitError
 
-        service = LLMService(api_key="fake-key", max_retries=3, initial_retry_delay=0.01)
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", max_retries=3, initial_retry_delay=0.01)
 
         fn = Mock(side_effect=[
             RateLimitError("rate limit", response=Mock(status_code=429), body=None),
@@ -342,7 +342,7 @@ class TestExecuteWithRetry:
 
         from openai import RateLimitError
 
-        service = LLMService(api_key="fake-key", max_retries=2, initial_retry_delay=0.01)
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", max_retries=2, initial_retry_delay=0.01)
 
         fn = Mock(side_effect=RateLimitError(
             "rate limit", response=Mock(status_code=429), body=None,
@@ -357,7 +357,7 @@ class TestExecuteWithRetry:
 
         from openai import AuthenticationError
 
-        service = LLMService(api_key="fake-key", max_retries=3)
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", max_retries=3)
 
         fn = Mock(side_effect=AuthenticationError(
             "bad key", response=Mock(status_code=401), body=None,
@@ -375,7 +375,7 @@ class TestParseJsonResponse:
     @patch("shared.services.llm_service.OpenAI")
     def test_valid_json(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         result = service.parse_json_response('{"key": "value", "num": 42}')
         assert result == {"key": "value", "num": 42}
@@ -383,7 +383,7 @@ class TestParseJsonResponse:
     @patch("shared.services.llm_service.OpenAI")
     def test_invalid_json_raises(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         with pytest.raises(LLMServiceError, match="Invalid JSON"):
             service.parse_json_response("not json at all")
@@ -391,7 +391,7 @@ class TestParseJsonResponse:
     @patch("shared.services.llm_service.OpenAI")
     def test_empty_object(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
-        service = LLMService(api_key="fake-key")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
 
         result = service.parse_json_response("{}")
         assert result == {}

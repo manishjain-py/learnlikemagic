@@ -18,28 +18,21 @@ def read_root():
 
 
 @router.get("/config/models")
-def get_model_config():
-    """Return current LLM model configuration per workflow."""
-    from config import get_settings
-    settings = get_settings()
+def get_model_config(db: DBSession = Depends(get_db)):
+    """Return current LLM model configuration per workflow from the DB llm_config table."""
+    from shared.services.llm_config_service import LLMConfigService
 
-    PROVIDER_LABELS = {
-        "openai": "GPT-5.2",
-        "anthropic": "Claude Opus 4.6",
-        "anthropic-haiku": "Claude Haiku 4.5",
-    }
+    config_service = LLMConfigService(db)
+    configs = config_service.get_all_configs()
 
-    tutor_provider = settings.resolved_tutor_provider
-    return {
-        "tutor": {
-            "provider": tutor_provider,
-            "model_label": PROVIDER_LABELS.get(tutor_provider, tutor_provider),
-        },
-        "ingestion": {
-            "provider": settings.ingestion_llm_provider,
-            "model_label": "GPT-4o Mini",
-        },
-    }
+    result = {}
+    for cfg in configs:
+        result[cfg["component_key"]] = {
+            "provider": cfg["provider"],
+            "model_id": cfg["model_id"],
+            "description": cfg.get("description", ""),
+        }
+    return result
 
 
 @router.get("/health/db")

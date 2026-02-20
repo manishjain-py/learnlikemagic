@@ -228,6 +228,21 @@ export interface EvaluateSessionRequest {
   session_id: string;
 }
 
+// ===== LLM Config Types =====
+
+export interface LLMConfig {
+  component_key: string;
+  provider: string;
+  model_id: string;
+  description: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface LLMConfigOptions {
+  [provider: string]: string[];
+}
+
 // ===== Study Plan Types =====
 
 export interface StudyPlanTodoItem {

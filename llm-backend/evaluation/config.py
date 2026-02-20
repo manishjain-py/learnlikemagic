@@ -51,10 +51,14 @@ class EvalConfig:
     evaluator_model: str = "gpt-5.2"
     evaluator_reasoning_effort: str = "high"
 
-    # Provider switch for evaluation pipeline (evaluator/judge)
+    # Legacy provider switch (sets both evaluator + simulator when per-component fields are not set)
     eval_llm_provider: str = field(
         default_factory=lambda: os.environ.get("EVAL_LLM_PROVIDER", "openai")
     )
+
+    # Per-component providers (set by from_db(); fall back to eval_llm_provider for CLI compat)
+    evaluator_provider: str = ""
+    simulator_provider: str = ""
 
     # Anthropic models
     anthropic_evaluator_model: str = "claude-opus-4-6"
@@ -80,14 +84,46 @@ class EvalConfig:
         "anthropic-haiku": "Claude Haiku 4.5",
     }
 
+    def __post_init__(self):
+        # Fall back to eval_llm_provider when per-component providers are not explicitly set
+        if not self.evaluator_provider:
+            self.evaluator_provider = self.eval_llm_provider
+        if not self.simulator_provider:
+            self.simulator_provider = self.eval_llm_provider
+
+    @classmethod
+    def from_db(cls, db_session, **kwargs) -> "EvalConfig":
+        """Create EvalConfig with evaluator/simulator models read from the DB llm_config table."""
+        from shared.services.llm_config_service import LLMConfigService
+
+        config_service = LLMConfigService(db_session)
+        eval_cfg = config_service.get_config("eval_evaluator")
+        sim_cfg = config_service.get_config("eval_simulator")
+
+        # Evaluator
+        kwargs["evaluator_provider"] = eval_cfg["provider"]
+        if eval_cfg["provider"] == "anthropic":
+            kwargs["anthropic_evaluator_model"] = eval_cfg["model_id"]
+        else:
+            kwargs["evaluator_model"] = eval_cfg["model_id"]
+
+        # Simulator
+        kwargs["simulator_provider"] = sim_cfg["provider"]
+        if sim_cfg["provider"] == "anthropic":
+            kwargs["anthropic_simulator_model"] = sim_cfg["model_id"]
+        else:
+            kwargs["simulator_model"] = sim_cfg["model_id"]
+
+        return cls(**kwargs)
+
     @property
     def tutor_model_label(self) -> str:
         return self.PROVIDER_LABELS.get(self.tutor_llm_provider, self.tutor_llm_provider)
 
     @property
     def evaluator_model_label(self) -> str:
-        if self.eval_llm_provider == "anthropic":
-            return f"Claude Opus 4.6"
+        if self.evaluator_provider == "anthropic":
+            return self.anthropic_evaluator_model
         return self.evaluator_model
 
     @property

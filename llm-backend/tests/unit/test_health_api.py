@@ -55,51 +55,24 @@ class TestReadRoot:
 
 class TestGetModelConfig:
 
-    @patch("config.get_settings")
-    def test_openai_tutor(self, mock_get_settings, app_and_client):
+    @patch("shared.services.llm_config_service.LLMConfigService")
+    def test_returns_all_configs(self, mock_cls, app_and_client):
         _, client, _ = app_and_client
 
-        mock_settings = MagicMock()
-        mock_settings.resolved_tutor_provider = "openai"
-        mock_settings.ingestion_llm_provider = "openai"
-        mock_get_settings.return_value = mock_settings
+        mock_service = MagicMock()
+        mock_service.get_all_configs.return_value = [
+            {"component_key": "tutor", "provider": "openai", "model_id": "gpt-5.2", "description": "Tutor"},
+            {"component_key": "book_ingestion", "provider": "openai", "model_id": "gpt-4o-mini", "description": "Ingestion"},
+        ]
+        mock_cls.return_value = mock_service
 
         resp = client.get("/config/models")
         assert resp.status_code == 200
         data = resp.json()
         assert data["tutor"]["provider"] == "openai"
-        assert data["tutor"]["model_label"] == "GPT-5.2"
-        assert data["ingestion"]["provider"] == "openai"
-        assert data["ingestion"]["model_label"] == "GPT-4o Mini"
-
-    @patch("config.get_settings")
-    def test_anthropic_tutor(self, mock_get_settings, app_and_client):
-        _, client, _ = app_and_client
-
-        mock_settings = MagicMock()
-        mock_settings.resolved_tutor_provider = "anthropic"
-        mock_settings.ingestion_llm_provider = "openai"
-        mock_get_settings.return_value = mock_settings
-
-        resp = client.get("/config/models")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["tutor"]["model_label"] == "Claude Opus 4.6"
-
-    @patch("config.get_settings")
-    def test_unknown_provider(self, mock_get_settings, app_and_client):
-        _, client, _ = app_and_client
-
-        mock_settings = MagicMock()
-        mock_settings.resolved_tutor_provider = "custom-provider"
-        mock_settings.ingestion_llm_provider = "openai"
-        mock_get_settings.return_value = mock_settings
-
-        resp = client.get("/config/models")
-        assert resp.status_code == 200
-        data = resp.json()
-        # Unknown provider falls back to provider name as label
-        assert data["tutor"]["model_label"] == "custom-provider"
+        assert data["tutor"]["model_id"] == "gpt-5.2"
+        assert data["book_ingestion"]["provider"] == "openai"
+        assert data["book_ingestion"]["model_id"] == "gpt-4o-mini"
 
 
 # ===========================================================================

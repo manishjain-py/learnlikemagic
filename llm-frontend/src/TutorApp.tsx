@@ -77,7 +77,7 @@ function App() {
   useEffect(() => {
     fetchSubjects();
     getModelConfig()
-      .then((config) => setModelLabel(config.tutor.model_label))
+      .then((config) => setModelLabel(config.tutor?.description || config.tutor?.model_id || ''))
       .catch(() => setModelLabel(''));
   }, []);
 

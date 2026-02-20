@@ -101,7 +101,6 @@ class TestSessionServiceCreateNewSession:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -128,7 +127,6 @@ class TestSessionServiceCreateNewSession:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
         mock_convert.return_value = _make_topic()
 
@@ -171,7 +169,6 @@ class TestSessionServiceProcessStep:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -195,7 +192,6 @@ class TestSessionServiceProcessStep:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -240,7 +236,6 @@ class TestSessionServiceGetSummary:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -264,7 +259,6 @@ class TestSessionServiceGetSummary:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -297,7 +291,6 @@ class TestSessionServiceGetSummary:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -334,7 +327,6 @@ class TestGenerateSuggestions:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService
@@ -359,7 +351,6 @@ class TestGenerateSuggestions:
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
-            resolved_tutor_provider="openai",
         )
 
         from tutor.services.session_service import SessionService

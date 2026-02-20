@@ -171,10 +171,13 @@ export async function submitStep(
   return response.json();
 }
 
-export interface ModelConfig {
-  tutor: { provider: string; model_label: string };
-  ingestion: { provider: string; model_label: string };
+export interface ModelConfigEntry {
+  provider: string;
+  model_id: string;
+  description: string;
 }
+
+export type ModelConfig = Record<string, ModelConfigEntry>;
 
 export async function getModelConfig(): Promise<ModelConfig> {
   const response = await apiFetch('/config/models');

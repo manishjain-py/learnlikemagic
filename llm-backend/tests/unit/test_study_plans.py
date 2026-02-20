@@ -69,7 +69,7 @@ class TestStudyPlanGeneratorService:
         loader.load.return_value = "Generate a plan for {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}"
 
         plan_dict = _valid_plan_dict()
-        llm.call_gpt_5_2.return_value = {
+        llm.call.return_value = {
             "output_text": json.dumps(plan_dict),
             "reasoning": None,
         }
@@ -86,14 +86,14 @@ class TestStudyPlanGeneratorService:
         assert "model" in result
         assert result["model"] == "gpt-5.2"
         assert len(result["plan"]["todo_list"]) == 2
-        llm.call_gpt_5_2.assert_called_once()
+        llm.call.assert_called_once()
 
     def test_generate_plan_raises_on_llm_error(self):
         llm = MagicMock()
         loader = MagicMock()
         loader.load.return_value = "Generate a plan for {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}"
         llm.make_schema_strict = MagicMock(return_value={})
-        llm.call_gpt_5_2.side_effect = RuntimeError("API error")
+        llm.call.side_effect = RuntimeError("API error")
 
         svc = StudyPlanGeneratorService(llm, loader)
         guideline = _make_guideline()
@@ -176,7 +176,7 @@ class TestStudyPlanReviewerService:
             "suggested_improvements": [],
             "overall_rating": 8,
         }
-        llm.call_gpt_4o.return_value = json.dumps(review_result)
+        llm.call.return_value = {"output_text": json.dumps(review_result), "reasoning": None}
         llm.parse_json_response.return_value = review_result
 
         svc = StudyPlanReviewerService(llm, loader)
@@ -187,7 +187,7 @@ class TestStudyPlanReviewerService:
         assert result["approved"] is True
         assert result["model"] == "gpt-4o"
         assert result["overall_rating"] == 8
-        llm.call_gpt_4o.assert_called_once()
+        llm.call.assert_called_once()
 
     def test_review_plan_rejected(self):
         llm = MagicMock()
@@ -200,7 +200,7 @@ class TestStudyPlanReviewerService:
             "suggested_improvements": ["Add more steps"],
             "overall_rating": 4,
         }
-        llm.call_gpt_4o.return_value = json.dumps(review_result)
+        llm.call.return_value = {"output_text": json.dumps(review_result), "reasoning": None}
         llm.parse_json_response.return_value = review_result
 
         svc = StudyPlanReviewerService(llm, loader)
@@ -215,7 +215,7 @@ class TestStudyPlanReviewerService:
         llm = MagicMock()
         loader = MagicMock()
         loader.load.return_value = "Review {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
-        llm.call_gpt_4o.side_effect = RuntimeError("Review failed")
+        llm.call.side_effect = RuntimeError("Review failed")
 
         svc = StudyPlanReviewerService(llm, loader)
         with pytest.raises(RuntimeError):
@@ -233,7 +233,7 @@ class TestStudyPlanOrchestrator:
         llm.make_schema_strict = MagicMock(return_value={})
 
         with patch("study_plans.services.orchestrator.PromptLoader"):
-            orch = StudyPlanOrchestrator(db, llm)
+            orch = StudyPlanOrchestrator(db, llm, llm)
         orch.generator = MagicMock()
         orch.reviewer = MagicMock()
         return orch

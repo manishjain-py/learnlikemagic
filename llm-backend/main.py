@@ -13,6 +13,7 @@ from database import get_db_manager
 from book_ingestion.api import routes as admin_routes
 from study_plans.api import admin as admin_guidelines
 from shared.api import health
+from shared.api import llm_config_routes
 from tutor.api import curriculum, sessions, transcription
 from evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
@@ -101,6 +102,7 @@ app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
 app.include_router(auth_router)              # Auth: POST /auth/sync
 app.include_router(profile_router)           # Profile: GET/PUT /profile
 app.include_router(docs_router)              # Docs: GET /api/docs
+app.include_router(llm_config_routes.router) # LLM config: GET/PUT /api/admin/llm-config
 
 
 @app.on_event("startup")

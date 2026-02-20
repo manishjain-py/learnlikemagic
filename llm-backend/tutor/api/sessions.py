@@ -351,17 +351,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
         session = SessionState.model_validate_json(db_session.state_json)
 
-        # Build orchestrator
+        # Build orchestrator — read LLM config from DB (once at session start)
         from config import get_settings
         from shared.services.llm_service import LLMService
+        from shared.services.llm_config_service import LLMConfigService
         from tutor.orchestration import TeacherOrchestrator
 
         settings = get_settings()
+        tutor_config = LLMConfigService(db).get_config("tutor")
         llm_service = LLMService(
             api_key=settings.openai_api_key,
+            provider=tutor_config["provider"],
+            model_id=tutor_config["model_id"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
-            provider=settings.resolved_tutor_provider,
         )
         orchestrator = TeacherOrchestrator(llm_service)
 

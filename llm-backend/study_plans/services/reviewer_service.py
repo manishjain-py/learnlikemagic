@@ -57,15 +57,14 @@ class StudyPlanReviewerService:
                 "guideline_id": guideline.id
             }))
 
-            # 3. Call LLM (GPT-4o with JSON mode)
-            response_text = self.llm_service.call_gpt_4o(
+            # 3. Call LLM with JSON mode
+            response = self.llm_service.call(
                 prompt=prompt,
-                max_tokens=2048,
                 json_mode=True
             )
 
             # 4. Parse Output
-            review_json = self.llm_service.parse_json_response(response_text)
+            review_json = self.llm_service.parse_json_response(response["output_text"])
 
             logger.info(json.dumps({
                 "step": "STUDY_PLAN_REVIEW",

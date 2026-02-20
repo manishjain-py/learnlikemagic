@@ -21,6 +21,8 @@ import {
   StartEvalRequest,
   SessionListResponse,
   EvaluateSessionRequest,
+  LLMConfig,
+  LLMConfigOptions,
 } from '../types';
 
 // Use environment variable for production, fallback to localhost for development
@@ -329,4 +331,26 @@ export async function listDocs(): Promise<DocsIndex> {
 
 export async function getDocContent(category: string, filename: string): Promise<DocContent> {
   return apiFetch<DocContent>(`/api/docs/${category}/${filename}`);
+}
+
+// ===== LLM Config =====
+
+export async function getLLMConfigs(): Promise<LLMConfig[]> {
+  return apiFetch<LLMConfig[]>('/api/admin/llm-config');
+}
+
+export async function updateLLMConfig(
+  componentKey: string,
+  provider: string,
+  modelId: string
+): Promise<LLMConfig> {
+  return apiFetch<LLMConfig>(`/api/admin/llm-config/${componentKey}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model_id: modelId }),
+  });
+}
+
+export async function getLLMConfigOptions(): Promise<LLMConfigOptions> {
+  return apiFetch<LLMConfigOptions>('/api/admin/llm-config/options');
 }

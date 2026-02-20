@@ -40,7 +40,7 @@ class Settings(BaseSettings):
         description="API server port"
     )
 
-    # LLM Configuration
+    # LLM API Keys (provider/model selection is in DB llm_config table)
     openai_api_key: str = Field(
         default="",
         description="OpenAI API key (required at runtime)"
@@ -52,22 +52,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(
         default="",
         description="Anthropic API key (optional, for Claude models)"
-    )
-    llm_model: str = Field(
-        default="gpt-4o-mini",
-        description="OpenAI model to use"
-    )
-    app_llm_provider: str = Field(
-        default="openai",
-        description="[DEPRECATED] Use tutor_llm_provider instead. Kept for backward compatibility."
-    )
-    tutor_llm_provider: str = Field(
-        default="openai",
-        description="LLM provider for tutor workflow: openai (gpt-5.2), anthropic (opus-4.6), or anthropic-haiku (haiku-4.5)."
-    )
-    ingestion_llm_provider: str = Field(
-        default="openai",
-        description="LLM provider for book ingestion workflow: openai (gpt-4o-mini). Anthropic support coming soon."
     )
 
     # Application Settings
@@ -108,11 +92,6 @@ class Settings(BaseSettings):
         default="us-east-1",
         description="AWS Cognito region"
     )
-
-    @property
-    def resolved_tutor_provider(self) -> str:
-        """Resolve tutor provider: tutor_llm_provider takes precedence, falls back to app_llm_provider."""
-        return self.tutor_llm_provider if self.tutor_llm_provider else self.app_llm_provider
 
     model_config = SettingsConfigDict(
         env_file=".env",

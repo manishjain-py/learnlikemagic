@@ -1,24 +1,11 @@
 """
-LLM Service for Tutor Workflow
+LLM Service — Centralized interface for all LLM API calls.
 
-This service provides a clean interface to OpenAI's API with:
-- Support for GPT-5.2, GPT-5.1 (with reasoning) and GPT-4o
-- Automatic retry logic with exponential backoff
-- Error handling for rate limits and timeouts
-- Response parsing and validation
-- Type safety
+Routes calls to the correct provider (OpenAI, Anthropic, Google) based on
+provider + model_id set from the DB-backed LLM config.
 
-Design Principles:
-- Single Responsibility: Only handles LLM API calls
-- Dependency Injection: Receives config via constructor
-- Testability: Easy to mock for testing
-
-GPT-5.2 Notes:
-- Uses Responses API (same as GPT-5.1)
-- Default reasoning is "none" (unlike GPT-5.1's "low")
-- New "xhigh" reasoning level for maximum reasoning
-- Supports structured output with json_schema (stricter than json_object)
-- Better token efficiency and cleaner formatting
+The primary entry point is `call()`. Legacy methods (call_gpt_5_2, call_gpt_4o, etc.)
+are kept as internal helpers.
 """
 
 import json
@@ -31,49 +18,36 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Models that use the OpenAI Responses API (vs Chat Completions)
+_RESPONSES_API_MODELS = {"gpt-5.2", "gpt-5.1"}
+
 
 class LLMService:
     """
     Service for making LLM API calls with retry logic and error handling.
 
-    Features:
-    - GPT-5.2 support with reasoning parameter and strict json_schema output
-    - GPT-5.1 support with reasoning parameter
-    - GPT-4o support for faster execution
-    - Gemini support for alternative planning
-    - Anthropic Claude support via AnthropicAdapter
-    - Automatic retries with exponential backoff
-    - Structured error handling
-    - JSON mode support
+    Both `provider` and `model_id` are REQUIRED — no defaults.
+    They come from the llm_config DB table via LLMConfigService.
     """
 
     def __init__(
         self,
         api_key: str,
+        *,
+        provider: str,
+        model_id: str,
         gemini_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
-        provider: str = "openai",
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
         timeout: int = 60,
     ):
-        """
-        Initialize LLM service.
-
-        Args:
-            api_key: OpenAI API key
-            gemini_api_key: Google Gemini API key
-            anthropic_api_key: Anthropic API key
-            provider: LLM provider (openai, anthropic, anthropic-haiku)
-            max_retries: Maximum number of retry attempts
-            initial_retry_delay: Initial delay between retries (seconds)
-            timeout: Request timeout (seconds)
-        """
         self.client = OpenAI(api_key=api_key)
         self.max_retries = max_retries
         self.initial_retry_delay = initial_retry_delay
         self.timeout = timeout
         self.provider = provider
+        self.model_id = model_id
 
         if gemini_api_key:
             self.gemini_client = genai.Client(api_key=gemini_api_key)
@@ -83,100 +57,14 @@ class LLMService:
 
         self.anthropic_adapter = None
         if anthropic_api_key:
-            from shared.services.anthropic_adapter import AnthropicAdapter, DEFAULT_CLAUDE_MODEL, CLAUDE_HAIKU_MODEL
-            model = CLAUDE_HAIKU_MODEL if provider == "anthropic-haiku" else DEFAULT_CLAUDE_MODEL
+            from shared.services.anthropic_adapter import AnthropicAdapter
             self.anthropic_adapter = AnthropicAdapter(
-                api_key=anthropic_api_key, timeout=timeout, model=model
+                api_key=anthropic_api_key, timeout=timeout, model=model_id
             )
 
-    def call_gpt_5_1(
-        self,
-        prompt: str,
-        reasoning_effort: Literal["low", "medium", "high"] = "low",
-        max_tokens: int = 4096,
-        json_mode: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Call GPT-5.1 with extended reasoning.
+    # ─── Primary entry point ───────────────────────────────────────────
 
-        Used for:
-        - Initial planning (strategic thinking)
-        - Replanning (analyzing what went wrong)
-        - Study plan generation
-
-        Args:
-            prompt: The prompt to send
-            reasoning_effort: How much thinking effort to use
-            max_tokens: Maximum tokens in response
-            json_mode: Whether to request JSON output (default True)
-
-        Returns:
-            Dict containing:
-                - output_text: The main output (valid JSON if json_mode=True)
-                - reasoning: The reasoning process (if available)
-
-        Raises:
-            LLMServiceError: If API call fails after retries
-        """
-        logger.info(json.dumps({
-            "step": "LLM_CALL",
-            "status": "starting",
-            "model": "gpt-5.1",
-            "params": {"reasoning_effort": reasoning_effort, "json_mode": json_mode}
-        }))
-
-        def _api_call():
-            try:
-                kwargs = {
-                    "model": "gpt-5.1",
-                    "input": prompt,
-                    "reasoning": {"effort": reasoning_effort},
-                    "timeout": self.timeout,
-                }
-
-                if json_mode:
-                    kwargs["text"] = {"format": {"type": "json_object"}}
-
-                result = self.client.responses.create(**kwargs)
-
-                # Convert reasoning object to string if present
-                # OpenAI SDK returns a Reasoning object, not a string
-                reasoning_obj = getattr(result, "reasoning", None)
-                reasoning_str = None
-                if reasoning_obj is not None:
-                    if hasattr(reasoning_obj, "summary") and reasoning_obj.summary:
-                        reasoning_str = str(reasoning_obj.summary)
-                    elif hasattr(reasoning_obj, "text") and reasoning_obj.text:
-                        reasoning_str = str(reasoning_obj.text)
-                    else:
-                        reasoning_str = str(reasoning_obj)
-
-                return {
-                    "output_text": result.output_text,
-                    "reasoning": reasoning_str,
-                }
-            except (OpenAIError, Exception) as e:
-                logger.warning(json.dumps({
-                    "step": "LLM_CALL",
-                    "status": "warning",
-                    "model": "gpt-5.1",
-                    "error": str(e),
-                    "message": "Falling back to GPT-4o"
-                }))
-                # Fallback to GPT-4o with same json_mode setting
-                fallback_response = self.call_gpt_4o(
-                    prompt=prompt,
-                    max_tokens=max_tokens,
-                    json_mode=json_mode
-                )
-                return {
-                    "output_text": fallback_response,
-                    "reasoning": "Fallback to GPT-4o due to GPT-5.1 failure",
-                }
-
-        return self._execute_with_retry(_api_call, "GPT-5.1")
-
-    def call_anthropic(
+    def call(
         self,
         prompt: str,
         reasoning_effort: str = "none",
@@ -185,82 +73,45 @@ class LLMService:
         schema_name: str = "response",
     ) -> Dict[str, Any]:
         """
-        Call Anthropic Claude via the adapter.
+        Generic LLM call — routes to the correct API based on self.provider + self.model_id.
 
-        Returns the same dict shape as call_gpt_5_2:
-            {output_text, reasoning, parsed?}
+        Always returns: {output_text: str, reasoning: str|None, parsed: dict|None}
         """
-        if not self.anthropic_adapter:
-            raise LLMServiceError("Anthropic adapter not configured (missing API key)")
+        if self.provider in ("anthropic", "anthropic-haiku"):
+            return self._call_anthropic(
+                prompt, reasoning_effort, json_mode, json_schema, schema_name
+            )
+        elif self.provider == "google":
+            text = self._call_gemini(prompt, model_name=self.model_id, json_mode=json_mode)
+            return {"output_text": text, "reasoning": None}
+        else:
+            # OpenAI — pick Responses API or Chat Completions based on model
+            if self.model_id in _RESPONSES_API_MODELS:
+                return self._call_responses_api(
+                    prompt, self.model_id, reasoning_effort, json_mode, json_schema, schema_name
+                )
+            else:
+                text = self._call_chat_completions(
+                    prompt, self.model_id, json_mode=json_mode
+                )
+                return {"output_text": text, "reasoning": None}
 
-        return self.anthropic_adapter.call_sync(
-            prompt=prompt,
-            reasoning_effort=reasoning_effort,
-            json_mode=json_mode,
-            json_schema=json_schema,
-            schema_name=schema_name,
-        )
+    # ─── OpenAI Responses API (gpt-5.2, gpt-5.1) ─────────────────────
 
-    def call_gpt_5_2(
+    def _call_responses_api(
         self,
         prompt: str,
-        reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "none",
+        model: str,
+        reasoning_effort: str = "none",
         json_mode: bool = True,
         json_schema: Optional[Dict[str, Any]] = None,
         schema_name: str = "response",
     ) -> Dict[str, Any]:
-        """
-        Call GPT-5.2 with extended reasoning and optional strict structured output.
-        If provider is anthropic/anthropic-haiku and adapter is available, delegates to Claude.
-
-        GPT-5.2 is the newest flagship model with improvements over GPT-5.1:
-        - Better token efficiency on medium-to-complex tasks
-        - Cleaner formatting with less unnecessary verbosity
-        - New "xhigh" reasoning effort level
-        - Default reasoning is "none" for lower latency (unlike GPT-5.1's "low")
-        - Supports strict json_schema for guaranteed schema adherence
-
-        Used for:
-        - Initial planning (strategic thinking) with "medium" or "high" reasoning
-        - Fast execution with "none" reasoning
-        - Strict structured output with json_schema parameter
-
-        Args:
-            prompt: The prompt to send
-            reasoning_effort: How much thinking effort to use
-                - "none": Fastest, no chain-of-thought (default)
-                - "low": Light reasoning
-                - "medium": Moderate reasoning
-                - "high": Heavy reasoning
-                - "xhigh": Maximum reasoning (new in 5.2)
-            json_mode: Whether to request JSON output (default True)
-            json_schema: Optional JSON schema for strict structured output.
-                         When provided, uses json_schema format instead of json_object.
-                         Schema must be strict-compliant (use make_schema_strict helper).
-            schema_name: Name for the schema (for logging/debugging)
-
-        Returns:
-            Dict containing:
-                - output_text: The main output (valid JSON if json_mode=True)
-                - reasoning: The reasoning process (if available)
-
-        Raises:
-            LLMServiceError: If API call fails after retries
-        """
-        # Delegate to Anthropic if provider is set
-        if self.provider in ("anthropic", "anthropic-haiku") and self.anthropic_adapter:
-            return self.call_anthropic(
-                prompt=prompt,
-                reasoning_effort=reasoning_effort,
-                json_mode=json_mode,
-                json_schema=json_schema,
-                schema_name=schema_name,
-            )
-
+        """Call OpenAI Responses API (gpt-5.2, gpt-5.1)."""
         logger.info(json.dumps({
             "step": "LLM_CALL",
             "status": "starting",
-            "model": "gpt-5.2",
+            "model": model,
             "params": {
                 "reasoning_effort": reasoning_effort,
                 "json_mode": json_mode,
@@ -270,212 +121,110 @@ class LLMService:
         }))
 
         def _api_call():
-            try:
-                kwargs = {
-                    "model": "gpt-5.2",
-                    "input": prompt,
-                    "timeout": self.timeout,
-                }
+            kwargs = {
+                "model": model,
+                "input": prompt,
+                "timeout": self.timeout,
+            }
 
-                # Add reasoning if not "none" (none is default for 5.2)
-                if reasoning_effort != "none":
-                    kwargs["reasoning"] = {"effort": reasoning_effort}
+            if reasoning_effort != "none":
+                kwargs["reasoning"] = {"effort": reasoning_effort}
 
-                # Add structured output format
-                if json_schema:
-                    # Use strict json_schema format for guaranteed schema adherence
-                    kwargs["text"] = {
-                        "format": {
-                            "type": "json_schema",
-                            "name": schema_name,
-                            "schema": json_schema,
-                            "strict": True,
-                        }
+            if json_schema:
+                kwargs["text"] = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": schema_name,
+                        "schema": json_schema,
+                        "strict": True,
                     }
-                elif json_mode:
-                    # Fall back to simple json_object format
-                    kwargs["text"] = {"format": {"type": "json_object"}}
-
-                result = self.client.responses.create(**kwargs)
-
-                # Convert reasoning object to string if present
-                # OpenAI SDK returns a Reasoning object, not a string
-                reasoning_obj = getattr(result, "reasoning", None)
-                reasoning_str = None
-                if reasoning_obj is not None:
-                    if hasattr(reasoning_obj, "summary") and reasoning_obj.summary:
-                        reasoning_str = str(reasoning_obj.summary)
-                    elif hasattr(reasoning_obj, "text") and reasoning_obj.text:
-                        reasoning_str = str(reasoning_obj.text)
-                    else:
-                        reasoning_str = str(reasoning_obj)
-
-                return {
-                    "output_text": result.output_text,
-                    "reasoning": reasoning_str,
                 }
-            except (OpenAIError, Exception) as e:
-                logger.warning(json.dumps({
-                    "step": "LLM_CALL",
-                    "status": "warning",
-                    "model": "gpt-5.2",
-                    "error": str(e),
-                    "message": "Falling back to GPT-5.1"
-                }))
-                # Fallback to GPT-5.1 with equivalent settings
-                # Map xhigh to high for GPT-5.1 compatibility
-                fallback_effort = "high" if reasoning_effort == "xhigh" else reasoning_effort
-                if fallback_effort == "none":
-                    fallback_effort = "low"  # GPT-5.1 doesn't support "none"
-                return self.call_gpt_5_1(
-                    prompt=prompt,
-                    reasoning_effort=fallback_effort,
-                    json_mode=json_mode,
-                )
+            elif json_mode:
+                kwargs["text"] = {"format": {"type": "json_object"}}
 
-        return self._execute_with_retry(_api_call, "GPT-5.2")
+            result = self.client.responses.create(**kwargs)
 
-    @staticmethod
-    def make_schema_strict(schema: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Transform a JSON schema to meet OpenAI's strict mode requirements.
-
-        OpenAI's structured output with strict=true requires:
-        1. All objects must have additionalProperties: false
-        2. All properties must be in the required array
-        3. $defs references must also be transformed
-        4. $ref cannot have sibling keywords (like description)
-
-        Use this when passing a Pydantic-generated schema to call_gpt_5_2().
-
-        Example:
-            from pydantic import BaseModel
-
-            class MyOutput(BaseModel):
-                field1: str
-                field2: int
-
-            schema = MyOutput.model_json_schema()
-            strict_schema = LLMService.make_schema_strict(schema)
-
-            response = llm_service.call_gpt_5_2(
-                prompt="...",
-                json_schema=strict_schema,
-                schema_name="MyOutput"
-            )
-
-        Args:
-            schema: Original JSON schema (e.g., from Pydantic's model_json_schema())
-
-        Returns:
-            Transformed schema meeting OpenAI's strict requirements
-        """
-        def transform(obj: Dict[str, Any]) -> Dict[str, Any]:
-            if not isinstance(obj, dict):
-                return obj
-
-            # If this object has a $ref, remove sibling keywords
-            # OpenAI requires $ref to be alone (no description, title, etc.)
-            if "$ref" in obj:
-                return {"$ref": obj["$ref"]}
-
-            result = {}
-            for key, value in obj.items():
-                if key == "$defs":
-                    # Transform all definitions
-                    result[key] = {k: transform(v) for k, v in value.items()}
-                elif isinstance(value, dict):
-                    result[key] = transform(value)
-                elif isinstance(value, list):
-                    result[key] = [
-                        transform(item) if isinstance(item, dict) else item
-                        for item in value
-                    ]
+            reasoning_obj = getattr(result, "reasoning", None)
+            reasoning_str = None
+            if reasoning_obj is not None:
+                if hasattr(reasoning_obj, "summary") and reasoning_obj.summary:
+                    reasoning_str = str(reasoning_obj.summary)
+                elif hasattr(reasoning_obj, "text") and reasoning_obj.text:
+                    reasoning_str = str(reasoning_obj.text)
                 else:
-                    result[key] = value
+                    reasoning_str = str(reasoning_obj)
 
-            # If this is an object type, add strict requirements
-            if result.get("type") == "object" and "properties" in result:
-                result["additionalProperties"] = False
-                # All properties must be required in strict mode
-                result["required"] = list(result["properties"].keys())
+            return {
+                "output_text": result.output_text,
+                "reasoning": reasoning_str,
+            }
 
-            return result
+        return self._execute_with_retry(_api_call, model)
 
-        return transform(schema)
+    # ─── OpenAI Chat Completions API (gpt-4o, gpt-4o-mini) ───────────
 
-    def call_gpt_4o(
+    def _call_chat_completions(
         self,
         prompt: str,
+        model: str,
         max_tokens: int = 2048,
         temperature: float = 0.7,
         json_mode: bool = True,
     ) -> str:
-        """
-        Call GPT-4o for faster execution.
-
-        Used for:
-        - Message generation (EXECUTOR)
-        - Response evaluation (EVALUATOR)
-
-        Args:
-            prompt: The prompt to send
-            max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
-            json_mode: Whether to request JSON output
-
-        Returns:
-            Response text (JSON string if json_mode=True)
-
-        Raises:
-            LLMServiceError: If API call fails after retries
-        """
+        """Call OpenAI Chat Completions API (gpt-4o, gpt-4o-mini). Returns raw text."""
         logger.info(json.dumps({
             "step": "LLM_CALL",
             "status": "starting",
-            "model": "gpt-4o",
+            "model": model,
             "params": {"json_mode": json_mode}
         }))
 
         def _api_call():
             kwargs = {
-                "model": "gpt-4o",
+                "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "timeout": self.timeout,
             }
-
             if json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
-
             response = self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
 
-        return self._execute_with_retry(_api_call, "GPT-4o")
+        return self._execute_with_retry(_api_call, model)
 
-    def call_gemini(
+    # ─── Anthropic ────────────────────────────────────────────────────
+
+    def _call_anthropic(
+        self,
+        prompt: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """Call Anthropic Claude via the adapter."""
+        if not self.anthropic_adapter:
+            raise LLMServiceError("Anthropic adapter not configured (missing API key)")
+        return self.anthropic_adapter.call_sync(
+            prompt=prompt,
+            reasoning_effort=reasoning_effort,
+            json_mode=json_mode,
+            json_schema=json_schema,
+            schema_name=schema_name,
+        )
+
+    # ─── Gemini ───────────────────────────────────────────────────────
+
+    def _call_gemini(
         self,
         prompt: str,
         model_name: str = "gemini-3-pro-preview",
         temperature: float = 0.7,
         json_mode: bool = True,
     ) -> str:
-        """
-        Call Google Gemini model.
-
-        Args:
-            prompt: The prompt to send
-            model_name: Model to use (e.g., gemini-3-pro-preview)
-            temperature: Sampling temperature
-            json_mode: Whether to request JSON output
-
-        Returns:
-            Response text
-
-        Raises:
-            LLMServiceError: If API call fails or Gemini not configured
-        """
+        """Call Google Gemini. Returns raw text."""
         if not self.has_gemini:
             raise LLMServiceError("Gemini API key not configured")
 
@@ -487,38 +236,116 @@ class LLMService:
         }))
 
         def _api_call():
-            config = {
-                "temperature": temperature,
-            }
-            
+            config = {"temperature": temperature}
             if json_mode:
                 config["response_mime_type"] = "application/json"
-
             response = self.gemini_client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config
+                model=model_name, contents=prompt, config=config
             )
-            
             return response.text
 
-        # Use generic retry logic
         return self._execute_with_retry(_api_call, f"Gemini-{model_name}")
 
+    # ─── Legacy methods (kept for internal use / backward compat) ─────
+
+    def call_anthropic(
+        self,
+        prompt: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """Legacy: Call Anthropic Claude."""
+        return self._call_anthropic(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+
+    def call_gpt_5_2(
+        self,
+        prompt: str,
+        reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """Legacy: Call GPT-5.2 (or Anthropic if provider is set)."""
+        if self.provider in ("anthropic", "anthropic-haiku") and self.anthropic_adapter:
+            return self._call_anthropic(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+        return self._call_responses_api(prompt, "gpt-5.2", reasoning_effort, json_mode, json_schema, schema_name)
+
+    def call_gpt_5_1(
+        self,
+        prompt: str,
+        reasoning_effort: Literal["low", "medium", "high"] = "low",
+        max_tokens: int = 4096,
+        json_mode: bool = True,
+    ) -> Dict[str, Any]:
+        """Legacy: Call GPT-5.1."""
+        return self._call_responses_api(prompt, "gpt-5.1", reasoning_effort, json_mode)
+
+    def call_gpt_4o(
+        self,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+        json_mode: bool = True,
+    ) -> str:
+        """Legacy: Call GPT-4o. Returns raw text string."""
+        return self._call_chat_completions(prompt, "gpt-4o", max_tokens, temperature, json_mode)
+
+    def call_gemini(
+        self,
+        prompt: str,
+        model_name: str = "gemini-3-pro-preview",
+        temperature: float = 0.7,
+        json_mode: bool = True,
+    ) -> str:
+        """Legacy: Call Gemini. Returns raw text string."""
+        return self._call_gemini(prompt, model_name, temperature, json_mode)
+
+    # ─── Helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def make_schema_strict(schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform a JSON schema to meet OpenAI's strict mode requirements.
+
+        OpenAI's structured output with strict=true requires:
+        1. All objects must have additionalProperties: false
+        2. All properties must be in the required array
+        3. $defs references must also be transformed
+        4. $ref cannot have sibling keywords (like description)
+        """
+        def transform(obj: Dict[str, Any]) -> Dict[str, Any]:
+            if not isinstance(obj, dict):
+                return obj
+
+            if "$ref" in obj:
+                return {"$ref": obj["$ref"]}
+
+            result = {}
+            for key, value in obj.items():
+                if key == "$defs":
+                    result[key] = {k: transform(v) for k, v in value.items()}
+                elif isinstance(value, dict):
+                    result[key] = transform(value)
+                elif isinstance(value, list):
+                    result[key] = [
+                        transform(item) if isinstance(item, dict) else item
+                        for item in value
+                    ]
+                else:
+                    result[key] = value
+
+            if result.get("type") == "object" and "properties" in result:
+                result["additionalProperties"] = False
+                result["required"] = list(result["properties"].keys())
+
+            return result
+
+        return transform(schema)
+
     def _execute_with_retry(self, api_call_fn, model_name: str) -> Any:
-        """
-        Execute API call with exponential backoff retry logic.
-
-        Args:
-            api_call_fn: Function that makes the API call
-            model_name: Name of model for logging
-
-        Returns:
-            Result from API call
-
-        Raises:
-            LLMServiceError: If all retries fail
-        """
+        """Execute API call with exponential backoff retry logic."""
         last_error = None
         delay = self.initial_retry_delay
         start_time = time.time()
@@ -528,7 +355,6 @@ class LLMService:
                 result = api_call_fn()
                 duration_ms = int((time.time() - start_time) * 1000)
 
-                # Log successful completion
                 logger.info(json.dumps({
                     "step": "LLM_CALL",
                     "status": "complete",
@@ -549,7 +375,7 @@ class LLMService:
                     f"Retrying in {delay}s..."
                 )
                 time.sleep(delay)
-                delay *= 2  # Exponential backoff
+                delay *= 2
 
             except APITimeoutError as e:
                 last_error = e
@@ -563,17 +389,13 @@ class LLMService:
             except OpenAIError as e:
                 last_error = e
                 logger.error(f"{model_name} API error: {str(e)}")
-                # Don't retry on other API errors
                 raise LLMServiceError(f"{model_name} API error: {str(e)}") from e
 
             except Exception as e:
                 last_error = e
                 logger.error(f"{model_name} unexpected error: {str(e)}")
-                # For Gemini, we might want to retry on some errors, but for now we'll treat them as unexpected
-                # unless we specifically import google.api_core.exceptions
                 raise LLMServiceError(f"{model_name} unexpected error: {str(e)}") from e
 
-        # All retries failed
         duration_ms = int((time.time() - start_time) * 1000)
         logger.info(json.dumps({
             "step": "LLM_CALL",
@@ -588,18 +410,7 @@ class LLMService:
         ) from last_error
 
     def parse_json_response(self, response: str) -> Dict[str, Any]:
-        """
-        Parse JSON response from LLM.
-
-        Args:
-            response: JSON string from LLM
-
-        Returns:
-            Parsed dictionary
-
-        Raises:
-            LLMServiceError: If JSON parsing fails
-        """
+        """Parse JSON response from LLM."""
         try:
             return json.loads(response)
         except json.JSONDecodeError as e:
@@ -609,5 +420,4 @@ class LLMService:
 
 class LLMServiceError(Exception):
     """Custom exception for LLM service errors"""
-
     pass

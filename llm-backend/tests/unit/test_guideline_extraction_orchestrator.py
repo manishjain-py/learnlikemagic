@@ -157,6 +157,7 @@ def orchestrator(mock_s3, mock_openai, mock_db_session):
             s3_client=mock_s3,
             openai_client=mock_openai,
             db_session=mock_db_session,
+            model="gpt-4o-mini",
         )
         yield orch
 
@@ -208,6 +209,7 @@ class TestInit:
                 s3_client=mock_s3,
                 openai_client=mock_openai,
                 db_session=None,
+                model="gpt-4o-mini",
             )
             assert orch.db_sync is None
 

@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 class TopicSubtopicSummaryService:
     """Generates and updates one-line summaries for topics and subtopics."""
 
-    def __init__(self, openai_client: OpenAI):
+    def __init__(self, openai_client: OpenAI, *, model: str):
         self.openai_client = openai_client
+        self.model = model
         self.subtopic_prompt_template = self._load_prompt("subtopic_summary.txt")
         self.topic_prompt_template = self._load_prompt("topic_summary.txt")
 
@@ -45,7 +46,7 @@ class TopicSubtopicSummaryService:
                 guidelines=guidelines[:max_chars]
             )
             response = self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that summarizes teaching guidelines."},
                     {"role": "user", "content": prompt}
@@ -91,7 +92,7 @@ class TopicSubtopicSummaryService:
                 subtopic_summaries=formatted_subtopics
             )
             response = self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self.model,
                 temperature=0.3,
                 max_tokens=120,
                 messages=[{

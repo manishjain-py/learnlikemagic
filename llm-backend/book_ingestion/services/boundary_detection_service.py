@@ -42,15 +42,16 @@ class BoundaryDetectionService:
     - No confidence scores or hysteresis (simple decision making)
     """
 
-    def __init__(self, openai_client: Optional[OpenAI] = None):
+    def __init__(self, openai_client: Optional[OpenAI] = None, *, model: str):
         """
         Initialize boundary detection service.
 
         Args:
             openai_client: Optional OpenAI client (if None, creates new one)
+            model: LLM model name from DB config (required)
         """
         self.client = openai_client or OpenAI()
-        self.model = "gpt-4o-mini"
+        self.model = model
         self.max_tokens = 1000  # Increased for guidelines extraction
 
         # Load prompt template

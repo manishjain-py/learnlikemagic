@@ -62,16 +62,24 @@ def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
     runner = None
     run_dir = None
     try:
-        config = EvalConfig(
-            topic_id=topic_id,
-            persona_file=persona_file,
-            max_turns=max_turns,
-        )
+        # Read evaluator/simulator models from DB config
+        from database import get_db_manager
+        db_manager = get_db_manager()
+        db = db_manager.session_factory()
+        try:
+            config = EvalConfig.from_db(
+                db,
+                topic_id=topic_id,
+                persona_file=persona_file,
+                max_turns=max_turns,
+            )
+        finally:
+            db.close()
 
-        if config.eval_llm_provider == "anthropic":
+        if config.evaluator_provider == "anthropic" or config.simulator_provider == "anthropic":
             if not config.anthropic_api_key:
                 raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
-        else:
+        if config.evaluator_provider != "anthropic" or config.simulator_provider != "anthropic":
             if not config.openai_api_key:
                 raise RuntimeError("OPENAI_API_KEY not found in environment")
 
@@ -150,19 +158,12 @@ def _run_session_evaluation(session_id: str):
 
     run_dir = None
     try:
-        config = EvalConfig()
-
-        if config.eval_llm_provider == "anthropic":
-            if not config.anthropic_api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
-        else:
-            if not config.openai_api_key:
-                raise RuntimeError("OPENAI_API_KEY not found in environment")
-
-        # Load session from DB
+        # Load session from DB and read eval config
         db_manager = get_db_manager()
         db = db_manager.session_factory()
         try:
+            config = EvalConfig.from_db(db)
+
             from shared.models.entities import Session as SessionModel
             db_session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
             if not db_session:
@@ -170,6 +171,13 @@ def _run_session_evaluation(session_id: str):
             session = SessionState.model_validate_json(db_session.state_json)
         finally:
             db.close()
+
+        if config.evaluator_provider == "anthropic":
+            if not config.anthropic_api_key:
+                raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
+        if config.evaluator_provider != "anthropic":
+            if not config.openai_api_key:
+                raise RuntimeError("OPENAI_API_KEY not found in environment")
 
         # Extract messages: prefer full_conversation_log, fall back to conversation_history
         messages = session.full_conversation_log if session.full_conversation_log else session.conversation_history
@@ -266,11 +274,19 @@ def _retry_evaluation(run_dir: Path):
         conversation = conv_data.get("messages", [])
         topic_id = config_data.get("topic_id", "")
 
-        config = EvalConfig(
-            topic_id=topic_id,
-            persona_file=config_data.get("persona_file", "average_student.json"),
-            max_turns=config_data.get("max_turns", 20),
-        )
+        # Read evaluator model from DB config
+        from database import get_db_manager
+        db_manager = get_db_manager()
+        db = db_manager.session_factory()
+        try:
+            config = EvalConfig.from_db(
+                db,
+                topic_id=topic_id,
+                persona_file=config_data.get("persona_file", "average_student.json"),
+                max_turns=config_data.get("max_turns", 20),
+            )
+        finally:
+            db.close()
 
         # Load persona if available
         persona = None

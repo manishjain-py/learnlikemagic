@@ -124,7 +124,7 @@ class TestEvalConfig:
         assert "gpt" in config.evaluator_model_label.lower() or "5.2" in config.evaluator_model_label
 
         config2 = _make_config(eval_llm_provider="anthropic")
-        assert "Claude" in config2.evaluator_model_label
+        assert "claude" in config2.evaluator_model_label.lower()
 
     def test_to_dict_excludes_keys(self):
         config = _make_config()
