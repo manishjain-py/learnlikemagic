@@ -86,6 +86,32 @@ const BooksDashboard: React.FC = () => {
         >
           Guidelines Review
         </button>
+        <button
+          onClick={() => navigate('/admin/evaluation')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: 'white',
+            color: '#374151',
+            border: '1px solid #D1D5DB',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          Evaluation
+        </button>
+        <button
+          onClick={() => navigate('/admin/docs')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: 'white',
+            color: '#374151',
+            border: '1px solid #D1D5DB',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          Docs
+        </button>
       </div>
 
       {/* Loading State */}

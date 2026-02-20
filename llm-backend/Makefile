@@ -54,10 +54,13 @@ build-prod:
 	@echo "========================================="
 	@echo "Target platform: linux/amd64"
 	@echo ""
+	@echo "Copying docs/ into build context..."
+	cp -r ../docs/ docs/
 	docker buildx build --platform linux/amd64 \
 		-t learnlikemagic-backend:amd64 \
 		-t learnlikemagic-backend:latest \
 		--load .
+	rm -rf docs/
 	@echo ""
 	@echo "✓ Production image built successfully for AMD64"
 	@echo ""
