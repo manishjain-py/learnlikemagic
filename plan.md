@@ -5,20 +5,29 @@ Single admin screen → DB-persisted config → components read from DB at runti
 
 ## Components to configure (6 logical components)
 
-| Component Key | Description | Current Model | Current Source |
+| Component Key | Description | Current Default | Current Source |
 |---|---|---|---|
-| `tutor` | Main tutoring pipeline (safety + master tutor + welcome) | gpt-5.2 / claude-opus-4-6 | env var `tutor_llm_provider` → method name |
-| `book_ingestion` | All 9+1 book ingestion services | gpt-4o-mini | hardcoded `self.model` in each service |
-| `study_plan_generator` | Study plan creation | gpt-5.2 | `call_gpt_5_2()` method name |
-| `study_plan_reviewer` | Study plan review + improvement | gpt-4o | `call_gpt_4o()` method name |
-| `eval_evaluator` | Evaluation judge | gpt-5.2 / claude-opus-4-6 | `evaluation/config.py` fields |
-| `eval_simulator` | Student simulator for evals | gpt-4o / claude-opus-4-6 | `evaluation/config.py` fields |
+| `tutor` | Tutoring pipeline (safety + master tutor + welcome) | openai / gpt-5.2 | env `TUTOR_LLM_PROVIDER` → `resolved_tutor_provider` |
+| `book_ingestion` | All 9 book ingestion services | openai / gpt-4o-mini | hardcoded `self.model` in 9 service files |
+| `study_plan_generator` | Study plan creation | openai / gpt-5.2 | hardcoded `call_gpt_5_2()` call |
+| `study_plan_reviewer` | Study plan review + improvement | openai / gpt-4o | hardcoded `call_gpt_4o()` call |
+| `eval_evaluator` | Evaluation judge | openai / gpt-5.2 | `EvalConfig.evaluator_model` + `EVAL_LLM_PROVIDER` env |
+| `eval_simulator` | Student simulator for evals | openai / gpt-4o | `EvalConfig.simulator_model` + `EVAL_LLM_PROVIDER` env |
+
+## Key Design Decisions
+
+- **Tutor reads config at session start only** — LLMService is constructed once per WebSocket connection (in `sessions.py:360` and `session_service.py:42`). The model is fixed for the entire session. This is correct — no mid-session model changes.
+- **API keys stay in env vars** — secrets don't go in DB. DB stores only component→provider→model.
+- **No caching** — tutor reads once at session start; admin endpoints read on each request (fast single-row SELECT).
+- **Seed defaults on migration** — system works out-of-box without manual admin config.
+- **Generic `call()` on LLMService** — routes to the right API (Responses vs Chat Completions vs Anthropic vs Gemini) based on provider+model. Old methods become internal.
+- **`model_id` stored on LLMService** — downstream code (agents, orchestrators) calls `self.llm.call()` without needing config service access.
 
 ---
 
 ## Step 1: DB table + entity model
 
-**File: `llm-backend/shared/models/entities.py`** — Add `LLMConfig` model:
+**File: `llm-backend/shared/models/entities.py`** — Add `LLMConfig` model after `StudyPlan`:
 ```python
 class LLMConfig(Base):
     __tablename__ = "llm_config"
@@ -27,190 +36,413 @@ class LLMConfig(Base):
     model_id = Column(String, nullable=False)           # "gpt-5.2", "claude-opus-4-6", etc.
     description = Column(String, nullable=True)         # Human-readable description
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    updated_by = Column(String, nullable=True)          # Who last changed it
+    updated_by = Column(String, nullable=True)
 ```
 
-**File: `llm-backend/db.py`** — Add seed logic in `migrate()` to insert default rows (matching current behavior) if table is empty. This ensures first-time setup works without manual config.
+**File: `llm-backend/db.py`** — Add `_seed_llm_config(db_manager)` function called from `migrate()`:
+- Inserts 6 default rows if `llm_config` table is empty
+- Defaults match current behavior exactly (openai/gpt-5.2 for tutor, openai/gpt-4o-mini for ingestion, etc.)
+
+---
 
 ## Step 2: Repository + Service (backend)
 
 **File: `llm-backend/shared/repositories/llm_config_repository.py`** (new):
-- `get_all() -> list[LLMConfig]`
-- `get_by_key(component_key) -> LLMConfig | None`
-- `upsert(component_key, provider, model_id, updated_by) -> LLMConfig`
+```python
+class LLMConfigRepository:
+    def __init__(self, db: Session): ...
+    def get_all(self) -> list[LLMConfig]: ...
+    def get_by_key(self, component_key: str) -> LLMConfig | None: ...
+    def upsert(self, component_key, provider, model_id, updated_by=None) -> LLMConfig: ...
+```
+
+**File: `llm-backend/shared/repositories/__init__.py`** — Export `LLMConfigRepository`.
 
 **File: `llm-backend/shared/services/llm_config_service.py`** (new):
-- Wraps the repository
-- `get_config(component_key) -> dict` — returns `{provider, model_id}`, falls back to hardcoded default if row missing (safety net only)
-- `get_all_configs() -> list[dict]`
-- `update_config(component_key, provider, model_id, updated_by) -> dict`
-- No in-memory caching needed: FastAPI creates services per-request, so each request hits DB (one fast SELECT). WebSocket connections read config at connection start, which is the right behavior (don't change model mid-session).
+```python
+# Hardcoded safety-net defaults (used ONLY if DB row missing)
+DEFAULTS = {
+    "tutor": {"provider": "openai", "model_id": "gpt-5.2"},
+    "book_ingestion": {"provider": "openai", "model_id": "gpt-4o-mini"},
+    "study_plan_generator": {"provider": "openai", "model_id": "gpt-5.2"},
+    "study_plan_reviewer": {"provider": "openai", "model_id": "gpt-4o"},
+    "eval_evaluator": {"provider": "openai", "model_id": "gpt-5.2"},
+    "eval_simulator": {"provider": "openai", "model_id": "gpt-4o"},
+}
+
+class LLMConfigService:
+    def __init__(self, db: Session): ...
+    def get_config(self, component_key: str) -> dict:
+        """Returns {provider, model_id}. Falls back to DEFAULTS if row missing."""
+    def get_all_configs(self) -> list[dict]: ...
+    def update_config(self, component_key, provider, model_id, updated_by=None) -> dict: ...
+```
+
+**File: `llm-backend/shared/services/__init__.py`** — Export `LLMConfigService`.
+
+---
 
 ## Step 3: Admin API endpoints
 
-**File: `llm-backend/shared/api/llm_config.py`** (new):
-- `GET /api/admin/llm-config` — returns all 6 configs
-- `PUT /api/admin/llm-config/{component_key}` — update provider + model for a component
-- Also returns available models per provider for the UI dropdown:
-  ```
-  GET /api/admin/llm-config/options → {
+**File: `llm-backend/shared/api/llm_config_routes.py`** (new):
+- `GET /api/admin/llm-config` — returns all 6 configs with descriptions
+- `PUT /api/admin/llm-config/{component_key}` — update provider + model
+- `GET /api/admin/llm-config/options` — returns available models per provider:
+  ```json
+  {
     "openai": ["gpt-5.2", "gpt-5.1", "gpt-4o", "gpt-4o-mini"],
     "anthropic": ["claude-opus-4-6", "claude-haiku-4-5-20251001"],
     "google": ["gemini-3-pro-preview"]
   }
   ```
 
-**File: `llm-backend/main.py`** — Register the new router.
+**File: `llm-backend/main.py`** — Add `from shared.api import llm_config_routes` and `app.include_router(llm_config_routes.router)`.
+
+---
 
 ## Step 4: Refactor LLMService — add generic `call()` method
 
 **File: `llm-backend/shared/services/llm_service.py`**:
 
-Add a new `call()` method that takes `provider` and `model` as parameters and routes accordingly:
-```python
-def call(self, provider: str, model: str, prompt: str,
-         reasoning_effort="none", json_mode=True,
-         json_schema=None, schema_name="response") -> Dict[str, Any]:
-    if provider in ("anthropic", "anthropic-haiku"):
-        # Use anthropic adapter with the specified model
-        ...
-    elif provider == "google":
-        return self.call_gemini(prompt, model_name=model, ...)
-    else:
-        # OpenAI - route to Responses API or Chat Completions based on model
-        if model in ("gpt-5.2", "gpt-5.1"):
-            # Use Responses API
-            ...
-        else:
-            # Use Chat Completions API (gpt-4o, gpt-4o-mini)
-            ...
-```
+1. Add `model_id` parameter to `__init__()`:
+   ```python
+   def __init__(self, api_key, ..., provider="openai", model_id=None):
+       self.provider = provider
+       self.model_id = model_id  # NEW: specific model from DB config
+   ```
 
-The existing `call_gpt_5_2()`, `call_gpt_4o()`, etc. remain as-is for backward compatibility during the transition — they'll be called only by the new `call()` method internally. No external callers should use them once refactoring is done.
+2. Add generic `call()` method that routes based on provider+model:
+   ```python
+   def call(self, prompt, reasoning_effort="none", json_mode=True,
+            json_schema=None, schema_name="response") -> Dict[str, Any]:
+       """Generic LLM call using self.provider and self.model_id."""
+       provider = self.provider
+       model = self.model_id
+
+       if provider in ("anthropic", "anthropic-haiku"):
+           return self.call_anthropic(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+       elif provider == "google":
+           return self.call_gemini(prompt, model_name=model)
+       else:  # openai
+           if model in ("gpt-5.2", "gpt-5.1"):
+               # Responses API path
+               return self._call_responses_api(prompt, model, reasoning_effort, json_mode, json_schema, schema_name)
+           else:
+               # Chat Completions API path (gpt-4o, gpt-4o-mini)
+               return self._call_chat_completions(prompt, model, json_mode=json_mode)
+   ```
+
+3. Extract internal methods `_call_responses_api()` and `_call_chat_completions()` from existing `call_gpt_5_2()` and `call_gpt_4o()` so the model name is parameterized.
+
+4. Keep `call_gpt_5_2()`, `call_gpt_4o()`, `call_gpt_5_1()` as thin wrappers calling the internal methods with hardcoded model names — these still work for tests and any code not yet migrated.
 
 **File: `llm-backend/shared/services/anthropic_adapter.py`**:
-- Allow `call_sync()` / `call_async()` to accept an optional `model` override parameter so we can pass the model from config without reconstructing the adapter.
+- Add optional `model` override parameter to `call_sync()` / `call_async()` / `_build_kwargs()`:
+  ```python
+  def call_sync(self, prompt, ..., model: str = None):
+      # If model override provided, use it; else use self.model
+  ```
+
+---
 
 ## Step 5: Refactor each component to read from config
 
-### 5a. Tutor workflow
-**Files: `session_service.py`, `sessions.py` (websocket)**
+### 5a. Tutor workflow (reads config at session start — NOT per turn)
 
-Currently:
+**File: `llm-backend/tutor/api/sessions.py`** (line 355-365):
 ```python
+# BEFORE:
 settings = get_settings()
-self.llm_service = LLMService(
-    api_key=settings.openai_api_key, ...,
-    provider=settings.resolved_tutor_provider,
+llm_service = LLMService(
+    api_key=settings.openai_api_key,
+    gemini_api_key=..., anthropic_api_key=...,
+    provider=settings.resolved_tutor_provider,  # ← env var
 )
-```
 
-After:
-```python
+# AFTER:
+settings = get_settings()
 from shared.services.llm_config_service import LLMConfigService
 config_service = LLMConfigService(db)
 tutor_config = config_service.get_config("tutor")
-# Pass provider from DB config, not from env var
-self.llm_service = LLMService(
-    api_key=settings.openai_api_key, ...,
-    provider=tutor_config["provider"],
+llm_service = LLMService(
+    api_key=settings.openai_api_key,
+    gemini_api_key=..., anthropic_api_key=...,
+    provider=tutor_config["provider"],   # ← DB
+    model_id=tutor_config["model_id"],   # ← DB
 )
 ```
 
-**Files: `base_agent.py`, `orchestrator.py`**
+**File: `llm-backend/tutor/services/session_service.py`** (line 41-47) — Same change.
 
-These call `self.llm.call_gpt_5_2(...)`. Change to:
+**File: `llm-backend/tutor/agents/base_agent.py`** (line 92-96):
 ```python
-self.llm.call(
-    provider=self.llm.provider,
-    model=self.llm.model,  # set during LLMService construction from DB config
-    prompt=prompt, ...
-)
+# BEFORE:
+self.llm.call_gpt_5_2(prompt=..., reasoning_effort=..., json_schema=..., schema_name=...)
+
+# AFTER:
+self.llm.call(prompt=..., reasoning_effort=..., json_schema=..., schema_name=...)
 ```
 
-The simplest approach: store the model_id on LLMService itself during construction, so components don't need to know about config service. LLMService already has `self.provider`; we add `self.model_id` and use it in the generic `call()`.
+**File: `llm-backend/tutor/orchestration/orchestrator.py`** (lines 265, 445):
+```python
+# BEFORE:
+self.llm.call_gpt_5_2(prompt=..., ...)
+
+# AFTER:
+self.llm.call(prompt=..., ...)
+```
 
 ### 5b. Book ingestion (9 services)
-**Files: All services in `book_ingestion/services/`**
 
-Currently each has `self.model = "gpt-4o-mini"`.
+**Files to change** (each has `self.model = "gpt-4o-mini"`):
+1. `book_ingestion/services/minisummary_service.py:44`
+2. `book_ingestion/services/boundary_detection_service.py:53`
+3. `book_ingestion/services/ocr_service.py:32`
+4. `book_ingestion/services/topic_deduplication_service.py:40`
+5. `book_ingestion/services/facts_extraction_service.py:43`
+6. `book_ingestion/services/teaching_description_generator.py:50`
+7. `book_ingestion/services/description_generator.py:55`
+8. `book_ingestion/services/topic_name_refinement_service.py:30`
+9. `book_ingestion/services/guideline_merge_service.py:36`
 
-After: Accept `model` as constructor parameter with no default, and the orchestrator passes it from config.
-
-**File: `book_ingestion/services/guideline_extraction_orchestrator.py`**:
+Change each to accept `model` as constructor parameter:
 ```python
-def __init__(self, s3_client, openai_client, db_session, llm_config_service=None):
-    config = llm_config_service.get_config("book_ingestion") if llm_config_service else {"model_id": "gpt-4o-mini"}
-    model = config["model_id"]
-    self.minisummary = MinisummaryService(openai_client, model=model)
-    self.boundary_detector = BoundaryDetectionService(openai_client, model=model)
-    # ... etc for all services
+# BEFORE:
+def __init__(self, openai_client=None):
+    self.client = openai_client or OpenAI()
+    self.model = "gpt-4o-mini"
+
+# AFTER:
+def __init__(self, openai_client=None, model: str = "gpt-4o-mini"):
+    self.client = openai_client or OpenAI()
+    self.model = model
 ```
 
-**File: `book_ingestion/api/routes.py`** — pass `LLMConfigService` to the orchestrator.
+**File: `book_ingestion/services/guideline_extraction_orchestrator.py`** (line 81-110):
+```python
+# BEFORE:
+def __init__(self, s3_client, openai_client=None, db_session=None):
+    self.minisummary = MinisummaryService(self.openai_client)
+    self.boundary_detector = BoundaryDetectionService(self.openai_client)
+    ...
+
+# AFTER:
+def __init__(self, s3_client, openai_client=None, db_session=None, model: str = "gpt-4o-mini"):
+    self.minisummary = MinisummaryService(self.openai_client, model=model)
+    self.boundary_detector = BoundaryDetectionService(self.openai_client, model=model)
+    ...
+```
+
+**File: `book_ingestion/api/routes.py`** (lines 438-442, 538-541):
+```python
+# BEFORE:
+orchestrator = GuidelineExtractionOrchestrator(s3_client=s3_client, openai_client=openai_client, db_session=db)
+
+# AFTER:
+from shared.services.llm_config_service import LLMConfigService
+config = LLMConfigService(db).get_config("book_ingestion")
+orchestrator = GuidelineExtractionOrchestrator(
+    s3_client=s3_client, openai_client=openai_client, db_session=db,
+    model=config["model_id"]
+)
+```
+
+**File: `study_plans/api/admin.py`** (lines 400, 468) — Same pattern for the 2 orchestrator creations in that file.
 
 ### 5c. Study plans
-**Files: `study_plans/services/generator_service.py`, `reviewer_service.py`, `orchestrator.py`**
 
-Generator currently calls `self.llm_service.call_gpt_5_2(...)`. Change to `self.llm_service.call(provider, model, ...)` where provider/model come from config.
+**File: `study_plans/services/generator_service.py`** (line 102):
+```python
+# BEFORE:
+response = self.llm_service.call_gpt_5_2(prompt=prompt, reasoning_effort="high", json_schema=..., schema_name=...)
 
-Approach: `StudyPlanOrchestrator` receives config service, looks up `study_plan_generator` and `study_plan_reviewer` configs, passes them to the respective services.
+# AFTER:
+response = self.llm_service.call(prompt=prompt, reasoning_effort="high", json_schema=..., schema_name=...)
+```
+The `LLMService` passed to the generator must have `provider` and `model_id` from the `study_plan_generator` DB config.
 
-**File: `study_plans/api/admin.py`** — pass config service into the orchestrator.
+**File: `study_plans/services/reviewer_service.py`** (line 61):
+```python
+# BEFORE:
+response_text = self.llm_service.call_gpt_4o(prompt=prompt, max_tokens=2048, json_mode=True)
+
+# AFTER:
+response_text = self.llm_service.call(prompt=prompt, json_mode=True)
+```
+The `LLMService` passed to the reviewer must have `provider` and `model_id` from the `study_plan_reviewer` DB config.
+
+**File: `study_plans/services/orchestrator.py`** (line 129):
+```python
+# BEFORE:
+response_text = self.llm_service.call_gpt_4o(prompt=prompt, max_tokens=4096, json_mode=True)
+
+# AFTER:
+response_text = self.llm_service.call(prompt=prompt, json_mode=True)
+```
+Uses the reviewer's LLMService since this is the improve step.
+
+**File: `study_plans/api/admin.py`** (line 113-115):
+```python
+# BEFORE:
+def get_llm_service():
+    settings = get_settings()
+    return LLMService(api_key=settings.openai_api_key, gemini_api_key=settings.gemini_api_key)
+
+# AFTER:
+def get_llm_service(db: Session, component_key: str):
+    settings = get_settings()
+    config = LLMConfigService(db).get_config(component_key)
+    return LLMService(
+        api_key=settings.openai_api_key,
+        gemini_api_key=settings.gemini_api_key,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        provider=config["provider"],
+        model_id=config["model_id"],
+    )
+```
+Generator and reviewer get separate LLMService instances with their own config.
 
 ### 5d. Evaluation pipeline
-**File: `evaluation/config.py`**
 
-`EvalConfig` currently has `evaluator_model`, `simulator_model`, etc. as hardcoded defaults.
+**File: `evaluation/config.py`** — Add `classmethod from_db()`:
+```python
+@classmethod
+def from_db(cls, db_session) -> "EvalConfig":
+    """Create EvalConfig with model settings from DB."""
+    from shared.services.llm_config_service import LLMConfigService
+    config_svc = LLMConfigService(db_session)
 
-Change: Add a classmethod `from_db(db_session)` that reads `eval_evaluator` and `eval_simulator` configs from DB and populates the fields. The CLI entry point (`run_evaluation.py`) uses this.
+    evaluator = config_svc.get_config("eval_evaluator")
+    simulator = config_svc.get_config("eval_simulator")
 
-## Step 6: Clean up old config
+    config = cls()
+    config.eval_llm_provider = evaluator["provider"]
+    config.evaluator_model = evaluator["model_id"]
+    config.anthropic_evaluator_model = evaluator["model_id"]  # unified
+    config.simulator_model = simulator["model_id"]
+    config.anthropic_simulator_model = simulator["model_id"]  # unified
+    return config
+```
 
-**File: `config.py`**:
-- Mark `tutor_llm_provider`, `ingestion_llm_provider`, `app_llm_provider`, `llm_model` as deprecated
-- Keep env vars for API keys only (those stay in env, not DB — secrets shouldn't be in DB)
-- Remove `resolved_tutor_provider` property
+**File: `evaluation/api.py`** — Use `EvalConfig.from_db(db)` instead of `EvalConfig()`.
+
+**File: `evaluation/run_evaluation.py`** — Use `EvalConfig.from_db(db_session)` at CLI entry point.
+
+---
+
+## Step 6: Remove deprecated config (NOT just mark — actually remove)
+
+### 6a. Remove from `config.py`
+
+**File: `llm-backend/config.py`** — DELETE these fields entirely:
+- `llm_model` (line 56-58) — never used by any live code
+- `app_llm_provider` (line 60-63) — replaced by DB config
+- `tutor_llm_provider` (line 64-67) — replaced by DB config
+- `ingestion_llm_provider` (line 68-71) — replaced by DB config
+- `resolved_tutor_provider` property (line 112-115) — replaced by DB config
+
+**KEEP** in `config.py`: `openai_api_key`, `gemini_api_key`, `anthropic_api_key` (secrets stay in env vars).
+
+### 6b. Remove from evaluation config
+
+**File: `evaluation/config.py`** — Remove these fields:
+- `eval_llm_provider` (line 55-57) — now comes from DB via `from_db()`
+- `tutor_llm_provider` (line 65-67) — now comes from DB via `from_db()`
+- `anthropic_evaluator_model` (line 60) — unified with `evaluator_model`
+- `anthropic_simulator_model` (line 61) — unified with `simulator_model`
+
+### 6c. Update health endpoint
+
+**File: `llm-backend/shared/api/health.py`** (line 20-42):
+- `GET /config/models` currently reads from env vars
+- Change to read from `LLMConfigService` (via DB)
+- This endpoint shows current config in the health check
+
+### 6d. Update all references
+
+These files reference the removed fields and must be updated:
+
+| File | What to change |
+|---|---|
+| `tutor/api/sessions.py:364` | `settings.resolved_tutor_provider` → DB config (done in step 5a) |
+| `tutor/services/session_service.py:46` | `settings.resolved_tutor_provider` → DB config (done in step 5a) |
+| `shared/api/health.py:32,39` | `settings.resolved_tutor_provider` / `settings.ingestion_llm_provider` → DB config |
+| `evaluation/config.py:66` | `os.environ.get("TUTOR_LLM_PROVIDER")` → DB config |
+| `evaluation/config.py:56` | `os.environ.get("EVAL_LLM_PROVIDER")` → DB config |
+
+### 6e. Update tests
+
+| Test file | What to change |
+|---|---|
+| `tests/unit/test_health_api.py:63,80,94` | `mock_settings.resolved_tutor_provider` / `ingestion_llm_provider` → mock config service |
+| `tests/unit/test_shared_api.py:58,73,85,96` | Same pattern |
+| `tests/unit/test_session_service.py` (9 occurrences) | `resolved_tutor_provider="openai"` → mock config service |
+| `tests/unit/test_evaluation.py:116,119` | `tutor_llm_provider` → DB config |
+| `tests/unit/test_base_agent.py:59,134,213,234` | `call_gpt_5_2` → `call` |
+| `tests/unit/test_orchestrator.py:213,228,631,636,642,652` | `call_gpt_5_2` → `call` |
+| `tests/unit/test_study_plans.py:72,89,96,179,190,203,218` | `call_gpt_5_2` / `call_gpt_4o` → `call` |
+| `tests/unit/test_llm_service.py` | Keep existing tests for backward-compat methods, add new tests for `call()` |
+
+---
 
 ## Step 7: Frontend admin page
 
+**File: `llm-frontend/src/features/admin/types/index.ts`** — Add types:
+```typescript
+export interface LLMConfig {
+  component_key: string;
+  provider: string;
+  model_id: string;
+  description: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface LLMConfigOptions {
+  [provider: string]: string[];  // provider → model list
+}
+```
+
+**File: `llm-frontend/src/features/admin/api/adminApi.ts`** — Add:
+```typescript
+export async function getLLMConfigs(): Promise<LLMConfig[]> { ... }
+export async function updateLLMConfig(componentKey: string, provider: string, modelId: string): Promise<LLMConfig> { ... }
+export async function getLLMConfigOptions(): Promise<LLMConfigOptions> { ... }
+```
+
 **File: `llm-frontend/src/features/admin/pages/LLMConfigPage.tsx`** (new):
-- Table showing all 6 components with their current provider + model
-- Each row has a provider dropdown and model dropdown (model options change based on provider)
-- Save button per row (or save all)
-- Show `updated_at` and `updated_by` for audit trail
-- Toast/notification on successful save
+- Table: component | description | provider dropdown | model dropdown | updated | save button
+- Provider dropdown changes → model dropdown options update accordingly
+- Success/error feedback on save
+- Style matches existing admin pages (inline styles, same color palette)
 
-**File: `llm-frontend/src/features/admin/api/adminApi.ts`** — add API functions:
-- `getLLMConfigs()`
-- `updateLLMConfig(componentKey, provider, modelId)`
-- `getLLMConfigOptions()`
+**File: `llm-frontend/src/App.tsx`** (line 100):
+- Add `import LLMConfigPage from './features/admin/pages/LLMConfigPage'`
+- Add route: `<Route path="/admin/llm-config" element={<LLMConfigPage />} />`
 
-**File: `llm-frontend/src/features/admin/types/index.ts`** — add types
-
-**File: `llm-frontend/src/App.tsx`** — add route: `/admin/llm-config`
-
-**File: `llm-frontend/src/features/admin/pages/BooksDashboard.tsx`** (or shared nav) — add nav link to LLM Config page
+**File: `llm-frontend/src/features/admin/pages/BooksDashboard.tsx`** (around line 87-108):
+- Add "LLM Config" nav button alongside existing "Guidelines Review", "Evaluation", "Docs" buttons
 
 ---
 
 ## Execution Order
-1. **Step 1** — DB table + entity (foundation)
-2. **Step 2** — Repository + service (backend plumbing)
-3. **Step 3** — Admin API endpoints (can test via curl)
-4. **Step 4** — Refactor LLMService with generic `call()` method
-5. **Step 5a** — Refactor tutor to use DB config
-6. **Step 5b** — Refactor book ingestion to use DB config
-7. **Step 5c** — Refactor study plans to use DB config
-8. **Step 5d** — Refactor evaluation to use DB config
-9. **Step 6** — Clean up old env var config
-10. **Step 7** — Frontend admin page
-11. **Run tests** — ensure existing tests pass, fix any broken ones
 
-## Key Design Decisions
+1. **Step 1** — DB table + entity + seed defaults
+2. **Step 2** — Repository + service
+3. **Step 3** — Admin API endpoints (testable via curl)
+4. **Step 7** — Frontend admin page (can work immediately with step 3)
+5. **Step 4** — Refactor LLMService with generic `call()` + `model_id` parameter
+6. **Step 5a** — Tutor: read config at session start from DB
+7. **Step 5b** — Book ingestion: pass model from DB config
+8. **Step 5c** — Study plans: use DB config for generator + reviewer
+9. **Step 5d** — Evaluation: use `EvalConfig.from_db()`
+10. **Step 6** — Remove deprecated env var config + update tests
+11. **Run tests** — ensure all existing tests pass
 
-- **API keys stay in env vars** — they're secrets, not config. DB stores only component→provider→model mapping.
-- **No caching** — per-request DB read is fast enough (single row SELECT). Avoids cache invalidation complexity.
-- **Seed defaults on migration** — so the system works out-of-box without admin intervention.
-- **Generic `call()` method** — routes to the right API (Responses vs Chat Completions vs Anthropic) based on provider+model. Existing methods become internal.
-- **Model on LLMService** — store `model_id` on the service instance so downstream code (agents, orchestrators) doesn't need config service access.
+## Safety: What prevents breakage
+
+- **Default seeding**: `migrate()` seeds DB with exact current defaults → no behavior change on deploy
+- **Fallback defaults in service**: `LLMConfigService.get_config()` returns hardcoded defaults if DB row missing
+- **Old methods kept**: `call_gpt_5_2()`, `call_gpt_4o()` still work as internal methods
+- **Book ingestion default param**: `model: str = "gpt-4o-mini"` in constructors → works even if config service not passed
+- **Tests updated in same step**: every functional change updates its tests in lock-step
