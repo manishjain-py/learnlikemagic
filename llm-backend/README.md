@@ -61,11 +61,11 @@ uvicorn main:app --reload
 
 | Doc | Purpose | When to Reference |
 |-----|---------|-------------------|
-| `../docs/backend-architecture.md` | Layers, key terms, file conventions | Understanding code organization |
-| `../docs/dev-workflow.md` | Setup, testing, making changes | Development workflow |
-| `../docs/deployment.md` | AWS, CI/CD, troubleshooting | Deploying to production |
-| `../docs/TUTOR_WORKFLOW_PIPELINE.md` | 3-agent tutoring system | Working on tutor module |
-| `../docs/BOOK_GUIDELINES_PIPELINE.md` | Book ingestion pipeline | Working on book_ingestion |
+| `../docs/technical/architecture-overview.md` | Architecture, tech stack, conventions | Understanding code organization |
+| `../docs/technical/dev-workflow.md` | Setup, testing, making changes | Development workflow |
+| `../docs/technical/deployment.md` | AWS, CI/CD, troubleshooting | Deploying to production |
+| `../docs/technical/learning-session.md` | Tutor pipeline: agents, orchestration | Working on tutor module |
+| `../docs/technical/book-guidelines.md` | Book ingestion pipeline | Working on book_ingestion |
 
 ## Key Conventions
 
@@ -94,7 +94,7 @@ pytest -m unit            # Fast unit tests only
 pytest --cov-report=html  # Coverage report
 ```
 
-See `../docs/dev-workflow.md` for full testing guide.
+See `../docs/technical/dev-workflow.md` for full testing guide.
 
 ## Docker
 
@@ -106,4 +106,4 @@ docker buildx build --platform linux/amd64 -t llm-backend .
 docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... -e DATABASE_URL=... llm-backend
 ```
 
-See `../docs/deployment.md` for full deployment guide.
+See `../docs/technical/deployment.md` for full deployment guide.

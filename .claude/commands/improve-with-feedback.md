@@ -2,7 +2,7 @@
 
 You are running a feedback → persona → fix → evaluate → review cycle to improve the tutor based on real user feedback.
 
-**Reference:** Read `docs/EVALUATION_PIPELINE.md` for full pipeline details before starting.
+**Reference:** Read `docs/technical/evaluation.md` for full pipeline details before starting.
 
 ---
 

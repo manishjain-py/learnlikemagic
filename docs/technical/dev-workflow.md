@@ -1,5 +1,9 @@
 # Development Workflow
 
+Local setup, daily workflow, testing, and making changes.
+
+---
+
 ## Setup
 
 ### Backend
@@ -24,6 +28,7 @@ docker run -d --name llm-postgres \
   -p 5432:5432 postgres:15-alpine
 
 cd llm-backend
+source venv/bin/activate
 python db.py --migrate
 ```
 
@@ -100,19 +105,19 @@ curl -X POST http://localhost:8000/sessions \
 
 ### Adding an API Endpoint
 
-1. **Schema** (`models/schemas.py`): Define request/response models
+1. **Schema** (`models/`): Define request/response models
 2. **Service** (`services/`): Add business logic
-3. **Route** (`api/routes/`): Create endpoint
+3. **Route** (`api/`): Create endpoint
 4. **Register** (`main.py`): `app.include_router(new_router)`
 5. **Test** (`tests/unit/`): Add unit tests
 
 ### Adding Database Models
 
-1. **ORM model** (`models/database.py`): Define table
+1. **ORM model** (`shared/models/entities.py`): Define table
 2. **Repository** (`repositories/`): Add CRUD operations
 3. **Migrate**: `python db.py --migrate`
 
-See `docs/backend-architecture.md` for detailed file structure and conventions.
+See `docs/technical/architecture-overview.md` for detailed file structure and conventions.
 
 ---
 
@@ -133,13 +138,7 @@ aws s3 sync dist/ s3://learnlikemagic-frontend-production --delete
 aws cloudfront create-invalidation --distribution-id E19EYV4ZGTL1L9 --paths "/*"
 ```
 
-**Verify:**
-```bash
-curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/
-curl https://dlayb9nj2goz.cloudfront.net/
-```
-
-See `docs/deployment.md` for full deployment guide.
+See `docs/technical/deployment.md` for the full deployment guide.
 
 ---
 

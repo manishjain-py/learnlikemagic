@@ -41,12 +41,13 @@ npm install && npm run dev  # http://localhost:5173
 | Doc | Purpose |
 |-----|---------|
 | [CLAUDE.md](CLAUDE.md) | Documentation index for AI assistants |
-| [Backend Architecture](docs/backend-architecture.md) | Code organization, key terms, file conventions |
-| [Dev Workflow](docs/dev-workflow.md) | Setup, testing, daily workflow |
-| [Deployment](docs/deployment.md) | AWS infrastructure, CI/CD |
-| [Tutor Pipeline](docs/TUTOR_WORKFLOW_PIPELINE.md) | Single master tutor agent with evaluation pipeline |
-| [Book Guidelines Pipeline](docs/BOOK_GUIDELINES_PIPELINE.md) | Book ingestion & extraction |
-| [Tech Stack](docs/tech-stack-rationale.md) | Technology choices |
+| [Documentation Guidelines](docs/DOCUMENTATION_GUIDELINES.md) | Doc structure, writing rules, master index |
+| [Architecture Overview](docs/technical/architecture-overview.md) | Full-stack architecture, tech stack, conventions |
+| [Dev Workflow](docs/technical/dev-workflow.md) | Setup, testing, daily workflow |
+| [Deployment](docs/technical/deployment.md) | AWS infrastructure, CI/CD |
+| [Tutor Pipeline](docs/technical/learning-session.md) | Single master tutor agent, orchestration, APIs |
+| [Book Guidelines Pipeline](docs/technical/book-guidelines.md) | Book ingestion & extraction |
+| [Database](docs/technical/database.md) | DB schema, migrations |
 
 ## Tech Stack
 

@@ -16,14 +16,22 @@ learnlikemagic/
 
 | Doc | Purpose | When to Reference |
 |-----|---------|-------------------|
-| `docs/backend-architecture.md` | Backend layers, key terms (service, agent, orchestration, repository), file conventions | Understanding code organization, where to add new code |
-| `docs/dev-workflow.md` | Local setup, daily workflow, testing, making changes | Setting up dev environment, running tests, git workflow |
-| `docs/deployment.md` | AWS infrastructure, CI/CD, production URLs, troubleshooting | Deploying, debugging prod issues, infrastructure questions |
-| `docs/tech-stack-rationale.md` | Why each technology was chosen | Understanding tech decisions |
-| `docs/TUTOR_WORKFLOW_PIPELINE.md` | Tutor feature: single master tutor agent, WebSocket + REST, evaluation pipeline | Working on tutoring sessions, agent logic, orchestration |
-| `docs/EVALUATION_PIPELINE.md` | Evaluation QA: persona simulation, LLM judge, 5-dimension scoring, report artifacts, viewing results | Working on evaluation pipeline, tutor quality, viewing eval results |
-| `docs/BOOK_GUIDELINES_PIPELINE.md` | Book ingestion feature: OCR, topic detection, guideline extraction | Working on book upload, content extraction |
-| `docs/UX_PRINCIPLES.md` | App-wide UX principles: mobile-first, friendly language, minimal typing, accessibility | Building any user-facing feature or screen |
+| `docs/DOCUMENTATION_GUIDELINES.md` | Doc structure, writing rules, master index | Understanding doc organization |
+| `docs/functional/app-overview.md` | What the app is, user journey, UX philosophy | App context, onboarding new people |
+| `docs/functional/learning-session.md` | Tutoring experience from student POV | Understanding the tutor feature |
+| `docs/functional/evaluation.md` | Tutor quality testing from admin POV | Understanding evaluation |
+| `docs/functional/scorecard.md` | Student progress report | Understanding scorecard |
+| `docs/functional/book-guidelines.md` | Book → guidelines → study plans from admin POV | Understanding content pipeline |
+| `docs/functional/auth-and-onboarding.md` | Login, signup, onboarding | Understanding auth flows |
+| `docs/technical/architecture-overview.md` | Full-stack architecture, tech stack, conventions | Code organization, adding new code |
+| `docs/technical/learning-session.md` | Tutor pipeline technical details | Working on tutor code |
+| `docs/technical/evaluation.md` | Evaluation pipeline technical details | Working on evaluation |
+| `docs/technical/scorecard.md` | Scorecard service technical details | Working on scorecard |
+| `docs/technical/book-guidelines.md` | Book/guidelines pipeline technical details | Working on content pipeline |
+| `docs/technical/auth-and-onboarding.md` | Auth architecture, Cognito, APIs | Working on auth |
+| `docs/technical/dev-workflow.md` | Local setup, testing, git workflow | Dev environment, testing |
+| `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |
+| `docs/technical/database.md` | DB schema, migrations | Database changes |
 
 ## Key Conventions
 
