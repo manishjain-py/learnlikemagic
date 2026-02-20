@@ -17,6 +17,7 @@ from tutor.api import curriculum, sessions
 from evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
 from auth.api.profile_routes import router as profile_router
+from api.docs import router as docs_router
 
 # Validate configuration on startup
 validate_required_settings()
@@ -98,6 +99,7 @@ app.include_router(admin_routes.router)  # Book ingestion admin routes
 app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
 app.include_router(auth_router)              # Auth: POST /auth/sync
 app.include_router(profile_router)           # Profile: GET/PUT /profile
+app.include_router(docs_router)              # Docs: GET /api/docs
 
 
 @app.on_event("startup")

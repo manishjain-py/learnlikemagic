@@ -48,6 +48,9 @@ Thumbs.db
 # Evaluation runs (generated output)
 llm-backend/evaluation/runs/
 
+# Docs copied into backend during Docker build
+llm-backend/docs/
+
 # Test coverage
 .coverage
 htmlcov/

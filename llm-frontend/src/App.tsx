@@ -40,6 +40,7 @@ import CreateBook from './features/admin/pages/CreateBook';
 import BookDetail from './features/admin/pages/BookDetail';
 import GuidelinesReview from './features/admin/pages/GuidelinesReview';
 import EvaluationDashboard from './features/admin/pages/EvaluationDashboard';
+import DocsViewer from './features/admin/pages/DocsViewer';
 
 function App() {
   return (
@@ -97,6 +98,7 @@ function App() {
           <Route path="/admin/books/:id" element={<BookDetail />} />
           <Route path="/admin/guidelines" element={<GuidelinesReview />} />
           <Route path="/admin/evaluation" element={<EvaluationDashboard />} />
+          <Route path="/admin/docs" element={<DocsViewer />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

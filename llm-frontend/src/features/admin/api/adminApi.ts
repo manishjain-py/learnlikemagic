@@ -303,3 +303,30 @@ export async function evaluateSession(request: EvaluateSessionRequest): Promise<
     body: JSON.stringify(request),
   });
 }
+
+// ===== Documentation =====
+
+export interface DocEntry {
+  filename: string;
+  title: string;
+}
+
+export interface DocsIndex {
+  functional?: DocEntry[];
+  technical?: DocEntry[];
+  root?: DocEntry[];
+}
+
+export interface DocContent {
+  filename: string;
+  category: string;
+  content: string;
+}
+
+export async function listDocs(): Promise<DocsIndex> {
+  return apiFetch<DocsIndex>('/api/docs');
+}
+
+export async function getDocContent(category: string, filename: string): Promise<DocContent> {
+  return apiFetch<DocContent>(`/api/docs/${category}/${filename}`);
+}
