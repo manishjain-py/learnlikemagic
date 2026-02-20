@@ -65,6 +65,7 @@ def _valid_plan_dict():
 class TestStudyPlanGeneratorService:
     def test_generate_plan_success(self):
         llm = MagicMock()
+        llm.model_id = "gpt-5.2"
         loader = MagicMock()
         loader.load.return_value = "Generate a plan for {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}"
 
@@ -90,6 +91,7 @@ class TestStudyPlanGeneratorService:
 
     def test_generate_plan_raises_on_llm_error(self):
         llm = MagicMock()
+        llm.model_id = "gpt-5.2"
         loader = MagicMock()
         loader.load.return_value = "Generate a plan for {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}"
         llm.make_schema_strict = MagicMock(return_value={})
@@ -167,6 +169,7 @@ class TestStudyPlanPydanticModels:
 class TestStudyPlanReviewerService:
     def test_review_plan_approved(self):
         llm = MagicMock()
+        llm.model_id = "gpt-4o"
         loader = MagicMock()
         loader.load.return_value = "Review {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
 

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Pydantic Models for Strict Structured Output (GPT-5.2)
+# Pydantic Models for Strict Structured Output
 # =============================================================================
 
 class StudyPlanStep(BaseModel):
@@ -40,20 +40,20 @@ class StudyPlanGeneratorService:
     """
     Service to generate generic study plans from teaching guidelines.
 
-    Uses GPT-5.2 with high reasoning effort and strict schema validation
+    Uses high reasoning effort and strict schema validation
     for high-quality, structured study plan generation.
     """
 
     def __init__(self, llm_service: LLMService, prompt_loader):
         """
         Args:
-            llm_service: Service for LLM calls (uses GPT-5.2 with high reasoning)
+            llm_service: Service for LLM calls (uses high reasoning effort)
             prompt_loader: Utility to load prompt templates
         """
         self.llm_service = llm_service
         self.prompt_loader = prompt_loader
 
-        # Pre-compute the strict schema for GPT-5.2 structured output
+        # Pre-compute the strict schema for structured output
         self._study_plan_schema = LLMService.make_schema_strict(
             StudyPlan.model_json_schema()
         )
@@ -94,7 +94,7 @@ class StudyPlanGeneratorService:
                 "status": "starting",
                 "guideline_id": guideline.id,
                 "topic": topic,
-                "model": "gpt-5.2",
+                "model": self.llm_service.model_id,
                 "reasoning_effort": "high"
             }))
 
@@ -134,14 +134,14 @@ class StudyPlanGeneratorService:
                 "step": "STUDY_PLAN_GENERATION",
                 "status": "complete",
                 "guideline_id": guideline.id,
-                "model": "gpt-5.2",
+                "model": self.llm_service.model_id,
                 "has_reasoning": bool(reasoning_str)
             }))
 
             return {
                 "plan": plan_dict,
                 "reasoning": reasoning_str,
-                "model": "gpt-5.2"
+                "model": self.llm_service.model_id
             }
 
         except Exception as e:

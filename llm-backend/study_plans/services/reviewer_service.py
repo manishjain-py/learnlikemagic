@@ -78,7 +78,7 @@ class StudyPlanReviewerService:
                 "feedback": review_json.get("feedback", ""),
                 "suggested_improvements": review_json.get("suggested_improvements", []),
                 "overall_rating": review_json.get("overall_rating"),
-                "model": "gpt-4o"
+                "model": self.llm_service.model_id
             }
 
         except Exception as e:
