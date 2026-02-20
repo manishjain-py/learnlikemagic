@@ -193,3 +193,78 @@ export async function getSummary(sessionId: string): Promise<SummaryResponse> {
 
   return response.json();
 }
+
+// ──────────────────────────────────────────────
+// Scorecard types & API
+// ──────────────────────────────────────────────
+
+export interface ScorecardMisconception {
+  description: string;
+  resolved: boolean;
+}
+
+export interface ScorecardSubtopic {
+  subtopic: string;
+  subtopic_key: string;
+  guideline_id: string | null;
+  score: number;
+  session_count: number;
+  latest_session_date: string | null;
+  concepts: Record<string, number>;
+  misconceptions: ScorecardMisconception[];
+}
+
+export interface ScorecardTopic {
+  topic: string;
+  topic_key: string;
+  score: number;
+  subtopics: ScorecardSubtopic[];
+}
+
+export interface ScorecardTrendPoint {
+  date: string | null;
+  date_label: string | null;
+  score: number;
+}
+
+export interface ScorecardSubject {
+  subject: string;
+  score: number;
+  session_count: number;
+  topics: ScorecardTopic[];
+  trend: ScorecardTrendPoint[];
+}
+
+export interface ScorecardHighlight {
+  subtopic: string;
+  subject: string;
+  score: number;
+}
+
+export interface ScorecardResponse {
+  overall_score: number;
+  total_sessions: number;
+  total_topics_studied: number;
+  subjects: ScorecardSubject[];
+  strengths: ScorecardHighlight[];
+  needs_practice: ScorecardHighlight[];
+}
+
+export interface SubtopicProgress {
+  score: number;
+  session_count: number;
+  status: 'mastered' | 'in_progress';
+}
+
+export async function getScorecard(): Promise<ScorecardResponse> {
+  const response = await apiFetch('/sessions/scorecard');
+  if (!response.ok) throw new Error(`Failed to fetch scorecard: ${response.statusText}`);
+  return response.json();
+}
+
+export async function getSubtopicProgress(): Promise<Record<string, SubtopicProgress>> {
+  const response = await apiFetch('/sessions/subtopic-progress');
+  if (!response.ok) throw new Error(`Failed to fetch progress: ${response.statusText}`);
+  const data = await response.json();
+  return data.user_progress;
+}

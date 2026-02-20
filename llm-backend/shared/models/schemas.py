@@ -63,6 +63,79 @@ class CurriculumResponse(BaseModel):
     subtopics: Optional[List[SubtopicInfo]] = None
 
 
+# ── Scorecard schemas ──
+
+class ScorecardMisconception(BaseModel):
+    """A misconception detected during a session."""
+    description: str
+    resolved: bool
+
+
+class ScorecardSubtopic(BaseModel):
+    """Subtopic-level performance data."""
+    subtopic: str
+    subtopic_key: str
+    guideline_id: Optional[str] = None
+    score: float
+    session_count: int
+    latest_session_date: Optional[str] = None
+    concepts: Dict[str, float]
+    misconceptions: List[ScorecardMisconception]
+
+
+class ScorecardTopic(BaseModel):
+    """Topic-level aggregated performance."""
+    topic: str
+    topic_key: str
+    score: float
+    subtopics: List[ScorecardSubtopic]
+
+
+class ScorecardTrendPoint(BaseModel):
+    """A single data point for mastery trend over time."""
+    date: Optional[str] = None
+    date_label: Optional[str] = None
+    score: float
+
+
+class ScorecardSubject(BaseModel):
+    """Subject-level aggregated performance with trend data."""
+    subject: str
+    score: float
+    session_count: int
+    topics: List[ScorecardTopic]
+    trend: List[ScorecardTrendPoint]
+
+
+class ScorecardHighlight(BaseModel):
+    """A highlighted subtopic (strength or needs-practice)."""
+    subtopic: str
+    subject: str
+    score: float
+
+
+class ScorecardResponse(BaseModel):
+    """Complete student scorecard response."""
+    overall_score: float
+    total_sessions: int
+    total_topics_studied: int
+    subjects: List[ScorecardSubject]
+    strengths: List[ScorecardHighlight]
+    needs_practice: List[ScorecardHighlight]
+
+
+class SubtopicProgressEntry(BaseModel):
+    """Progress for a single subtopic (used in topic selection indicators)."""
+    score: float
+    session_count: int
+    status: str  # "mastered" | "in_progress"
+
+
+class SubtopicProgressResponse(BaseModel):
+    """Lightweight subtopic progress lookup for curriculum picker."""
+    user_progress: Dict[str, SubtopicProgressEntry]
+
+
 # Import GuidelineMetadata for forward reference
 from .domain import GuidelineMetadata
 GuidelineResponse.model_rebuild()

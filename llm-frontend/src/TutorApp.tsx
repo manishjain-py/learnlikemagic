@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   createSession,
@@ -7,9 +7,11 @@ import {
   getSummary,
   getCurriculum,
   getModelConfig,
+  getSubtopicProgress,
   Turn,
   SummaryResponse,
   SubtopicInfo,
+  SubtopicProgress,
 } from './api';
 import { useAuth } from './contexts/AuthContext';
 import DevToolsDrawer from './features/devtools/components/DevToolsDrawer';
@@ -23,6 +25,7 @@ interface Message {
 
 function App() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -49,6 +52,7 @@ function App() {
   const [showHints, setShowHints] = useState<number | null>(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string>('');
+  const [subtopicProgress, setSubtopicProgress] = useState<Record<string, SubtopicProgress>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Student profile from authenticated user (replaces hardcoded values)
@@ -70,6 +74,24 @@ function App() {
     getModelConfig()
       .then((config) => setModelLabel(config.tutor.model_label))
       .catch(() => setModelLabel(''));
+  }, []);
+
+  // Handle incoming session from "Practice Again" (scorecard navigation)
+  useEffect(() => {
+    const state = location.state as { sessionId?: string; firstTurn?: Turn } | null;
+    if (state?.sessionId && state?.firstTurn) {
+      setSessionId(state.sessionId);
+      setMessages([{
+        role: 'teacher',
+        content: state.firstTurn.message,
+        hints: state.firstTurn.hints,
+      }]);
+      setStepIdx(state.firstTurn.step_idx);
+      setMastery(state.firstTurn.mastery_score);
+      setSelectionStep('chat');
+      // Clear location state so a page refresh doesn't re-trigger
+      navigate('/', { replace: true, state: null });
+    }
   }, []);
 
   const fetchSubjects = async () => {
@@ -122,6 +144,8 @@ function App() {
       });
       setSubtopics(response.subtopics || []);
       setSelectionStep('subtopic');
+      // Fetch user progress for coverage indicators
+      getSubtopicProgress().then(setSubtopicProgress).catch(() => {});
     } catch (error) {
       console.error('Failed to fetch subtopics:', error);
       alert('Failed to load subtopics.');
@@ -261,6 +285,8 @@ function App() {
             style={menuItemStyle}>Profile</button>
           <button onClick={() => { setShowUserMenu(false); navigate('/history'); }}
             style={menuItemStyle}>My Sessions</button>
+          <button onClick={() => { setShowUserMenu(false); navigate('/scorecard'); }}
+            style={menuItemStyle}>My Scorecard</button>
           <button onClick={handleLogout}
             style={{ ...menuItemStyle, color: '#e53e3e' }}>Log Out</button>
         </div>
@@ -345,6 +371,13 @@ function App() {
                       onClick={() => handleSubtopicSelect(subtopic)}
                     >
                       {subtopic.subtopic}
+                      {subtopicProgress[subtopic.guideline_id] && (
+                        <span className={`subtopic-status ${subtopicProgress[subtopic.guideline_id].status}`}>
+                          {subtopicProgress[subtopic.guideline_id].status === 'mastered' ? '\u2713' : '\u25CF'}
+                          {' '}
+                          {(subtopicProgress[subtopic.guideline_id].score * 100).toFixed(0)}%
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -505,6 +538,13 @@ function App() {
             )}
             <button onClick={() => window.location.reload()} className="restart-button">
               Start New Session
+            </button>
+            <button
+              onClick={() => navigate('/scorecard')}
+              className="restart-button"
+              style={{ marginTop: '10px', background: 'white', color: '#667eea', border: '2px solid #667eea' }}
+            >
+              View Scorecard
             </button>
           </div>
         )}

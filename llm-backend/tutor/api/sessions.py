@@ -14,8 +14,10 @@ from shared.models import (
     StepRequest,
     StepResponse,
     SummaryResponse,
+    ScorecardResponse,
+    SubtopicProgressResponse,
 )
-from tutor.services import SessionService
+from tutor.services import SessionService, ScorecardService
 from tutor.models.agent_logs import get_agent_log_store
 from tutor.models.session_state import SessionState
 from tutor.models.messages import (
@@ -94,6 +96,26 @@ def get_learning_stats(
     """Aggregated learning stats for the current user."""
     repo = SessionRepository(db)
     return repo.get_user_stats(current_user.id)
+
+
+@router.get("/scorecard", response_model=ScorecardResponse)
+def get_scorecard(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Get student scorecard with aggregated performance data."""
+    service = ScorecardService(db)
+    return service.get_scorecard(current_user.id)
+
+
+@router.get("/subtopic-progress", response_model=SubtopicProgressResponse)
+def get_subtopic_progress(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Get lightweight subtopic progress for topic selection indicators."""
+    service = ScorecardService(db)
+    return service.get_subtopic_progress(current_user.id)
 
 
 @router.get("/{session_id}/replay")

@@ -91,7 +91,16 @@ export default function SessionHistoryPage() {
           ← Back
         </button>
 
-        <h2 className="auth-title">My Sessions</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 className="auth-title">My Sessions</h2>
+          <button
+            className="auth-link"
+            onClick={() => navigate('/scorecard')}
+            style={{ fontSize: '0.85rem' }}
+          >
+            View Scorecard &rarr;
+          </button>
+        </div>
 
         {/* Stats summary */}
         {stats && stats.total_sessions > 0 && (
