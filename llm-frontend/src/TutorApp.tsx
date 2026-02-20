@@ -8,6 +8,7 @@ import {
   getCurriculum,
   getModelConfig,
   getSubtopicProgress,
+  transcribeAudio,
   Turn,
   SummaryResponse,
   SubtopicInfo,
@@ -53,6 +54,10 @@ function App() {
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string>('');
   const [subtopicProgress, setSubtopicProgress] = useState<Record<string, SubtopicProgress>>({});
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Student profile from authenticated user (replaces hardcoded values)
@@ -234,6 +239,62 @@ function App() {
 
   const toggleHints = (index: number) => {
     setShowHints(showHints === index ? null : index);
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      // Stop recording — onstop callback handles transcription
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Pick a supported MIME type; fall back to browser default
+      const preferredTypes = ['audio/webm', 'audio/mp4', 'audio/ogg'];
+      const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t));
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      const activeMime = mediaRecorder.mimeType || 'audio/webm';
+
+      audioChunksRef.current = [];
+      const baseInput = input; // snapshot before recording starts
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all mic tracks so the browser indicator goes away
+        stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: activeMime });
+        if (audioBlob.size === 0) return;
+
+        setIsTranscribing(true);
+        try {
+          const text = await transcribeAudio(audioBlob);
+          if (text) {
+            const spacer = baseInput && !baseInput.endsWith(' ') ? ' ' : '';
+            setInput(`${baseInput}${spacer}${text}`);
+          }
+        } catch (err) {
+          console.error('Transcription failed:', err);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+    }
   };
 
   const handleBack = () => {
@@ -496,11 +557,33 @@ function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your answer..."
-              disabled={loading}
-              className="input-field"
+              placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+              disabled={loading || isTranscribing}
+              className={`input-field${isRecording ? ' recording' : ''}`}
             />
-            <button type="submit" disabled={loading || !input.trim()} className="send-button">
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={loading || isTranscribing}
+              className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+              title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+              aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+            >
+              {isTranscribing ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              )}
+            </button>
+            <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button">
               Send
             </button>
           </form>

@@ -268,3 +268,44 @@ export async function getSubtopicProgress(): Promise<Record<string, SubtopicProg
   const data = await response.json();
   return data.user_progress;
 }
+
+// ──────────────────────────────────────────────
+// Audio transcription
+// ──────────────────────────────────────────────
+
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  // Derive file extension from the blob's actual MIME type
+  const extMap: Record<string, string> = {
+    'audio/webm': 'webm', 'audio/mp4': 'mp4', 'audio/ogg': 'ogg',
+    'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/flac': 'flac',
+  };
+  const ext = extMap[audioBlob.type] || 'webm';
+
+  const formData = new FormData();
+  formData.append('file', audioBlob, `recording.${ext}`);
+
+  // Can't use apiFetch here — it forces Content-Type: application/json.
+  // FormData needs the browser to set multipart/form-data with boundary.
+  const headers: Record<string, string> = {};
+  if (_accessToken) {
+    headers['Authorization'] = `Bearer ${_accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/transcribe`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (response.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Authentication required');
+  }
+
+  if (!response.ok) {
+    throw new Error(`Transcription failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.text;
+}
