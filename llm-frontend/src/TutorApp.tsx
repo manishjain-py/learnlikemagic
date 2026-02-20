@@ -53,6 +53,8 @@ function App() {
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string>('');
   const [subtopicProgress, setSubtopicProgress] = useState<Record<string, SubtopicProgress>>({});
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Student profile from authenticated user (replaces hardcoded values)
@@ -234,6 +236,59 @@ function App() {
 
   const toggleHints = (index: number) => {
     setShowHints(showHints === index ? null : index);
+  };
+
+  const speechSupported = typeof window !== 'undefined' &&
+    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) return;
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-IN';
+
+    let finalTranscript = '';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      // Show interim results while speaking, final when done
+      setInput((prev) => {
+        const base = prev.endsWith(' ') || prev === '' ? prev : prev + ' ';
+        return finalTranscript
+          ? base + finalTranscript
+          : base + interim;
+      });
+    };
+
+    recognition.onerror = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
   };
 
   const handleBack = () => {
@@ -496,10 +551,27 @@ function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your answer..."
+              placeholder={isRecording ? 'Listening...' : 'Type your answer...'}
               disabled={loading}
-              className="input-field"
+              className={`input-field${isRecording ? ' recording' : ''}`}
             />
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={loading}
+                className={`mic-button${isRecording ? ' recording' : ''}`}
+                title={isRecording ? 'Stop recording' : 'Voice input'}
+                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+            )}
             <button type="submit" disabled={loading || !input.trim()} className="send-button">
               Send
             </button>
