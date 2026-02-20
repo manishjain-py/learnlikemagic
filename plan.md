@@ -16,10 +16,11 @@ Single admin screen → DB-persisted config → components read from DB at runti
 
 ## Key Design Decisions
 
+- **No fallbacks, no defaults** — if a component's LLM config is missing from DB, it fails immediately with a clear error: `"LLM config not found for component '{key}'. Add it via /admin/llm-config."` This ensures we always know exactly what model every component is using. The `migrate()` seeding ensures this never happens in practice, but if someone adds a new component and forgets to seed it, they'll know immediately.
 - **Tutor reads config at session start only** — LLMService is constructed once per WebSocket connection (in `sessions.py:360` and `session_service.py:42`). The model is fixed for the entire session. This is correct — no mid-session model changes.
 - **API keys stay in env vars** — secrets don't go in DB. DB stores only component→provider→model.
 - **No caching** — tutor reads once at session start; admin endpoints read on each request (fast single-row SELECT).
-- **Seed defaults on migration** — system works out-of-box without manual admin config.
+- **Seed defaults on migration** — `migrate()` seeds all 6 rows. This is the ONLY place defaults exist.
 - **Generic `call()` on LLMService** — routes to the right API (Responses vs Chat Completions vs Anthropic vs Gemini) based on provider+model. Old methods become internal.
 - **`model_id` stored on LLMService** — downstream code (agents, orchestrators) calls `self.llm.call()` without needing config service access.
 
@@ -60,20 +61,21 @@ class LLMConfigRepository:
 
 **File: `llm-backend/shared/services/llm_config_service.py`** (new):
 ```python
-# Hardcoded safety-net defaults (used ONLY if DB row missing)
-DEFAULTS = {
-    "tutor": {"provider": "openai", "model_id": "gpt-5.2"},
-    "book_ingestion": {"provider": "openai", "model_id": "gpt-4o-mini"},
-    "study_plan_generator": {"provider": "openai", "model_id": "gpt-5.2"},
-    "study_plan_reviewer": {"provider": "openai", "model_id": "gpt-4o"},
-    "eval_evaluator": {"provider": "openai", "model_id": "gpt-5.2"},
-    "eval_simulator": {"provider": "openai", "model_id": "gpt-4o"},
-}
+class LLMConfigNotFoundError(Exception):
+    """Raised when LLM config is missing for a component."""
+    pass
 
 class LLMConfigService:
     def __init__(self, db: Session): ...
     def get_config(self, component_key: str) -> dict:
-        """Returns {provider, model_id}. Falls back to DEFAULTS if row missing."""
+        """Returns {provider, model_id}. Raises LLMConfigNotFoundError if row missing — NO FALLBACKS."""
+        row = self.repo.get_by_key(component_key)
+        if not row:
+            raise LLMConfigNotFoundError(
+                f"LLM config not found for component '{component_key}'. "
+                f"Add it via /admin/llm-config or run 'python db.py --migrate' to seed defaults."
+            )
+        return {"provider": row.provider, "model_id": row.model_id}
     def get_all_configs(self) -> list[dict]: ...
     def update_config(self, component_key, provider, model_id, updated_by=None) -> dict: ...
 ```
@@ -104,12 +106,13 @@ class LLMConfigService:
 
 **File: `llm-backend/shared/services/llm_service.py`**:
 
-1. Add `model_id` parameter to `__init__()`:
+1. Add required `model_id` parameter to `__init__()`:
    ```python
-   def __init__(self, api_key, ..., provider="openai", model_id=None):
-       self.provider = provider
-       self.model_id = model_id  # NEW: specific model from DB config
+   def __init__(self, api_key, ..., provider: str, model_id: str):
+       self.provider = provider   # REQUIRED — no default
+       self.model_id = model_id   # REQUIRED — no default
    ```
+   Both `provider` and `model_id` are now required with no defaults. If someone constructs an `LLMService` without them, it fails at the call site.
 
 2. Add generic `call()` method that routes based on provider+model:
    ```python
@@ -205,7 +208,7 @@ self.llm.call(prompt=..., ...)
 8. `book_ingestion/services/topic_name_refinement_service.py:30`
 9. `book_ingestion/services/guideline_merge_service.py:36`
 
-Change each to accept `model` as constructor parameter:
+Change each to accept `model` as a **required** constructor parameter (no default):
 ```python
 # BEFORE:
 def __init__(self, openai_client=None):
@@ -213,9 +216,9 @@ def __init__(self, openai_client=None):
     self.model = "gpt-4o-mini"
 
 # AFTER:
-def __init__(self, openai_client=None, model: str = "gpt-4o-mini"):
+def __init__(self, openai_client=None, *, model: str):
     self.client = openai_client or OpenAI()
-    self.model = model
+    self.model = model  # NO DEFAULT — must be explicitly passed
 ```
 
 **File: `book_ingestion/services/guideline_extraction_orchestrator.py`** (line 81-110):
@@ -227,10 +230,10 @@ def __init__(self, s3_client, openai_client=None, db_session=None):
     ...
 
 # AFTER:
-def __init__(self, s3_client, openai_client=None, db_session=None, model: str = "gpt-4o-mini"):
+def __init__(self, s3_client, openai_client=None, db_session=None, *, model: str):
     self.minisummary = MinisummaryService(self.openai_client, model=model)
     self.boundary_detector = BoundaryDetectionService(self.openai_client, model=model)
-    ...
+    ...  # NO DEFAULT — caller must provide model from DB config
 ```
 
 **File: `book_ingestion/api/routes.py`** (lines 438-442, 538-541):
@@ -441,8 +444,8 @@ export async function getLLMConfigOptions(): Promise<LLMConfigOptions> { ... }
 
 ## Safety: What prevents breakage
 
-- **Default seeding**: `migrate()` seeds DB with exact current defaults → no behavior change on deploy
-- **Fallback defaults in service**: `LLMConfigService.get_config()` returns hardcoded defaults if DB row missing
-- **Old methods kept**: `call_gpt_5_2()`, `call_gpt_4o()` still work as internal methods
-- **Book ingestion default param**: `model: str = "gpt-4o-mini"` in constructors → works even if config service not passed
-- **Tests updated in same step**: every functional change updates its tests in lock-step
+- **Seed on migrate**: `migrate()` seeds all 6 DB rows with current defaults → no behavior change on deploy. This is the ONLY place defaults live.
+- **Fail-fast on missing config**: `LLMConfigService.get_config()` raises `LLMConfigNotFoundError` with a clear message if DB row is missing. No silent fallbacks. You'll know immediately if something is misconfigured.
+- **Required parameters everywhere**: `LLMService(provider=..., model_id=...)`, book ingestion services `__init__(model=...)`, orchestrators — all require explicit values. No hidden defaults that mask misconfiguration.
+- **Old methods kept**: `call_gpt_5_2()`, `call_gpt_4o()` still work as internal methods (used by `call()` internally).
+- **Tests updated in same step**: every functional change updates its tests in lock-step.
