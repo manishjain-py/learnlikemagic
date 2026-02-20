@@ -2,7 +2,7 @@
 
 You are running a measure → prioritize → generate tests → validate → re-measure → report cycle to achieve ≥80% unit test coverage across the backend.
 
-**Reference:** Read `docs/backend-architecture.md` and the existing tests under `llm-backend/tests/` for patterns and conventions.
+**Reference:** Read `docs/technical/architecture-overview.md` and the existing tests under `llm-backend/tests/` for patterns and conventions.
 
 ---
 

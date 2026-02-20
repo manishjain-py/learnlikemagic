@@ -2,7 +2,7 @@
 
 You are running a measure → analyze → fix → measure → compare cycle to improve the tutor.
 
-**Reference:** Read `docs/EVALUATION_PIPELINE.md` for full pipeline details before starting.
+**Reference:** Read `docs/technical/evaluation.md` for full pipeline details before starting.
 
 ---
 

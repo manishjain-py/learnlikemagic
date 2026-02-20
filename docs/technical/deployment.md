@@ -1,18 +1,23 @@
-# Deployment Guide
+# Deployment
+
+AWS infrastructure, Terraform, CI/CD, and production operations.
+
+---
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  CloudFront ──► S3 (React)                    [Frontend]   │
+│  CloudFront → S3 (React)                      [Frontend]   │
 │       │                                                     │
-│       ▼                                                     │
-│  App Runner ──► ECR (FastAPI container)       [Backend]    │
+│       v                                                     │
+│  App Runner → ECR (FastAPI container)         [Backend]    │
 │       │                                                     │
-│       ▼                                                     │
+│       v                                                     │
 │  RDS Aurora Serverless (PostgreSQL)           [Database]   │
 │                                                             │
 │  Secrets Manager (API keys)                                │
+│  Cognito (Authentication)                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -101,26 +106,6 @@ Automatic deployment on push to `main`:
 - **Frontend:** Changes in `llm-frontend/` → Build → Sync S3 → Invalidate CloudFront
 
 Manual trigger: GitHub Actions → Select workflow → Run workflow
-
----
-
-## Local Development
-
-### Backend
-```bash
-cd llm-backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-# Create .env with: DATABASE_URL, OPENAI_API_KEY, LLM_MODEL, ENVIRONMENT
-make run
-```
-
-### Frontend
-```bash
-cd llm-frontend
-npm install && npm run dev
-# http://localhost:5173
-```
 
 ---
 
