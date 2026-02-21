@@ -26,22 +26,13 @@ This is an **interactive** skill. You MUST discuss ambiguities and open question
 
 ## Step 0: Build product context
 
-Before analyzing the requirements, read the following documentation to build a deep understanding of the app:
+Before analyzing the requirements, build a deep understanding of the app by reading the documentation:
 
-**Functional docs (what it does, from the user's perspective):**
-- `docs/functional/app-overview.md` — App purpose, user journey, UX philosophy
-- `docs/functional/learning-session.md` — How tutoring sessions work
-- `docs/functional/evaluation.md` — Tutor quality testing system
-- `docs/functional/scorecard.md` — Student progress tracking
-- `docs/functional/book-guidelines.md` — Content pipeline (book → guidelines → study plans)
-- `docs/functional/auth-and-onboarding.md` — Login, signup, onboarding
+1. Read `docs/DOCUMENTATION_GUIDELINES.md` — this is the master index that lists all docs and their purposes.
+2. Read **all** functional docs in `docs/functional/` — these describe the app from the user's perspective (what it does, how it feels, the UX philosophy).
+3. Read **all** technical docs in `docs/technical/` — these describe the app from the developer's perspective (architecture, APIs, database schema, code conventions).
 
-**Technical docs (how it's built, from the developer's perspective):**
-- `docs/technical/architecture-overview.md` — Full-stack architecture, tech stack, code conventions
-- `docs/technical/learning-session.md` — Tutor pipeline internals
-- `docs/technical/database.md` — Database schema
-
-Read ALL of these. You need the full picture to reason well about new features.
+Read everything. You need the full picture to reason well about new features.
 
 ---
 
