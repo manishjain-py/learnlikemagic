@@ -72,13 +72,28 @@ No qualitative interpretation, no coverage tracking. Just: how many did you get 
 
 Multiple exams can be taken for the same subtopic. Each one is recorded. The Report Card shows the latest score and a graph of all past scores over time.
 
-### 3.3 How These Relate
+### 3.3 Last Studied & Revision Nudges
+
+Coverage never goes down — it's a factual record of how much material the student has gone through. But coverage alone can create false confidence. A student who covered 80% three months ago may have forgotten much of it.
+
+To address this, every subtopic tracks a **"Last studied"** timestamp — the date of the most recent session of any mode (Teach Me, Clarify Doubts, or Exam). Any engagement with the subtopic resets this timestamp.
+
+**What the student sees:**
+- "80% covered — last studied 3 weeks ago"
+- If enough time has passed without engagement, a gentle revision nudge: *"It's been a while — consider revising"* or *"Time to revisit?"*
+- The nudge can suggest a specific action: *"Take a quick exam to check how much you remember"* — tying the exam mode into a natural revision workflow
+
+This keeps coverage motivating and honest while preventing students (or parents) from assuming that coverage = retained knowledge. The Report Card message becomes: *you've covered this much, here's how well you seemed to understand it, and here's how long ago that was.*
+
+### 3.4 How These All Relate
 
 Coverage and understanding evaluation tell you: *"How much have you studied, and how's it going?"*
 
+Last studied tells you: *"How fresh is this knowledge?"*
+
 Exam score tells you: *"When tested, how much do you actually know?"*
 
-A student might have 80% coverage with "Strong" understanding but score 60% on an exam — that gap is valuable information. Or they might score 90% on an exam with only 50% coverage — they already knew some of the material.
+A student might have 80% coverage with "Strong" understanding but score 60% on an exam — that gap is valuable information. Or they might score 90% on an exam with only 50% coverage — they already knew some of the material. And if the last session was months ago, even strong understanding might need a refresh.
 
 These are complementary, not competing metrics. The Report Card shows all of them.
 
@@ -229,6 +244,8 @@ The Report Card is the single place where a student sees all their progress. For
 **Learning progress (from Teach Me + Clarify Doubts):**
 - **Coverage:** percentage of subtopic covered (e.g., "60% covered")
 - **Understanding:** at-a-glance signal (Strong / Developing / Needs Work) + short feedback text
+- **Last studied:** when the student last engaged with this subtopic in any mode (e.g., "Last studied 3 days ago")
+- **Revision nudge:** if significant time has passed since last engagement, show a gentle prompt (e.g., *"It's been a while — take a quick exam to check how much you remember"*)
 - These update after every Teach Me or Clarify Doubts session
 
 **Exam results (from Exam mode):**
