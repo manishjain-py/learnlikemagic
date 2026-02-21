@@ -22,13 +22,13 @@ Introduce three distinct **session modes** that students choose after selecting 
 
 | Mode | Student Need | Who Leads | Produces |
 |------|-------------|-----------|----------|
-| **Teach Me** | "Explain this topic to me" | Tutor leads | Coverage % + Understanding evaluation |
-| **Clarify Doubts** | "I have specific questions" | Student leads | Coverage % + Understanding evaluation |
-| **Exam** | "Test my knowledge" | Tutor leads | Numeric score (e.g., 7/10) |
+| **Teach Me** | "Explain this topic to me" | Tutor leads | Coverage % |
+| **Clarify Doubts** | "I have specific questions" | Student leads | Coverage % |
+| **Exam** | "Test my knowledge" | Tutor leads | Score (e.g., 7/10) + evaluation feedback |
 
-**Teach Me** and **Clarify Doubts** are both learning activities — one tutor-driven, one student-driven. They share the same two evaluation metrics: how much of the subtopic was covered, and how well the student seems to understand what was covered.
+**Teach Me** and **Clarify Doubts** are both learning activities — one tutor-driven, one student-driven. They track one metric: how much of the subtopic has been covered. Coverage is factual and trustworthy — you either went through the material or you didn't.
 
-**Exam** is a pure assessment. It produces a concrete number — no interpretation, just a score.
+**Exam** is the assessment layer. It produces a concrete score and grounded evaluative feedback — because feedback tied to actual right/wrong answers is trustworthy in a way that subjective impressions during learning sessions are not.
 
 All three modes feed into a renamed **Report Card** (currently Scorecard).
 
@@ -36,13 +36,15 @@ All three modes feed into a renamed **Report Card** (currently Scorecard).
 
 ## 3. Evaluation Model
 
-This is the core change in how we measure student progress. The current single "mastery score" is replaced by two distinct evaluation approaches depending on whether the student is learning or being tested.
+This is the core change in how we measure student progress. The current single "mastery score" is replaced by two things: factual coverage tracking during learning, and concrete scored assessment via exams.
+
+**Design principle:** Every metric shown to students must be grounded in something factual. Coverage is factual — you either went through the material or you didn't. Exam scores are factual — you either got the answer right or you didn't. Subjective "understanding" impressions from an LLM during learning sessions are not — they risk feeling arbitrary and eroding trust, especially when they fluctuate between sessions for similar performance. So we don't show them.
 
 ### 3.1 Learning Evaluation (Teach Me + Clarify Doubts)
 
-Both Teach Me and Clarify Doubts are learning activities. The difference is only who drives the conversation — the tutor or the student. Both produce the same two metrics:
+Both Teach Me and Clarify Doubts are learning activities. The difference is only who drives the conversation — the tutor or the student. Both track one metric:
 
-**1. Coverage (percentage)**
+**Coverage (percentage)**
 
 How much of the subtopic has the student gone through? This is measured against the subtopic's study plan / learning objectives.
 
@@ -52,39 +54,22 @@ How much of the subtopic has the student gone through? This is measured against 
 
 Coverage answers: *"How far along are you in this subtopic?"*
 
-**2. Understanding Evaluation (qualitative)**
-
-Based on the conversations that happened, what does the tutor think about the student's understanding? This is the teacher's impression — not a test score, but an informed read on how well the student is grasping the material.
-
-Two parts:
-- **At-a-glance signal:** Strong / Developing / Needs Work
-- **Short feedback:** 2-3 lines of qualitative feedback (e.g., *"You have a solid grasp of basic fraction comparison. You struggled a bit when the denominators were different — revisiting LCM might help."*)
-
-This is similar to how a teacher who's been teaching a student can tell whether the student is following along, even without giving them a formal test. It's based on how the student answers questions, what kinds of questions they ask, where they get confused, and how they respond to explanations.
-
-Understanding evaluation is updated at the end of each learning session (Teach Me or Clarify Doubts) and reflects the tutor's latest impression.
-
-**Understanding Rubric**
-
-To prevent the qualitative assessment from feeling arbitrary or inconsistent across sessions, the tutor evaluates understanding along three fixed dimensions:
-
-| Dimension | What it measures | Strong | Developing | Needs Work |
-|-----------|-----------------|--------|------------|------------|
-| **Accuracy** | Does the student get concepts right? | Consistently correct on core concepts; minor slips only on edge cases | Gets the main idea but makes errors on details or related concepts | Fundamental misconceptions or frequently incorrect |
-| **Reasoning** | Can they explain *why*, not just *what*? | Explains reasoning clearly; connects concepts to each other | Can follow reasoning when guided but struggles to articulate it independently | Gives answers without reasoning, or reasoning is incorrect |
-| **Independence** | How much scaffolding do they need? | Arrives at answers with minimal hints; asks deepening questions | Needs moderate prompting; can self-correct when pointed in the right direction | Requires heavy scaffolding; struggles even with hints |
-
-**How the rubric works:**
-- The tutor internally rates each dimension after every session (this per-dimension rating is stored but not shown to the student)
-- The **at-a-glance signal** (Strong / Developing / Needs Work) is derived from the three dimensions — essentially the overall pattern, not a mechanical average
-- The **short feedback** references the specific dimensions that matter most (e.g., *"Your accuracy on core concepts is solid, but you're relying on hints to get there — try working through the next problem before asking for help"*)
-- Because the rubric is fixed, two different sessions with similar student performance produce similar evaluations — solving the consistency problem
+That's it for learning sessions. No qualitative understanding evaluation, no subjective impressions. The tutor teaches; coverage tracks how far along the student is. If the student (or parent) wants to know *how well* they know the material, that's what exams are for.
 
 ### 3.2 Exam Evaluation
 
-Exams produce a simple, concrete number: **score out of total questions** (e.g., 7/10).
+Exams produce two things:
 
-No qualitative interpretation, no coverage tracking. Just: how many did you get right?
+**1. Score:** A concrete number — **score out of total questions** (e.g., 7/10). How many did you get right?
+
+**2. Evaluation feedback:** Because exam feedback is grounded in actual answers (right/wrong), it can offer trustworthy qualitative insight that learning sessions cannot. After an exam, the student sees:
+
+- **Strengths:** Concepts/areas where they answered correctly (e.g., *"Strong on basic fraction comparison and equivalent fractions"*)
+- **Weak areas:** Concepts where they got questions wrong, with brief explanations (e.g., *"Struggled with comparing fractions with unlike denominators — revisit LCM"*)
+- **Pattern observations:** If the exam reveals a pattern, call it out (e.g., *"You got conceptual questions right but struggled with application problems"* or *"Accuracy was solid on easy questions but dropped on harder ones"*)
+- **What to do next:** Actionable suggestions linking back to learning modes (e.g., *"Practice these topics in Teach Me"* or *"Try Clarify Doubts to work through your questions on LCM"*)
+
+This feedback is trustworthy because it points at concrete evidence — specific questions the student got right or wrong — not an LLM's impression of how the conversation felt.
 
 Multiple exams can be taken for the same subtopic. Each one is recorded. The Report Card shows the latest score and a graph of all past scores over time.
 
@@ -99,19 +84,19 @@ To address this, every subtopic tracks a **"Last studied"** timestamp — the da
 - If enough time has passed without engagement, a gentle revision nudge: *"It's been a while — consider revising"* or *"Time to revisit?"*
 - The nudge can suggest a specific action: *"Take a quick exam to check how much you remember"* — tying the exam mode into a natural revision workflow
 
-This keeps coverage motivating and honest while preventing students (or parents) from assuming that coverage = retained knowledge. The Report Card message becomes: *you've covered this much, here's how well you seemed to understand it, and here's how long ago that was.*
+This keeps coverage motivating and honest while preventing students (or parents) from assuming that coverage = retained knowledge. The Report Card message becomes: *you've covered this much, here's when you last studied it, and here's how you did on the exam.*
 
 ### 3.4 How These All Relate
 
-Coverage and understanding evaluation tell you: *"How much have you studied, and how's it going?"*
+Coverage tells you: *"How much have you studied?"*
 
-Last studied tells you: *"How fresh is this knowledge?"*
+Last studied tells you: *"How fresh is it?"*
 
-Exam score tells you: *"When tested, how much do you actually know?"*
+Exam score + feedback tells you: *"How well do you actually know it?"*
 
-A student might have 80% coverage with "Strong" understanding but score 60% on an exam — that gap is valuable information. Or they might score 90% on an exam with only 50% coverage — they already knew some of the material. And if the last session was months ago, even strong understanding might need a refresh.
+A student might have 80% coverage but score 60% on an exam — that gap is valuable information. Or they might score 90% on an exam with only 50% coverage — they already knew some of the material. And if the last session was months ago, even high coverage might need a refresh.
 
-These are complementary, not competing metrics. The Report Card shows all of them.
+All three signals are factual and trustworthy. The Report Card shows all of them.
 
 ---
 
@@ -168,8 +153,9 @@ Students can pause a Teach Me session and come back later to continue from where
 
 **Session summary (shown when pausing or completing):**
 - Coverage so far (e.g., "You've covered 60% of Comparing Fractions")
-- Understanding evaluation: at-a-glance signal + short qualitative feedback
+- Concepts covered in this session
 - If paused: "You can pick up where you left off anytime"
+- If completed: prompt to take an exam (e.g., *"Ready to test yourself? Take an exam to see how much you've learned"*)
 
 ---
 
@@ -203,8 +189,8 @@ Students can pause a Teach Me session and come back later to continue from where
 **Session summary (shown at end):**
 - Concepts discussed in this session
 - Updated coverage (reflecting anything new that was covered)
-- Understanding evaluation: at-a-glance signal + short qualitative feedback
 - Suggestions for what to study next or ask about next time
+- Prompt to take an exam if coverage is significant (e.g., *"You've covered a lot — take an exam to see where you stand"*)
 
 ---
 
@@ -240,10 +226,12 @@ Students can pause a Teach Me session and come back later to continue from where
 **Progress indicator:** "Question X of Y" + running score (e.g., "3/5 correct").
 
 **Session summary (shown at end):**
-- Score prominently displayed: "7/10 — 70%"
-- Per-question breakdown: question text, student's answer, correct answer, and a correct/partial/incorrect indicator
-- Weak areas highlighted: concepts where questions were answered incorrectly
-- "Practice these topics" suggestions linking back to Teach Me mode
+- **Score** prominently displayed: "7/10 — 70%"
+- **Per-question breakdown:** question text, student's answer, correct answer, and a correct/partial/incorrect indicator
+- **Strengths:** concepts/areas where the student answered correctly (e.g., *"Strong on basic fraction comparison and equivalent fractions"*)
+- **Weak areas:** concepts where questions were answered incorrectly, with brief explanations of what went wrong (e.g., *"Struggled with comparing fractions with unlike denominators — revisit LCM"*)
+- **Pattern observations:** if the exam reveals a pattern, call it out (e.g., *"You got conceptual questions right but struggled with application problems"*)
+- **What to do next:** actionable suggestions linking back to learning modes (e.g., *"Practice these topics in Teach Me"* or *"Use Clarify Doubts to work through your questions on LCM"*)
 
 ---
 
@@ -259,21 +247,21 @@ The Report Card is the single place where a student sees all their progress. For
 
 **Learning progress (from Teach Me + Clarify Doubts):**
 - **Coverage:** percentage of subtopic covered (e.g., "60% covered")
-- **Understanding:** at-a-glance signal (Strong / Developing / Needs Work) + short feedback text
 - **Last studied:** when the student last engaged with this subtopic in any mode (e.g., "Last studied 3 days ago")
 - **Revision nudge:** if significant time has passed since last engagement, show a gentle prompt (e.g., *"It's been a while — take a quick exam to check how much you remember"*)
-- These update after every Teach Me or Clarify Doubts session
+- Coverage updates after every Teach Me or Clarify Doubts session
 
 **Exam results (from Exam mode):**
 - **Latest exam score** prominently displayed (e.g., "7/10"), clearly labeled as the latest
+- **Strengths and weak areas** from the latest exam (e.g., *"Strong on comparisons, needs work on unlike denominators"*)
 - **Score history graph** showing all past exam scores over time for this subtopic — so the student can see their trend (e.g., 50% → 65% → 80%)
 - Number of exams taken
 
-If a student hasn't taken any exams yet for a subtopic, the exam section shows a prompt to take one (e.g., "Take an exam to test your knowledge").
+If a student hasn't taken any exams yet for a subtopic, the exam section shows a prompt to take one (e.g., *"Take an exam to test your knowledge"*).
 
 ### 5.3 Per Subject Overview
 
-Subject-level and topic-level views aggregate from subtopic data. The exact aggregation approach (how coverage + understanding + exam scores roll up into a subject-level view) can be refined, but the principle is: one place, all progress, no fragmentation.
+Subject-level and topic-level views aggregate from subtopic data. The exact aggregation approach (how coverage + exam scores roll up into a subject-level view) can be refined, but the principle is: one place, all progress, no fragmentation.
 
 ### 5.4 Action Buttons
 
@@ -317,13 +305,13 @@ For Clarify Doubts specifically, past sessions serve as a reference for the stud
 
 | Decision | Rationale |
 |----------|-----------|
-| **Coverage + Understanding instead of mastery score** | A single "mastery" number conflates how much you've studied with how well you know it. Separating coverage (how far along) from understanding (how well it's going) gives students a clearer picture. Coverage is objective and motivating; understanding evaluation is the teacher's informed read. |
-| **Teach Me and Clarify Doubts share the same metrics** | Both are learning activities — the only difference is who drives. A student who covers 3 concepts through teaching and 2 through questions has covered 5 concepts, period. Keeping separate metrics per mode would fragment the progress picture. |
-| **Understanding evaluation is qualitative, not a number** | A number (like "mastery 0.7") feels like a test score, which is misleading for a learning session. A teacher's impression ("Strong — you grasped comparison well but struggled with unlike denominators") is more honest and more actionable. The at-a-glance signal (Strong / Developing / Needs Work) gives a quick read without false precision. |
-| **Exam score is just a number** | Exams are the one place where a concrete score is appropriate. No interpretation, no qualitative spin. You got 7/10 — that's the data point. |
+| **Coverage only during learning (no understanding evaluation)** | Subjective "understanding" impressions from an LLM risk feeling arbitrary — especially when they fluctuate between sessions for similar performance. This erodes trust with students and parents. Coverage is factual (you either covered the material or you didn't) and therefore trustworthy. Qualitative evaluation belongs in exams, where it's grounded in concrete right/wrong answers. |
+| **Teach Me and Clarify Doubts share the same metric** | Both are learning activities — the only difference is who drives. A student who covers 3 concepts through teaching and 2 through questions has covered 5 concepts, period. Keeping separate metrics per mode would fragment the progress picture. |
+| **Exam as the primary evaluation signal** | Exams produce a concrete score and grounded evaluative feedback (strengths, weak areas, patterns). Because feedback is tied to actual answers, it's trustworthy in a way that learning-session impressions are not. This makes the exam the natural place for "how well do you know this?" |
+| **Rich exam feedback, not just a number** | A bare score (7/10) tells you the result but not what to do about it. Strengths, weak areas, and pattern observations give actionable insight — and because they're grounded in specific questions, they don't feel arbitrary. This also creates a natural loop: see weak areas → study in Teach Me / Clarify Doubts → retake exam. |
 | **Pause and resume for Teach Me** | Without pause/resume, students who run out of time lose their progress and have to restart. With coverage as a metric, pause/resume is natural — you're just picking up where you left off. This respects the student's time. |
 | **Fresh context for each Clarify Doubts session** | Carrying conversation context across sessions would make the tutor's responses depend on potentially stale context. A fresh session with the same curriculum guidelines is simpler and avoids confusion. Past history is shown to the student for their own reference. |
 | **Multiple exams pile up with a trend graph** | A single exam is a snapshot. Multiple exams over time show progress. The graph makes improvement visible and motivating — take exam, study, retake, see the line go up. |
-| **Exam feedback is brief, not remedial** | An exam that teaches defeats the purpose of assessment. Students who want to learn should use Teach Me or Clarify Doubts. Clear separation of concerns. |
-| **Report Card, not separate exam results page** | One place for all progress data. Coverage, understanding, and exam scores all live in the Report Card. No fragmentation. |
+| **Exam feedback is evaluative, not remedial** | An exam that teaches defeats the purpose of assessment. The exam tells you *what* you got wrong and *where* to focus — but the actual learning happens in Teach Me or Clarify Doubts. Clear separation of concerns. |
+| **Report Card, not separate exam results page** | One place for all progress data. Coverage and exam results all live in the Report Card. No fragmentation. |
 | **Default to Teach Me** | Existing entry points that don't specify a mode continue to work as before. |
