@@ -64,6 +64,22 @@ This is similar to how a teacher who's been teaching a student can tell whether 
 
 Understanding evaluation is updated at the end of each learning session (Teach Me or Clarify Doubts) and reflects the tutor's latest impression.
 
+**Understanding Rubric**
+
+To prevent the qualitative assessment from feeling arbitrary or inconsistent across sessions, the tutor evaluates understanding along three fixed dimensions:
+
+| Dimension | What it measures | Strong | Developing | Needs Work |
+|-----------|-----------------|--------|------------|------------|
+| **Accuracy** | Does the student get concepts right? | Consistently correct on core concepts; minor slips only on edge cases | Gets the main idea but makes errors on details or related concepts | Fundamental misconceptions or frequently incorrect |
+| **Reasoning** | Can they explain *why*, not just *what*? | Explains reasoning clearly; connects concepts to each other | Can follow reasoning when guided but struggles to articulate it independently | Gives answers without reasoning, or reasoning is incorrect |
+| **Independence** | How much scaffolding do they need? | Arrives at answers with minimal hints; asks deepening questions | Needs moderate prompting; can self-correct when pointed in the right direction | Requires heavy scaffolding; struggles even with hints |
+
+**How the rubric works:**
+- The tutor internally rates each dimension after every session (this per-dimension rating is stored but not shown to the student)
+- The **at-a-glance signal** (Strong / Developing / Needs Work) is derived from the three dimensions — essentially the overall pattern, not a mechanical average
+- The **short feedback** references the specific dimensions that matter most (e.g., *"Your accuracy on core concepts is solid, but you're relying on hints to get there — try working through the next problem before asking for help"*)
+- Because the rubric is fixed, two different sessions with similar student performance produce similar evaluations — solving the consistency problem
+
 ### 3.2 Exam Evaluation
 
 Exams produce a simple, concrete number: **score out of total questions** (e.g., 7/10).
