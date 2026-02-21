@@ -22,19 +22,73 @@ Introduce three distinct **session modes** that students choose after selecting 
 
 | Mode | Student Need | Who Leads | Produces |
 |------|-------------|-----------|----------|
-| **Teach Me** | "Explain this topic to me" | Tutor leads | Mastery score per concept |
-| **Clarify Doubts** | "I have specific questions" | Student leads | Understanding assessment per concept |
-| **Exam** | "Test my knowledge" | Tutor leads | Numeric exam score + per-question results |
+| **Teach Me** | "Explain this topic to me" | Tutor leads | Coverage % + Understanding evaluation |
+| **Clarify Doubts** | "I have specific questions" | Student leads | Coverage % + Understanding evaluation |
+| **Exam** | "Test my knowledge" | Tutor leads | Numeric score (e.g., 7/10) |
 
-All three modes produce data that feeds into a renamed **Report Card** (currently Scorecard).
+**Teach Me** and **Clarify Doubts** are both learning activities — one tutor-driven, one student-driven. They share the same two evaluation metrics: how much of the subtopic was covered, and how well the student seems to understand what was covered.
+
+**Exam** is a pure assessment. It produces a concrete number — no interpretation, just a score.
+
+All three modes feed into a renamed **Report Card** (currently Scorecard).
 
 ---
 
-## 3. User Flow
+## 3. Evaluation Model
 
-### 3.1 Mode Selection (New Screen)
+This is the core change in how we measure student progress. The current single "mastery score" is replaced by two distinct evaluation approaches depending on whether the student is learning or being tested.
 
-After selecting Subject > Topic > Subtopic, instead of immediately starting a session, the student sees a mode selection screen:
+### 3.1 Learning Evaluation (Teach Me + Clarify Doubts)
+
+Both Teach Me and Clarify Doubts are learning activities. The difference is only who drives the conversation — the tutor or the student. Both produce the same two metrics:
+
+**1. Coverage (percentage)**
+
+How much of the subtopic has the student gone through? This is measured against the subtopic's study plan / learning objectives.
+
+- If a subtopic has 10 concepts and the student has covered 3 through Teach Me sessions, coverage is 30%.
+- If the student then asks questions about 2 more concepts in Clarify Doubts, coverage moves to 50%.
+- Coverage accumulates across sessions and across both modes. It never goes down.
+
+Coverage answers: *"How far along are you in this subtopic?"*
+
+**2. Understanding Evaluation (qualitative)**
+
+Based on the conversations that happened, what does the tutor think about the student's understanding? This is the teacher's impression — not a test score, but an informed read on how well the student is grasping the material.
+
+Two parts:
+- **At-a-glance signal:** Strong / Developing / Needs Work
+- **Short feedback:** 2-3 lines of qualitative feedback (e.g., *"You have a solid grasp of basic fraction comparison. You struggled a bit when the denominators were different — revisiting LCM might help."*)
+
+This is similar to how a teacher who's been teaching a student can tell whether the student is following along, even without giving them a formal test. It's based on how the student answers questions, what kinds of questions they ask, where they get confused, and how they respond to explanations.
+
+Understanding evaluation is updated at the end of each learning session (Teach Me or Clarify Doubts) and reflects the tutor's latest impression.
+
+### 3.2 Exam Evaluation
+
+Exams produce a simple, concrete number: **score out of total questions** (e.g., 7/10).
+
+No qualitative interpretation, no coverage tracking. Just: how many did you get right?
+
+Multiple exams can be taken for the same subtopic. Each one is recorded. The Report Card shows the latest score and a graph of all past scores over time.
+
+### 3.3 How These Relate
+
+Coverage and understanding evaluation tell you: *"How much have you studied, and how's it going?"*
+
+Exam score tells you: *"When tested, how much do you actually know?"*
+
+A student might have 80% coverage with "Strong" understanding but score 60% on an exam — that gap is valuable information. Or they might score 90% on an exam with only 50% coverage — they already knew some of the material.
+
+These are complementary, not competing metrics. The Report Card shows all of them.
+
+---
+
+## 4. User Flow
+
+### 4.1 Mode Selection
+
+After selecting Subject > Topic > Subtopic, the student sees a mode selection screen:
 
 ```
 ┌─────────────────────────────────┐
@@ -60,19 +114,35 @@ After selecting Subject > Topic > Subtopic, instead of immediately starting a se
 └─────────────────────────────────┘
 ```
 
+**If the student has an in-progress Teach Me session** for this subtopic, the screen should prominently show a "Resume" option (e.g., "Resume — 30% covered") alongside the ability to start fresh or choose other modes.
+
 Each card shows a short description so students understand what to expect. The UI follows the existing design language — big tap targets, minimal text, mobile-first.
 
 ---
 
-### 3.2 Teach Me (Existing Behavior)
+### 4.2 Teach Me
 
-No changes to the core teaching flow. The tutor follows the study plan, explains concepts, asks questions, tracks mastery. All existing behavior is preserved.
+**What it is:** A tutor-led lesson where the tutor follows the study plan, explains concepts, asks questions, and guides the student through the material. This is the existing teaching flow.
 
-**Progress indicator:** Step X/Y + Mastery bar (unchanged).
+**What's new: Pause and Resume.**
+
+Students can pause a Teach Me session and come back later to continue from where they left off. This is important because:
+- A student might only have 15 minutes right now
+- Coverage is cumulative — pausing at step 3/10 means 30% coverage, and resuming picks up at step 4
+- When resuming, the tutor does a brief recap of where they left off before continuing
+
+**Restart option:** A student can also choose to restart a subtopic from scratch. This resets coverage to 0% and begins a new Teach Me session from step 1.
+
+**Progress indicator:** Step X/Y + Coverage percentage.
+
+**Session summary (shown when pausing or completing):**
+- Coverage so far (e.g., "You've covered 60% of Comparing Fractions")
+- Understanding evaluation: at-a-glance signal + short qualitative feedback
+- If paused: "You can pick up where you left off anytime"
 
 ---
 
-### 3.3 Clarify Doubts (New)
+### 4.3 Clarify Doubts
 
 **What it is:** A student-led Q&A session. The student comes with questions; the tutor answers them clearly using the curriculum as context.
 
@@ -93,20 +163,23 @@ No changes to the core teaching flow. The tutor follows the study plan, explains
 - Gently offers related areas if the student seems stuck on what to ask
 - If a question falls outside the subtopic scope, the tutor answers briefly and redirects
 
+**Past discussion history:** When a student opens Clarify Doubts for a subtopic they've discussed before, they can see a summary of what they asked in previous sessions (past questions and topics covered). This is purely for the student's reference — the tutor does NOT carry context from past Clarify Doubts sessions. Each session is fresh.
+
 **Session end:** Student explicitly says they're done, or taps an "End Session" button. No study plan completion trigger — the student controls when they're finished.
 
-**Progress indicator:** No step counter, no mastery bar. Instead, show a list of concepts discussed as chips/tags that accumulate during the session.
+**Progress indicator:** No step counter. Show a list of concepts discussed as chips/tags that accumulate during the session.
 
 **Session summary (shown at end):**
-- Concepts discussed with understanding levels (strong / adequate / needs work)
-- Misconceptions that were addressed
+- Concepts discussed in this session
+- Updated coverage (reflecting anything new that was covered)
+- Understanding evaluation: at-a-glance signal + short qualitative feedback
 - Suggestions for what to study next or ask about next time
 
 ---
 
-### 3.4 Exam Mode (New)
+### 4.4 Exam Mode
 
-**What it is:** A timed-feeling, no-teaching assessment. The tutor asks questions, the student answers, and at the end they get a score.
+**What it is:** A no-teaching assessment. The tutor asks questions, the student answers, and at the end they get a score.
 
 **Entry:** Tutor welcomes and sets expectations: *"Let's test your knowledge of [subtopic]! I'll ask you [N] questions. Ready?"*
 
@@ -129,6 +202,8 @@ No changes to the core teaching flow. The tutor follows the study plan, explains
 
 **Key distinction from Teach Me:** In Teach Me, wrong answers trigger remediation (probe → hint → explain). In Exam mode, wrong answers get brief feedback and the exam moves on. The goal is assessment, not teaching.
 
+**Multiple exams:** Students can take as many exams as they want for the same subtopic. Each exam is recorded separately. This creates a natural study loop: take exam → see weak areas → study in Teach Me / Clarify Doubts → retake exam → see improvement.
+
 **Session end:** All questions answered, or student taps "End Early" (partial scores are still recorded).
 
 **Progress indicator:** "Question X of Y" + running score (e.g., "3/5 correct").
@@ -141,57 +216,57 @@ No changes to the core teaching flow. The tutor follows the study plan, explains
 
 ---
 
-## 4. Report Card (Renamed from Scorecard)
+## 5. Report Card (Renamed from Scorecard)
 
-### 4.1 Renaming
+### 5.1 Renaming
 
 "Scorecard" → "Report Card" throughout the app (navigation, headers, all UI labels).
 
-### 4.2 How Modes Feed Into the Report Card
+### 5.2 What the Report Card Shows Per Subtopic
 
-Each mode produces a 0-1 score for the subtopic:
+The Report Card is the single place where a student sees all their progress. For each subtopic:
 
-| Mode | What Gets Scored |
-|------|-----------------|
-| **Teach Me** | Overall mastery (existing behavior) |
-| **Clarify Doubts** | Average understanding of discussed concepts |
-| **Exam** | Exam percentage (correct answers / total questions) |
+**Learning progress (from Teach Me + Clarify Doubts):**
+- **Coverage:** percentage of subtopic covered (e.g., "60% covered")
+- **Understanding:** at-a-glance signal (Strong / Developing / Needs Work) + short feedback text
+- These update after every Teach Me or Clarify Doubts session
 
-The **latest session** per subtopic still determines the subtopic score, regardless of which mode was used. A student who scores 90% on an exam after a 60% Teach Me session should see 90%.
+**Exam results (from Exam mode):**
+- **Latest exam score** prominently displayed (e.g., "7/10"), clearly labeled as the latest
+- **Score history graph** showing all past exam scores over time for this subtopic — so the student can see their trend (e.g., 50% → 65% → 80%)
+- Number of exams taken
 
-### 4.3 What the Report Card Shows
+If a student hasn't taken any exams yet for a subtopic, the exam section shows a prompt to take one (e.g., "Take an exam to test your knowledge").
 
-**Per subtopic (updated):**
-- Mastery score (unchanged)
-- Mastery label and badge (unchanged)
-- Concepts and their scores (unchanged)
-- Misconceptions (unchanged)
-- Session count (unchanged)
-- **NEW:** Latest session mode label (Teach Me / Clarify Doubts / Exam)
-- **NEW:** If any exam sessions exist:
-  - Latest exam score
-  - Number of exams taken
+### 5.3 Per Subject Overview
 
-**Per subject overview:** Unchanged. Subject score, topic scores, trend — all computed from subtopic scores the same way as today.
+Subject-level and topic-level views aggregate from subtopic data. The exact aggregation approach (how coverage + understanding + exam scores roll up into a subject-level view) can be refined, but the principle is: one place, all progress, no fragmentation.
 
-### 4.4 Action Buttons
+### 5.4 Action Buttons
 
-Currently there's a "Practice Again" button. Updated:
+From the subtopic detail in the Report Card:
 
-- **"Practice Again"** → Starts a **Teach Me** session (unchanged behavior)
-- **"Take Exam"** → Starts an **Exam** session (new button)
-
-Both buttons appear on the subtopic detail view in the Report Card.
+- **"Continue Learning"** → Resumes Teach Me (or starts new if none in progress)
+- **"Ask Questions"** → Starts a Clarify Doubts session
+- **"Take Exam"** → Starts a new Exam session
 
 ---
 
-## 5. Session History
+## 6. Session History
 
-The session history list now shows a mode label per session (Teach Me / Clarify Doubts / Exam) alongside the existing topic name, mastery, and date.
+The session history list shows:
+- Mode label per session (Teach Me / Clarify Doubts / Exam)
+- Topic and subtopic name
+- Date
+- For Teach Me: coverage achieved in that session
+- For Clarify Doubts: concepts discussed
+- For Exam: score
+
+For Clarify Doubts specifically, past sessions serve as a reference for the student to review what they've discussed before.
 
 ---
 
-## 6. What Does NOT Change
+## 7. What Does NOT Change
 
 | Area | Impact |
 |------|--------|
@@ -205,14 +280,17 @@ The session history list now shows a mode label per session (Teach Me / Clarify 
 
 ---
 
-## 7. Key Design Decisions & Rationale
+## 8. Key Design Decisions & Rationale
 
 | Decision | Rationale |
 |----------|-----------|
-| **Mode is per-session, not per-subtopic** | A student might want Teach Me on Monday and Exam on Friday for the same subtopic. Modes are about *what you want to do right now*, not a property of the content. |
-| **Latest session score wins (regardless of mode)** | Keeps scoring simple. Modes are different ways to arrive at a score, not different score types. |
-| **Clarify Doubts still tracks understanding** | Even in a Q&A format, the tutor can assess understanding. Without it, Clarify Doubts sessions would create "holes" in the Report Card. |
+| **Coverage + Understanding instead of mastery score** | A single "mastery" number conflates how much you've studied with how well you know it. Separating coverage (how far along) from understanding (how well it's going) gives students a clearer picture. Coverage is objective and motivating; understanding evaluation is the teacher's informed read. |
+| **Teach Me and Clarify Doubts share the same metrics** | Both are learning activities — the only difference is who drives. A student who covers 3 concepts through teaching and 2 through questions has covered 5 concepts, period. Keeping separate metrics per mode would fragment the progress picture. |
+| **Understanding evaluation is qualitative, not a number** | A number (like "mastery 0.7") feels like a test score, which is misleading for a learning session. A teacher's impression ("Strong — you grasped comparison well but struggled with unlike denominators") is more honest and more actionable. The at-a-glance signal (Strong / Developing / Needs Work) gives a quick read without false precision. |
+| **Exam score is just a number** | Exams are the one place where a concrete score is appropriate. No interpretation, no qualitative spin. You got 7/10 — that's the data point. |
+| **Pause and resume for Teach Me** | Without pause/resume, students who run out of time lose their progress and have to restart. With coverage as a metric, pause/resume is natural — you're just picking up where you left off. This respects the student's time. |
+| **Fresh context for each Clarify Doubts session** | Carrying conversation context across sessions would make the tutor's responses depend on potentially stale context. A fresh session with the same curriculum guidelines is simpler and avoids confusion. Past history is shown to the student for their own reference. |
+| **Multiple exams pile up with a trend graph** | A single exam is a snapshot. Multiple exams over time show progress. The graph makes improvement visible and motivating — take exam, study, retake, see the line go up. |
 | **Exam feedback is brief, not remedial** | An exam that teaches defeats the purpose of assessment. Students who want to learn should use Teach Me or Clarify Doubts. Clear separation of concerns. |
-| **Report Card, not separate exam results page** | One place for all progress data. Avoids fragmenting the student experience. Exam data lives within the Report Card, not a separate destination. |
-| **Exam questions generated dynamically** | Questions come from the existing teaching guidelines. No separate question bank or generation pipeline needed. |
-| **Default to Teach Me** | Existing "Practice Again" buttons and any entry points that don't specify a mode continue to work as before. |
+| **Report Card, not separate exam results page** | One place for all progress data. Coverage, understanding, and exam scores all live in the Report Card. No fragmentation. |
+| **Default to Teach Me** | Existing entry points that don't specify a mode continue to work as before. |
