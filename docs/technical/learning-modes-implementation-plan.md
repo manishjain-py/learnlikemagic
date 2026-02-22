@@ -48,15 +48,24 @@ Subject → Topic → Subtopic → Mode Selection → Mode-Specific Session
 
 ### Key Architectural Decisions
 
-1. **Single `MasterTutorAgent` with mode-aware prompts** — rather than creating 3 separate agents, we use the existing `MasterTutorAgent` with mode-specific system prompts and output schemas. This keeps the architecture simple and avoids duplicating safety, logging, and orchestration logic.
+1. **Single `MasterTutorAgent` with mode-aware prompts and output schemas** — rather than creating 3 separate agents, we use the existing `MasterTutorAgent` with mode-specific system prompts and output schemas. This keeps the architecture simple and avoids duplicating safety, logging, and orchestration logic.
+
+   **How output schema switching works:** The `MasterTutorAgent` already accepts an output schema parameter for its LLM call (used by both the OpenAI structured output path and the Anthropic thinking + tool_use path). The orchestrator selects the schema based on the session mode before calling `execute()`:
+   - `teach_me` → `TutorTurnOutput` (existing schema, unchanged)
+   - `clarify_doubts` → `ClarifyTurnOutput` (new schema with `concepts_mentioned`, no step-advance fields)
+   - `exam` → `ExamTurnOutput` (new schema with `exam_result`, `exam_feedback_brief`, no mastery fields)
+
+   The agent's `execute()` method receives the schema via a `set_output_schema(schema_class)` call before execution. The system prompt is also swapped based on mode. The agent itself is stateless between calls — mode awareness lives in the orchestrator's routing logic, not in the agent.
 
 2. **Mode stored in `SessionState`** — the mode is a field on the in-memory `SessionState` model and persisted in `state_json`. A denormalized `mode` column on the `sessions` table enables efficient queries (history filtering, finding resumable sessions).
 
-3. **Coverage is computed from study plan concepts** — for Teach Me, coverage = concepts with step advanced / total unique concepts. For Clarify Doubts, coverage = concepts discussed / total concepts in study plan. Both accumulate into a per-guideline coverage record.
+3. **`state_json` is the canonical source of truth** — all session state lives in the `SessionState` model serialized to `state_json`. The denormalized columns (`mode`, `is_paused`, `exam_score`, `exam_total`) are **derived copies** written in the same transaction as `state_json` for query efficiency. They are never read back into `SessionState` — they exist only for SQL filtering and display queries. See §2.4 for the single write path.
 
-4. **Exam results stored as structured data in `state_json`** — exam questions, answers, and scores are part of the session state. A denormalized `exam_score` column on `sessions` enables quick display in history/report card.
+4. **Coverage is computed from study plan concepts** — for Teach Me, coverage = concepts with step advanced / total unique concepts. For Clarify Doubts, coverage = concepts discussed / total concepts in study plan. Both accumulate into a per-guideline coverage record.
 
-5. **Report Card reads from sessions table** — the existing `ScorecardService` pattern (query all user sessions, parse state_json, aggregate) is extended with mode-aware logic. No new tables for coverage/exam aggregation — it's computed from session data.
+5. **Exam results stored as structured data in `state_json`** — exam questions, answers, and scores are part of the session state. A denormalized `exam_score` column on `sessions` enables quick display in history/report card.
+
+6. **Report Card reads from sessions table** — the existing `ScorecardService` pattern (query all user sessions, parse state_json, aggregate) is extended with mode-aware logic. No new tables for coverage/exam aggregation — it's computed from session data. **Scalability note:** This O(N) computation (load all sessions, parse JSON, aggregate) is acceptable for early-stage usage. When active users accumulate hundreds of sessions, we will introduce a materialized `coverage_summary` table with progressive updates on session completion. This is deferred to a future iteration — the current read-from-sessions approach is correct and simple.
 
 ---
 
@@ -94,7 +103,45 @@ class Session(Base):
     exam_total = Column(Integer, nullable=True)         # NEW
 ```
 
-### 2.3 Migration
+### 2.3 Single Write Path (State Consistency)
+
+**Canonical source:** `state_json` (the serialized `SessionState`) is always the source of truth.
+
+**Denormalized columns** (`mode`, `is_paused`, `exam_score`, `exam_total`) are derived copies written alongside `state_json` in the same DB transaction. They exist only for efficient SQL queries (filtering, sorting, display) and are never deserialized back into `SessionState`.
+
+**Write rule:** All session mutations flow through a single method — `SessionService._persist_session_state()` — which:
+
+1. Serializes `SessionState` → `state_json`
+2. Extracts denormalized values from the `SessionState` object
+3. Writes both in a single `UPDATE` within one transaction
+
+```python
+def _persist_session_state(self, session_id: str, session: SessionState, db: DBSession):
+    """Single transactional write for all session state. Called after every
+    state mutation (turn processing, pause, resume, end-exam)."""
+    db.execute(
+        update(SessionModel)
+        .where(SessionModel.id == session_id)
+        .values(
+            state_json=session.model_dump_json(),
+            mastery=session.overall_mastery,
+            step_idx=session.current_step,
+            # Denormalized copies — derived from state_json, never the reverse
+            mode=session.mode,
+            is_paused=session.is_paused if session.mode == "teach_me" else False,
+            exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
+            exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
+            updated_at=datetime.utcnow(),
+        )
+    )
+    db.commit()
+```
+
+**Read rule:** When loading a session for turn processing, always deserialize `state_json` into `SessionState`. Never reconstruct state from the denormalized columns.
+
+**Query rule:** For list/filter/display queries (history, report card, resumable check), use the denormalized columns directly — no need to parse `state_json`.
+
+### 2.4 Migration
 
 - Backfill existing sessions: `UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL`
 - All existing sessions become `teach_me` (backward compatible)
@@ -121,8 +168,9 @@ Add to `SessionState`:
 class SessionState(BaseModel):
     # ... existing fields ...
 
-    # NEW: Mode
+    # NEW: Mode and pause state
     mode: SessionMode = Field(default="teach_me", description="Session mode")
+    is_paused: bool = Field(default=False, description="Whether this Teach Me session is paused (resumable)")
 
     # NEW: Coverage tracking (for teach_me and clarify_doubts)
     concepts_covered_set: set[str] = Field(
@@ -135,6 +183,7 @@ class SessionState(BaseModel):
     exam_current_question_idx: int = Field(default=0)
     exam_total_correct: int = Field(default=0)
     exam_total_partial: int = Field(default=0)
+    exam_total_incorrect: int = Field(default=0)
     exam_finished: bool = Field(default=False)
     exam_feedback: Optional["ExamFeedback"] = Field(default=None)
 
@@ -145,7 +194,18 @@ class SessionState(BaseModel):
     )
 ```
 
-Note: `concepts_covered_set` uses `set[str]` for deduplication but Pydantic will serialize it as a list. We'll use a property/validator to handle this.
+**Serialization note:** `concepts_covered_set` uses `set[str]` for in-memory deduplication. Pydantic v2 serializes sets as JSON arrays. On deserialization from `state_json`, a `@field_validator` converts the list back to a set:
+
+```python
+@field_validator("concepts_covered_set", mode="before")
+@classmethod
+def _coerce_to_set(cls, v):
+    if isinstance(v, list):
+        return set(v)
+    return v
+```
+
+This ensures round-trip safety: `SessionState` → JSON (`state_json`) → `SessionState` preserves set semantics. Tests in Phase 1 verify this round-trip.
 
 ### 3.3 Exam Models
 
@@ -288,9 +348,14 @@ def create_new_session(self, request: CreateSessionRequest, user_id=None):
     elif mode == "clarify_doubts":
         welcome = self.orchestrator.generate_clarify_welcome(session)
     elif mode == "exam":
-        # Generate exam questions, then welcome
-        self.orchestrator.generate_exam_questions(session)
-        welcome = self.orchestrator.generate_exam_welcome(session)
+        # Pipeline: generate first question only during session creation.
+        # Remaining questions are generated asynchronously after the first
+        # question is delivered. See §7.1 for details.
+        first_question = self.exam_service.generate_first_question(session)
+        session.exam_questions = [first_question]
+        welcome = self.orchestrator.generate_exam_welcome(session, first_question)
+        # Kick off background generation of remaining questions
+        self.exam_service.generate_remaining_async(session_id, session)
 
     # Persist (include mode and exam columns)
     self._persist_session(session_id, session, request, user_id, subject, mode)
@@ -389,6 +454,26 @@ When resuming:
 3. On resume, opens WebSocket/chat with the existing session_id
 4. Backend sets `is_paused = False`, generates recap, continues from current step
 
+#### Pause/Resume Edge Cases
+
+**Only one paused session per subtopic:** A student can have at most one paused Teach Me session per guideline_id. The `GET /sessions/resumable` endpoint returns the most recent paused session.
+
+**Starting a new Teach Me while one is paused:** If the student selects "Teach Me" (start fresh) while a paused session exists for the same subtopic, the backend **automatically abandons the paused session** by setting `is_paused = False` on the old session (without completing it). The old session's coverage contributions are retained in history — they still count toward the subtopic's aggregate coverage. A new session is created from step 1 with fresh coverage tracking.
+
+**Pause during in-flight turn:** If the student taps "Pause" while a turn is being processed (WebSocket message in-flight), the frontend disables the pause button until the turn response arrives. The pause is only sent after the turn completes. This prevents state inconsistency between the in-flight turn's state updates and the pause flag.
+
+**Session abandonment (implicit):** If the student navigates away without pausing (closes browser, taps back), the session is NOT automatically paused. It remains in its current state. The `GET /sessions/resumable` endpoint only returns sessions with `is_paused = True`. Abandoned sessions still contribute their coverage to the aggregate.
+
+### 5.5 Restart Flow
+
+Per the PRD, students can restart a subtopic from scratch. When the student selects "Teach Me" on the mode selection screen:
+
+- **If a paused session exists:** The mode selection screen shows both "Resume — X% covered" and "Start Fresh" options
+- **"Start Fresh":** Abandons the paused session (sets `is_paused = False`) and creates a new Teach Me session from step 1 with empty `concepts_covered_set`
+- **Coverage impact:** The new session starts with 0% coverage *for this session*, but the subtopic's aggregate coverage (computed across all sessions) retains concepts covered in previous sessions. The student effectively gets a fresh lesson while keeping their historical coverage record.
+
+This means "restart" doesn't erase progress — it creates a new learning pass through the material. The report card shows the union of all coverage across sessions.
+
 ---
 
 ## 6. Backend: Clarify Doubts Mode
@@ -454,7 +539,10 @@ class ClarifyTurnOutput(BaseModel):
     intent: str  # "question", "followup", "done", "off_topic"
     concepts_mentioned: list[str] = Field(
         default_factory=list,
-        description="Concepts from the study plan that were discussed in this turn"
+        description="Concepts from the study plan that were substantively discussed in this turn. "
+        "Must be exact matches from the study plan concept list. Only include concepts that were "
+        "a substantive part of the exchange (question was about it, or answer explained it), "
+        "not incidental mentions."
     )
     follow_up_question: Optional[str] = None
     turn_summary: str
@@ -484,13 +572,35 @@ This data is shown in the frontend for the student's reference. The tutor does N
 
 **File:** `llm-backend/tutor/services/exam_service.py` (NEW)
 
+#### Latency Strategy: Pipelined Generation
+
+Generating all exam questions in a single synchronous LLM call during session creation would cause multi-second waits and risk timeouts. Instead, we use a **pipelined approach**:
+
+1. **Session creation:** Generate only the **first question** via a fast, focused LLM call (~1-2s). The welcome message includes this question immediately.
+2. **Background generation:** After the first question is delivered, a background task generates the remaining questions (6 more for default 7-question exam). These are appended to `session.exam_questions` and persisted.
+3. **Turn processing:** When the student answers question 1, the remaining questions are already available. If the background task hasn't finished yet (unlikely but possible with very fast students), the turn processing waits with a short timeout and falls back to generating the next question on-demand.
+
 ```python
 class ExamService:
     """Generates and evaluates exam questions."""
 
-    def generate_questions(self, session: SessionState) -> list[ExamQuestion]:
+    def generate_first_question(self, session: SessionState) -> ExamQuestion:
         """
-        Generate 5-10 exam questions for the subtopic.
+        Generate the first exam question immediately (fast path).
+        Uses a focused prompt that produces a single question.
+        Target latency: <2s.
+        """
+
+    def generate_remaining_async(self, session_id: str, session: SessionState):
+        """
+        Generate remaining questions in the background.
+        Appends to exam_questions in state_json when complete.
+        Uses a single LLM call for all remaining questions (batch).
+        """
+
+    def generate_questions_batch(self, session: SessionState, count: int) -> list[ExamQuestion]:
+        """
+        Generate a batch of exam questions for the subtopic.
 
         Uses the teaching guidelines (learning objectives, concepts) to create:
         - ~30% easy questions
@@ -502,6 +612,13 @@ class ExamService:
 ```
 
 Question generation uses a dedicated LLM call with the teaching guidelines + study plan as context. The prompt asks for structured output with questions, expected answers, difficulty, and type.
+
+#### Fallback Behavior
+
+If background generation fails (LLM error, timeout):
+- The exam continues with however many questions were generated
+- Minimum viable exam: 3 questions. If fewer than 3 are available, generate on-demand before the next turn
+- The student is never told about the pipeline — from their perspective, questions just appear one at a time
 
 ### 7.2 Exam Question Generation Prompt
 
@@ -559,6 +676,8 @@ async def _process_exam_turn(self, session, context):
         session.exam_total_correct += 1
     elif output.exam_result == "partial":
         session.exam_total_partial += 1
+    elif output.exam_result == "incorrect":
+        session.exam_total_incorrect += 1
 
     # Move to next question or finish
     session.exam_current_question_idx += 1
@@ -610,26 +729,69 @@ class ExamTurnOutput(BaseModel):
     turn_summary: str
 ```
 
-### 7.6 Exam Feedback Generation
+### 7.6 Exam Scoring Formula
 
-After all questions are answered, generate comprehensive feedback:
+**Scoring rules (definitive):**
+
+| Metric | Definition |
+|--------|-----------|
+| `raw_correct` | Count of questions with `result == "correct"` |
+| `raw_partial` | Count of questions with `result == "partial"` |
+| `raw_incorrect` | Count of questions with `result == "incorrect"` |
+| `answered_total` | Count of questions the student actually answered (`raw_correct + raw_partial + raw_incorrect`) |
+| `generated_total` | Total questions generated for this exam |
+| **Display score** | `raw_correct / generated_total` (e.g., "5/7") |
+| **Display percentage** | `raw_correct / generated_total * 100` |
+
+**Key decisions:**
+
+1. **Partial credit does NOT count toward the score number.** A partially correct answer is tracked for feedback (identifying what the student knows vs. doesn't) but the headline score is strict: only fully correct answers count. This keeps the score simple and unambiguous for students and parents.
+
+2. **Denominator is always `generated_total`, not `answered_total`.** If a student ends early after answering 5 of 7 questions (3 correct), the score is **3/7 (43%)**, not 3/5 (60%). Unanswered questions count against the student. This prevents gaming (end early after a good streak) and makes scores comparable across attempts.
+
+3. **Partial is tracked separately for feedback.** The `ExamFeedback` includes partial answers in weak areas analysis: "You partially understood X — revisit Y." This gives the student actionable information without inflating the score.
+
+**Stored metrics in `SessionState`:**
+
+```python
+# These are all stored in state_json and derived into ExamFeedback
+exam_total_correct: int      # raw_correct
+exam_total_partial: int      # raw_partial
+exam_total_incorrect: int    # raw_incorrect (NEW — was implicit before)
+# generated_total = len(exam_questions)
+# answered_total = exam_total_correct + exam_total_partial + exam_total_incorrect
+```
+
+**Stored in denormalized columns (for display queries):**
+
+```python
+# Written to sessions table via _persist_session_state() on exam completion
+exam_score = session.exam_total_correct          # numerator
+exam_total = len(session.exam_questions)          # denominator (generated_total)
+```
+
+### 7.7 Exam Feedback Generation
+
+After all questions are answered (or exam ended early), generate comprehensive feedback:
 
 ```python
 async def _generate_exam_feedback(self, session: SessionState) -> ExamFeedback:
     """Generate structured exam feedback from question results."""
-    # Can be done deterministically + LLM for pattern observation:
-
-    correct_concepts = [q.concept for q in session.exam_questions if q.result == "correct"]
-    incorrect_concepts = [q.concept for q in session.exam_questions if q.result == "incorrect"]
+    answered = [q for q in session.exam_questions if q.result is not None]
+    correct_concepts = [q.concept for q in answered if q.result == "correct"]
+    partial_concepts = [q.concept for q in answered if q.result == "partial"]
+    incorrect_concepts = [q.concept for q in answered if q.result == "incorrect"]
+    unanswered = [q for q in session.exam_questions if q.result is None]
 
     # Strengths: concepts where answers were correct
-    # Weak areas: concepts where answers were incorrect + brief explanation
+    # Weak areas: concepts where answers were incorrect or partial + brief explanation
     # Patterns: LLM call to identify patterns (optional, can also be rule-based)
     # Next steps: suggest Teach Me / Clarify Doubts for weak areas
+    # If unanswered questions exist, note: "You didn't attempt N questions on [concepts]"
 
     return ExamFeedback(
         score=session.exam_total_correct,
-        total=len(session.exam_questions),
+        total=len(session.exam_questions),  # always generated_total
         percentage=round(session.exam_total_correct / len(session.exam_questions) * 100, 1),
         strengths=[...],
         weak_areas=[...],
@@ -638,13 +800,16 @@ async def _generate_exam_feedback(self, session: SessionState) -> ExamFeedback:
     )
 ```
 
-### 7.7 End Early
+**Trend comparability:** Because the denominator is always `generated_total` (default 7), scores across attempts for the same subtopic are directly comparable in the trend graph. A student who scores 5/7 and later 6/7 shows clear improvement regardless of whether they ended early on either attempt.
+
+### 7.8 End Early
 
 If the student taps "End Early":
-1. Frontend sends a special message or calls a new `POST /sessions/{id}/end-exam` endpoint
-2. Backend marks remaining questions as unanswered
-3. Score is calculated on answered questions only (e.g., 3/5 if 5 of 7 answered)
-4. Feedback is generated on available data
+1. Frontend calls `POST /sessions/{id}/end-exam`
+2. Backend marks remaining questions as unanswered (`result = None`, `student_answer = None`)
+3. Score is calculated as `raw_correct / generated_total` (e.g., 3/7 if 3 correct out of 7 generated, even though only 5 were answered)
+4. Feedback is generated on available data, noting unanswered questions
+5. Session state is persisted with `exam_finished = True` via `_persist_session_state()`
 
 ---
 
@@ -684,9 +849,26 @@ def _compute_coverage(self, sessions_for_subtopic: list) -> float:
 - Coverage **accumulates** across sessions and modes (Teach Me + Clarify Doubts)
 - Coverage **never decreases**
 - Coverage is computed from the union of `concepts_covered_set` across all sessions
+- Only concepts that exist in the study plan's concept list count toward coverage. Concepts discussed outside the study plan scope are tracked in `concepts_discussed` for display but do NOT increase the coverage percentage.
 - A concept is "covered" when:
-  - **Teach Me:** The step for that concept is advanced past (student demonstrated understanding)
-  - **Clarify Doubts:** The concept was discussed (identified by the tutor in `concepts_mentioned`)
+  - **Teach Me:** The step for that concept is advanced past (student demonstrated understanding). This is a high-confidence signal — the tutor verified comprehension before advancing.
+  - **Clarify Doubts:** The concept was **substantively discussed** — meaning the tutor answered a question about it and the student engaged with the answer (not just a passing mention). The LLM agent determines this via the `concepts_mentioned` output field, which is constrained to only include concepts from the study plan's concept list.
+
+#### Coverage Confidence by Mode
+
+| Mode | Coverage signal | Confidence | Rationale |
+|------|----------------|-----------|-----------|
+| Teach Me | Step advanced past concept | High | Tutor verified understanding before advancing |
+| Clarify Doubts | Concept discussed (LLM-identified) | Medium | Student asked about it, but depth varies |
+
+This difference in confidence is acceptable because coverage answers "how much have you gone through?" not "how well do you know it?" — that's what exams are for. A student who asked a shallow question about a concept has still engaged with it.
+
+#### Guardrails for Clarify Doubts Coverage
+
+To prevent over-crediting:
+1. **Concept list is closed:** The agent prompt includes the exact list of study plan concepts and instructs the LLM to only report concepts from that list in `concepts_mentioned`. Free-form concept names are rejected.
+2. **Single-turn attribution:** A concept is only attributed if it was a substantive part of the turn (the question was about it, or the answer explained it). Incidental mentions don't count.
+3. **No self-reported coverage:** The student cannot claim coverage — only the tutor agent marks concepts as discussed.
 
 ### 8.3 Last Studied Timestamp
 
@@ -1269,11 +1451,23 @@ For exam mode, `exam_progress`:
 4. `SessionService.create_new_session` mode branching
 5. Coverage tracking in orchestrator for Teach Me
 
+**Phase 1 testing:**
+- Unit: `SessionState` serialization round-trip (including `set[str]` → list → set), `create_session` with each mode, `ExamQuestion`/`ExamFeedback` model validation
+- Unit: `_persist_session_state()` writes correct denormalized column values for each mode
+- Integration: Create session with each mode via API, verify DB columns + state_json consistency
+- Migration: Verify backfill sets `mode = 'teach_me'` on existing sessions, verify existing sessions still deserialize correctly with new fields defaulted
+
 ### Phase 2: Teach Me Enhancements (Backend + Frontend)
 6. Pause/resume backend (endpoints, service logic, recap generation)
 7. Coverage computation in report card service
 8. Frontend: mode selection screen
 9. Frontend: Teach Me UI changes (coverage display, pause button)
+
+**Phase 2 testing:**
+- Unit: Coverage computation (`_compute_coverage` with various session combinations), pause/resume state transitions, `is_paused` column sync
+- Unit: Resumable session query returns correct session (most recent paused for guideline_id)
+- Integration: Full pause → resume → continue flow via API, verify coverage monotonically increases
+- Edge case: Pause while turn is in-flight (verify state consistency), start new Teach Me while one is paused (verify old one is abandoned)
 
 ### Phase 3: Clarify Doubts (Backend + Frontend)
 10. Clarify Doubts prompts
@@ -1282,6 +1476,12 @@ For exam mode, `exam_progress`:
 13. Past discussions query
 14. Frontend: Clarify Doubts UI (concept chips, end session, past discussions)
 
+**Phase 3 testing:**
+- Unit: `ClarifyTurnOutput` schema validation, concept tracking logic (deduplication, study-plan-only filtering)
+- Unit: Past discussions query (correct sessions returned, correct concept aggregation)
+- Integration: Full Clarify Doubts session via API — create, multiple turns, end session, verify concepts_discussed and coverage
+- Contract: Verify `concepts_mentioned` output from LLM only contains concepts from the study plan concept list (prompt compliance test with mock LLM)
+
 ### Phase 4: Exam Mode (Backend + Frontend)
 15. Exam question generation (service + prompts)
 16. Exam turn processing in orchestrator
@@ -1289,17 +1489,33 @@ For exam mode, `exam_progress`:
 18. End early endpoint
 19. Frontend: Exam UI (question counter, running score, results screen)
 
+**Phase 4 testing:**
+- Unit: Scoring formula (correct/partial/incorrect counting, percentage calculation, denominator = generated_total), end-early scoring, `ExamFeedback` generation
+- Unit: Pipelined question generation (first question fast path, background batch, fallback on-demand)
+- Integration: Full exam flow via API — create, answer all questions, verify score + feedback. End-early flow — answer 3 of 7, verify score is 3/7 not 3/3
+- Edge case: Student answers before background questions are ready (verify graceful fallback)
+- Contract: Verify `ExamTurnOutput` schema from LLM includes required fields
+
 ### Phase 5: Report Card (Backend + Frontend)
 20. Report card service (coverage, exam history, last studied, nudges)
 21. Report card API endpoint
 22. Frontend: Report Card page (rename, coverage display, exam results, trend graph, action buttons)
+
+**Phase 5 testing:**
+- Unit: Coverage aggregation across multiple sessions/modes, exam history ordering, revision nudge logic at boundary conditions (7/14/30 days)
+- Integration: Create sessions across all modes for same subtopic, verify report card shows correct aggregated coverage, latest exam score, and exam history
+- Backward compat: Verify old `/sessions/scorecard` endpoint still works (alias)
 
 ### Phase 6: Session History & Polish
 23. Session history mode labels + mode-specific data
 24. Session history mode filter
 25. WebSocket state update changes
 26. DevTools updates (mode display)
-27. End-to-end testing
+
+**Phase 6 testing:**
+- Integration: Verify history endpoint returns correct mode-specific data for each mode
+- Integration: WebSocket state updates include mode, coverage, exam_progress fields
+- E2E: Full user journey — Teach Me (pause, resume, complete) → Clarify Doubts → Exam → Report Card → Session History. Verify all data flows correctly end-to-end
 
 ---
 
@@ -1315,17 +1531,21 @@ For exam mode, `exam_progress`:
 
 4. **State migration** — Existing sessions in `state_json` don't have mode/coverage fields. Mitigation: all new fields have defaults; deserialization handles missing fields gracefully (Pydantic defaults).
 
-### Open Questions
+### Resolved Questions
 
-1. **Exam question count** — PRD says 5-10 (default 7). Should this be configurable per subtopic or grade level?
+1. **Exam question count** — Default 7 questions. Not configurable in V1. Can be made configurable per grade later if needed based on usage data.
 
-2. **Coverage granularity** — Should coverage track at the concept level (current plan) or at the study plan step level? Concepts can appear in multiple steps — do we count once or per step?
+2. **Coverage granularity** — Coverage tracks at the **concept level**, not the step level. If a concept appears in multiple steps, it is counted once (set semantics via `concepts_covered_set`). This aligns with the PRD's "you either covered it or you didn't" philosophy.
 
-3. **Partial credit in exams** — PRD mentions "partially correct." How does this affect the score? Current plan: only fully correct answers count toward the score number, but partial is tracked separately for feedback.
+3. **Partial credit in exams** — **Resolved in §7.6.** Partial credit does NOT count toward the headline score. Score = `raw_correct / generated_total`. Partial answers are tracked separately (`exam_total_partial`) and used in feedback to identify areas where the student has partial understanding.
 
-4. **Subject/topic-level aggregation** — PRD says "the exact aggregation approach can be refined." Should subject-level score be average coverage, average exam score, or a weighted combo?
+4. **End-early denominator** — **Resolved in §7.6.** Denominator is always `generated_total` (default 7), not `answered_total`. This prevents gaming and keeps scores comparable across attempts.
 
-5. **Offline/mobile** — Does the pause/resume flow need to account for unreliable connectivity? Current plan assumes online-only.
+### Remaining Open Questions
+
+1. **Subject/topic-level aggregation** — PRD says "the exact aggregation approach can be refined." Default approach: subject-level score = average of subtopic coverage percentages. Exam scores are shown per-subtopic only and do not roll up into topic/subject scores (they are assessment data, not progress data). This can be refined post-launch based on what feels right to users.
+
+2. **Offline/mobile** — Does the pause/resume flow need to account for unreliable connectivity? Current plan assumes online-only. If the WebSocket disconnects mid-session, the session state is preserved at the last successful turn — the student can reconnect and continue (existing behavior).
 
 ---
 
