@@ -300,3 +300,4 @@ After writing the plan:
 - **Flag deviations** — If the feature requires a new pattern that doesn't exist in the codebase yet, call it out explicitly and justify it.
 - **Stay grounded in the PRD** — Don't add technical scope beyond what the PRD requires. If you spot a gap, flag it, don't fill it.
 - **Think about backwards compatibility** — Existing users, existing data, existing API consumers. Nothing should break.
+- **Design for clean, modular code** — Every new function, class, and module should have a single clear responsibility. Prefer small focused files over large multi-purpose ones. Keep coupling between modules low — communicate through well-defined interfaces, not shared state. If a piece of logic could be reused, design it to be reusable from the start. The plan should make it obvious where each piece of logic lives and why.
