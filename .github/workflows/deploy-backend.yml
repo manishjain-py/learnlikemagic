@@ -33,8 +33,11 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Copy docs into backend build context
-        run: cp -r docs/ llm-backend/docs/
+      - name: Copy docs and e2e scenarios into backend build context
+        run: |
+          cp -r docs/ llm-backend/docs/
+          mkdir -p llm-backend/e2e
+          cp e2e/scenarios.json llm-backend/e2e/scenarios.json 2>/dev/null || true
 
       - name: Build Docker image
         working-directory: llm-backend

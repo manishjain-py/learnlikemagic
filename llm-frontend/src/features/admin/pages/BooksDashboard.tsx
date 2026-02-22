@@ -113,6 +113,19 @@ const BooksDashboard: React.FC = () => {
           LLM Config
         </button>
         <button
+          onClick={() => navigate('/admin/test-scenarios')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: 'white',
+            color: '#374151',
+            border: '1px solid #D1D5DB',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          Test Scenarios
+        </button>
+        <button
           onClick={() => navigate('/admin/docs')}
           style={{
             padding: '10px 20px',

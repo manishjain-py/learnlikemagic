@@ -8,6 +8,7 @@ export default defineConfig({
   },
   retries: 1,
   workers: 1, // Sequential — scenarios may depend on app state
+  outputDir: '../reports/e2e-runner/test-output',
   use: {
     baseURL: 'http://localhost:5173',
     screenshot: 'only-on-failure',

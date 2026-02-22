@@ -354,3 +354,56 @@ export async function updateLLMConfig(
 export async function getLLMConfigOptions(): Promise<LLMConfigOptions> {
   return apiFetch<LLMConfigOptions>('/api/admin/llm-config/options');
 }
+
+// ===== Test Scenarios =====
+
+export interface TestFunctionality {
+  slug: string;
+  name: string;
+  filename: string;
+  scenario_count: number;
+  last_tested: string | null;
+  status: 'passed' | 'failed' | 'not_run';
+  passed: number;
+  failed: number;
+}
+
+export interface TestScenarioResult {
+  id: string;
+  name: string;
+  status: 'passed' | 'failed' | 'not_run';
+  steps: string[];
+  expected_result: string;
+  screenshots: string[];
+}
+
+export interface TestFunctionalityDetail {
+  slug: string;
+  name: string;
+  last_tested: string | null;
+  status: string;
+  scenarios: TestScenarioResult[];
+}
+
+export interface ScreenshotInfo {
+  label: string;
+  url: string;
+  filename: string;
+}
+
+export async function listTestScenarios(): Promise<{ functionalities: TestFunctionality[] }> {
+  return apiFetch<{ functionalities: TestFunctionality[] }>('/api/test-scenarios');
+}
+
+export async function getTestScenarioDetail(slug: string): Promise<TestFunctionalityDetail> {
+  return apiFetch<TestFunctionalityDetail>(`/api/test-scenarios/${slug}`);
+}
+
+export async function getScenarioScreenshots(
+  slug: string,
+  scenarioId: string
+): Promise<{ scenario_id: string; screenshots: ScreenshotInfo[] }> {
+  return apiFetch<{ scenario_id: string; screenshots: ScreenshotInfo[] }>(
+    `/api/test-scenarios/${slug}/screenshots/${scenarioId}`
+  );
+}

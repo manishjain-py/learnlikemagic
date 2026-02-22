@@ -162,6 +162,31 @@ After Playwright completes, read:
 
 ---
 
+## Step 3b: Upload test results and screenshots to S3
+
+After Playwright tests complete successfully, upload results and screenshots to S3 so the admin UI can display them.
+
+```bash
+cd "$ROOT/llm-backend" && source venv/bin/activate
+
+echo "Uploading E2E results to S3..." | tee -a "$LOG_FILE"
+python scripts/upload_e2e_results.py --results-dir "$REPORT_DIR" 2>&1 | tee -a "$LOG_FILE"
+UPLOAD_EXIT=$?
+
+if [ "$UPLOAD_EXIT" -eq 0 ]; then
+  echo "E2E results uploaded to S3 successfully" | tee -a "$LOG_FILE"
+else
+  echo "WARNING: Failed to upload E2E results to S3 (exit code $UPLOAD_EXIT)" | tee -a "$LOG_FILE"
+fi
+```
+
+This uploads:
+- All screenshots to `s3://bucket/e2e-results/screenshots/<run-slug>/`
+- `e2e-results/latest-results.json` (overwritten each run)
+- `e2e-results/runs/<run-slug>/results.json` (timestamped history)
+
+---
+
 ## Step 4: Visual inspection with Claude
 
 **This is the key differentiator.** After Playwright finishes, read EVERY screenshot from `$SCREENSHOT_DIR` using the Read tool (which can read images).

@@ -42,6 +42,7 @@ import GuidelinesReview from './features/admin/pages/GuidelinesReview';
 import EvaluationDashboard from './features/admin/pages/EvaluationDashboard';
 import DocsViewer from './features/admin/pages/DocsViewer';
 import LLMConfigPage from './features/admin/pages/LLMConfigPage';
+import TestScenariosPage from './features/admin/pages/TestScenariosPage';
 
 function App() {
   return (
@@ -107,6 +108,7 @@ function App() {
           <Route path="/admin/evaluation" element={<EvaluationDashboard />} />
           <Route path="/admin/docs" element={<DocsViewer />} />
           <Route path="/admin/llm-config" element={<LLMConfigPage />} />
+          <Route path="/admin/test-scenarios" element={<TestScenariosPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
