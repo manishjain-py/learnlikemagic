@@ -1,5 +1,12 @@
 Update all project documentation to match the current codebase.
 
+**Primary success criteria (non-negotiable):**
+After this command runs, documentation must be complete for the current codebase:
+1. Every major user-facing functionality is documented in functional docs.
+2. Every major technical feature/module is documented in technical docs.
+3. Any newly added functionality with no suitable existing doc gets a **new doc created**.
+4. Master index and changelog clearly show what was updated vs newly created.
+
 **Instructions:**
 1. Read `docs/DOCUMENTATION_GUIDELINES.md` to understand structure and writing rules.
 2. Launch the following 7 specialized sub-agents **in parallel** using the Task tool.
@@ -8,6 +15,9 @@ Update all project documentation to match the current codebase.
    - Its assigned doc files to update
    - **Discovery instructions** — directories to explore and patterns to search, NOT hardcoded file lists
    - Instruction to log changes with justification
+   - **Coverage-gap instruction**: identify any functionality in discovered code not adequately covered by existing docs and either:
+     - map it to an existing doc section to update, or
+     - propose and create a new doc file if no existing doc is a good fit.
 
 3. **Agent 1 — App Overview & Architecture**
    - Docs: `docs/functional/app-overview.md`, `docs/technical/architecture-overview.md`
@@ -85,13 +95,29 @@ Update all project documentation to match the current codebase.
      - Grep for `class.*Base` in `llm-backend/shared/models/` and `llm-backend/book_ingestion/models/` for all ORM models
    - Focus: Local setup, testing, Terraform deployment, Docker, CI/CD, DB schema, migrations
 
-10. After all agents complete, review `docs/DOCUMENTATION_GUIDELINES.md` — update the master index if any docs were added or renamed.
-11. Log all changes in `tmp/DOCS_UPDATE_CHANGELOG.md` (overwrite each run).
+10. After all agents complete, perform a **cross-agent coverage reconciliation pass**:
+    - Build a list of all major backend modules, frontend feature areas, and API groups discovered.
+    - Map each discovered area to at least one functional doc and one technical doc (or justify why one side is N/A).
+    - For any uncovered area, create or assign new docs immediately.
+
+11. Review `docs/DOCUMENTATION_GUIDELINES.md` and update the master index for all:
+    - updated docs
+    - newly created docs
+    - renamed/moved docs
+
+12. Log all changes in `tmp/DOCS_UPDATE_CHANGELOG.md` (overwrite each run), including:
+    - Updated docs + summary of changes
+    - Newly created docs + why existing docs were insufficient
+    - Coverage matrix: `feature/module -> doc(s)`
+    - Any intentionally deferred items with rationale
 
 **For each agent, use this prompt template:**
 
 ```
 You are updating LearnLikeMagic documentation. Read the assigned docs and compare against the current code.
+
+Primary objective:
+Documentation must be fully current for your area. If functionality exists in code and is not adequately covered, you must either update an existing doc section or create a new doc.
 
 Writing rules:
 - Functional docs: user perspective, no code, no file paths, no jargon
@@ -103,7 +129,11 @@ Discovery steps (do these FIRST before comparing):
 1. Read each assigned doc — note the "Key Files" sections as your starting point
 2. Run the discovery searches listed above to find ALL relevant code (files may have moved or new ones added)
 3. Read the discovered code files
-4. Compare with the docs: identify outdated info, missing features, wrong details, stale file paths
-5. Update the docs to match current code — including updating the "Key Files" tables
-6. Report what you changed and why
+4. Compare with docs: identify outdated info, missing features, wrong details, stale file paths
+5. Identify coverage gaps:
+   - Features/modules present in code but not documented well
+   - Features/modules that do not fit existing docs cleanly
+6. Update docs to match current code — including updating the "Key Files" tables
+7. If needed, create new doc file(s) with proper placement/naming per docs guidelines
+8. Report what you changed and why, including any new docs created and gap closures
 ```
