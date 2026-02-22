@@ -9,18 +9,24 @@ Your job: take an approved PRD and produce a detailed, actionable technical impl
 ## Input
 
 - `$ARGUMENTS` = path to the PRD file (e.g., `docs/prd/learning-modes.md`)
-- If no arguments provided, ask the user: "Which PRD should I create a tech implementation plan for? Provide the file path (e.g., `docs/prd/feature-name.md`)."
+- If no arguments provided, list all PRD files in `docs/prd/` and pick the most recent one that doesn't already have a corresponding `*-impl-plan.md`. If all PRDs already have plans, inform the user that all PRDs are covered.
 
 ---
 
-## INTERACTIVE DIRECTIVE
+## AUTONOMOUS DIRECTIVE
 
-This is an **interactive** skill. You MUST discuss technical decisions with the user before finalizing the plan.
+This is a **non-interactive** skill. You MUST work autonomously from start to finish without asking the user any questions.
 
-- **DO** use `AskUserQuestion` for decisions that affect architecture or scope.
-- **DO** pause and wait for responses before proceeding.
-- **DO NOT** assume technical direction when multiple valid approaches exist — ask.
-- **DO NOT** produce the final plan until critical decisions are resolved.
+- **DO** make your best judgement call on all technical decisions.
+- **DO** pick the approach that best fits existing codebase patterns and conventions.
+- **DO** document your reasoning for significant decisions in the plan itself.
+- **DO NOT** use `AskUserQuestion` — the user will review the PR directly.
+- **DO NOT** block on decisions — choose the simplest, most consistent option and move on.
+
+When multiple valid approaches exist, pick the one that:
+1. Best matches existing codebase patterns.
+2. Minimizes new abstractions and complexity.
+3. Is easiest to change later if the user disagrees.
 
 ---
 
@@ -62,9 +68,9 @@ Organize this into a requirements-to-changes mapping table.
 
 ---
 
-## Step 2: Identify technical decisions and discuss with user
+## Step 2: Make technical decisions
 
-Surface decisions that affect the implementation approach:
+For each decision point, pick the best approach and document your reasoning in the plan. Key areas:
 
 - **Data model choices** — How to structure new tables/columns, relationships, indexing.
 - **API design** — REST vs. WebSocket, endpoint structure, request/response shapes.
@@ -74,14 +80,7 @@ Surface decisions that affect the implementation approach:
 - **Performance concerns** — Anything that could be slow, expensive, or resource-heavy.
 - **Breaking changes** — Anything that changes existing behavior.
 
-For each decision:
-- State the options clearly.
-- Recommend one with a brief reason.
-- Let the user decide.
-
-Use `AskUserQuestion` for the most impactful decisions. Minor ones can be listed as text.
-
-**Repeat this step** until all critical decisions are resolved.
+For each significant decision, include a brief "**Decision:**" note in the relevant section of the plan explaining what you chose and why. This lets the user understand and challenge your reasoning during PR review.
 
 ---
 
@@ -274,17 +273,21 @@ Technical questions that need answers before or during implementation.
 
 ---
 
-## Step 4: Review with user
+## Step 4: Create a PR
 
-After writing the plan, present a summary:
+After writing the plan:
 
-1. **Scope** — Number of new files, modified files, new DB tables, new endpoints.
-2. **Key technical decisions** — Recap what was decided during discussion.
-3. **Implementation steps** — Quick overview of the build sequence.
-4. **Risk flags** — Highest-risk items.
-5. **Suggested starting point** — Which step to begin with and why.
-
-Ask the user to review the full plan and iterate if needed.
+1. Create a new branch named `tech-impl-plan/<feature-slug>`.
+2. Commit the implementation plan file.
+3. Push the branch and create a PR with:
+   - **Title:** "Tech impl plan: \<Feature Name\>"
+   - **Body:** A concise summary including:
+     - Scope (new files, DB tables, endpoints)
+     - Key technical decisions made and reasoning
+     - Implementation steps overview
+     - Risk flags
+     - Suggested starting point
+4. Return the PR link to the user.
 
 ---
 
