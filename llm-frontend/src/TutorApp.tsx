@@ -184,9 +184,20 @@ function App() {
     setSessionMode('teach_me');
     try {
       setLoading(true);
-      await resumeSessionAPI(resumeSessionId);
-      // Load session state by opening WebSocket or REST — for now redirect to chat
+      const result = await resumeSessionAPI(resumeSessionId);
       setSessionId(resumeSessionId);
+      // Populate conversation history so chat isn't blank
+      if (result.conversation_history && result.conversation_history.length > 0) {
+        setMessages(
+          result.conversation_history.map((m: { role: string; content: string }) => ({
+            role: m.role === 'student' ? 'student' as const : 'teacher' as const,
+            content: m.content,
+          }))
+        );
+      }
+      if (result.current_step) {
+        setStepIdx(result.current_step);
+      }
       setSelectionStep('chat');
     } catch (error) {
       console.error('Failed to resume session:', error);

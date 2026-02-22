@@ -548,7 +548,8 @@ class TeacherOrchestrator:
             state_changed=True,
         )
 
-    def _build_exam_feedback(self, session: SessionState) -> "ExamFeedback":
+    @staticmethod
+    def _build_exam_feedback(session: SessionState) -> "ExamFeedback":
         """Build structured exam feedback from question results."""
         from tutor.models.session_state import ExamFeedback
 
@@ -569,7 +570,7 @@ class TeacherOrchestrator:
         if weak_areas:
             next_steps.append(f"Review these concepts in Teach Me: {', '.join(weak_areas[:3])}")
         if partial_concepts:
-            next_steps.append(f"Clarify your understanding of: {', '.join(set(partial_concepts)[:3])}")
+            next_steps.append(f"Clarify your understanding of: {', '.join(list(set(partial_concepts))[:3])}")
         if not weak_areas:
             next_steps.append("Great job! Try a harder topic or retake to aim for a perfect score.")
 

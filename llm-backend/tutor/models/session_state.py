@@ -99,7 +99,6 @@ class SessionState(BaseModel):
 
     # Progress Tracking
     current_step: int = Field(default=1, ge=1, description="Current step in study plan (1-indexed)")
-    concepts_covered: list[str] = Field(default_factory=list)
     last_concept_taught: Optional[str] = None
 
     # Assessment State

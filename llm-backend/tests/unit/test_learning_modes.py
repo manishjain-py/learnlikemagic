@@ -512,17 +512,17 @@ class TestGetResumableSession:
     def test_resumable_found(self, MockRepo):
         _, client, mocks = _build_app_and_client()
 
-        # The endpoint queries the DB directly via db.query(SessionModel)
-        # We need to mock db.query(...).filter(...).order_by(...).first()
-        state = {
-            "concepts_covered_set": ["Numerator", "Denominator"],
-            "topic": {
-                "study_plan": {"steps": [{"step_id": 1}, {"step_id": 2}, {"step_id": 3}]}
-            },
-        }
+        # Build a proper SessionState so model_validate_json succeeds
+        concepts = ["Numerator", "Denominator", "Comparing"]
+        topic = make_test_topic(concepts=concepts)
+        ctx = make_test_student_context()
+        session = create_session(topic=topic, student_context=ctx, mode="teach_me")
+        session.concepts_covered_set = {"Numerator", "Denominator"}
+        session.current_step = 2
+
         mock_session = MagicMock()
         mock_session.id = "sess-abc"
-        mock_session.state_json = json.dumps(state)
+        mock_session.state_json = session.model_dump_json()
         mock_session.step_idx = 2
 
         mock_query = MagicMock()
@@ -536,8 +536,9 @@ class TestGetResumableSession:
         data = resp.json()
         assert data["session_id"] == "sess-abc"
         assert data["current_step"] == 2
-        assert data["total_steps"] == 3
+        assert data["total_steps"] == len(concepts)
         assert set(data["concepts_covered"]) == {"Numerator", "Denominator"}
+        assert data["coverage"] > 0  # Fix #4: coverage is now correctly computed
 
     @patch("tutor.api.sessions.SessionRepository")
     def test_resumable_not_found(self, MockRepo):
@@ -563,24 +564,24 @@ class TestGetResumableSession:
 class TestPauseSession:
     """Tests for POST /sessions/{id}/pause."""
 
+    @patch("tutor.api.sessions.SessionService")
     @patch("tutor.api.sessions.SessionRepository")
-    def test_pause_teach_me_success(self, MockRepo):
+    def test_pause_teach_me_success(self, MockRepo, MockService):
         _, client, mocks = _build_app_and_client()
-
-        concepts = ["Numerator", "Denominator", "Comparing fractions"]
-        topic = make_test_topic(concepts=concepts)
-        ctx = make_test_student_context()
-        session = create_session(topic=topic, student_context=ctx, mode="teach_me")
-        session.concepts_covered_set = {"Numerator"}
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
 
-        session_row = _make_session_row_mock(
-            mode="teach_me",
-            state_json=session.model_dump_json(),
-        )
+        session_row = _make_session_row_mock(mode="teach_me")
         mock_repo.get_by_id.return_value = session_row
+
+        mock_service = MagicMock()
+        MockService.return_value = mock_service
+        mock_service.pause_session.return_value = {
+            "coverage": 33.3,
+            "concepts_covered": ["Numerator"],
+            "message": "You've covered 33% so far. You can pick up where you left off anytime.",
+        }
 
         resp = client.post("/sessions/sess-123/pause")
         assert resp.status_code == 200
@@ -619,24 +620,25 @@ class TestPauseSession:
 class TestResumeSession:
     """Tests for POST /sessions/{id}/resume."""
 
+    @patch("tutor.api.sessions.SessionService")
     @patch("tutor.api.sessions.SessionRepository")
-    def test_resume_paused_session(self, MockRepo):
+    def test_resume_paused_session(self, MockRepo, MockService):
         _, client, mocks = _build_app_and_client()
-
-        topic = make_test_topic()
-        ctx = make_test_student_context()
-        session = create_session(topic=topic, student_context=ctx, mode="teach_me")
-        session.is_paused = True
-        session.current_step = 2
 
         mock_repo = MagicMock()
         MockRepo.return_value = mock_repo
 
-        session_row = _make_session_row_mock(
-            is_paused=True,
-            state_json=session.model_dump_json(),
-        )
+        session_row = _make_session_row_mock(is_paused=True)
         mock_repo.get_by_id.return_value = session_row
+
+        mock_service = MagicMock()
+        MockService.return_value = mock_service
+        mock_service.resume_session.return_value = {
+            "session_id": "sess-abc",
+            "message": "Session resumed",
+            "current_step": 2,
+            "conversation_history": [],
+        }
 
         resp = client.post("/sessions/sess-abc/resume")
         assert resp.status_code == 200
@@ -674,26 +676,14 @@ class TestResumeSession:
 class TestEndExam:
     """Tests for POST /sessions/{id}/end-exam."""
 
+    @patch("tutor.api.sessions.SessionService")
     @patch("tutor.api.sessions.SessionRepository")
-    def test_end_exam_success(self, MockRepo):
+    def test_end_exam_success(self, MockRepo, MockService):
         _, client, mocks = _build_app_and_client()
 
         topic = make_test_topic(concepts=["A", "B"])
         ctx = make_test_student_context()
         session = create_session(topic=topic, student_context=ctx, mode="exam")
-        session.exam_questions = [
-            ExamQuestion(
-                question_idx=0, question_text="Q1?", concept="A",
-                difficulty="easy", question_type="conceptual",
-                expected_answer="A1", result="correct",
-            ),
-            ExamQuestion(
-                question_idx=1, question_text="Q2?", concept="B",
-                difficulty="medium", question_type="procedural",
-                expected_answer="A2", result="incorrect",
-            ),
-        ]
-        session.exam_total_correct = 1
         session.exam_finished = False
 
         mock_repo = MagicMock()
@@ -705,20 +695,20 @@ class TestEndExam:
         )
         mock_repo.get_by_id.return_value = session_row
 
-        # The endpoint does TeacherOrchestrator.__new__(TeacherOrchestrator)
-        # then calls orchestrator._build_exam_feedback(session).
-        # Patch the orchestrator class so __new__ returns a mock.
-        mock_feedback = ExamFeedback(
-            score=1, total=2, percentage=50.0,
-            strengths=["A"], weak_areas=["B"],
-            patterns=["Mixed"], next_steps=["Practice B"],
-        )
-        with patch(
-            "tutor.orchestration.orchestrator.TeacherOrchestrator._build_exam_feedback",
-            return_value=mock_feedback,
-        ):
-            resp = client.post("/sessions/sess-exam/end-exam")
+        mock_service = MagicMock()
+        MockService.return_value = mock_service
+        mock_service.end_exam.return_value = {
+            "score": 1,
+            "total": 2,
+            "percentage": 50.0,
+            "feedback": {
+                "score": 1, "total": 2, "percentage": 50.0,
+                "strengths": ["A"], "weak_areas": ["B"],
+                "patterns": ["Mixed"], "next_steps": ["Practice B"],
+            },
+        }
 
+        resp = client.post("/sessions/sess-exam/end-exam")
         assert resp.status_code == 200
         data = resp.json()
         assert data["score"] == 1

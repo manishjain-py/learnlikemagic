@@ -135,6 +135,15 @@ def _apply_learning_modes_columns(db_manager):
             conn.execute(text("ALTER TABLE sessions ADD COLUMN state_version INTEGER DEFAULT 1 NOT NULL"))
             print("  ✓ state_version column added")
 
+        # Partial unique index: only one paused session per user+guideline
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+            "ON sessions(user_id, guideline_id) WHERE is_paused = TRUE"
+        ))
+
+        # Backfill mode for existing sessions
+        conn.execute(text("UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL"))
+
         conn.commit()
 
 

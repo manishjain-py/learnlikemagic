@@ -87,12 +87,23 @@ class SessionService:
 
         logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode}")
 
-        # Generate mode-specific welcome
+        # For exam mode, generate questions before welcome
         import asyncio
+        if mode == "exam":
+            from tutor.services.exam_service import ExamService
+            exam_svc = ExamService(self.llm_service)
+            session.exam_questions = asyncio.run(exam_svc.generate_questions(session))
+            logger.info(f"Generated {len(session.exam_questions)} exam questions for session {session_id}")
+
+        # Generate mode-specific welcome
         if mode == "clarify_doubts":
             welcome = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
         elif mode == "exam":
             welcome = asyncio.run(self.orchestrator.generate_exam_welcome(session))
+            # Append first question to welcome
+            if session.exam_questions:
+                first_q = session.exam_questions[0]
+                welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
         else:
             welcome = asyncio.run(self.orchestrator.generate_welcome_message(session))
 
@@ -134,6 +145,8 @@ class SessionService:
         if not db_session:
             raise SessionNotFoundException(session_id)
 
+        expected_version = db_session.state_version or 1
+
         # Deserialize SessionState
         session = SessionState.model_validate_json(db_session.state_json)
 
@@ -143,8 +156,8 @@ class SessionService:
             self.orchestrator.process_turn(session, request.student_reply)
         )
 
-        # Update database
-        self._update_session_db(session_id, session)
+        # Update database with version check
+        self._persist_session_state(session_id, session, expected_version)
 
         # Log event
         self.event_repo.log(
@@ -305,6 +318,72 @@ class SessionService:
             self.db.rollback()
             raise StaleStateError(f"Session {session_id} was modified concurrently (expected version {expected_version})")
         self.db.commit()
+
+    def pause_session(self, session_id: str) -> dict:
+        """Pause a Teach Me session with version-safe persistence."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.is_paused = True
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        return {
+            "coverage": session.coverage_percentage,
+            "concepts_covered": list(session.concepts_covered_set),
+            "message": f"You've covered {session.coverage_percentage:.0f}% so far. You can pick up where you left off anytime.",
+        }
+
+    def resume_session(self, session_id: str) -> dict:
+        """Resume a paused session with version-safe persistence."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.is_paused = False
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        # Return conversation history for chat replay
+        history = [
+            {"role": m.role, "content": m.content}
+            for m in session.full_conversation_log
+        ]
+
+        return {
+            "session_id": session_id,
+            "message": "Session resumed",
+            "current_step": session.current_step,
+            "conversation_history": history,
+        }
+
+    def end_exam(self, session_id: str) -> dict:
+        """End an exam early with version-safe persistence."""
+        from tutor.orchestration.orchestrator import TeacherOrchestrator
+
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.exam_finished = True
+        session.exam_feedback = TeacherOrchestrator._build_exam_feedback(session)
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        total = len(session.exam_questions)
+        return {
+            "score": session.exam_total_correct,
+            "total": total,
+            "percentage": round(session.exam_total_correct / total * 100, 1) if total else 0.0,
+            "feedback": session.exam_feedback.model_dump() if session.exam_feedback else None,
+        }
 
     def _generate_suggestions(
         self,

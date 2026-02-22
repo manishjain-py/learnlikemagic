@@ -156,17 +156,15 @@ def get_resumable_session(
     if not session:
         raise HTTPException(status_code=404, detail="No resumable session found")
 
-    state = json.loads(session.state_json)
-    concepts_covered = list(state.get("concepts_covered_set", []))
-    topic = state.get("topic", {})
-    total_steps = len(topic.get("study_plan", {}).get("steps", [])) if topic else 0
+    session_state = SessionState.model_validate_json(session.state_json)
+    total_steps = session_state.topic.study_plan.total_steps if session_state.topic else 0
 
     return ResumableSessionResponse(
         session_id=session.id,
-        coverage=state.get("coverage_percentage", 0) if "coverage_percentage" in state else 0,
-        current_step=session.step_idx or 1,
+        coverage=session_state.coverage_percentage,
+        current_step=session_state.current_step,
         total_steps=total_steps,
-        concepts_covered=concepts_covered,
+        concepts_covered=list(session_state.concepts_covered_set),
     )
 
 
@@ -252,26 +250,12 @@ def pause_session(
     if session_row.mode != "teach_me":
         raise HTTPException(status_code=400, detail="Only Teach Me sessions can be paused")
 
-    session = SessionState.model_validate_json(session_row.state_json)
-    session.is_paused = True
-
-    # Update DB
-    from shared.models.entities import Session as SessionModel
-    from datetime import datetime
-
-    session_row.state_json = session.model_dump_json()
-    session_row.is_paused = True
-    session_row.updated_at = datetime.utcnow()
-    db.commit()
-
-    concepts_covered = list(session.concepts_covered_set)
-    coverage = session.coverage_percentage
-
-    return PauseSummary(
-        coverage=coverage,
-        concepts_covered=concepts_covered,
-        message=f"You've covered {coverage:.0f}% so far. You can pick up where you left off anytime.",
-    )
+    try:
+        service = SessionService(db)
+        result = service.pause_session(session_id)
+        return PauseSummary(**result)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
 
 
 @router.post("/{session_id}/resume")
@@ -290,18 +274,11 @@ def resume_session(
     if not session_row.is_paused:
         raise HTTPException(status_code=400, detail="Session is not paused")
 
-    session = SessionState.model_validate_json(session_row.state_json)
-    session.is_paused = False
-
-    from shared.models.entities import Session as SessionModel
-    from datetime import datetime
-
-    session_row.state_json = session.model_dump_json()
-    session_row.is_paused = False
-    session_row.updated_at = datetime.utcnow()
-    db.commit()
-
-    return {"session_id": session_id, "message": "Session resumed", "current_step": session.current_step}
+    try:
+        service = SessionService(db)
+        return service.resume_session(session_id)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
 
 
 @router.post("/{session_id}/end-exam", response_model=EndExamResponse)
@@ -320,42 +297,17 @@ def end_exam_early(
     if session_row.mode != "exam":
         raise HTTPException(status_code=400, detail="Not an exam session")
 
-    session = SessionState.model_validate_json(session_row.state_json)
-
-    if session.exam_finished:
+    # Check if already finished before calling service
+    session_state = SessionState.model_validate_json(session_row.state_json)
+    if session_state.exam_finished:
         raise HTTPException(status_code=400, detail="Exam already finished")
 
-    # Mark exam as finished
-    session.exam_finished = True
-
-    # Build feedback
-    from tutor.orchestration.orchestrator import TeacherOrchestrator
-    orchestrator = TeacherOrchestrator.__new__(TeacherOrchestrator)
-    session.exam_feedback = orchestrator._build_exam_feedback(session)
-
-    # Persist
-    from shared.models.entities import Session as SessionModel
-    from datetime import datetime
-
-    session_row.state_json = session.model_dump_json()
-    session_row.exam_score = session.exam_total_correct
-    session_row.exam_total = len(session.exam_questions)
-    session_row.updated_at = datetime.utcnow()
-    db.commit()
-
-    total = len(session.exam_questions)
-    percentage = round(session.exam_total_correct / total * 100, 1) if total else 0.0
-
-    feedback_dict = None
-    if session.exam_feedback:
-        feedback_dict = session.exam_feedback.model_dump()
-
-    return EndExamResponse(
-        score=session.exam_total_correct,
-        total=total,
-        percentage=percentage,
-        feedback=feedback_dict,
-    )
+    try:
+        service = SessionService(db)
+        result = service.end_exam(session_id)
+        return EndExamResponse(**result)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
 
 
 @router.get("/{session_id}/summary", response_model=SummaryResponse)
@@ -653,7 +605,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 
 def _save_session_to_db(db: DBSession, session_id: str, session: SessionState) -> None:
-    """Persist session state to DB."""
+    """Persist session state to DB (WebSocket path — single writer per connection)."""
     from shared.models.entities import Session as SessionModel
     from datetime import datetime
 
@@ -662,6 +614,7 @@ def _save_session_to_db(db: DBSession, session_id: str, session: SessionState) -
         db_record.state_json = session.model_dump_json()
         db_record.mastery = session.overall_mastery
         db_record.step_idx = session.current_step
+        db_record.state_version = (db_record.state_version or 1) + 1
         db_record.mode = session.mode
         db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
         if session.mode == "exam" and session.exam_finished:
