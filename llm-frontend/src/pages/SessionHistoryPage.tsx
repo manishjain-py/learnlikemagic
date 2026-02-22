@@ -16,6 +16,11 @@ interface SessionEntry {
   subject: string | null;
   mastery: number;
   step_idx: number;
+  mode?: string;
+  coverage?: number;
+  concepts_discussed?: string[];
+  exam_score?: number;
+  exam_total?: number;
 }
 
 interface LearningStats {
@@ -33,6 +38,25 @@ export default function SessionHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [modeFilter, setModeFilter] = useState<string>('all');
+
+  const getModeLabel = (mode: string) => {
+    switch (mode) {
+      case 'teach_me': return 'Teach Me';
+      case 'clarify_doubts': return 'Clarify Doubts';
+      case 'exam': return 'Exam';
+      default: return 'Teach Me';
+    }
+  };
+
+  const getModeBadgeColor = (mode: string) => {
+    switch (mode) {
+      case 'teach_me': return '#667eea';
+      case 'clarify_doubts': return '#38a169';
+      case 'exam': return '#e53e3e';
+      default: return '#667eea';
+    }
+  };
 
   useEffect(() => {
     fetchHistory();
@@ -124,6 +148,26 @@ export default function SessionHistoryPage() {
           </div>
         )}
 
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              {['all', 'teach_me', 'clarify_doubts', 'exam'].map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setModeFilter(mode)}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '16px',
+                    border: modeFilter === mode ? '2px solid #667eea' : '1px solid #ddd',
+                    background: modeFilter === mode ? '#667eea' : 'white',
+                    color: modeFilter === mode ? 'white' : '#666',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {mode === 'all' ? 'All' : getModeLabel(mode)}
+                </button>
+              ))}
+            </div>
+
         {/* Session list */}
         {loading ? (
           <p style={{ textAlign: 'center', padding: '2rem' }}>Loading...</p>
@@ -142,17 +186,37 @@ export default function SessionHistoryPage() {
         ) : (
           <>
             <div className="session-list">
-              {sessions.map((session) => (
+              {sessions
+                .filter((s) => modeFilter === 'all' || s.mode === modeFilter)
+                .map((session) => (
                 <div key={session.session_id} className="session-card">
                   <div className="session-card-header">
                     <span className="session-topic">
                       {session.topic_name || 'Unknown Topic'}
                     </span>
                     <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.7rem',
+                        fontWeight: 500,
+                        background: getModeBadgeColor(session.mode || 'teach_me'),
+                        color: 'white',
+                        marginLeft: '8px',
+                      }}
+                    >
+                      {getModeLabel(session.mode || 'teach_me')}
+                    </span>
+                    <span
                       className="session-mastery"
                       style={{ color: getMasteryColor(session.mastery) }}
                     >
-                      {(session.mastery * 100).toFixed(0)}%
+                      {session.mode === 'exam' && session.exam_score !== undefined
+                        ? `${session.exam_score}/${session.exam_total}`
+                        : session.mode === 'clarify_doubts' && session.concepts_discussed
+                        ? `${session.concepts_discussed.length} concepts`
+                        : `${(session.mastery * 100).toFixed(0)}%`}
                     </span>
                   </div>
                   <div className="session-card-meta">

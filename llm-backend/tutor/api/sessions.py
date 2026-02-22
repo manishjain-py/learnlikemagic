@@ -551,6 +551,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             progress_percentage=session.progress_percentage,
             mastery_estimates=session.mastery_estimates,
             is_complete=session.is_complete,
+            mode=session.mode,
+            coverage=session.coverage_percentage,
+            concepts_discussed=session.concepts_discussed,
+            exam_progress={
+                "current_question": session.exam_current_question_idx + 1,
+                "total_questions": len(session.exam_questions),
+                "correct_so_far": session.exam_total_correct,
+            } if session.mode == "exam" and session.exam_questions else None,
+            is_paused=session.is_paused,
         )
         await websocket.send_json(create_state_update(state_dto).model_dump())
 
@@ -598,6 +607,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     progress_percentage=session.progress_percentage,
                     mastery_estimates=session.mastery_estimates,
                     is_complete=session.is_complete,
+                    mode=session.mode,
+                    coverage=session.coverage_percentage,
+                    concepts_discussed=session.concepts_discussed,
+                    exam_progress={
+                        "current_question": session.exam_current_question_idx + 1,
+                        "total_questions": len(session.exam_questions),
+                        "correct_so_far": session.exam_total_correct,
+                    } if session.mode == "exam" and session.exam_questions else None,
+                    is_paused=session.is_paused,
                 )
                 await websocket.send_json(create_state_update(state_dto).model_dump())
 
@@ -610,6 +628,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     progress_percentage=session.progress_percentage,
                     mastery_estimates=session.mastery_estimates,
                     is_complete=session.is_complete,
+                    mode=session.mode,
+                    coverage=session.coverage_percentage,
+                    concepts_discussed=session.concepts_discussed,
+                    exam_progress={
+                        "current_question": session.exam_current_question_idx + 1,
+                        "total_questions": len(session.exam_questions),
+                        "correct_so_far": session.exam_total_correct,
+                    } if session.mode == "exam" and session.exam_questions else None,
+                    is_paused=session.is_paused,
                 )
                 await websocket.send_json(create_state_update(state_dto).model_dump())
 
@@ -635,5 +662,10 @@ def _save_session_to_db(db: DBSession, session_id: str, session: SessionState) -
         db_record.state_json = session.model_dump_json()
         db_record.mastery = session.overall_mastery
         db_record.step_idx = session.current_step
+        db_record.mode = session.mode
+        db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
+        if session.mode == "exam" and session.exam_finished:
+            db_record.exam_score = session.exam_total_correct
+            db_record.exam_total = len(session.exam_questions)
         db_record.updated_at = datetime.utcnow()
         db.commit()

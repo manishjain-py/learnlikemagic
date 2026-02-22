@@ -128,7 +128,9 @@ class SessionRepository:
             if topic:
                 topic_name = topic.get("topic_name") or topic.get("name")
 
-            results.append({
+            # Mode-specific fields
+            mode = state.get("mode", "teach_me")
+            entry = {
                 "session_id": row.id,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -136,7 +138,18 @@ class SessionRepository:
                 "subject": row.subject,
                 "mastery": row.mastery or 0.0,
                 "step_idx": row.step_idx or 0,
-            })
+                "mode": mode,
+            }
+
+            if mode == "teach_me":
+                entry["coverage"] = state.get("coverage_percentage", 0)
+            elif mode == "clarify_doubts":
+                entry["concepts_discussed"] = state.get("concepts_discussed", [])
+            elif mode == "exam":
+                entry["exam_score"] = state.get("exam_total_correct")
+                entry["exam_total"] = len(state.get("exam_questions", []))
+
+            results.append(entry)
         return results
 
     def count_by_user(self, user_id: str, subject: Optional[str] = None) -> int:

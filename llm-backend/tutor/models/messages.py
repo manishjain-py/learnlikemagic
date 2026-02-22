@@ -59,6 +59,11 @@ class SessionStateDTO(BaseModel):
     progress_percentage: float
     mastery_estimates: dict[str, float]
     is_complete: bool
+    mode: str = "teach_me"
+    coverage: float = 0.0
+    concepts_discussed: list[str] = Field(default_factory=list)
+    exam_progress: Optional[dict] = None
+    is_paused: bool = False
 
 
 class StudyPlanStepDTO(BaseModel):
