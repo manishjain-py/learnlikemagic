@@ -92,6 +92,12 @@ function App() {
             </ProtectedRoute>
           } />
 
+          <Route path="/report-card" element={
+            <ProtectedRoute>
+              <ScorecardPage />
+            </ProtectedRoute>
+          } />
+
           {/* Admin routes (unchanged, no auth required for now) */}
           <Route path="/admin" element={<Navigate to="/admin/books" replace />} />
           <Route path="/admin/books" element={<BooksDashboard />} />

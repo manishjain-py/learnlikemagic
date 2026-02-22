@@ -16,6 +16,10 @@ from shared.models import (
     SummaryResponse,
     ScorecardResponse,
     SubtopicProgressResponse,
+    ResumableSessionResponse,
+    PauseSummary,
+    EndExamResponse,
+    ReportCardResponse,
 )
 from tutor.services import SessionService, ScorecardService
 from tutor.models.agent_logs import get_agent_log_store
@@ -108,6 +112,16 @@ def get_scorecard(
     return service.get_scorecard(current_user.id)
 
 
+@router.get("/report-card", response_model=ReportCardResponse)
+def get_report_card(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Get student report card with coverage and exam data."""
+    service = ScorecardService(db)
+    return service.get_scorecard(current_user.id)
+
+
 @router.get("/subtopic-progress", response_model=SubtopicProgressResponse)
 def get_subtopic_progress(
     current_user=Depends(get_current_user),
@@ -116,6 +130,42 @@ def get_subtopic_progress(
     """Get lightweight subtopic progress for topic selection indicators."""
     service = ScorecardService(db)
     return service.get_subtopic_progress(current_user.id)
+
+
+@router.get("/resumable", response_model=ResumableSessionResponse)
+def get_resumable_session(
+    guideline_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Find a paused Teach Me session for the given subtopic."""
+    from shared.models.entities import Session as SessionModel
+
+    session = (
+        db.query(SessionModel)
+        .filter(
+            SessionModel.user_id == current_user.id,
+            SessionModel.guideline_id == guideline_id,
+            SessionModel.is_paused == True,
+            SessionModel.mode == "teach_me",
+        )
+        .order_by(SessionModel.updated_at.desc())
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(status_code=404, detail="No resumable session found")
+
+    session_state = SessionState.model_validate_json(session.state_json)
+    total_steps = session_state.topic.study_plan.total_steps if session_state.topic else 0
+
+    return ResumableSessionResponse(
+        session_id=session.id,
+        coverage=session_state.coverage_percentage,
+        current_step=session_state.current_step,
+        total_steps=total_steps,
+        concepts_covered=list(session_state.concepts_covered_set),
+    )
 
 
 @router.get("/{session_id}/replay")
@@ -182,6 +232,82 @@ def submit_step(
         import traceback
         logger.error(f"Error processing step: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing step: {e}")
+
+
+@router.post("/{session_id}/pause", response_model=PauseSummary)
+def pause_session(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Pause a Teach Me session for later resumption."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode != "teach_me":
+        raise HTTPException(status_code=400, detail="Only Teach Me sessions can be paused")
+
+    try:
+        service = SessionService(db)
+        result = service.pause_session(session_id)
+        return PauseSummary(**result)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+
+
+@router.post("/{session_id}/resume")
+def resume_session(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Resume a paused Teach Me session."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if not session_row.is_paused:
+        raise HTTPException(status_code=400, detail="Session is not paused")
+
+    try:
+        service = SessionService(db)
+        return service.resume_session(session_id)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+
+
+@router.post("/{session_id}/end-exam", response_model=EndExamResponse)
+def end_exam_early(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """End an exam early and get results."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode != "exam":
+        raise HTTPException(status_code=400, detail="Not an exam session")
+
+    # Check if already finished before calling service
+    session_state = SessionState.model_validate_json(session_row.state_json)
+    if session_state.exam_finished:
+        raise HTTPException(status_code=400, detail="Exam already finished")
+
+    try:
+        service = SessionService(db)
+        result = service.end_exam(session_id)
+        return EndExamResponse(**result)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
 
 
 @router.get("/{session_id}/summary", response_model=SummaryResponse)
@@ -350,6 +476,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         logger.info(f"WebSocket connected: {session_id}")
 
         session = SessionState.model_validate_json(db_session.state_json)
+        ws_version = db_session.state_version or 1
 
         # Build orchestrator — read LLM config from DB (once at session start)
         from config import get_settings
@@ -377,6 +504,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             progress_percentage=session.progress_percentage,
             mastery_estimates=session.mastery_estimates,
             is_complete=session.is_complete,
+            mode=session.mode,
+            coverage=session.coverage_percentage,
+            concepts_discussed=session.concepts_discussed,
+            exam_progress={
+                "current_question": session.exam_current_question_idx + 1,
+                "total_questions": len(session.exam_questions),
+                "correct_so_far": session.exam_total_correct,
+            } if session.mode == "exam" and session.exam_questions else None,
+            is_paused=session.is_paused,
         )
         await websocket.send_json(create_state_update(state_dto).model_dump())
 
@@ -386,7 +522,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             from tutor.models.messages import create_teacher_message
 
             session.add_message(create_teacher_message(welcome))
-            _save_session_to_db(db, session_id, session)
+            ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
+            if reloaded:
+                session = reloaded
             await websocket.send_json(create_assistant_response(welcome).model_dump())
 
         # Main message loop
@@ -410,11 +548,22 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     student_message=client_msg.payload.message or "",
                 )
 
-                _save_session_to_db(db, session_id, session)
-
-                await websocket.send_json(
-                    create_assistant_response(result.response).model_dump()
-                )
+                ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
+                if reloaded:
+                    # CAS conflict: a REST endpoint (pause/end-exam) modified
+                    # the session concurrently. The turn's state changes are
+                    # lost — notify the client instead of silently continuing.
+                    session = reloaded
+                    await websocket.send_json(
+                        create_error_response(
+                            "Session was updated from another tab. "
+                            "Your last message was not saved. Please resend."
+                        ).model_dump()
+                    )
+                else:
+                    await websocket.send_json(
+                        create_assistant_response(result.response).model_dump()
+                    )
 
                 state_dto = SessionStateDTO(
                     session_id=session.session_id,
@@ -424,6 +573,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     progress_percentage=session.progress_percentage,
                     mastery_estimates=session.mastery_estimates,
                     is_complete=session.is_complete,
+                    mode=session.mode,
+                    coverage=session.coverage_percentage,
+                    concepts_discussed=session.concepts_discussed,
+                    exam_progress={
+                        "current_question": session.exam_current_question_idx + 1,
+                        "total_questions": len(session.exam_questions),
+                        "correct_so_far": session.exam_total_correct,
+                    } if session.mode == "exam" and session.exam_questions else None,
+                    is_paused=session.is_paused,
                 )
                 await websocket.send_json(create_state_update(state_dto).model_dump())
 
@@ -436,6 +594,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     progress_percentage=session.progress_percentage,
                     mastery_estimates=session.mastery_estimates,
                     is_complete=session.is_complete,
+                    mode=session.mode,
+                    coverage=session.coverage_percentage,
+                    concepts_discussed=session.concepts_discussed,
+                    exam_progress={
+                        "current_question": session.exam_current_question_idx + 1,
+                        "total_questions": len(session.exam_questions),
+                        "correct_so_far": session.exam_total_correct,
+                    } if session.mode == "exam" and session.exam_questions else None,
+                    is_paused=session.is_paused,
                 )
                 await websocket.send_json(create_state_update(state_dto).model_dump())
 
@@ -451,15 +618,51 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         db.close()
 
 
-def _save_session_to_db(db: DBSession, session_id: str, session: SessionState) -> None:
-    """Persist session state to DB."""
+def _save_session_to_db(
+    db: DBSession,
+    session_id: str,
+    session: SessionState,
+    expected_version: int,
+) -> tuple[int, Optional[SessionState]]:
+    """Version-checked persist for WebSocket path.
+
+    Returns (new_version, reloaded_session).
+    On success: (expected_version + 1, None).
+    On conflict: (db_version, reloaded SessionState from DB) — caller must
+    adopt the reloaded state so subsequent saves use the correct version.
+    """
     from shared.models.entities import Session as SessionModel
+    from sqlalchemy import update
     from datetime import datetime
 
-    db_record = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    if db_record:
-        db_record.state_json = session.model_dump_json()
-        db_record.mastery = session.overall_mastery
-        db_record.step_idx = session.current_step
-        db_record.updated_at = datetime.utcnow()
-        db.commit()
+    result = db.execute(
+        update(SessionModel)
+        .where(
+            SessionModel.id == session_id,
+            SessionModel.state_version == expected_version,
+        )
+        .values(
+            state_json=session.model_dump_json(),
+            mastery=session.overall_mastery,
+            step_idx=session.current_step,
+            state_version=expected_version + 1,
+            mode=session.mode,
+            is_paused=session.is_paused if session.mode == "teach_me" else False,
+            exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
+            exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
+            updated_at=datetime.utcnow(),
+        )
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        db_record = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if db_record:
+            db_version = db_record.state_version or 1
+            logger.warning(
+                f"WS version conflict for session {session_id}: "
+                f"expected v{expected_version}, DB at v{db_version}. Reloading."
+            )
+            return db_version, SessionState.model_validate_json(db_record.state_json)
+        return expected_version, None
+    db.commit()
+    return expected_version + 1, None

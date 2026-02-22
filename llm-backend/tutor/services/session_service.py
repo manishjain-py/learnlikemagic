@@ -3,6 +3,7 @@
 import json
 import logging
 from typing import Optional, List
+from sqlalchemy import update
 from sqlalchemy.orm import Session as DBSession
 from uuid import uuid4
 
@@ -18,7 +19,7 @@ from shared.models import (
 from shared.models.entities import StudyPlan as StudyPlanRecord
 from shared.repositories import SessionRepository, EventRepository, TeachingGuidelineRepository
 from shared.services.llm_service import LLMService
-from shared.utils.exceptions import SessionNotFoundException, GuidelineNotFoundException
+from shared.utils.exceptions import SessionNotFoundException, GuidelineNotFoundException, StaleStateError
 
 from tutor.orchestration import TeacherOrchestrator
 from tutor.models.session_state import SessionState, create_session
@@ -51,7 +52,9 @@ class SessionService:
         self.orchestrator = TeacherOrchestrator(self.llm_service)
 
     def create_new_session(self, request: CreateSessionRequest, user_id: Optional[str] = None) -> CreateSessionResponse:
-        """Create a new learning session with the new tutor architecture."""
+        """Create a new learning session with mode support."""
+        mode = request.mode if hasattr(request, 'mode') else "teach_me"
+
         # Validate guideline exists
         guideline = self.guideline_repo.get_guideline_by_id(request.goal.guideline_id)
         if not guideline:
@@ -67,7 +70,7 @@ class SessionService:
         # Convert DB guideline to new Topic model
         topic = convert_guideline_to_topic(guideline, study_plan_record)
 
-        # Create student context — use profile data if authenticated
+        # Create student context
         if user_id:
             student_context = self._build_student_context_from_profile(user_id, request)
         else:
@@ -77,16 +80,32 @@ class SessionService:
                 language_level="simple" if request.student.grade <= 5 else "standard",
             )
 
-        # Create SessionState
-        session = create_session(topic=topic, student_context=student_context)
+        # Create mode-specific session
+        session = create_session(topic=topic, student_context=student_context, mode=mode)
         session_id = str(uuid4())
         session.session_id = session_id
 
-        logger.info(f"Created session {session_id} for topic {topic.topic_name}")
+        logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode}")
 
-        # Generate welcome message
+        # For exam mode, generate questions before welcome (sync call)
         import asyncio
-        welcome = asyncio.run(self.orchestrator.generate_welcome_message(session))
+        if mode == "exam":
+            from tutor.services.exam_service import ExamService
+            exam_svc = ExamService(self.llm_service)
+            session.exam_questions = exam_svc.generate_questions(session)
+            logger.info(f"Generated {len(session.exam_questions)} exam questions for session {session_id}")
+
+        # Generate mode-specific welcome
+        if mode == "clarify_doubts":
+            welcome = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
+        elif mode == "exam":
+            welcome = asyncio.run(self.orchestrator.generate_exam_welcome(session))
+            # Append first question to welcome
+            if session.exam_questions:
+                first_q = session.exam_questions[0]
+                welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
+        else:
+            welcome = asyncio.run(self.orchestrator.generate_welcome_message(session))
 
         # Add welcome message to conversation history
         session.add_message(create_teacher_message(welcome))
@@ -99,7 +118,7 @@ class SessionService:
             session_id=session_id,
             node="welcome",
             step_idx=session.current_step,
-            payload={"action": "session_created"},
+            payload={"action": "session_created", "mode": mode},
         )
 
         first_turn = {
@@ -108,7 +127,16 @@ class SessionService:
             "step_idx": session.current_step,
         }
 
-        return CreateSessionResponse(session_id=session_id, first_turn=first_turn)
+        # Build response
+        response = CreateSessionResponse(session_id=session_id, first_turn=first_turn, mode=mode)
+
+        # For clarify_doubts, include past discussions
+        if mode == "clarify_doubts" and user_id and request.goal.guideline_id:
+            past = self._get_past_discussions(user_id, request.goal.guideline_id)
+            if past:
+                response.past_discussions = past
+
+        return response
 
     def process_step(self, session_id: str, request: StepRequest) -> StepResponse:
         """Process a student's answer using the new orchestrator."""
@@ -116,6 +144,8 @@ class SessionService:
         db_session = self.session_repo.get_by_id(session_id)
         if not db_session:
             raise SessionNotFoundException(session_id)
+
+        expected_version = db_session.state_version or 1
 
         # Deserialize SessionState
         session = SessionState.model_validate_json(db_session.state_json)
@@ -126,8 +156,8 @@ class SessionService:
             self.orchestrator.process_turn(session, request.student_reply)
         )
 
-        # Update database
-        self._update_session_db(session_id, session)
+        # Update database with version check
+        self._persist_session_state(session_id, session, expected_version)
 
         # Log event
         self.event_repo.log(
@@ -212,6 +242,9 @@ class SessionService:
             step_idx=session.current_step,
             user_id=user_id,
             subject=subject,
+            mode=session.mode,
+            guideline_id=request.goal.guideline_id,
+            state_version=1,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -250,8 +283,107 @@ class SessionService:
             db_record.state_json = session.model_dump_json()
             db_record.mastery = session.overall_mastery
             db_record.step_idx = session.current_step
+            db_record.mode = session.mode
+            db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
             db_record.updated_at = datetime.utcnow()
             self.db.commit()
+
+    def _persist_session_state(
+        self, session_id: str, session: SessionState, expected_version: int
+    ) -> None:
+        """Single transactional write for all session state.
+        Raises StaleStateError if state_version doesn't match."""
+        from shared.models.entities import Session as SessionModel
+        from datetime import datetime
+
+        result = self.db.execute(
+            update(SessionModel)
+            .where(
+                SessionModel.id == session_id,
+                SessionModel.state_version == expected_version,
+            )
+            .values(
+                state_json=session.model_dump_json(),
+                mastery=session.overall_mastery,
+                step_idx=session.current_step,
+                state_version=expected_version + 1,
+                mode=session.mode,
+                is_paused=session.is_paused if session.mode == "teach_me" else False,
+                exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
+                exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
+                updated_at=datetime.utcnow(),
+            )
+        )
+        if result.rowcount == 0:
+            self.db.rollback()
+            raise StaleStateError(f"Session {session_id} was modified concurrently (expected version {expected_version})")
+        self.db.commit()
+
+    def pause_session(self, session_id: str) -> dict:
+        """Pause a Teach Me session with version-safe persistence."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.is_paused = True
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        return {
+            "coverage": session.coverage_percentage,
+            "concepts_covered": list(session.concepts_covered_set),
+            "message": f"You've covered {session.coverage_percentage:.0f}% so far. You can pick up where you left off anytime.",
+        }
+
+    def resume_session(self, session_id: str) -> dict:
+        """Resume a paused session with version-safe persistence."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.is_paused = False
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        # Return conversation history for chat replay
+        history = [
+            {"role": m.role, "content": m.content}
+            for m in session.full_conversation_log
+        ]
+
+        return {
+            "session_id": session_id,
+            "message": "Session resumed",
+            "current_step": session.current_step,
+            "conversation_history": history,
+        }
+
+    def end_exam(self, session_id: str) -> dict:
+        """End an exam early with version-safe persistence."""
+        from tutor.orchestration.orchestrator import TeacherOrchestrator
+
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.exam_finished = True
+        session.exam_feedback = TeacherOrchestrator._build_exam_feedback(session)
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        total = len(session.exam_questions)
+        return {
+            "score": session.exam_total_correct,
+            "total": total,
+            "percentage": round(session.exam_total_correct / total * 100, 1) if total else 0.0,
+            "feedback": session.exam_feedback.model_dump() if session.exam_feedback else None,
+        }
 
     def _generate_suggestions(
         self,
@@ -276,3 +408,33 @@ class SessionService:
             suggestions.append(f"Work on understanding: {', '.join(top)}")
 
         return suggestions
+
+    def _get_past_discussions(self, user_id: str, guideline_id: str) -> list[dict]:
+        """Get past Clarify Doubts sessions for this user + guideline."""
+        from shared.models.entities import Session as SessionModel
+
+        rows = (
+            self.db.query(SessionModel)
+            .filter(
+                SessionModel.user_id == user_id,
+                SessionModel.guideline_id == guideline_id,
+                SessionModel.mode == "clarify_doubts",
+            )
+            .order_by(SessionModel.created_at.desc())
+            .limit(5)
+            .all()
+        )
+
+        results = []
+        for row in rows:
+            try:
+                state = json.loads(row.state_json)
+                concepts = state.get("concepts_discussed", [])
+                if concepts:
+                    results.append({
+                        "session_date": row.created_at.isoformat() if row.created_at else None,
+                        "concepts_discussed": concepts,
+                    })
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return results

@@ -1,6 +1,6 @@
 """Pydantic API request/response schemas."""
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Literal, Dict, Any, Optional
 
 from .domain import Student, Goal, GradingResult
 
@@ -9,12 +9,15 @@ class CreateSessionRequest(BaseModel):
     """Request to create a new learning session."""
     student: Student
     goal: Goal
+    mode: Literal["teach_me", "clarify_doubts", "exam"] = "teach_me"
 
 
 class CreateSessionResponse(BaseModel):
     """Response with session ID and first teaching turn."""
     session_id: str
     first_turn: Dict[str, Any]
+    mode: str = "teach_me"
+    past_discussions: Optional[list[dict]] = None
 
 
 class StepRequest(BaseModel):
@@ -122,6 +125,95 @@ class ScorecardResponse(BaseModel):
     subjects: List[ScorecardSubject]
     strengths: List[ScorecardHighlight]
     needs_practice: List[ScorecardHighlight]
+
+
+class ExamHistoryEntry(BaseModel):
+    """A single exam attempt for trend display."""
+    date: str
+    score: int
+    total: int
+    percentage: float
+
+
+class ExamFeedbackResponse(BaseModel):
+    """Exam feedback shown in report card."""
+    strengths: list[str]
+    weak_areas: list[str]
+    patterns: list[str]
+    next_steps: list[str]
+
+
+class ReportCardSubtopic(BaseModel):
+    """Subtopic-level data for report card."""
+    subtopic: str
+    subtopic_key: str
+    guideline_id: Optional[str] = None
+    coverage: float
+    last_studied: Optional[str] = None
+    revision_nudge: Optional[str] = None
+    latest_exam_score: Optional[int] = None
+    latest_exam_total: Optional[int] = None
+    latest_exam_feedback: Optional[ExamFeedbackResponse] = None
+    exam_count: int = 0
+    exam_history: list[ExamHistoryEntry] = Field(default_factory=list)
+    teach_me_sessions: int = 0
+    clarify_sessions: int = 0
+    # Legacy compat
+    score: float = 0.0
+    session_count: int = 0
+    concepts: Dict[str, float] = Field(default_factory=dict)
+    misconceptions: list[ScorecardMisconception] = Field(default_factory=list)
+
+
+class ReportCardTopic(BaseModel):
+    """Topic-level aggregated data for report card."""
+    topic: str
+    topic_key: str
+    score: float
+    subtopics: list[ReportCardSubtopic]
+
+
+class ReportCardSubject(BaseModel):
+    """Subject-level aggregated data for report card."""
+    subject: str
+    score: float
+    session_count: int
+    topics: list[ReportCardTopic]
+    trend: list[ScorecardTrendPoint]
+
+
+class ReportCardResponse(BaseModel):
+    """Complete student report card response."""
+    overall_score: float
+    total_sessions: int
+    total_topics_studied: int
+    subjects: list[ReportCardSubject]
+    strengths: list[ScorecardHighlight]
+    needs_practice: list[ScorecardHighlight]
+
+
+class ResumableSessionResponse(BaseModel):
+    """Response for GET /sessions/resumable."""
+    session_id: str
+    coverage: float
+    current_step: int
+    total_steps: int
+    concepts_covered: list[str]
+
+
+class PauseSummary(BaseModel):
+    """Response for POST /sessions/{id}/pause."""
+    coverage: float
+    concepts_covered: list[str]
+    message: str
+
+
+class EndExamResponse(BaseModel):
+    """Response for POST /sessions/{id}/end-exam."""
+    score: int
+    total: int
+    percentage: float
+    feedback: Optional[dict] = None
 
 
 class SubtopicProgressEntry(BaseModel):
