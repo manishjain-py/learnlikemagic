@@ -8,8 +8,8 @@ Your job: take an approved PRD and produce a detailed, actionable technical impl
 
 ## Input
 
-- `$ARGUMENTS` = path to the PRD file (e.g., `docs/prd/learning-modes.md`)
-- If no arguments provided, list all PRD files in `docs/prd/` and pick the most recent one that doesn't already have a corresponding file in `docs/impl-plan/`. If all PRDs already have plans, inform the user that all PRDs are covered.
+- `$ARGUMENTS` = path to the PRD file (e.g., `docs/feature-development/learning-modes/prd.md`)
+- If no arguments provided, scan `docs/feature-development/*/` for folders that have a `prd.md` but no `impl-plan.md`. Pick the most recent one. If all PRDs already have plans, inform the user that all PRDs are covered.
 
 ---
 
@@ -39,8 +39,7 @@ Read the documentation and code in this order:
 2. Read `docs/DOCUMENTATION_GUIDELINES.md` — master index.
 3. Read **all** technical docs in `docs/technical/` — architecture, database schema, auth, deployment, dev workflow.
 4. Read **all** functional docs in `docs/functional/` — understand existing user flows.
-5. Read **all** existing PRDs in `docs/prd/` — check for dependencies or conflicts.
-6. Read **all** existing implementation plans in `docs/impl-plan/` — understand what's already been planned.
+5. Read **all** existing feature development docs in `docs/feature-development/` — check for dependencies, conflicts, and what's already been planned.
 
 ### Code (read the actual source, not just docs)
 6. Read `llm-backend/main.py` — understand registered routers and middleware.
@@ -87,7 +86,7 @@ For each significant decision, include a brief "**Decision:**" note in the relev
 
 ## Step 3: Write the implementation plan
 
-Save the plan to `docs/impl-plan/<feature-slug>.md` (create the directory if it doesn't exist). Use the same slug as the PRD file for easy pairing (e.g., PRD at `docs/prd/learning-modes.md` → plan at `docs/impl-plan/learning-modes.md`).
+Save the plan to `docs/feature-development/<feature-slug>/impl-plan.md` — the same folder as the PRD. Create the directory if it doesn't exist.
 
 ### Implementation Plan Template
 
@@ -96,7 +95,7 @@ Save the plan to `docs/impl-plan/<feature-slug>.md` (create the directory if it 
 
 **Date:** <today's date>
 **Status:** Draft
-**PRD:** `docs/prd/<feature-slug>.md`
+**PRD:** `docs/feature-development/<feature-slug>/prd.md`
 **Author:** Tech Impl Plan Generator + <user>
 
 ---

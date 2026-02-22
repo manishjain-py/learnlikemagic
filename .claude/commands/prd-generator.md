@@ -31,7 +31,7 @@ Before analyzing the requirements, build a deep understanding of the app by read
 1. Read `docs/DOCUMENTATION_GUIDELINES.md` — this is the master index that lists all docs and their purposes.
 2. Read **all** functional docs in `docs/functional/` — these describe the app from the user's perspective (what it does, how it feels, the UX philosophy).
 3. Read **all** technical docs in `docs/technical/` — these describe the app from the developer's perspective (architecture, APIs, database schema, code conventions).
-4. Read **all** existing PRDs in `docs/prd/` — these are already-spec'd features. Check for overlap, conflicts, or dependencies with the new feature.
+4. Read **all** existing feature docs in `docs/feature-development/` — these are already-spec'd features. Check for overlap, conflicts, or dependencies with the new feature.
 
 Read everything. You need the full picture to reason well about new features.
 
@@ -76,7 +76,7 @@ Use `AskUserQuestion` for the most critical questions. For minor clarifications,
 
 ## Step 3: Write the PRD
 
-Once clarifications are resolved, write the PRD. Save it to `docs/prd/<feature-slug>.md` (create the directory if it doesn't exist).
+Once clarifications are resolved, write the PRD. Save it to `docs/feature-development/<feature-slug>/prd.md` (create the directory if it doesn't exist).
 
 ### PRD Template
 
