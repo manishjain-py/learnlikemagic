@@ -74,21 +74,29 @@ Subject → Topic → Subtopic → Mode Selection → Mode-Specific Session
 ### 2.1 `sessions` Table — New Columns
 
 ```sql
-ALTER TABLE sessions ADD COLUMN mode VARCHAR DEFAULT 'teach_me';
+ALTER TABLE sessions ADD COLUMN mode VARCHAR DEFAULT 'teach_me'
+    CHECK (mode IN ('teach_me', 'clarify_doubts', 'exam'));
 ALTER TABLE sessions ADD COLUMN is_paused BOOLEAN DEFAULT FALSE;
 ALTER TABLE sessions ADD COLUMN exam_score FLOAT DEFAULT NULL;
 ALTER TABLE sessions ADD COLUMN exam_total INTEGER DEFAULT NULL;
+ALTER TABLE sessions ADD COLUMN guideline_id VARCHAR DEFAULT NULL;
+ALTER TABLE sessions ADD COLUMN state_version INTEGER DEFAULT 1 NOT NULL;
 
 CREATE INDEX idx_sessions_user_mode ON sessions(user_id, mode);
 CREATE INDEX idx_sessions_user_paused ON sessions(user_id, is_paused) WHERE is_paused = TRUE;
+CREATE INDEX idx_sessions_user_guideline ON sessions(user_id, guideline_id, mode);
+CREATE UNIQUE INDEX idx_sessions_one_paused_per_subtopic
+    ON sessions(user_id, guideline_id) WHERE is_paused = TRUE;
 ```
 
 | Column | Type | Default | Purpose |
 |--------|------|---------|---------|
-| `mode` | VARCHAR | `'teach_me'` | Session mode: `teach_me`, `clarify_doubts`, `exam` |
+| `mode` | VARCHAR | `'teach_me'` | Session mode (`teach_me`, `clarify_doubts`, `exam`). DB-level CHECK constraint enforces allowed values. |
 | `is_paused` | BOOLEAN | `FALSE` | Whether a Teach Me session is paused (resumable) |
 | `exam_score` | FLOAT | `NULL` | Denormalized exam score (correct count) for quick display |
 | `exam_total` | INTEGER | `NULL` | Denormalized exam total questions for quick display |
+| `guideline_id` | VARCHAR | `NULL` | Denormalized from `goal_json` for efficient query filtering (resumable, report card, history) |
+| `state_version` | INTEGER | `1` | Optimistic locking version counter. Incremented on every write. See §2.3. |
 
 ### 2.2 Entity Model Update
 
@@ -101,31 +109,42 @@ class Session(Base):
     is_paused = Column(Boolean, default=False)          # NEW
     exam_score = Column(Float, nullable=True)           # NEW
     exam_total = Column(Integer, nullable=True)         # NEW
+    guideline_id = Column(String, nullable=True)        # NEW — denormalized from goal_json
+    state_version = Column(Integer, default=1, nullable=False)  # NEW — optimistic locking
 ```
 
 ### 2.3 Single Write Path (State Consistency)
 
 **Canonical source:** `state_json` (the serialized `SessionState`) is always the source of truth.
 
-**Denormalized columns** (`mode`, `is_paused`, `exam_score`, `exam_total`) are derived copies written alongside `state_json` in the same DB transaction. They exist only for efficient SQL queries (filtering, sorting, display) and are never deserialized back into `SessionState`.
+**Denormalized columns** (`mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`) are derived copies written alongside `state_json` in the same DB transaction. They exist only for efficient SQL queries (filtering, sorting, display) and are never deserialized back into `SessionState`.
+
+**Optimistic locking:** A `state_version` column prevents stale writes. Every write includes a `WHERE state_version = expected_version` clause. If the row was modified by another actor (e.g., a concurrent pause request while a turn was processing), the write fails and the caller must reload and retry.
 
 **Write rule:** All session mutations flow through a single method — `SessionService._persist_session_state()` — which:
 
 1. Serializes `SessionState` → `state_json`
 2. Extracts denormalized values from the `SessionState` object
-3. Writes both in a single `UPDATE` within one transaction
+3. Writes both in a single `UPDATE` with optimistic locking within one transaction
 
 ```python
-def _persist_session_state(self, session_id: str, session: SessionState, db: DBSession):
+def _persist_session_state(
+    self, session_id: str, session: SessionState, expected_version: int, db: DBSession
+):
     """Single transactional write for all session state. Called after every
-    state mutation (turn processing, pause, resume, end-exam)."""
-    db.execute(
+    state mutation (turn processing, pause, resume, end-exam).
+    Raises StaleStateError if state_version doesn't match (concurrent modification)."""
+    result = db.execute(
         update(SessionModel)
-        .where(SessionModel.id == session_id)
+        .where(
+            SessionModel.id == session_id,
+            SessionModel.state_version == expected_version,  # optimistic lock
+        )
         .values(
             state_json=session.model_dump_json(),
             mastery=session.overall_mastery,
             step_idx=session.current_step,
+            state_version=expected_version + 1,  # increment version
             # Denormalized copies — derived from state_json, never the reverse
             mode=session.mode,
             is_paused=session.is_paused if session.mode == "teach_me" else False,
@@ -134,17 +153,25 @@ def _persist_session_state(self, session_id: str, session: SessionState, db: DBS
             updated_at=datetime.utcnow(),
         )
     )
+    if result.rowcount == 0:
+        db.rollback()
+        raise StaleStateError(f"Session {session_id} was modified concurrently (expected version {expected_version})")
     db.commit()
 ```
 
-**Read rule:** When loading a session for turn processing, always deserialize `state_json` into `SessionState`. Never reconstruct state from the denormalized columns.
+**On StaleStateError:** The caller (turn processing, pause, end-exam) catches this, reloads the session from DB, and returns a 409 Conflict to the client. The frontend retries the operation. In practice, this should be rare — the primary risk is pause/end-exam arriving while a turn is being processed, which the frontend gates (see §5.4).
 
-**Query rule:** For list/filter/display queries (history, report card, resumable check), use the denormalized columns directly — no need to parse `state_json`.
+**Read rule:** When loading a session for turn processing, always deserialize `state_json` into `SessionState` and capture the current `state_version` for the subsequent write.
+
+**Query rule:** For list/filter/display queries (history, report card, resumable check), use the denormalized columns directly — no need to parse `state_json`. The `guideline_id` column enables efficient filtering without JSON parsing of `goal_json`.
 
 ### 2.4 Migration
 
-- Backfill existing sessions: `UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL`
+- Backfill mode: `UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL`
+- Backfill guideline_id from `goal_json`: `UPDATE sessions SET guideline_id = goal_json::json->>'guideline_id' WHERE guideline_id IS NULL`
+- Backfill state_version: defaults to 1 for all existing rows (handled by column default)
 - All existing sessions become `teach_me` (backward compatible)
+- If the partial unique index on `(user_id, guideline_id) WHERE is_paused = TRUE` encounters duplicates in legacy data (shouldn't happen since pause doesn't exist yet), resolve by setting `is_paused = FALSE` on all but the most recent per group before creating the index
 
 ---
 
@@ -291,8 +318,10 @@ def create_session(
 class CreateSessionRequest(BaseModel):
     student: Student
     goal: Goal
-    mode: Optional[str] = "teach_me"  # NEW: "teach_me", "clarify_doubts", "exam"
+    mode: Literal["teach_me", "clarify_doubts", "exam"] = "teach_me"  # NEW
 ```
+
+**Validation:** `mode` uses `Literal` at the API boundary — Pydantic rejects invalid values with a 422 Unprocessable Entity response automatically. The DB-level `CHECK` constraint (see §2.1) provides defense-in-depth. No `Optional[str]` — the type is strict.
 
 ### 4.2 API Response Changes
 
@@ -348,14 +377,9 @@ def create_new_session(self, request: CreateSessionRequest, user_id=None):
     elif mode == "clarify_doubts":
         welcome = self.orchestrator.generate_clarify_welcome(session)
     elif mode == "exam":
-        # Pipeline: generate first question only during session creation.
-        # Remaining questions are generated asynchronously after the first
-        # question is delivered. See §7.1 for details.
-        first_question = self.exam_service.generate_first_question(session)
-        session.exam_questions = [first_question]
-        welcome = self.orchestrator.generate_exam_welcome(session, first_question)
-        # Kick off background generation of remaining questions
-        self.exam_service.generate_remaining_async(session_id, session)
+        # Generate all exam questions synchronously. See §7.1 for details.
+        session.exam_questions = self.exam_service.generate_questions(session)
+        welcome = self.orchestrator.generate_exam_welcome(session)
 
     # Persist (include mode and exam columns)
     self._persist_session(session_id, session, request, user_id, subject, mode)
@@ -572,35 +596,31 @@ This data is shown in the frontend for the student's reference. The tutor does N
 
 **File:** `llm-backend/tutor/services/exam_service.py` (NEW)
 
-#### Latency Strategy: Pipelined Generation
+#### Latency Strategy: Synchronous with Timeout
 
-Generating all exam questions in a single synchronous LLM call during session creation would cause multi-second waits and risk timeouts. Instead, we use a **pipelined approach**:
+All 7 exam questions are generated in a **single synchronous LLM call** during session creation. This is the simplest correct approach and avoids the complexity of background job infrastructure (persistence, retries, merge semantics, idempotency).
 
-1. **Session creation:** Generate only the **first question** via a fast, focused LLM call (~1-2s). The welcome message includes this question immediately.
-2. **Background generation:** After the first question is delivered, a background task generates the remaining questions (6 more for default 7-question exam). These are appended to `session.exam_questions` and persisted.
-3. **Turn processing:** When the student answers question 1, the remaining questions are already available. If the background task hasn't finished yet (unlikely but possible with very fast students), the turn processing waits with a short timeout and falls back to generating the next question on-demand.
+**Expected latency:** 5-10s for structured output of 7 questions. The frontend shows a loading state ("Preparing your exam...") during this time.
+
+**Timeout and fallback:** The LLM call has a 20s timeout. If it fails or times out:
+1. Retry once with a shorter prompt (3 questions instead of 7)
+2. If retry also fails, return an error and let the student try again
+
+This is acceptable because:
+- Exam creation is an explicit user action (tapping "Exam"), so a brief wait is expected
+- A loading state with a message sets expectations
+- The alternative (async pipeline) introduces significant complexity (job persistence, state merging, race conditions with foreground writes) that isn't justified until latency proves to be a real problem
+- If latency becomes an issue, we can move to async generation in a future iteration
 
 ```python
 class ExamService:
     """Generates and evaluates exam questions."""
 
-    def generate_first_question(self, session: SessionState) -> ExamQuestion:
+    def generate_questions(
+        self, session: SessionState, count: int = 7, timeout_s: float = 20.0
+    ) -> list[ExamQuestion]:
         """
-        Generate the first exam question immediately (fast path).
-        Uses a focused prompt that produces a single question.
-        Target latency: <2s.
-        """
-
-    def generate_remaining_async(self, session_id: str, session: SessionState):
-        """
-        Generate remaining questions in the background.
-        Appends to exam_questions in state_json when complete.
-        Uses a single LLM call for all remaining questions (batch).
-        """
-
-    def generate_questions_batch(self, session: SessionState, count: int) -> list[ExamQuestion]:
-        """
-        Generate a batch of exam questions for the subtopic.
+        Generate all exam questions in a single LLM call.
 
         Uses the teaching guidelines (learning objectives, concepts) to create:
         - ~30% easy questions
@@ -608,17 +628,13 @@ class ExamService:
         - ~20% hard questions
 
         Mix of question types: conceptual, procedural, application.
+
+        Fallback: on timeout/error, retries once with count=3.
+        Raises ExamGenerationError if both attempts fail.
         """
 ```
 
 Question generation uses a dedicated LLM call with the teaching guidelines + study plan as context. The prompt asks for structured output with questions, expected answers, difficulty, and type.
-
-#### Fallback Behavior
-
-If background generation fails (LLM error, timeout):
-- The exam continues with however many questions were generated
-- Minimum viable exam: 3 questions. If fewer than 3 are available, generate on-demand before the next turn
-- The student is never told about the pipeline — from their perspective, questions just appear one at a time
 
 ### 7.2 Exam Question Generation Prompt
 
@@ -811,6 +827,17 @@ If the student taps "End Early":
 4. Feedback is generated on available data, noting unanswered questions
 5. Session state is persisted with `exam_finished = True` via `_persist_session_state()`
 
+### 7.9 Abandoned Exams (Silent Abandon)
+
+If the student closes the browser or navigates away mid-exam without tapping "End Early":
+
+- The session remains in its current state (`exam_finished = False`, some questions answered, some not)
+- **No auto-finalization.** There is no cron job or timeout that automatically completes abandoned exams. The session stays as-is.
+- **Report card / trend graph:** Only exams with `exam_finished = True` are included in report card aggregation and the exam trend graph. Unfinished exams are ignored for scoring purposes.
+- **Session history:** Abandoned exams appear in session history with an "Incomplete" label and show the partial progress (e.g., "3/7 answered"). The student can see they started an exam but didn't finish.
+- **No resume:** Exams cannot be resumed. If the student wants to retake the exam, they start a new one. This is intentional — resuming an exam after an arbitrary time gap defeats the assessment purpose (the student could look up answers in between).
+- **Denormalized columns:** `exam_score` and `exam_total` remain `NULL` for abandoned exams (they are only written when `exam_finished = True`), so filter queries naturally exclude them.
+
 ---
 
 ## 8. Backend: Coverage Tracking
@@ -862,6 +889,8 @@ def _compute_coverage(self, sessions_for_subtopic: list) -> float:
 | Clarify Doubts | Concept discussed (LLM-identified) | Medium | Student asked about it, but depth varies |
 
 This difference in confidence is acceptable because coverage answers "how much have you gone through?" not "how well do you know it?" — that's what exams are for. A student who asked a shallow question about a concept has still engaged with it.
+
+**Why coverage does not incorporate exam signal:** Coverage is intentionally kept separate from exam scores. The PRD explicitly separates these as distinct metrics: coverage = exposure (factual, monotonic), exam score = understanding (evaluative, can vary). Blending exam results into coverage (e.g., "exam-adjusted coverage") would conflate two signals that are valuable precisely because they can diverge — a student with 80% coverage and 50% exam score reveals a different situation than one with 50% coverage and 80% exam score. Both signals are shown together in the Report Card, letting the student (and parent) draw their own conclusions.
 
 #### Guardrails for Clarify Doubts Coverage
 
@@ -1417,8 +1446,10 @@ For exam mode, `exam_progress`:
 ### 18.1 Database Migration
 
 1. Add new columns to `sessions` table (all nullable/defaulted — no breaking change)
-2. Backfill: `UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL`
-3. Create indexes
+2. Backfill mode: `UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL`
+3. Backfill guideline_id: `UPDATE sessions SET guideline_id = goal_json::json->>'guideline_id' WHERE guideline_id IS NULL`
+4. Create indexes (including partial unique index for paused sessions)
+5. Verify no duplicate paused sessions exist before creating the unique index
 
 ### 18.2 Backend Rollout
 
@@ -1454,8 +1485,11 @@ For exam mode, `exam_progress`:
 **Phase 1 testing:**
 - Unit: `SessionState` serialization round-trip (including `set[str]` → list → set), `create_session` with each mode, `ExamQuestion`/`ExamFeedback` model validation
 - Unit: `_persist_session_state()` writes correct denormalized column values for each mode
+- Unit: Optimistic locking — verify `StaleStateError` raised when `state_version` doesn't match, verify version increments on successful write
+- Unit: Invalid mode rejected with 422 (Pydantic `Literal` validation)
 - Integration: Create session with each mode via API, verify DB columns + state_json consistency
-- Migration: Verify backfill sets `mode = 'teach_me'` on existing sessions, verify existing sessions still deserialize correctly with new fields defaulted
+- Migration: Verify backfill sets `mode = 'teach_me'` on existing sessions, verify `guideline_id` backfill from `goal_json`, verify existing sessions still deserialize correctly with new fields defaulted
+- Migration: Verify sessions with malformed/missing `goal_json` fields are handled gracefully during backfill (NULL guideline_id is acceptable)
 
 ### Phase 2: Teach Me Enhancements (Backend + Frontend)
 6. Pause/resume backend (endpoints, service logic, recap generation)
@@ -1467,7 +1501,9 @@ For exam mode, `exam_progress`:
 - Unit: Coverage computation (`_compute_coverage` with various session combinations), pause/resume state transitions, `is_paused` column sync
 - Unit: Resumable session query returns correct session (most recent paused for guideline_id)
 - Integration: Full pause → resume → continue flow via API, verify coverage monotonically increases
-- Edge case: Pause while turn is in-flight (verify state consistency), start new Teach Me while one is paused (verify old one is abandoned)
+- Concurrency: Pause request during in-flight turn processing — simulate concurrent writes, verify optimistic lock prevents stale state, verify 409 returned to client
+- Edge case: Start new Teach Me while one is paused (verify old one is abandoned), verify partial unique index prevents two paused sessions for same user+guideline
+- Edge case: Pause already-paused session (idempotent — should succeed, not error)
 
 ### Phase 3: Clarify Doubts (Backend + Frontend)
 10. Clarify Doubts prompts
@@ -1491,9 +1527,10 @@ For exam mode, `exam_progress`:
 
 **Phase 4 testing:**
 - Unit: Scoring formula (correct/partial/incorrect counting, percentage calculation, denominator = generated_total), end-early scoring, `ExamFeedback` generation
-- Unit: Pipelined question generation (first question fast path, background batch, fallback on-demand)
+- Unit: Exam question generation with timeout/fallback (mock LLM timeout → verify retry with 3 questions)
 - Integration: Full exam flow via API — create, answer all questions, verify score + feedback. End-early flow — answer 3 of 7, verify score is 3/7 not 3/3
-- Edge case: Student answers before background questions are ready (verify graceful fallback)
+- Concurrency: End-exam request during in-flight answer evaluation — verify optimistic lock prevents double-scoring
+- Edge case: Abandoned exam (browser close) — verify report card excludes it, history shows "Incomplete"
 - Contract: Verify `ExamTurnOutput` schema from LLM includes required fields
 
 ### Phase 5: Report Card (Backend + Frontend)
@@ -1513,9 +1550,11 @@ For exam mode, `exam_progress`:
 26. DevTools updates (mode display)
 
 **Phase 6 testing:**
-- Integration: Verify history endpoint returns correct mode-specific data for each mode
-- Integration: WebSocket state updates include mode, coverage, exam_progress fields
+- Integration: Verify history endpoint returns correct mode-specific data for each mode, abandoned exams show "Incomplete"
+- Contract: WebSocket state updates include mode, coverage, exam_progress fields — strict schema validation per mode (teach_me state must not include exam_progress, exam state must not include concepts_discussed, etc.)
+- Contract: WebSocket state update after pause/resume includes correct coverage and step position
 - E2E: Full user journey — Teach Me (pause, resume, complete) → Clarify Doubts → Exam → Report Card → Session History. Verify all data flows correctly end-to-end
+- E2E: Concurrent operations — open two tabs for same session, verify optimistic locking prevents corruption
 
 ---
 
@@ -1562,7 +1601,7 @@ For exam mode, `exam_progress`:
 ### Modified Files (Backend)
 | File | Changes |
 |------|---------|
-| `shared/models/entities.py` | Add `mode`, `is_paused`, `exam_score`, `exam_total` columns |
+| `shared/models/entities.py` | Add `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns |
 | `shared/models/schemas.py` | New schemas, rename scorecard → report card |
 | `shared/models/domain.py` | Add `SessionMode` type if needed |
 | `tutor/models/session_state.py` | Add `mode`, coverage, exam fields, `ExamQuestion`, `ExamFeedback` |
