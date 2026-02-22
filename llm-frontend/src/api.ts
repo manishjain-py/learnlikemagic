@@ -68,6 +68,7 @@ export interface Goal {
 export interface CreateSessionRequest {
   student: Student;
   goal: Goal;
+  mode?: 'teach_me' | 'clarify_doubts' | 'exam';
 }
 
 export interface Turn {
@@ -81,6 +82,8 @@ export interface Turn {
 export interface CreateSessionResponse {
   session_id: string;
   first_turn: Turn;
+  mode?: string;
+  past_discussions?: Array<{ session_date: string; concepts_discussed: string[] }>;
 }
 
 export interface StepResponse {
@@ -259,6 +262,32 @@ export interface SubtopicProgress {
   status: 'mastered' | 'in_progress';
 }
 
+export interface ResumableSession {
+  session_id: string;
+  coverage: number;
+  current_step: number;
+  total_steps: number;
+  concepts_covered: string[];
+}
+
+export interface PauseSummary {
+  coverage: number;
+  concepts_covered: string[];
+  message: string;
+}
+
+export interface ExamSummary {
+  score: number;
+  total: number;
+  percentage: number;
+  feedback?: {
+    strengths: string[];
+    weak_areas: string[];
+    patterns: string[];
+    next_steps: string[];
+  };
+}
+
 export async function getScorecard(): Promise<ScorecardResponse> {
   const response = await apiFetch('/sessions/scorecard');
   if (!response.ok) throw new Error(`Failed to fetch scorecard: ${response.statusText}`);
@@ -270,6 +299,37 @@ export async function getSubtopicProgress(): Promise<Record<string, SubtopicProg
   if (!response.ok) throw new Error(`Failed to fetch progress: ${response.statusText}`);
   const data = await response.json();
   return data.user_progress;
+}
+
+export async function getResumableSession(guidelineId: string): Promise<ResumableSession | null> {
+  const response = await apiFetch(`/sessions/resumable?guideline_id=${guidelineId}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to check resumable session: ${response.statusText}`);
+  return response.json();
+}
+
+export async function pauseSession(sessionId: string): Promise<PauseSummary> {
+  const response = await apiFetch(`/sessions/${sessionId}/pause`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to pause session: ${response.statusText}`);
+  return response.json();
+}
+
+export async function resumeSession(sessionId: string): Promise<{ session_id: string; message: string; current_step: number }> {
+  const response = await apiFetch(`/sessions/${sessionId}/resume`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to resume session: ${response.statusText}`);
+  return response.json();
+}
+
+export async function endExamEarly(sessionId: string): Promise<ExamSummary> {
+  const response = await apiFetch(`/sessions/${sessionId}/end-exam`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to end exam: ${response.statusText}`);
+  return response.json();
+}
+
+export async function getReportCard(): Promise<ScorecardResponse> {
+  const response = await apiFetch('/sessions/report-card');
+  if (!response.ok) throw new Error(`Failed to fetch report card: ${response.statusText}`);
+  return response.json();
 }
 
 // ──────────────────────────────────────────────

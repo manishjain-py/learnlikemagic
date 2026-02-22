@@ -62,3 +62,16 @@ class DatabaseException(LearnLikeMagicException):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database operation failed"
         )
+
+
+class StaleStateError(LearnLikeMagicException):
+    """Raised when an optimistic locking conflict is detected during session update."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+    def to_http_exception(self) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(self)
+        )

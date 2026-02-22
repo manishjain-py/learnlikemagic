@@ -155,7 +155,13 @@ class TeacherOrchestrator:
                     specialists_called=["safety"], state_changed=True,
                 )
 
-            # Step 2: Master tutor
+            # Mode-specific turn processing
+            if session.mode == "clarify_doubts":
+                return await self._process_clarify_turn(session, context, turn_id, start_time)
+            elif session.mode == "exam":
+                return await self._process_exam_turn(session, context, turn_id, start_time)
+
+            # Step 2: Master tutor (teach_me mode)
             tutor_start = time.time()
             self.master_tutor.set_session(session)
             tutor_output: TutorTurnOutput = await self.master_tutor.execute(context)
@@ -303,8 +309,12 @@ class TeacherOrchestrator:
         if self._handle_question_lifecycle(session, output, current_concept):
             changed = True
 
-        # 4. Advance step
+        # 4. Advance step + coverage tracking
         if output.advance_to_step and output.advance_to_step > session.current_step:
+            for step_id in range(session.current_step, output.advance_to_step):
+                step = session.topic.study_plan.get_step(step_id) if session.topic else None
+                if step:
+                    session.concepts_covered_set.add(step.concept)
             while session.current_step < output.advance_to_step:
                 session.advance_step()
             changed = True
@@ -413,6 +423,168 @@ class TeacherOrchestrator:
             return safety.guidance
         return "Let's keep our conversation focused on learning. How can I help you with the lesson?"
 
+    async def _process_clarify_turn(
+        self, session: SessionState, context: AgentContext, turn_id: str, start_time: float
+    ) -> TurnResult:
+        """Process a Clarify Doubts turn."""
+        tutor_start = time.time()
+        self.master_tutor.set_session(session)
+        tutor_output: TutorTurnOutput = await self.master_tutor.execute(context)
+        tutor_duration = int((time.time() - tutor_start) * 1000)
+
+        self._log_agent_event(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            agent_name="master_tutor",
+            event_type="completed",
+            output=self._extract_output_dict(tutor_output),
+            reasoning=tutor_output.reasoning,
+            duration_ms=tutor_duration,
+            metadata={"mode": "clarify_doubts", "intent": tutor_output.intent},
+        )
+
+        # Track concepts discussed (from mastery_updates or turn summary)
+        if hasattr(tutor_output, 'mastery_updates') and tutor_output.mastery_updates:
+            for update in tutor_output.mastery_updates:
+                if update.concept not in session.concepts_discussed:
+                    session.concepts_discussed.append(update.concept)
+                session.concepts_covered_set.add(update.concept)
+
+        session.add_message(create_teacher_message(tutor_output.response))
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        self._log_agent_event(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            agent_name="orchestrator",
+            event_type="turn_completed",
+            duration_ms=duration_ms,
+            metadata={"mode": "clarify_doubts", "intent": tutor_output.intent},
+        )
+
+        return TurnResult(
+            response=tutor_output.response,
+            intent=tutor_output.intent,
+            specialists_called=["master_tutor"],
+            state_changed=True,
+        )
+
+    async def _process_exam_turn(
+        self, session: SessionState, context: AgentContext, turn_id: str, start_time: float
+    ) -> TurnResult:
+        """Process an Exam turn — evaluate answer and move to next question."""
+        if session.exam_finished or session.exam_current_question_idx >= len(session.exam_questions):
+            return TurnResult(
+                response="The exam is already complete. Check your results!",
+                intent="exam_complete",
+                specialists_called=[],
+                state_changed=False,
+            )
+
+        current_q = session.exam_questions[session.exam_current_question_idx]
+
+        tutor_start = time.time()
+        self.master_tutor.set_session(session)
+        tutor_output: TutorTurnOutput = await self.master_tutor.execute(context)
+        tutor_duration = int((time.time() - tutor_start) * 1000)
+
+        self._log_agent_event(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            agent_name="master_tutor",
+            event_type="completed",
+            output=self._extract_output_dict(tutor_output),
+            reasoning=tutor_output.reasoning,
+            duration_ms=tutor_duration,
+            metadata={"mode": "exam", "question_idx": session.exam_current_question_idx},
+        )
+
+        # Record student answer
+        current_q.student_answer = context.student_message
+        current_q.feedback = tutor_output.turn_summary
+
+        # Determine result from mastery signal
+        if tutor_output.answer_correct is True:
+            current_q.result = "correct"
+            session.exam_total_correct += 1
+        elif tutor_output.answer_correct is False:
+            if tutor_output.mastery_signal == "needs_remediation":
+                current_q.result = "incorrect"
+                session.exam_total_incorrect += 1
+            else:
+                current_q.result = "partial"
+                session.exam_total_partial += 1
+        else:
+            current_q.result = "incorrect"
+            session.exam_total_incorrect += 1
+
+        # Move to next question
+        session.exam_current_question_idx += 1
+        response = tutor_output.response
+
+        if session.exam_current_question_idx >= len(session.exam_questions):
+            session.exam_finished = True
+            session.exam_feedback = self._build_exam_feedback(session)
+        else:
+            next_q = session.exam_questions[session.exam_current_question_idx]
+            response = f"{tutor_output.response}\n\n**Question {next_q.question_idx + 1}:** {next_q.question_text}"
+
+        session.add_message(create_teacher_message(response))
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        self._log_agent_event(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            agent_name="orchestrator",
+            event_type="turn_completed",
+            duration_ms=duration_ms,
+            metadata={"mode": "exam", "exam_finished": session.exam_finished},
+        )
+
+        return TurnResult(
+            response=response,
+            intent="exam_answer",
+            specialists_called=["master_tutor"],
+            state_changed=True,
+        )
+
+    @staticmethod
+    def _build_exam_feedback(session: SessionState) -> "ExamFeedback":
+        """Build structured exam feedback from question results."""
+        from tutor.models.session_state import ExamFeedback
+
+        answered = [q for q in session.exam_questions if q.result is not None]
+        correct_concepts = [q.concept for q in answered if q.result == "correct"]
+        partial_concepts = [q.concept for q in answered if q.result == "partial"]
+        incorrect_concepts = [q.concept for q in answered if q.result == "incorrect"]
+
+        strengths = list(set(correct_concepts))
+        weak_areas = list(set(incorrect_concepts + partial_concepts))
+        patterns = []
+        if len(correct_concepts) > len(incorrect_concepts):
+            patterns.append("Overall strong performance")
+        elif len(incorrect_concepts) > len(correct_concepts):
+            patterns.append("More practice needed across concepts")
+
+        next_steps = []
+        if weak_areas:
+            next_steps.append(f"Review these concepts in Teach Me: {', '.join(weak_areas[:3])}")
+        if partial_concepts:
+            next_steps.append(f"Clarify your understanding of: {', '.join(list(set(partial_concepts))[:3])}")
+        if not weak_areas:
+            next_steps.append("Great job! Try a harder topic or retake to aim for a perfect score.")
+
+        total = len(session.exam_questions)
+        return ExamFeedback(
+            score=session.exam_total_correct,
+            total=total,
+            percentage=round(session.exam_total_correct / total * 100, 1) if total else 0.0,
+            strengths=strengths,
+            weak_areas=weak_areas,
+            patterns=patterns,
+            next_steps=next_steps,
+        )
+
     def _extract_output_dict(self, output: Any) -> Dict[str, Any]:
         if output is None:
             return {}
@@ -450,3 +622,55 @@ class TeacherOrchestrator:
         )
 
         return result.get("output_text", "Welcome! Let's start learning.").strip()
+
+    async def generate_clarify_welcome(self, session: SessionState) -> str:
+        """Generate a welcome message for Clarify Doubts mode."""
+        if not session.topic:
+            return "Hi! I'm here to help answer your questions. What would you like to know?"
+
+        topic_name = session.topic.topic_name
+        prompt = (
+            f"You are a friendly tutor starting a Clarify Doubts session with a Grade {session.student_context.grade} student.\n\n"
+            f"Topic: {topic_name}\n"
+            f"Subject: {session.topic.subject}\n\n"
+            f"Generate a warm, brief welcome that:\n"
+            f"1. Greets the student\n"
+            f"2. Says you're here to answer their questions about {topic_name}\n"
+            f"3. Invites them to ask whatever they're curious or confused about\n\n"
+            f"Keep it to 1-2 sentences. Use {session.student_context.language_level} language. No emojis."
+        )
+
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=False),
+        )
+        return result.get("output_text", f"Hi! I'm here to help with {topic_name}. What questions do you have?").strip()
+
+    async def generate_exam_welcome(self, session: SessionState) -> str:
+        """Generate a welcome message for Exam mode."""
+        if not session.topic:
+            return "Let's test your knowledge! I'll ask you some questions. Ready?"
+
+        topic_name = session.topic.topic_name
+        num_questions = len(session.exam_questions) if session.exam_questions else 7
+        prompt = (
+            f"You are a friendly tutor starting an exam session with a Grade {session.student_context.grade} student.\n\n"
+            f"Topic: {topic_name}\n"
+            f"Number of questions: {num_questions}\n\n"
+            f"Generate a brief welcome that:\n"
+            f"1. Greets the student warmly\n"
+            f"2. Explains this is a {num_questions}-question exam on {topic_name}\n"
+            f"3. Encourages them to do their best\n"
+            f"4. Asks if they're ready\n\n"
+            f"Keep it to 2-3 sentences. Use {session.student_context.language_level} language. No emojis."
+        )
+
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=False),
+        )
+        return result.get("output_text", f"Let's test your knowledge of {topic_name}! I'll ask you {num_questions} questions. Ready?").strip()

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import ModeSelection from './components/ModeSelection';
 import {
   createSession,
   submitStep,
@@ -9,10 +10,15 @@ import {
   getModelConfig,
   getSubtopicProgress,
   transcribeAudio,
+  pauseSession,
+  resumeSession as resumeSessionAPI,
+  endExamEarly,
   Turn,
   SummaryResponse,
   SubtopicInfo,
   SubtopicProgress,
+  ResumableSession,
+  PauseSummary,
 } from './api';
 import { useAuth } from './contexts/AuthContext';
 import DevToolsDrawer from './features/devtools/components/DevToolsDrawer';
@@ -32,7 +38,7 @@ function App() {
 
   // Selection state
   const [selectionStep, setSelectionStep] = useState<
-    'subject' | 'topic' | 'subtopic' | 'chat'
+    'subject' | 'topic' | 'subtopic' | 'mode' | 'chat'
   >('subject');
   const [subjects, setSubjects] = useState<string[]>([]);
   const [topics, setTopics] = useState<string[]>([]);
@@ -54,6 +60,11 @@ function App() {
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState<string>('');
   const [subtopicProgress, setSubtopicProgress] = useState<Record<string, SubtopicProgress>>({});
+  const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts' | 'exam'>('teach_me');
+  const [coverage, setCoverage] = useState(0);
+  const [conceptsDiscussed, setConceptsDiscussed] = useState<string[]>([]);
+  const [examProgress, setExamProgress] = useState<{ current: number; total: number; correct: number } | null>(null);
+  const [pauseSummaryData, setPauseSummaryData] = useState<PauseSummary | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -161,10 +172,77 @@ function App() {
 
   const handleSubtopicSelect = async (subtopic: SubtopicInfo) => {
     setSelectedSubtopic(subtopic);
-    await startSession(subtopic);
+    setSelectionStep('mode');
   };
 
-  const startSession = async (subtopic: SubtopicInfo) => {
+  const handleModeSelect = async (mode: 'teach_me' | 'clarify_doubts' | 'exam') => {
+    setSessionMode(mode);
+    await startSession(selectedSubtopic!, mode);
+  };
+
+  const handleResume = async (resumeSessionId: string) => {
+    setSessionMode('teach_me');
+    try {
+      setLoading(true);
+      const result = await resumeSessionAPI(resumeSessionId);
+      setSessionId(resumeSessionId);
+      // Populate conversation history so chat isn't blank
+      if (result.conversation_history && result.conversation_history.length > 0) {
+        setMessages(
+          result.conversation_history.map((m: { role: string; content: string }) => ({
+            role: m.role === 'student' ? 'student' as const : 'teacher' as const,
+            content: m.content,
+          }))
+        );
+      }
+      if (result.current_step) {
+        setStepIdx(result.current_step);
+      }
+      setSelectionStep('chat');
+    } catch (error) {
+      console.error('Failed to resume session:', error);
+      alert('Failed to resume session. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePause = async () => {
+    if (!sessionId) return;
+    try {
+      setLoading(true);
+      const result = await pauseSession(sessionId);
+      setPauseSummaryData(result);
+      setIsComplete(true);
+    } catch (error) {
+      console.error('Failed to pause session:', error);
+      alert('Failed to pause session.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEndExam = async () => {
+    if (!sessionId) return;
+    try {
+      setLoading(true);
+      const result = await endExamEarly(sessionId);
+      setIsComplete(true);
+      setSummary({
+        steps_completed: result.total,
+        mastery_score: result.percentage / 100,
+        misconceptions_seen: result.feedback?.weak_areas || [],
+        suggestions: result.feedback?.next_steps || [],
+      });
+    } catch (error) {
+      console.error('Failed to end exam:', error);
+      alert('Failed to end exam.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startSession = async (subtopic: SubtopicInfo, mode: 'teach_me' | 'clarify_doubts' | 'exam' = 'teach_me') => {
     setLoading(true);
     try {
       const response = await createSession({
@@ -179,6 +257,7 @@ function App() {
           learning_objectives: [`Learn ${subtopic.subtopic}`],
           guideline_id: subtopic.guideline_id,
         },
+        mode,
       });
 
       setSessionId(response.session_id);
@@ -304,6 +383,9 @@ function App() {
     } else if (selectionStep === 'subtopic') {
       setSelectionStep('topic');
       setSelectedTopic(null);
+    } else if (selectionStep === 'mode') {
+      setSelectionStep('subtopic');
+      setSelectedSubtopic(null);
     }
   };
 
@@ -445,6 +527,15 @@ function App() {
               )}
             </div>
           )}
+
+          {selectionStep === 'mode' && selectedSubtopic && (
+            <ModeSelection
+              subtopic={selectedSubtopic}
+              onSelectMode={handleModeSelect}
+              onResume={handleResume}
+              onBack={handleBack}
+            />
+          )}
         </div>
       </div>
     );
@@ -496,21 +587,45 @@ function App() {
 
       <div className="progress-bar">
         <div className="progress-info">
-          <span>Step {stepIdx}/10</span>
-          <span>Mastery: {(mastery * 100).toFixed(0)}%</span>
+          {sessionMode === 'teach_me' && (
+            <>
+              <span>Step {stepIdx}/10</span>
+              <span>Coverage: {coverage.toFixed(0)}%</span>
+            </>
+          )}
+          {sessionMode === 'clarify_doubts' && (
+            <span>
+              {conceptsDiscussed.length > 0
+                ? conceptsDiscussed.map((c, i) => (
+                    <span key={i} style={{
+                      display: 'inline-block',
+                      background: '#e2e8f0',
+                      borderRadius: '12px',
+                      padding: '2px 8px',
+                      margin: '0 4px',
+                      fontSize: '0.75rem',
+                    }}>{c}</span>
+                  ))
+                : 'Ask your questions!'}
+            </span>
+          )}
+          {sessionMode === 'exam' && examProgress && (
+            <>
+              <span>Question {examProgress.current}/{examProgress.total}</span>
+              <span>{examProgress.correct}/{examProgress.current} correct</span>
+            </>
+          )}
         </div>
-        <div className="progress-track">
-          <div
-            className="progress-fill"
-            style={{ width: `${(stepIdx / 10) * 100}%` }}
-          />
-        </div>
-        <div className="mastery-track">
-          <div
-            className="mastery-fill"
-            style={{ width: `${mastery * 100}%` }}
-          />
-        </div>
+        {sessionMode === 'teach_me' && (
+          <>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${(stepIdx / 10) * 100}%` }} />
+            </div>
+            <div className="mastery-track">
+              <div className="mastery-fill" style={{ width: `${coverage}%` }} />
+            </div>
+          </>
+        )}
       </div>
 
       <div className="chat-container">
@@ -552,7 +667,25 @@ function App() {
         </div>
 
         {!isComplete ? (
-          <form className="input-form" onSubmit={handleSubmit}>
+          <>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              {sessionMode === 'teach_me' && !isComplete && (
+                <button onClick={handlePause} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  Pause Session
+                </button>
+              )}
+              {sessionMode === 'clarify_doubts' && !isComplete && (
+                <button onClick={() => setIsComplete(true)} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  End Session
+                </button>
+              )}
+              {sessionMode === 'exam' && !isComplete && (
+                <button onClick={handleEndExam} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  End Exam Early
+                </button>
+              )}
+            </div>
+            <form className="input-form" onSubmit={handleSubmit}>
             <input
               type="text"
               value={input}
@@ -587,6 +720,7 @@ function App() {
               Send
             </button>
           </form>
+          </>
         ) : (
           <div className="summary-card">
             <h2>Session Complete!</h2>
