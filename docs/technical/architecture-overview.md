@@ -18,14 +18,15 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  AWS App Runner                                                 │
 │                                                                 │
 │  Modules: tutor, book_ingestion, study_plans, evaluation, auth  │
-│  Shared: llm_service, anthropic_adapter, models, utils          │
+│  Shared: llm_service, llm_config_service, anthropic_adapter,    │
+│          models, utils, repositories                            │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
 │  Database (Aurora Serverless v2 PostgreSQL)                      │
 │  Tables: users, sessions, events, contents,                     │
 │          teaching_guidelines, study_plans, books, book_jobs,     │
-│          book_guidelines                                        │
+│          book_guidelines, llm_config                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,8 +42,9 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | Uvicorn | ASGI server | Lightweight, high-performance, pairs with FastAPI |
 | Pydantic | Data validation | Type hints for validation, clear errors, schema gen |
 | SQLAlchemy | ORM | Mature, flexible, database-agnostic |
-| OpenAI | LLM provider (GPT-5.2) | Structured outputs, Responses API, reasoning models |
+| OpenAI | LLM provider (GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
+| Google | LLM provider (Gemini) | Additional provider option for flexibility |
 
 ### Frontend
 
@@ -72,12 +74,13 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 
 ```
 llm-backend/
-├── tutor/                # Runtime tutoring sessions
+├── tutor/                # Runtime tutoring sessions (teach, clarify, exam)
 ├── book_ingestion/       # Book upload & guideline extraction
 ├── study_plans/          # Study plan generation
 ├── evaluation/           # Session evaluation pipeline
+├── auth/                 # Authentication & user profiles
 ├── shared/               # Cross-module utilities
-├── api/                  # Root API (health, curriculum)
+├── api/                  # Root-level API (docs endpoint)
 ├── tests/
 ├── main.py               # FastAPI app entrypoint
 ├── config.py             # Pydantic settings
@@ -102,14 +105,17 @@ Each module follows the same internal structure:
 
 | Router | Prefix | Purpose |
 |--------|--------|---------|
-| health | `/health` | Health checks |
+| health | `/` | Health checks, root endpoint |
 | curriculum | `/curriculum` | Curriculum hierarchy API |
-| sessions | `/sessions` | Session management, scorecard |
-| evaluation | `/evaluation` | Evaluation pipeline |
+| sessions | `/sessions` | Session management, scorecard, WebSocket |
+| transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
+| evaluation | `/api/evaluation` | Evaluation pipeline |
 | admin books | `/admin/books` | Book ingestion admin |
 | admin guidelines | `/admin/guidelines` | Guidelines admin |
-| auth | `/auth` | Auth sync, phone provision |
+| auth | `/auth` | Auth sync (Cognito to local DB) |
 | profile | `/profile` | User profile CRUD |
+| docs | `/api/docs` | Documentation API for admin viewer |
+| llm config | `/api/admin/llm-config` | LLM model configuration admin |
 
 ---
 
@@ -118,12 +124,12 @@ Each module follows the same internal structure:
 ```
 llm-frontend/src/
 ├── App.tsx               # Root component + routing
-├── TutorApp.tsx          # Main tutor UI (chat + topic selection)
-├── api.ts                # API client
+├── TutorApp.tsx          # Main tutor UI (topic selection + chat + modes)
+├── api.ts                # API client with auth token handling
 ├── pages/                # Route-level pages
 │   ├── LoginPage.tsx, EmailLoginPage.tsx, PhoneLoginPage.tsx
 │   ├── OTPVerifyPage.tsx, EmailSignupPage.tsx, EmailVerifyPage.tsx
-│   ├── ForgotPasswordPage.tsx
+│   ├── ForgotPasswordPage.tsx, OAuthCallbackPage.tsx
 │   ├── OnboardingFlow.tsx
 │   ├── ProfilePage.tsx
 │   ├── SessionHistoryPage.tsx
@@ -131,10 +137,16 @@ llm-frontend/src/
 ├── contexts/
 │   └── AuthContext.tsx    # Global auth state (Cognito SDK)
 ├── components/
-│   └── ProtectedRoute.tsx, OnboardingGuard.tsx
+│   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
+│   └── ModeSelection.tsx # Learning mode picker (teach/clarify/exam/resume)
 ├── features/
 │   ├── admin/            # Admin pages + components
-│   └── devtools/         # Debug tools
+│   │   └── pages/
+│   │       ├── BooksDashboard.tsx, CreateBook.tsx, BookDetail.tsx
+│   │       ├── GuidelinesReview.tsx, EvaluationDashboard.tsx
+│   │       ├── DocsViewer.tsx    # In-app documentation browser
+│   │       └── LLMConfigPage.tsx # LLM model config admin
+│   └── devtools/         # Debug tools (agent logs, guidelines, study plan)
 └── config/               # Cognito config, constants
 ```
 
@@ -149,13 +161,21 @@ llm-frontend/src/
 | `/signup/email` | EmailSignupPage | Public | Email signup |
 | `/signup/email/verify` | EmailVerifyPage | Public | Email verification |
 | `/forgot-password` | ForgotPasswordPage | Public | Password reset |
-| `/auth/callback` | OAuth callback | Public | Google OAuth callback |
-| `/` | TutorApp | Protected + Onboarding | Main tutoring interface |
+| `/auth/callback` | OAuthCallbackPage | Public | Google OAuth callback |
+| `/` | TutorApp | Protected + Onboarding | Main tutoring interface (topic selection + chat) |
 | `/profile` | ProfilePage | Protected | Profile management |
 | `/history` | SessionHistoryPage | Protected | Past sessions |
 | `/scorecard` | ScorecardPage | Protected | Student scorecard |
+| `/report-card` | ScorecardPage | Protected | Alias for scorecard |
 | `/onboarding` | OnboardingFlow | Protected | First-time setup |
-| `/admin/*` | Admin pages | Unprotected | Admin tools |
+| `/admin` | (redirect) | Unprotected | Redirects to `/admin/books` |
+| `/admin/books` | BooksDashboard | Unprotected | Book management |
+| `/admin/books/new` | CreateBook | Unprotected | Create new book |
+| `/admin/books/:id` | BookDetail | Unprotected | Book detail + pages |
+| `/admin/guidelines` | GuidelinesReview | Unprotected | Guidelines review |
+| `/admin/evaluation` | EvaluationDashboard | Unprotected | Evaluation dashboard |
+| `/admin/docs` | DocsViewer | Unprotected | Project documentation browser |
+| `/admin/llm-config` | LLMConfigPage | Unprotected | LLM provider/model configuration |
 
 ---
 
@@ -198,34 +218,42 @@ Everything else?          → Service
 
 ## LLM Provider System
 
-The backend supports multiple LLM providers via an adapter pattern:
+The backend supports multiple LLM providers via an adapter pattern. Provider and model selection is **DB-backed** via the `llm_config` table, managed through the `/admin/llm-config` admin UI.
 
-| Provider | Config Value | Models | Usage |
-|----------|-------------|--------|-------|
-| OpenAI | `openai` | GPT-5.2 (fallback: GPT-5.1, GPT-4o) | Default tutor + ingestion |
-| Anthropic | `anthropic` | Claude Opus 4.6 | Tutor + evaluation |
-| Anthropic Haiku | `anthropic-haiku` | Claude Haiku 4.5 | Fast/cheap tutor |
+### Available Providers and Models
 
-### Provider Switching
+| Provider | Config Value | Available Models | Usage |
+|----------|-------------|------------------|-------|
+| OpenAI | `openai` | gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
+| Anthropic | `anthropic` | claude-opus-4-6, claude-haiku-4-5-20251001 | Tutor, evaluation |
+| Google | `google` | gemini-3-pro-preview | Alternative provider |
 
-Set via environment variable:
-- `APP_LLM_PROVIDER` — Tutor provider (`openai`, `anthropic`, `anthropic-haiku`)
-- `EVAL_LLM_PROVIDER` — Evaluator provider (defaults to `anthropic`)
+### LLM Configuration (DB-Backed)
+
+Each system component (tutor, book_ingestion, evaluator, etc.) has its own row in the `llm_config` DB table specifying which provider and model it uses. This replaced the earlier environment-variable-based provider switching.
+
+- **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
+- **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one
+- **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
 
 ### Key Provider Files
 
 | File | Purpose |
 |------|---------|
-| `shared/services/llm_service.py` | OpenAI wrapper with structured output, retry, fallback |
-| `shared/services/anthropic_adapter.py` | Claude adapter using thinking + tool_use for structured output |
-| `config.py` | `resolved_tutor_provider` property for provider selection |
+| `shared/services/llm_service.py` | Centralized LLM call interface; routes to OpenAI, Anthropic, or Gemini based on provider |
+| `shared/services/anthropic_adapter.py` | Claude adapter: thinking budgets, tool_use structured output |
+| `shared/services/llm_config_service.py` | Reads/writes LLM config from `llm_config` DB table |
+| `shared/repositories/llm_config_repository.py` | CRUD for `llm_config` table |
+| `shared/api/llm_config_routes.py` | Admin API endpoints for LLM config (list, update, options) |
 
 ### Provider Features
 
-- **Structured output**: OpenAI uses `json_schema` (strict); Anthropic uses thinking + tool_use
-- **Reasoning levels**: none, low, medium, high, xhigh (mapped to thinking budgets for Claude)
-- **Retry**: 3 attempts with exponential backoff
+- **Structured output**: OpenAI uses `json_schema` (strict mode); Anthropic uses thinking + tool_use
+- **Reasoning levels**: none, low, medium, high, xhigh (mapped to thinking budgets for Claude: 0, 5K, 10K, 20K, 40K tokens)
+- **Retry**: 3 attempts with exponential backoff for rate limits and timeouts
 - **Schema conversion**: `make_schema_strict()` converts Pydantic models to OpenAI strict schema format
+- **OpenAI API selection**: gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
+- **Gemini**: Google Generative AI client with JSON mode support
 
 ---
 
@@ -235,11 +263,13 @@ Centralized via Pydantic `BaseSettings` in `config.py`. Reads from `.env` file +
 
 | Group | Key Settings |
 |-------|-------------|
-| Database | `database_url`, `db_pool_size` (5), `db_max_overflow` (10) |
-| LLM | `openai_api_key`, `anthropic_api_key`, `tutor_llm_provider` |
+| Database | `database_url`, `db_pool_size` (5), `db_max_overflow` (10), `db_pool_timeout` (30) |
+| LLM API Keys | `openai_api_key`, `anthropic_api_key`, `gemini_api_key` |
 | AWS | `aws_region`, `aws_s3_bucket` |
-| Cognito | `cognito_user_pool_id`, `cognito_app_client_id` |
+| Cognito | `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_region` |
 | Logging | `log_level` (INFO), `log_format` (json/text) |
-| App | `environment` (development/staging/production) |
+| App | `environment` (development/staging/production), `api_host`, `api_port` |
+
+**Note:** Provider/model selection is no longer in `config.py`. It is managed via the `llm_config` DB table (see LLM Provider System above). The config file only holds API keys.
 
 Required at startup: `OPENAI_API_KEY` and `DATABASE_URL`.

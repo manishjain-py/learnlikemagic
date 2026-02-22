@@ -7,21 +7,22 @@ AWS infrastructure, Terraform, CI/CD, and production operations.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  CloudFront → S3 (React)                      [Frontend]   │
-│       │                                                     │
-│       v                                                     │
-│  App Runner → ECR (FastAPI container)         [Backend]    │
-│       │                                                     │
-│       v                                                     │
-│  RDS Aurora Serverless (PostgreSQL)           [Database]   │
-│                                                             │
-│  Secrets Manager (API keys)                                │
-│  Cognito (Authentication)                                  │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|  CloudFront --> S3 (React+Vite)                  [Frontend]  |
+|       |                                                      |
+|       v                                                      |
+|  App Runner --> ECR (FastAPI container)           [Backend]   |
+|       |                                                      |
+|       v                                                      |
+|  RDS Aurora Serverless v2 (PostgreSQL 15.10)     [Database]  |
+|                                                              |
+|  Secrets Manager (OpenAI, Gemini, Anthropic, DB password)    |
+|  Cognito (Authentication)                                    |
+|  S3 Books Bucket (Book ingestion storage)                    |
++-------------------------------------------------------------+
 ```
 
-**Stack:** Terraform, FastAPI, React+Vite, Aurora Serverless v2, App Runner, GitHub Actions (OIDC)
+**Stack:** Terraform (AWS provider ~5.0), FastAPI, React+Vite, Aurora Serverless v2, App Runner, GitHub Actions (OIDC)
 
 ---
 
@@ -49,6 +50,10 @@ docker inspect IMAGE_ID --format='{{.Architecture}}'  # must be: amd64
 
 Use `make build-prod` (not `make build-local`) for AWS deployments.
 
+**Dockerfile:** Uses `python:3.11-slim`, copies `entrypoint.sh` as CMD. The entrypoint script checks for required env vars (`DATABASE_URL`, `OPENAI_API_KEY`) before starting Uvicorn.
+
+**Build note:** `make build-prod` copies `docs/` into the backend build context before building, then removes it after. The CI/CD pipeline does the same via `cp -r docs/ llm-backend/docs/`.
+
 ---
 
 ## Initial Setup
@@ -58,7 +63,13 @@ Use `make build-prod` (not `make build-local`) for AWS deployments.
 ```bash
 cd infra/terraform
 cp terraform.tfvars.example terraform.tfvars
-# Edit: project_name, environment, aws_region, github_repo, openai_api_key, db credentials
+# Edit with your values:
+#   project_name, environment, aws_region
+#   github_org, github_repo
+#   db_name, db_user, db_password
+#   openai_api_key, gemini_api_key, anthropic_api_key
+#   tutor_llm_provider, llm_model
+#   domain_names (optional), acm_certificate_arn (optional)
 ```
 
 ### 2. Deploy Infrastructure
@@ -67,7 +78,7 @@ cp terraform.tfvars.example terraform.tfvars
 make init && make plan && make apply
 ```
 
-Creates: ECR, RDS Aurora, Secrets Manager, IAM roles, S3 + CloudFront
+Creates: ECR, RDS Aurora Serverless v2, Secrets Manager (4 secrets), IAM roles, S3 + CloudFront, GitHub OIDC provider
 
 ### 3. Initialize Database
 
@@ -76,7 +87,7 @@ cd llm-backend
 docker buildx build --platform linux/amd64 -t llm-backend:migrate .
 
 # Migrate
-docker run --rm -e DATABASE_URL="postgresql://user:pass@endpoint:5432/learnlikemagic" \
+docker run --rm -e DATABASE_URL="postgresql://user:pass@endpoint:5432/tutor" \
   llm-backend:migrate python db.py --migrate
 ```
 
@@ -95,17 +106,66 @@ cd infra/terraform
 make gh-secrets
 ```
 
-Sets: `AWS_ROLE_ARN`, `ECR_REGISTRY`, `ECR_REPOSITORY`, `APP_RUNNER_SERVICE_ARN`, `FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, `VITE_API_URL`
+Sets (via Terraform outputs): `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REGISTRY`, `ECR_REPOSITORY`, `APP_RUNNER_SERVICE_ARN`, `FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, `VITE_API_URL`
+
+**Additional secrets to set manually** (not in Terraform outputs):
+- `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_APP_CLIENT_ID`, `VITE_COGNITO_REGION`, `VITE_COGNITO_DOMAIN` -- Required for frontend auth
+- `VITE_GOOGLE_CLIENT_ID` -- Required for Google sign-in
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` -- Required for daily coverage email reports
 
 ---
 
 ## CI/CD
 
-Automatic deployment on push to `main`:
-- **Backend:** Changes in `llm-backend/` → Build AMD64 image → Push ECR → Deploy App Runner
-- **Frontend:** Changes in `llm-frontend/` → Build → Sync S3 → Invalidate CloudFront
+### Workflows
 
-Manual trigger: GitHub Actions → Select workflow → Run workflow
+| Workflow | File | Trigger | What it does |
+|----------|------|---------|--------------|
+| Deploy Backend | `deploy-backend.yml` | Push to `main` (changes in `llm-backend/**`, `docs/**`, or the workflow file); manual | Build AMD64 image --> Push ECR --> Deploy App Runner --> Wait for completion |
+| Deploy Frontend | `deploy-frontend.yml` | Push to `main` (changes in `llm-frontend/**` or the workflow file); manual | Build with Vite --> Sync S3 (with cache headers) --> Invalidate CloudFront |
+| Manual Deploy | `manual-deploy.yml` | Manual only | Deploy frontend, backend, or both (selectable) |
+| Daily Coverage | `daily-coverage.yml` | Daily at 6:00 AM UTC; manual | Run pytest coverage --> Generate HTML report --> Email report --> Check 80% threshold |
+
+All workflows use **GitHub OIDC** for AWS authentication (no long-lived credentials).
+
+### Backend Deploy Details
+
+1. Checkout code
+2. Configure AWS via OIDC (`aws-actions/configure-aws-credentials@v4`)
+3. Login to ECR (`aws-actions/amazon-ecr-login@v2`)
+4. Copy `docs/` into backend build context
+5. Build AMD64 Docker image (tagged with commit SHA + `latest`)
+6. Push both tags to ECR
+7. Trigger App Runner deployment via `aws apprunner start-deployment`
+8. Wait for deployment to complete
+
+### Frontend Deploy Details
+
+1. Checkout, configure AWS, setup Node.js 18
+2. `npm ci` and `npm run build` with environment variables:
+   - `VITE_API_URL`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_APP_CLIENT_ID`
+   - `VITE_COGNITO_REGION`, `VITE_COGNITO_DOMAIN`, `VITE_GOOGLE_CLIENT_ID`
+3. S3 sync: all assets with `max-age=31536000, immutable`; `index.html` with `no-cache, must-revalidate`
+4. CloudFront cache invalidation (`/*`)
+
+---
+
+## Terraform Modules
+
+```
+infra/terraform/
+  main.tf              # Root module: wires all sub-modules together
+  variables.tf         # Input variables
+  outputs.tf           # Outputs (URLs, ARNs, GitHub secrets map)
+  Makefile             # Automation targets
+  modules/
+    secrets/           # Secrets Manager (OpenAI, Gemini, Anthropic, DB password)
+    database/          # Aurora Serverless v2 cluster + instance + security group
+    ecr/               # ECR repository + lifecycle policy (keep last 10 images)
+    app-runner/        # App Runner service + IAM roles (ECR access, Secrets, S3)
+    frontend/          # S3 bucket + CloudFront distribution + SPA routing function
+    github-oidc/       # OIDC provider + IAM role for GitHub Actions
+```
 
 ---
 
@@ -114,25 +174,40 @@ Manual trigger: GitHub Actions → Select workflow → Run workflow
 ### Terraform
 ```bash
 cd infra/terraform
-make plan      # Preview
-make apply     # Deploy
-make outputs   # Show URLs/ARNs
-make destroy   # Tear down
+make init          # Initialize Terraform
+make plan          # Preview changes
+make apply         # Deploy infrastructure
+make apply-auto    # Deploy without confirmation prompt
+make outputs       # Show all outputs
+make gh-secrets    # Export outputs to GitHub secrets
+make summary       # Show deployment summary
+make urls          # Show frontend + backend URLs
+make db-url        # Show database connection string
+make tf-fmt        # Format Terraform files
+make tf-validate   # Validate configuration
+make destroy       # Tear down (requires confirmation)
+make clean         # Remove .terraform directory (keeps state)
 ```
 
 ### Backend
 ```bash
 cd llm-backend
-make build-prod   # Build AMD64 for AWS
-make push         # Push to ECR
-make deploy       # Build + push + trigger
-make check-arch   # Verify image is AMD64
+make run           # Start locally with uvicorn --reload
+make test          # Run pytest
+make build-local   # Build Docker image for local dev (native arch)
+make build-prod    # Build AMD64 for AWS (copies docs/ into context)
+make run-docker    # Run local Docker container with .env file
+make push          # Login to ECR + tag + push
+make deploy        # build-prod + push + trigger App Runner
+make check-arch    # Show system and Docker image architecture
+make db-migrate    # Run python db.py --migrate
+make clean         # Remove __pycache__, .pytest_cache, etc.
 ```
 
 ### Database
 ```bash
 # Connect
-psql postgresql://user:pass@endpoint:5432/learnlikemagic
+psql postgresql://user:pass@endpoint:5432/tutor
 
 # Backup
 aws rds create-db-cluster-snapshot \
@@ -142,11 +217,11 @@ aws rds create-db-cluster-snapshot \
 
 ### Logs
 ```bash
-# Service logs
-aws logs tail /aws/apprunner/llm-backend-prod/SERVICE_ID/service --follow
-
 # Application logs
 aws logs tail /aws/apprunner/llm-backend-prod/SERVICE_ID/application --follow
+
+# Service logs
+aws logs tail /aws/apprunner/llm-backend-prod/SERVICE_ID/service --follow
 ```
 
 ### Health Checks
@@ -163,8 +238,10 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db
 |---------|-------|----------|
 | App Runner `CREATE_FAILED` | ARM64 image | Rebuild with `--platform linux/amd64` |
 | No application logs | Container not starting | Check architecture, then env vars |
+| Container exits immediately | Missing `DATABASE_URL` or `OPENAI_API_KEY` | `entrypoint.sh` checks these on startup; verify secrets are set |
 | DB connection error | Security group / credentials | Verify RDS is running, check connection string |
 | Secrets access denied | IAM permissions | Check App Runner instance role policy |
+| Frontend auth not working | Missing Cognito secrets | Set `VITE_COGNITO_*` and `VITE_GOOGLE_CLIENT_ID` in GitHub secrets |
 
 ---
 
@@ -172,9 +249,28 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db
 
 | Component | Config |
 |-----------|--------|
-| App Runner | 1 vCPU, 2GB RAM, 1-5 instances |
-| Aurora | 0.5-2 ACU, auto-pause after 5min |
-| ECR | Keep last 10 images |
-| CloudFront | HTTPS redirect, gzip, SPA routing |
+| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests |
+| Aurora | PostgreSQL 15.10, 0.5-2 ACU, 7-day backup retention |
+| ECR | Keep last 10 images, scan on push, AES256 encryption |
+| CloudFront | HTTPS redirect, gzip+brotli, SPA routing via CloudFront Function, OAI for S3 access |
+| Secrets Manager | 4 secrets (OpenAI, Gemini, Anthropic, DB password), 7-day recovery window |
 
 **Estimated cost (low traffic):** ~$10-30/month
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `infra/terraform/main.tf` | Root Terraform module |
+| `infra/terraform/variables.tf` | All input variables |
+| `infra/terraform/outputs.tf` | Outputs including GitHub secrets map |
+| `infra/terraform/Makefile` | Terraform automation targets |
+| `llm-backend/Makefile` | Backend build/deploy automation |
+| `llm-backend/Dockerfile` | Backend container definition (python:3.11-slim) |
+| `llm-backend/entrypoint.sh` | Container startup script (env var checks + uvicorn) |
+| `.github/workflows/deploy-backend.yml` | Backend CI/CD pipeline |
+| `.github/workflows/deploy-frontend.yml` | Frontend CI/CD pipeline |
+| `.github/workflows/manual-deploy.yml` | Manual deployment workflow |
+| `.github/workflows/daily-coverage.yml` | Daily test coverage report + email |
