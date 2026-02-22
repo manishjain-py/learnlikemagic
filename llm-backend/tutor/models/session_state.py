@@ -6,7 +6,7 @@ Complete session state model that tracks all aspects of a tutoring session.
 
 from datetime import datetime
 from typing import Literal, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import uuid
 
 from tutor.models.messages import Message, StudentContext
@@ -14,6 +14,8 @@ from tutor.models.study_plan import Topic, StudyPlan
 
 
 MasteryLevel = Literal["not_started", "needs_work", "developing", "adequate", "strong", "mastered"]
+
+SessionMode = Literal["teach_me", "clarify_doubts", "exam"]
 
 
 class Misconception(BaseModel):
@@ -37,6 +39,30 @@ class Question(BaseModel):
     wrong_attempts: int = Field(default=0, description="Number of wrong attempts on this question")
     previous_student_answers: list[str] = Field(default_factory=list, description="Student's previous wrong answers")
     phase: str = Field(default="asked", description="Lifecycle phase: asked, probe, hint, explain")
+
+
+class ExamQuestion(BaseModel):
+    """A single exam question with its result."""
+    question_idx: int
+    question_text: str
+    concept: str
+    difficulty: Literal["easy", "medium", "hard"]
+    question_type: Literal["conceptual", "procedural", "application"]
+    expected_answer: str
+    student_answer: Optional[str] = None
+    result: Optional[Literal["correct", "partial", "incorrect"]] = None
+    feedback: str = ""
+
+
+class ExamFeedback(BaseModel):
+    """Post-exam evaluation feedback."""
+    score: int
+    total: int
+    percentage: float
+    strengths: list[str]
+    weak_areas: list[str]
+    patterns: list[str]
+    next_steps: list[str]
 
 
 class SessionSummary(BaseModel):
@@ -95,10 +121,42 @@ class SessionState(BaseModel):
     warning_count: int = 0
     safety_flags: list[str] = Field(default_factory=list)
 
+    # Mode and pause state
+    mode: SessionMode = Field(default="teach_me", description="Session mode")
+    is_paused: bool = Field(default=False, description="Whether this Teach Me session is paused")
+
+    # Coverage tracking
+    concepts_covered_set: set[str] = Field(
+        default_factory=set,
+        description="Set of concept names covered in this session"
+    )
+
+    # Exam state
+    exam_questions: list[ExamQuestion] = Field(default_factory=list)
+    exam_current_question_idx: int = Field(default=0)
+    exam_total_correct: int = Field(default=0)
+    exam_total_partial: int = Field(default=0)
+    exam_total_incorrect: int = Field(default=0)
+    exam_finished: bool = Field(default=False)
+    exam_feedback: Optional[ExamFeedback] = Field(default=None)
+
+    # Clarify Doubts state
+    concepts_discussed: list[str] = Field(
+        default_factory=list,
+        description="Concepts discussed in this Clarify Doubts session"
+    )
+
     # Memory
     session_summary: SessionSummary = Field(default_factory=SessionSummary)
     conversation_history: list[Message] = Field(default_factory=list)
     full_conversation_log: list[Message] = Field(default_factory=list)
+
+    @field_validator("concepts_covered_set", mode="before")
+    @classmethod
+    def _coerce_to_set(cls, v):
+        if isinstance(v, list):
+            return set(v)
+        return v
 
     @property
     def is_complete(self) -> bool:
@@ -123,6 +181,16 @@ class SessionState(BaseModel):
         if not self.mastery_estimates:
             return 0.0
         return sum(self.mastery_estimates.values()) / len(self.mastery_estimates)
+
+    @property
+    def coverage_percentage(self) -> float:
+        if not self.topic or not self.topic.study_plan:
+            return 0.0
+        all_concepts = self.topic.study_plan.get_concepts()
+        if not all_concepts:
+            return 0.0
+        covered = len(self.concepts_covered_set & set(all_concepts))
+        return round(covered / len(all_concepts) * 100, 1)
 
     def get_current_turn_id(self) -> str:
         return f"turn_{self.turn_count + 1}"
@@ -171,13 +239,15 @@ class SessionState(BaseModel):
 def create_session(
     topic: Topic,
     student_context: Optional[StudentContext] = None,
+    mode: SessionMode = "teach_me",
 ) -> SessionState:
     """Create a new session for a topic."""
     concepts = topic.study_plan.get_concepts()
-    mastery_estimates = {concept: 0.0 for concept in concepts}
+    mastery_estimates = {concept: 0.0 for concept in concepts} if mode == "teach_me" else {}
 
     return SessionState(
         topic=topic,
         student_context=student_context or StudentContext(),
         mastery_estimates=mastery_estimates,
+        mode=mode,
     )
