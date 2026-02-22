@@ -146,6 +146,7 @@ class TestCreateSession:
         mock_svc.create_new_session.return_value = MagicMock(
             session_id="new-session",
             first_turn={"message": "Hello!", "hints": []},
+            mode="teach_me",
         )
 
         payload = {
