@@ -50,19 +50,40 @@ def _resolve_scenarios_json() -> Path:
     raise FileNotFoundError("e2e/scenarios.json not found")
 
 
+def _fetch_local_results() -> Optional[dict]:
+    """Read scenario-results.json from the local reports directory (for local dev)."""
+    # Docker: /app/reports/e2e-runner/scenario-results.json
+    docker_path = Path(__file__).parent.parent / "reports" / "e2e-runner" / "scenario-results.json"
+    if docker_path.is_file():
+        try:
+            return json.loads(docker_path.read_text())
+        except Exception as e:
+            logger.warning(f"Failed to read local results at {docker_path}: {e}")
+    # Local dev: repo_root/reports/e2e-runner/scenario-results.json
+    local_path = Path(__file__).parent.parent.parent / "reports" / "e2e-runner" / "scenario-results.json"
+    if local_path.is_file():
+        try:
+            return json.loads(local_path.read_text())
+        except Exception as e:
+            logger.warning(f"Failed to read local results at {local_path}: {e}")
+    return None
+
+
 def _fetch_latest_results() -> Optional[dict]:
-    """Fetch latest-results.json from S3. Returns None if not found."""
+    """Fetch latest results: try S3 first, fall back to local file."""
     try:
         s3 = get_s3_client()
-        return s3.download_json(S3_RESULTS_KEY)
+        result = s3.download_json(S3_RESULTS_KEY)
+        if result is not None:
+            return result
     except ClientError as e:
-        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
-            return None
-        logger.warning(f"Failed to fetch latest results from S3: {e}")
-        return None
+        if e.response["Error"]["Code"] not in ("404", "NoSuchKey"):
+            logger.warning(f"Failed to fetch latest results from S3: {e}")
     except Exception as e:
         logger.warning(f"Failed to fetch latest results from S3: {e}")
-        return None
+
+    # Fallback: local results file
+    return _fetch_local_results()
 
 
 def _slugify(name: str) -> str:

@@ -27,7 +27,7 @@ if (!fs.existsSync(SCENARIOS_PATH)) {
 const scenariosData = JSON.parse(fs.readFileSync(SCENARIOS_PATH, 'utf-8'));
 const suites = scenariosData.suites || [];
 
-// Results accumulator
+// Result types
 interface ScenarioResult {
   id: string;
   name: string;
@@ -43,7 +43,67 @@ interface SuiteResult {
   scenarios: ScenarioResult[];
 }
 
-const allResults: SuiteResult[] = [];
+interface ResultsFile {
+  runSlug: string;
+  timestamp: string;
+  branch: string;
+  commit: string;
+  suites: SuiteResult[];
+}
+
+/**
+ * Read the current results file, or create a fresh skeleton if it doesn't exist.
+ */
+function readResultsFile(): ResultsFile {
+  if (fs.existsSync(RESULTS_PATH)) {
+    try {
+      return JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf-8'));
+    } catch {
+      // Corrupted file — reinitialize
+    }
+  }
+  const git = getGitInfo();
+  const now = new Date();
+  const slug = `e2e-runner-${now.toISOString().replace(/[-:T]/g, '').slice(0, 15)}`;
+  return {
+    runSlug: slug,
+    timestamp: now.toISOString(),
+    branch: git.branch,
+    commit: git.commit,
+    suites: suites.map((s: any) => ({ name: s.name, status: 'passed', scenarios: [] })),
+  };
+}
+
+/**
+ * Upsert a scenario result into the results file (incremental write).
+ * Finds or creates the suite entry, then upserts by scenario id.
+ */
+function writeScenarioResult(suiteName: string, result: ScenarioResult): void {
+  const data = readResultsFile();
+
+  // Find or create the suite
+  let suite = data.suites.find((s) => s.name === suiteName);
+  if (!suite) {
+    suite = { name: suiteName, status: 'passed', scenarios: [] };
+    data.suites.push(suite);
+  }
+
+  // Upsert the scenario by id
+  const idx = suite.scenarios.findIndex((s) => s.id === result.id);
+  if (idx >= 0) {
+    suite.scenarios[idx] = result;
+  } else {
+    suite.scenarios.push(result);
+  }
+
+  // Recompute suite status — failed if any scenario failed
+  suite.status = suite.scenarios.some((s) => s.status === 'failed') ? 'failed' : 'passed';
+
+  // Update timestamp
+  data.timestamp = new Date().toISOString();
+
+  fs.writeFileSync(RESULTS_PATH, JSON.stringify(data, null, 2));
+}
 
 // Git metadata
 function getGitInfo(): { branch: string; commit: string } {
@@ -127,28 +187,18 @@ async function evaluateAssertions(page: Page, assertions: any[]): Promise<void> 
   }
 }
 
+// Initialize results file with empty suites at load time
+readResultsFile();
+
 // Dynamically create test suites
 for (const suite of suites) {
-  const suiteResult: SuiteResult = {
-    name: suite.name,
-    status: 'passed',
-    scenarios: [],
-  };
-  allResults.push(suiteResult);
-
   test.describe(suite.name, () => {
     for (const scenario of suite.scenarios || []) {
       test(scenario.name, async ({ page }) => {
         const startTime = Date.now();
         const screenshots: string[] = [];
-        const result: ScenarioResult = {
-          id: scenario.id,
-          name: scenario.name,
-          status: 'passed',
-          duration_ms: 0,
-          screenshots: [],
-        };
-        suiteResult.scenarios.push(result);
+        let status: 'passed' | 'failed' = 'passed';
+        let error: string | undefined;
 
         try {
           // Execute steps
@@ -160,14 +210,9 @@ for (const suite of suites) {
           if (scenario.assertions && scenario.assertions.length > 0) {
             await evaluateAssertions(page, scenario.assertions);
           }
-
-          result.status = 'passed';
-          result.screenshots = screenshots;
         } catch (err: any) {
-          result.status = 'failed';
-          result.error = err.message || String(err);
-          result.screenshots = screenshots;
-          suiteResult.status = 'failed';
+          status = 'failed';
+          error = err.message || String(err);
 
           // Take a failure screenshot
           try {
@@ -176,33 +221,25 @@ for (const suite of suites) {
               path: path.join(SCREENSHOT_DIR, failFilename),
               fullPage: true,
             });
-            result.screenshots.push(failFilename);
+            screenshots.push(failFilename);
           } catch {
             // Ignore screenshot failures
           }
 
           throw err; // Re-throw so Playwright marks the test as failed
         } finally {
-          result.duration_ms = Date.now() - startTime;
+          // Incremental write — resilient to retries and execution order
+          const result: ScenarioResult = {
+            id: scenario.id,
+            name: scenario.name,
+            status,
+            duration_ms: Date.now() - startTime,
+            screenshots,
+            ...(error ? { error } : {}),
+          };
+          writeScenarioResult(suite.name, result);
         }
       });
     }
   });
 }
-
-// Write results after all tests complete
-test.afterAll(async () => {
-  const git = getGitInfo();
-  const now = new Date();
-  const slug = `e2e-runner-${now.toISOString().replace(/[-:T]/g, '').slice(0, 15)}`;
-
-  const resultsJson = {
-    runSlug: slug,
-    timestamp: now.toISOString(),
-    branch: git.branch,
-    commit: git.commit,
-    suites: allResults,
-  };
-
-  fs.writeFileSync(RESULTS_PATH, JSON.stringify(resultsJson, null, 2));
-});
