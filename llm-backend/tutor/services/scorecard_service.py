@@ -166,8 +166,9 @@ class ScorecardService:
     def _group_sessions(self, sessions, guideline_lookup) -> tuple:
         """
         Group sessions into subject → topic → subtopic hierarchy.
-        For each subtopic, keep only the LATEST session's data.
-        Also collect trend data points.
+        Accumulates data across sessions (concepts covered, exam history,
+        per-mode session counts) while keeping the latest session's mastery
+        data.  Also collects trend data points.
 
         Returns (grouped, trends_raw).
         """
@@ -192,6 +193,7 @@ class ScorecardService:
             subject = topic_data.get("subject", session_row.subject or "Unknown")
             topic_id = topic_data.get("topic_id")
             topic_name_raw = topic_data.get("topic_name", "")
+            mode = state.get("mode", "teach_me")
 
             # Resolve hierarchy
             if topic_id and topic_id in guideline_lookup:
@@ -225,12 +227,33 @@ class ScorecardService:
                 if session_row.created_at else None
             )
 
-            # Group (latest session wins — sessions ordered by created_at ASC)
-            existing_count = (
-                grouped[subject][topic_key]["subtopics"]
-                .get(subtopic_key, {})
-                .get("session_count", 0)
-            )
+            # Get or initialize subtopic accumulator
+            existing = grouped[subject][topic_key]["subtopics"].get(subtopic_key, {})
+            existing_count = existing.get("session_count", 0)
+            existing_teach = existing.get("teach_me_sessions", 0)
+            existing_clarify = existing.get("clarify_sessions", 0)
+            existing_exam_count = existing.get("exam_count", 0)
+            existing_covered = set(existing.get("all_concepts_covered", []))
+            existing_exam_history = existing.get("exam_history", [])
+
+            # Accumulate concepts covered across sessions
+            concepts_covered = state.get("concepts_covered_set", [])
+            if isinstance(concepts_covered, list):
+                existing_covered.update(concepts_covered)
+
+            # Track exam history
+            exam_finished = state.get("exam_finished", False)
+            if mode == "exam" and exam_finished:
+                exam_score = state.get("exam_total_correct", 0)
+                exam_total = len(state.get("exam_questions", []))
+                if exam_total > 0:
+                    existing_exam_history.append({
+                        "date": session_date,
+                        "score": exam_score,
+                        "total": exam_total,
+                        "percentage": round(exam_score / exam_total * 100, 1),
+                    })
+
             grouped[subject][topic_key]["topic_name"] = topic_name
             grouped[subject][topic_key]["subtopics"][subtopic_key] = {
                 "subtopic_name": subtopic_name,
@@ -243,6 +266,12 @@ class ScorecardService:
                 ],
                 "latest_session_date": session_date,
                 "session_count": existing_count + 1,
+                "teach_me_sessions": existing_teach + (1 if mode == "teach_me" else 0),
+                "clarify_sessions": existing_clarify + (1 if mode == "clarify_doubts" else 0),
+                "exam_count": existing_exam_count + (1 if mode == "exam" and exam_finished else 0),
+                "all_concepts_covered": list(existing_covered),
+                "exam_history": existing_exam_history,
+                "exam_feedback": state.get("exam_feedback") if mode == "exam" and exam_finished else existing.get("exam_feedback"),
             }
 
             # Trend data
@@ -262,6 +291,22 @@ class ScorecardService:
             for topic_key, topic_info in sorted(topics.items()):
                 subtopics_data = []
                 for subtopic_key, sub_info in sorted(topic_info["subtopics"].items()):
+                    # Compute coverage from accumulated concepts
+                    all_covered = set(sub_info.get("all_concepts_covered", []))
+                    all_plan_concepts = set(sub_info.get("concepts", {}).keys())
+                    coverage = 0.0
+                    if all_plan_concepts:
+                        coverage = round(len(all_covered & all_plan_concepts) / len(all_plan_concepts) * 100, 1)
+
+                    # Latest exam
+                    exam_history = sub_info.get("exam_history", [])
+                    latest_exam = exam_history[-1] if exam_history else None
+
+                    # Revision nudge
+                    revision_nudge = self._get_revision_nudge(
+                        sub_info.get("latest_session_date"), coverage
+                    )
+
                     subtopics_data.append({
                         "subtopic": sub_info["subtopic_name"],
                         "subtopic_key": subtopic_key,
@@ -271,6 +316,16 @@ class ScorecardService:
                         "latest_session_date": sub_info["latest_session_date"],
                         "concepts": sub_info["concepts"],
                         "misconceptions": sub_info["misconceptions"],
+                        "coverage": coverage,
+                        "last_studied": sub_info.get("latest_session_date"),
+                        "revision_nudge": revision_nudge,
+                        "latest_exam_score": latest_exam["score"] if latest_exam else None,
+                        "latest_exam_total": latest_exam["total"] if latest_exam else None,
+                        "latest_exam_feedback": sub_info.get("exam_feedback"),
+                        "exam_count": sub_info.get("exam_count", 0),
+                        "exam_history": exam_history,
+                        "teach_me_sessions": sub_info.get("teach_me_sessions", 0),
+                        "clarify_sessions": sub_info.get("clarify_sessions", 0),
                     })
 
                 subtopic_scores = [s["score"] for s in subtopics_data]
@@ -332,3 +387,23 @@ class ScorecardService:
             "strengths": [],
             "needs_practice": [],
         }
+
+    def _get_revision_nudge(self, last_studied: str, coverage: float) -> str:
+        """Generate a revision nudge if enough time has passed."""
+        if not last_studied or coverage < 20:
+            return None
+
+        from datetime import datetime
+        try:
+            last_dt = datetime.fromisoformat(last_studied)
+            days_since = (datetime.utcnow() - last_dt).days
+        except (ValueError, TypeError):
+            return None
+
+        if days_since >= 30:
+            return "It's been over a month — take a quick exam to check how much you remember"
+        elif days_since >= 14:
+            return "It's been a while — consider revising"
+        elif days_since >= 7 and coverage >= 60:
+            return "Time to revisit? A quick exam can show where you stand"
+        return None

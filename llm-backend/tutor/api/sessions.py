@@ -16,6 +16,10 @@ from shared.models import (
     SummaryResponse,
     ScorecardResponse,
     SubtopicProgressResponse,
+    ResumableSessionResponse,
+    PauseSummary,
+    EndExamResponse,
+    ReportCardResponse,
 )
 from tutor.services import SessionService, ScorecardService
 from tutor.models.agent_logs import get_agent_log_store
@@ -108,6 +112,16 @@ def get_scorecard(
     return service.get_scorecard(current_user.id)
 
 
+@router.get("/report-card", response_model=ReportCardResponse)
+def get_report_card(
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Get student report card with coverage and exam data."""
+    service = ScorecardService(db)
+    return service.get_scorecard(current_user.id)
+
+
 @router.get("/subtopic-progress", response_model=SubtopicProgressResponse)
 def get_subtopic_progress(
     current_user=Depends(get_current_user),
@@ -116,6 +130,44 @@ def get_subtopic_progress(
     """Get lightweight subtopic progress for topic selection indicators."""
     service = ScorecardService(db)
     return service.get_subtopic_progress(current_user.id)
+
+
+@router.get("/resumable", response_model=ResumableSessionResponse)
+def get_resumable_session(
+    guideline_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Find a paused Teach Me session for the given subtopic."""
+    from shared.models.entities import Session as SessionModel
+
+    session = (
+        db.query(SessionModel)
+        .filter(
+            SessionModel.user_id == current_user.id,
+            SessionModel.guideline_id == guideline_id,
+            SessionModel.is_paused == True,
+            SessionModel.mode == "teach_me",
+        )
+        .order_by(SessionModel.updated_at.desc())
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(status_code=404, detail="No resumable session found")
+
+    state = json.loads(session.state_json)
+    concepts_covered = list(state.get("concepts_covered_set", []))
+    topic = state.get("topic", {})
+    total_steps = len(topic.get("study_plan", {}).get("steps", [])) if topic else 0
+
+    return ResumableSessionResponse(
+        session_id=session.id,
+        coverage=state.get("coverage_percentage", 0) if "coverage_percentage" in state else 0,
+        current_step=session.step_idx or 1,
+        total_steps=total_steps,
+        concepts_covered=concepts_covered,
+    )
 
 
 @router.get("/{session_id}/replay")
@@ -182,6 +234,128 @@ def submit_step(
         import traceback
         logger.error(f"Error processing step: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing step: {e}")
+
+
+@router.post("/{session_id}/pause", response_model=PauseSummary)
+def pause_session(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Pause a Teach Me session for later resumption."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode != "teach_me":
+        raise HTTPException(status_code=400, detail="Only Teach Me sessions can be paused")
+
+    session = SessionState.model_validate_json(session_row.state_json)
+    session.is_paused = True
+
+    # Update DB
+    from shared.models.entities import Session as SessionModel
+    from datetime import datetime
+
+    session_row.state_json = session.model_dump_json()
+    session_row.is_paused = True
+    session_row.updated_at = datetime.utcnow()
+    db.commit()
+
+    concepts_covered = list(session.concepts_covered_set)
+    coverage = session.coverage_percentage
+
+    return PauseSummary(
+        coverage=coverage,
+        concepts_covered=concepts_covered,
+        message=f"You've covered {coverage:.0f}% so far. You can pick up where you left off anytime.",
+    )
+
+
+@router.post("/{session_id}/resume")
+def resume_session(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Resume a paused Teach Me session."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if not session_row.is_paused:
+        raise HTTPException(status_code=400, detail="Session is not paused")
+
+    session = SessionState.model_validate_json(session_row.state_json)
+    session.is_paused = False
+
+    from shared.models.entities import Session as SessionModel
+    from datetime import datetime
+
+    session_row.state_json = session.model_dump_json()
+    session_row.is_paused = False
+    session_row.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {"session_id": session_id, "message": "Session resumed", "current_step": session.current_step}
+
+
+@router.post("/{session_id}/end-exam", response_model=EndExamResponse)
+def end_exam_early(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """End an exam early and get results."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode != "exam":
+        raise HTTPException(status_code=400, detail="Not an exam session")
+
+    session = SessionState.model_validate_json(session_row.state_json)
+
+    if session.exam_finished:
+        raise HTTPException(status_code=400, detail="Exam already finished")
+
+    # Mark exam as finished
+    session.exam_finished = True
+
+    # Build feedback
+    from tutor.orchestration.orchestrator import TeacherOrchestrator
+    orchestrator = TeacherOrchestrator.__new__(TeacherOrchestrator)
+    session.exam_feedback = orchestrator._build_exam_feedback(session)
+
+    # Persist
+    from shared.models.entities import Session as SessionModel
+    from datetime import datetime
+
+    session_row.state_json = session.model_dump_json()
+    session_row.exam_score = session.exam_total_correct
+    session_row.exam_total = len(session.exam_questions)
+    session_row.updated_at = datetime.utcnow()
+    db.commit()
+
+    total = len(session.exam_questions)
+    percentage = round(session.exam_total_correct / total * 100, 1) if total else 0.0
+
+    feedback_dict = None
+    if session.exam_feedback:
+        feedback_dict = session.exam_feedback.model_dump()
+
+    return EndExamResponse(
+        score=session.exam_total_correct,
+        total=total,
+        percentage=percentage,
+        feedback=feedback_dict,
+    )
 
 
 @router.get("/{session_id}/summary", response_model=SummaryResponse)
