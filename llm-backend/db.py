@@ -63,6 +63,7 @@ def migrate():
         # Apply column additions to existing tables
         # (create_all only creates NEW tables, it won't add columns to existing ones)
         _apply_session_columns(db_manager)
+        _apply_learning_modes_columns(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -92,6 +93,47 @@ def _apply_session_columns(db_manager):
             conn.execute(text("ALTER TABLE sessions ADD COLUMN subject VARCHAR"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sessions_subject ON sessions(subject)"))
             print("  ✓ subject column added")
+
+        conn.commit()
+
+
+def _apply_learning_modes_columns(db_manager):
+    """Add learning-modes columns to sessions table if they don't exist."""
+    inspector = inspect(db_manager.engine)
+    existing_columns = {col["name"] for col in inspector.get_columns("sessions")}
+
+    with db_manager.engine.connect() as conn:
+        if "mode" not in existing_columns:
+            print("  Adding mode column to sessions...")
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN mode VARCHAR DEFAULT 'teach_me'"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sessions_mode ON sessions(mode)"))
+            print("  ✓ mode column added")
+
+        if "is_paused" not in existing_columns:
+            print("  Adding is_paused column to sessions...")
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN is_paused BOOLEAN DEFAULT FALSE"))
+            print("  ✓ is_paused column added")
+
+        if "exam_score" not in existing_columns:
+            print("  Adding exam_score column to sessions...")
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN exam_score FLOAT"))
+            print("  ✓ exam_score column added")
+
+        if "exam_total" not in existing_columns:
+            print("  Adding exam_total column to sessions...")
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN exam_total INTEGER"))
+            print("  ✓ exam_total column added")
+
+        if "guideline_id" not in existing_columns:
+            print("  Adding guideline_id column to sessions...")
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN guideline_id VARCHAR"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sessions_guideline_id ON sessions(guideline_id)"))
+            print("  ✓ guideline_id column added")
+
+        if "state_version" not in existing_columns:
+            print("  Adding state_version column to sessions...")
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN state_version INTEGER DEFAULT 1 NOT NULL"))
+            print("  ✓ state_version column added")
 
         conn.commit()
 
