@@ -19,20 +19,26 @@ Cognito Auth
 Get ID Token + Access Token
     │
     v
-POST /auth/sync ────────────────────►  Verify token with Cognito
+POST /auth/sync ────────────────────►  Verify ID token with Cognito JWKS
 (Authorization: Bearer <idToken>)       Create/update User record
     │                                   Return UserProfile
     v
 Store user + token in AuthContext
-Set token on API client
+Set access token on API client
+    │
+    v
+All subsequent API calls ───────────►  Verify access token via get_current_user
+(Authorization: Bearer <accessToken>)   Resolve User from cognito_sub claim
 ```
 
 ### Auth Provider: AWS Cognito
 
 - Client-side Cognito SDK (`amazon-cognito-identity-js`)
 - User Pool with email/phone/Google OAuth support
-- Tokens managed client-side (localStorage)
-- Backend verifies tokens and syncs user records
+- Tokens managed client-side (localStorage by Cognito SDK for session restore)
+- Access token also stored in module-level variable in `api.ts` for API calls
+- Backend verifies tokens using JWKS (JSON Web Key Set) from Cognito
+- JWKS keys are cached for 1 hour with refresh-on-miss for key rotation
 
 ---
 
@@ -40,32 +46,47 @@ Set token on API client
 
 ### Email/Password
 
-1. **Signup**: Client calls `CognitoUser.signUp()` → email verification required
+1. **Signup**: Client calls `CognitoUser.signUp()` with email + name attributes → email verification required
 2. **Verify**: `CognitoUser.confirmRegistration(code)` → account activated
-3. **Login**: `CognitoUser.authenticateUser()` → get ID + Access tokens
-4. **Sync**: `POST /auth/sync` with ID token → backend creates/updates `User` row
+3. **Auto-login**: `loginWithEmail(email, password)` is called immediately after verification (password is passed via React Router state)
+4. **Login**: `CognitoUser.authenticateUser()` → get ID + Access tokens
+5. **Sync**: `POST /auth/sync` with ID token → backend creates/updates `User` row, returns `UserProfile`
 
 ### Phone/OTP
 
-1. **Provision**: `POST /auth/phone/provision` → backend creates Cognito user server-side (needed because client-side signUp can't skip required attributes)
-2. **Initiate auth**: Cognito custom auth challenge → sends OTP via SMS
-3. **Verify OTP**: `CognitoUser.sendCustomChallengeAnswer(code)` → authenticated
+1. **Provision**: `POST /auth/phone/provision` → backend creates Cognito user server-side via admin API (needed because client-side signUp can't skip required email/name schema attributes; uses a placeholder email)
+2. **Initiate auth**: `CognitoUser.initiateAuth()` → Cognito custom auth challenge → sends OTP via SMS
+3. **Verify OTP**: `CognitoUser.sendCustomChallengeAnswer(code)` → authenticated (pending user stored in module-level `pendingCognitoUser` variable)
 4. **Sync**: `POST /auth/sync`
 
 ### Google OAuth
 
-1. **Redirect**: Navigate to Cognito hosted UI with Google provider
-2. **Callback**: `/auth/callback` receives authorization code
-3. **Exchange**: POST to Cognito `/oauth2/token` endpoint for tokens
-4. **Manual session**: Tokens written to localStorage (Cognito SDK can't handle OAuth code exchange natively)
+1. **Redirect**: Navigate to Cognito hosted UI with `identity_provider=Google` and `scope=openid+email+profile`
+2. **Callback**: `/auth/callback` route renders `OAuthCallbackPage` which receives authorization code
+3. **Exchange**: POST to Cognito `/oauth2/token` endpoint for tokens (using `application/x-www-form-urlencoded` content type)
+4. **Manual session**: Tokens written to localStorage under Cognito SDK key format (`CognitoIdentityServiceProvider.<clientId>.<username>.*`) so `getCurrentUser()` works for session restore
 5. **Sync**: `POST /auth/sync`
+
+### Forgot Password
+
+Handled entirely client-side via Cognito SDK (not through AuthContext):
+1. `CognitoUser.forgotPassword()` → sends reset code to email
+2. `CognitoUser.confirmPassword(code, newPassword)` → password updated
+
+### Change Password
+
+Backend-only endpoint (no frontend UI yet):
+1. `PUT /profile/password` with `{previous_password, proposed_password}`
+2. Only available for email-based accounts (`auth_provider == "email"`)
+3. Proxies to Cognito's `change_password` API using the caller's access token
 
 ### Session Restore
 
 On app mount:
-1. `userPool.getCurrentUser()` checks for cached session
+1. `userPool.getCurrentUser()` checks for cached session in localStorage
 2. `user.getSession()` validates token expiry
-3. If valid: `syncUser()` re-fetches profile from backend
+3. If valid: `syncUser(idToken, accessToken)` re-syncs profile from backend via `POST /auth/sync`
+4. If Cognito is not configured (no UserPoolId/ClientId), loading completes immediately with no user
 
 ---
 
@@ -73,17 +94,19 @@ On app mount:
 
 ### Auth (`/auth`)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/auth/sync` | Verify Cognito token, create/update User, return UserProfile |
-| `POST` | `/auth/phone/provision` | Create Cognito user for phone auth (server-side) |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/auth/sync` | ID Token | Verify Cognito ID token, create/update User, return UserProfile |
+| `POST` | `/auth/phone/provision` | None | Create Cognito user for phone auth (server-side admin API) |
+| `DELETE` | `/auth/admin/user?cognito_sub=<sub>` | None | Delete user from both DB and Cognito (admin/dev cleanup) |
 
 ### Profile (`/profile`)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/profile` | Required | Get current user profile |
-| `PUT` | `/profile` | Required | Update profile fields |
+| `GET` | `/profile` | Access Token | Get current user profile |
+| `PUT` | `/profile` | Access Token | Update profile fields (partial update) |
+| `PUT` | `/profile/password` | Access Token | Change password (email accounts only) |
 
 ---
 
@@ -98,9 +121,20 @@ The onboarding wizard sends `PUT /profile` after each step with just that field'
 | Grade | `{"grade": 7}` |
 | Board | `{"board": "CBSE"}` |
 | About | `{"about_me": "..."}` |
-| Done | `{"onboarding_complete": true}` |
 
-Partial progress is preserved server-side. The `onboarding_complete` flag is set on the final step.
+**Auto-completion**: The `ProfileService.update_profile()` method automatically sets `onboarding_complete = true` when all four required fields (name, age, grade, board) are filled. The frontend does not explicitly send `onboarding_complete` — it is derived server-side.
+
+Partial progress is preserved server-side. If the user closes mid-onboarding, the `OnboardingFlow` component pre-fills fields from the existing user profile.
+
+---
+
+## Auth Provider Detection
+
+The `auth_provider` field (`email`, `phone`, or `google`) is derived server-side from Cognito token claims to prevent spoofing. Logic in `AuthService._derive_auth_provider()`:
+
+1. Check for `identities` claim with `providerName="Google"` → `"google"`
+2. Check for `phone_number_verified=true` or username starting with `+` → `"phone"`
+3. Default → `"email"`
 
 ---
 
@@ -110,10 +144,10 @@ Partial progress is preserved server-side. The `onboarding_complete` flag is set
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | VARCHAR | Primary key |
-| `cognito_sub` | VARCHAR | Cognito user ID (unique) |
-| `email` | VARCHAR | Email address (nullable) |
-| `phone` | VARCHAR | Phone number (nullable) |
+| `id` | VARCHAR | Primary key (UUID) |
+| `cognito_sub` | VARCHAR | Cognito user ID (unique, indexed) |
+| `email` | VARCHAR | Email address (unique, nullable, indexed) |
+| `phone` | VARCHAR | Phone number (unique, nullable) |
 | `auth_provider` | VARCHAR | `email`, `phone`, or `google` |
 | `name` | VARCHAR | Display name |
 | `age` | INT | Student age |
@@ -121,10 +155,11 @@ Partial progress is preserved server-side. The `onboarding_complete` flag is set
 | `board` | VARCHAR | Education board |
 | `school_name` | VARCHAR | School name |
 | `about_me` | TEXT | Self-description |
-| `is_active` | BOOL | Account active flag |
-| `onboarding_complete` | BOOL | Onboarding wizard completed |
+| `is_active` | BOOL | Account active flag (default true) |
+| `onboarding_complete` | BOOL | Onboarding wizard completed (auto-set by ProfileService) |
 | `created_at` | DATETIME | Account creation timestamp |
-| `updated_at` | DATETIME | Last update timestamp |
+| `updated_at` | DATETIME | Last update timestamp (auto-updated) |
+| `last_login_at` | DATETIME | Last login timestamp (updated on each sync) |
 
 ---
 
@@ -138,37 +173,93 @@ Global auth state provider. Exposes:
 
 **Methods:** `loginWithEmail`, `signupWithEmail`, `confirmSignUp`, `resendConfirmationCode`, `sendOTP`, `verifyOTP`, `loginWithGoogle`, `completeOAuthLogin`, `logout`, `refreshProfile`
 
+**Internal:** `syncUser(idToken, accessToken)` — calls `POST /auth/sync` with ID token, stores access token in state and `api.ts` module
+
 ### Route Guards
 
 | Component | Purpose |
 |-----------|---------|
-| `ProtectedRoute` | Redirects to `/login` if not authenticated |
+| `ProtectedRoute` | Shows loading spinner during auth check, redirects to `/login` if not authenticated (preserves original location in state) |
 | `OnboardingGuard` | Redirects to `/onboarding` if `onboarding_complete === false` |
 
 ### Token Management
 
-- Access token stored in module-level variable in `api.ts`
-- Set via `setToken()` after authentication
-- Attached as `Authorization: Bearer <token>` on all API calls
-- Cognito tokens stored in localStorage by the SDK for session restore
+- Access token stored in module-level `_accessToken` variable in `api.ts`
+- Set via `setAccessToken()` after authentication
+- Attached as `Authorization: Bearer <token>` on all API calls via `apiFetch()`
+- Cleared on logout via `setAccessToken(null)`
+- Cognito tokens stored in localStorage by the SDK for session restore (`CognitoIdentityServiceProvider.<clientId>.*`)
+
+### Auth Middleware (Backend)
+
+| Dependency | Purpose |
+|-----------|---------|
+| `get_current_user` | Validates access token, returns User from DB. Raises 401 if unauthenticated. |
+| `get_optional_user` | Same as above but returns `None` instead of 401 for unauthenticated requests. Used by endpoints that support both authenticated and anonymous access (e.g., tutor sessions, transcription). |
+
+**Token verification** (`_verify_cognito_token`):
+- Fetches JWKS from Cognito, caches for 1 hour
+- On key-not-found, force-refreshes JWKS (handles key rotation)
+- Validates issuer, audience/client_id, token_use claim
+- ID tokens validated with `aud` = app client ID
+- Access tokens validated with `client_id` claim (no `aud` in Cognito access tokens)
 
 ---
 
 ## Key Files
 
+### Frontend
+
 | File | Purpose |
 |------|---------|
-| `llm-frontend/src/contexts/AuthContext.tsx` | Global auth state, all auth flows |
+| `llm-frontend/src/contexts/AuthContext.tsx` | Global auth state, all auth flows, syncUser |
 | `llm-frontend/src/components/ProtectedRoute.tsx` | Auth route guard |
 | `llm-frontend/src/components/OnboardingGuard.tsx` | Onboarding route guard |
-| `llm-frontend/src/pages/LoginPage.tsx` | Auth method selection |
-| `llm-frontend/src/pages/EmailLoginPage.tsx` | Email/password login |
-| `llm-frontend/src/pages/PhoneLoginPage.tsx` | Phone number entry |
-| `llm-frontend/src/pages/OTPVerifyPage.tsx` | OTP verification |
-| `llm-frontend/src/pages/EmailSignupPage.tsx` | Email signup |
-| `llm-frontend/src/pages/EmailVerifyPage.tsx` | Email verification |
-| `llm-frontend/src/pages/ForgotPasswordPage.tsx` | Password reset |
-| `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard |
-| `llm-frontend/src/pages/ProfilePage.tsx` | Profile management |
-| `llm-frontend/src/config/cognito.ts` | Cognito configuration |
-| `llm-backend/shared/models/entities.py` | User model |
+| `llm-frontend/src/pages/LoginPage.tsx` | Auth method selection (3 buttons) |
+| `llm-frontend/src/pages/EmailLoginPage.tsx` | Email/password login form |
+| `llm-frontend/src/pages/PhoneLoginPage.tsx` | Phone number entry with country code selector |
+| `llm-frontend/src/pages/OTPVerifyPage.tsx` | 6-digit OTP verification with auto-submit |
+| `llm-frontend/src/pages/EmailSignupPage.tsx` | Email signup with inline password rules |
+| `llm-frontend/src/pages/EmailVerifyPage.tsx` | Email verification code entry with auto-login |
+| `llm-frontend/src/pages/ForgotPasswordPage.tsx` | Two-step password reset (send code, set new password) |
+| `llm-frontend/src/pages/OAuthCallbackPage.tsx` | Google OAuth redirect handler, token exchange |
+| `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard (5 steps + done screen) |
+| `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with logout |
+| `llm-frontend/src/config/auth.ts` | Cognito configuration (env vars) |
+| `llm-frontend/src/api.ts` | API client with access token management |
+
+### Backend
+
+| File | Purpose |
+|------|---------|
+| `llm-backend/auth/api/auth_routes.py` | `/auth/sync`, `/auth/phone/provision`, `/auth/admin/user` endpoints |
+| `llm-backend/auth/api/profile_routes.py` | `/profile` GET, PUT, and `/profile/password` endpoints |
+| `llm-backend/auth/services/auth_service.py` | User sync, phone provisioning, auth provider detection, user deletion |
+| `llm-backend/auth/services/profile_service.py` | Profile updates, auto-completion of onboarding |
+| `llm-backend/auth/repositories/user_repository.py` | User CRUD operations |
+| `llm-backend/auth/middleware/auth_middleware.py` | JWT verification, JWKS caching, `get_current_user`/`get_optional_user` |
+| `llm-backend/auth/models/schemas.py` | Pydantic request/response models (UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest) |
+| `llm-backend/shared/models/entities.py` | User SQLAlchemy model |
+
+---
+
+## Configuration
+
+### Frontend Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_COGNITO_USER_POOL_ID` | Cognito User Pool ID |
+| `VITE_COGNITO_APP_CLIENT_ID` | Cognito App Client ID |
+| `VITE_COGNITO_REGION` | AWS region (default: `us-east-1`) |
+| `VITE_COGNITO_DOMAIN` | Cognito hosted UI domain prefix (for Google OAuth redirect) |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID (configured in `auth.ts` but Google login routes through Cognito hosted UI) |
+| `VITE_API_URL` | Backend API base URL (default: `http://localhost:8000`) |
+
+### Backend Settings (via `config.py`)
+
+| Setting | Purpose |
+|---------|---------|
+| `cognito_user_pool_id` | For JWKS URL construction and admin API calls |
+| `cognito_app_client_id` | For token audience/client_id validation |
+| `cognito_region` | AWS region for Cognito endpoints |
