@@ -892,6 +892,35 @@ class TestWsSaveVersionConflict:
         assert reloaded.is_paused is True
         mock_db.rollback.assert_called_once()
 
+    def test_conflict_returns_reloaded_not_none_success_returns_none(self):
+        """Callers distinguish success (reloaded=None) from conflict (reloaded!=None)
+        to decide whether to send the assistant response or an error."""
+        from tutor.api.sessions import _save_session_to_db
+
+        mock_db = MagicMock()
+        session = make_test_session(mode="teach_me")
+
+        # Success path
+        mock_db.execute.return_value = MagicMock(rowcount=1)
+        _, reloaded_ok = _save_session_to_db(mock_db, "s1", session, expected_version=1)
+        assert reloaded_ok is None  # caller sends assistant_response
+
+        # Conflict path
+        mock_db.reset_mock()
+        mock_db.execute.return_value = MagicMock(rowcount=0)
+        conflict_session = make_test_session(mode="teach_me")
+        conflict_session.is_paused = True
+        mock_record = MagicMock()
+        mock_record.state_version = 3
+        mock_record.state_json = conflict_session.model_dump_json()
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = mock_record
+
+        _, reloaded_conflict = _save_session_to_db(mock_db, "s1", session, expected_version=1)
+        assert reloaded_conflict is not None  # caller sends error, not assistant_response
+
 
 # ===========================================================================
 # 7. ExamService.generate_questions is sync (not async)

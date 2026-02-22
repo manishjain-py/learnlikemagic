@@ -550,11 +550,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
                 if reloaded:
+                    # CAS conflict: a REST endpoint (pause/end-exam) modified
+                    # the session concurrently. The turn's state changes are
+                    # lost — notify the client instead of silently continuing.
                     session = reloaded
-
-                await websocket.send_json(
-                    create_assistant_response(result.response).model_dump()
-                )
+                    await websocket.send_json(
+                        create_error_response(
+                            "Session was updated from another tab. "
+                            "Your last message was not saved. Please resend."
+                        ).model_dump()
+                    )
+                else:
+                    await websocket.send_json(
+                        create_assistant_response(result.response).model_dump()
+                    )
 
                 state_dto = SessionStateDTO(
                     session_id=session.session_id,
