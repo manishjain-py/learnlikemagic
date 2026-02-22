@@ -9,7 +9,7 @@ Your job: take an approved PRD and produce a detailed, actionable technical impl
 ## Input
 
 - `$ARGUMENTS` = path to the PRD file (e.g., `docs/prd/learning-modes.md`)
-- If no arguments provided, list all PRD files in `docs/prd/` and pick the most recent one that doesn't already have a corresponding `*-impl-plan.md`. If all PRDs already have plans, inform the user that all PRDs are covered.
+- If no arguments provided, list all PRD files in `docs/prd/` and pick the most recent one that doesn't already have a corresponding file in `docs/impl-plan/`. If all PRDs already have plans, inform the user that all PRDs are covered.
 
 ---
 
@@ -40,6 +40,7 @@ Read the documentation and code in this order:
 3. Read **all** technical docs in `docs/technical/` — architecture, database schema, auth, deployment, dev workflow.
 4. Read **all** functional docs in `docs/functional/` — understand existing user flows.
 5. Read **all** existing PRDs in `docs/prd/` — check for dependencies or conflicts.
+6. Read **all** existing implementation plans in `docs/impl-plan/` — understand what's already been planned.
 
 ### Code (read the actual source, not just docs)
 6. Read `llm-backend/main.py` — understand registered routers and middleware.
@@ -86,7 +87,7 @@ For each significant decision, include a brief "**Decision:**" note in the relev
 
 ## Step 3: Write the implementation plan
 
-Save the plan to `docs/prd/<feature-slug>-impl-plan.md` (same directory as the PRD).
+Save the plan to `docs/impl-plan/<feature-slug>.md` (create the directory if it doesn't exist). Use the same slug as the PRD file for easy pairing (e.g., PRD at `docs/prd/learning-modes.md` → plan at `docs/impl-plan/learning-modes.md`).
 
 ### Implementation Plan Template
 
@@ -95,7 +96,7 @@ Save the plan to `docs/prd/<feature-slug>-impl-plan.md` (same directory as the P
 
 **Date:** <today's date>
 **Status:** Draft
-**PRD:** <link to PRD file>
+**PRD:** `docs/prd/<feature-slug>.md`
 **Author:** Tech Impl Plan Generator + <user>
 
 ---
