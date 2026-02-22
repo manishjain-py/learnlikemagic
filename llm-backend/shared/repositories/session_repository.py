@@ -142,7 +142,16 @@ class SessionRepository:
             }
 
             if mode == "teach_me":
-                entry["coverage"] = state.get("coverage_percentage", 0)
+                # coverage_percentage is a computed @property, not serialized.
+                # Compute from persisted primitives.
+                covered_set = set(state.get("concepts_covered_set", []))
+                plan = (topic or {}).get("study_plan", {})
+                plan_steps = plan.get("steps", [])
+                all_concepts = [s.get("concept") for s in plan_steps if s.get("concept")]
+                if all_concepts:
+                    entry["coverage"] = round(len(covered_set & set(all_concepts)) / len(all_concepts) * 100, 1)
+                else:
+                    entry["coverage"] = 0
             elif mode == "clarify_doubts":
                 entry["concepts_discussed"] = state.get("concepts_discussed", [])
             elif mode == "exam":

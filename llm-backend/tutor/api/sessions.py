@@ -476,6 +476,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         logger.info(f"WebSocket connected: {session_id}")
 
         session = SessionState.model_validate_json(db_session.state_json)
+        ws_version = db_session.state_version or 1
 
         # Build orchestrator — read LLM config from DB (once at session start)
         from config import get_settings
@@ -521,7 +522,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             from tutor.models.messages import create_teacher_message
 
             session.add_message(create_teacher_message(welcome))
-            _save_session_to_db(db, session_id, session)
+            ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
+            if reloaded:
+                session = reloaded
             await websocket.send_json(create_assistant_response(welcome).model_dump())
 
         # Main message loop
@@ -545,7 +548,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     student_message=client_msg.payload.message or "",
                 )
 
-                _save_session_to_db(db, session_id, session)
+                ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
+                if reloaded:
+                    session = reloaded
 
                 await websocket.send_json(
                     create_assistant_response(result.response).model_dump()
@@ -604,21 +609,51 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         db.close()
 
 
-def _save_session_to_db(db: DBSession, session_id: str, session: SessionState) -> None:
-    """Persist session state to DB (WebSocket path — single writer per connection)."""
+def _save_session_to_db(
+    db: DBSession,
+    session_id: str,
+    session: SessionState,
+    expected_version: int,
+) -> tuple[int, Optional[SessionState]]:
+    """Version-checked persist for WebSocket path.
+
+    Returns (new_version, reloaded_session).
+    On success: (expected_version + 1, None).
+    On conflict: (db_version, reloaded SessionState from DB) — caller must
+    adopt the reloaded state so subsequent saves use the correct version.
+    """
     from shared.models.entities import Session as SessionModel
+    from sqlalchemy import update
     from datetime import datetime
 
-    db_record = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    if db_record:
-        db_record.state_json = session.model_dump_json()
-        db_record.mastery = session.overall_mastery
-        db_record.step_idx = session.current_step
-        db_record.state_version = (db_record.state_version or 1) + 1
-        db_record.mode = session.mode
-        db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
-        if session.mode == "exam" and session.exam_finished:
-            db_record.exam_score = session.exam_total_correct
-            db_record.exam_total = len(session.exam_questions)
-        db_record.updated_at = datetime.utcnow()
-        db.commit()
+    result = db.execute(
+        update(SessionModel)
+        .where(
+            SessionModel.id == session_id,
+            SessionModel.state_version == expected_version,
+        )
+        .values(
+            state_json=session.model_dump_json(),
+            mastery=session.overall_mastery,
+            step_idx=session.current_step,
+            state_version=expected_version + 1,
+            mode=session.mode,
+            is_paused=session.is_paused if session.mode == "teach_me" else False,
+            exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
+            exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
+            updated_at=datetime.utcnow(),
+        )
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        db_record = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if db_record:
+            db_version = db_record.state_version or 1
+            logger.warning(
+                f"WS version conflict for session {session_id}: "
+                f"expected v{expected_version}, DB at v{db_version}. Reloading."
+            )
+            return db_version, SessionState.model_validate_json(db_record.state_json)
+        return expected_version, None
+    db.commit()
+    return expected_version + 1, None

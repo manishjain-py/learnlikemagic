@@ -761,3 +761,145 @@ class TestEndExam:
 
         resp = client.post("/sessions/nonexistent/end-exam")
         assert resp.status_code == 404
+
+
+# ===========================================================================
+# 5. History coverage computation (session_repository)
+# ===========================================================================
+
+class TestHistoryCoverageComputation:
+    """Verify coverage is computed from primitives, not a missing serialized field."""
+
+    def test_coverage_computed_from_raw_json(self):
+        """list_by_user must compute coverage from concepts_covered_set + study_plan steps."""
+        from shared.repositories.session_repository import SessionRepository
+
+        mock_db = MagicMock()
+        repo = SessionRepository(mock_db)
+
+        # Build a session and serialize to get realistic state_json
+        session = make_test_session(
+            mode="teach_me",
+            concepts=["A", "B", "C", "D"],
+        )
+        session.concepts_covered_set = {"A", "B"}
+        state_json = session.model_dump_json()
+
+        # Verify coverage_percentage is NOT in serialized JSON
+        parsed = json.loads(state_json)
+        assert "coverage_percentage" not in parsed
+
+        # Build mock DB row
+        mock_row = MagicMock()
+        mock_row.id = "sess-1"
+        mock_row.created_at = datetime(2026, 1, 1)
+        mock_row.updated_at = datetime(2026, 1, 1)
+        mock_row.subject = "Math"
+        mock_row.mastery = 0.5
+        mock_row.step_idx = 2
+        mock_row.state_json = state_json
+        mock_row.user_id = "user-1"
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = [mock_row]
+
+        results = repo.list_by_user("user-1")
+        assert len(results) == 1
+        assert results[0]["coverage"] == 50.0  # 2/4 concepts
+
+    def test_coverage_zero_when_no_concepts_covered(self):
+        from shared.repositories.session_repository import SessionRepository
+
+        mock_db = MagicMock()
+        repo = SessionRepository(mock_db)
+
+        session = make_test_session(mode="teach_me", concepts=["A", "B"])
+        session.concepts_covered_set = set()
+        state_json = session.model_dump_json()
+
+        mock_row = MagicMock()
+        mock_row.id = "sess-2"
+        mock_row.created_at = datetime(2026, 1, 1)
+        mock_row.updated_at = datetime(2026, 1, 1)
+        mock_row.subject = "Math"
+        mock_row.mastery = 0.0
+        mock_row.step_idx = 0
+        mock_row.state_json = state_json
+        mock_row.user_id = "user-1"
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = [mock_row]
+
+        results = repo.list_by_user("user-1")
+        assert results[0]["coverage"] == 0
+
+
+# ===========================================================================
+# 6. WebSocket save version conflict
+# ===========================================================================
+
+class TestWsSaveVersionConflict:
+    """Verify _save_session_to_db uses CAS and handles conflicts."""
+
+    def test_save_success_increments_version(self):
+        from tutor.api.sessions import _save_session_to_db
+
+        mock_db = MagicMock()
+        # Simulate successful CAS update (rowcount=1)
+        mock_db.execute.return_value = MagicMock(rowcount=1)
+
+        session = make_test_session(mode="teach_me")
+        new_version, reloaded = _save_session_to_db(mock_db, "sess-1", session, expected_version=3)
+
+        assert new_version == 4
+        assert reloaded is None
+        mock_db.commit.assert_called_once()
+
+    def test_save_conflict_reloads_from_db(self):
+        from tutor.api.sessions import _save_session_to_db
+
+        mock_db = MagicMock()
+        # Simulate CAS failure (rowcount=0)
+        mock_db.execute.return_value = MagicMock(rowcount=0)
+
+        # Simulate DB reload returning a newer version
+        reloaded_session = make_test_session(mode="teach_me")
+        reloaded_session.is_paused = True
+        mock_record = MagicMock()
+        mock_record.state_version = 5
+        mock_record.state_json = reloaded_session.model_dump_json()
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = mock_record
+
+        session = make_test_session(mode="teach_me")
+        new_version, reloaded = _save_session_to_db(mock_db, "sess-1", session, expected_version=3)
+
+        assert new_version == 5
+        assert reloaded is not None
+        assert reloaded.is_paused is True
+        mock_db.rollback.assert_called_once()
+
+
+# ===========================================================================
+# 7. ExamService.generate_questions is sync (not async)
+# ===========================================================================
+
+class TestExamServiceIsSync:
+    """Verify generate_questions is a sync function (not a coroutine)."""
+
+    def test_generate_questions_is_not_coroutine(self):
+        import inspect
+        assert not inspect.iscoroutinefunction(ExamService.generate_questions)

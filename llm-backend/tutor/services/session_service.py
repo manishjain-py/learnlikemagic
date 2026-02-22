@@ -87,12 +87,12 @@ class SessionService:
 
         logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode}")
 
-        # For exam mode, generate questions before welcome
+        # For exam mode, generate questions before welcome (sync call)
         import asyncio
         if mode == "exam":
             from tutor.services.exam_service import ExamService
             exam_svc = ExamService(self.llm_service)
-            session.exam_questions = asyncio.run(exam_svc.generate_questions(session))
+            session.exam_questions = exam_svc.generate_questions(session)
             logger.info(f"Generated {len(session.exam_questions)} exam questions for session {session_id}")
 
         # Generate mode-specific welcome
