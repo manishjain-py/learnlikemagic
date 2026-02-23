@@ -29,6 +29,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Playwright auth state
+e2e/.auth/
+
 # Build artifacts
 dist/
 build/

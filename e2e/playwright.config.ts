@@ -1,5 +1,10 @@
 import { defineConfig } from '@playwright/test';
 import { execSync } from 'child_process';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load e2e/.env for test credentials
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 function getGitMeta() {
   try {
@@ -11,6 +16,8 @@ function getGitMeta() {
     return { branch: 'unknown', commit: 'unknown' };
   }
 }
+
+const AUTH_FILE = path.join(__dirname, '.auth', 'user.json');
 
 export default defineConfig({
   testDir: './tests',
@@ -36,8 +43,16 @@ export default defineConfig({
   ],
   projects: [
     {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+    },
+    {
       name: 'chromium',
-      use: { browserName: 'chromium' },
+      use: {
+        browserName: 'chromium',
+        storageState: AUTH_FILE,
+      },
+      dependencies: ['setup'],
     },
   ],
 });

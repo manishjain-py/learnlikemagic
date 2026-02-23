@@ -127,7 +127,7 @@ echo "Frontend started with PID $FRONTEND_PID" | tee -a "$LOG_FILE"
 # Wait for frontend to be ready (up to 60s)
 FRONTEND_READY=0
 for i in $(seq 1 30); do
-  if curl -s http://localhost:5173 > /dev/null 2>&1; then
+  if curl -s http://localhost:3000 > /dev/null 2>&1; then
     echo "Frontend is ready after ${i}x2s" | tee -a "$LOG_FILE"
     FRONTEND_READY=1
     break
@@ -137,7 +137,7 @@ done
 
 if [ "$FRONTEND_READY" -eq 0 ]; then
   echo "ERROR: Frontend not ready after 60s. Check $LOG_FILE for details." | tee -a "$LOG_FILE"
-  echo "Hints: port 5173 in use? missing node_modules? Run: lsof -i :5173" | tee -a "$LOG_FILE"
+  echo "Hints: port 3000 in use? missing node_modules? Run: lsof -i :3000" | tee -a "$LOG_FILE"
   exit 1
 fi
 ```
