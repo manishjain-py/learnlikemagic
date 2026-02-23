@@ -1,5 +1,5 @@
 """
-Test Scenarios API - Serves test case docs, scenario data, and test results.
+Test Scenarios API - Serves scenario definitions from scenarios.json and results from Playwright's native JSON report.
 
 Endpoints:
   GET /api/test-scenarios                              - List functionalities with latest results
@@ -26,17 +26,6 @@ S3_RESULTS_KEY = "e2e-results/latest-results.json"
 S3_SCREENSHOTS_PREFIX = "e2e-results/screenshots"
 
 
-def _resolve_docs_dir() -> Path:
-    """Find the docs directory - works both locally and in Docker."""
-    docker_path = Path(__file__).parent.parent / "docs"
-    if docker_path.exists():
-        return docker_path
-    local_path = Path(__file__).parent.parent.parent / "docs"
-    if local_path.exists():
-        return local_path
-    raise FileNotFoundError("docs directory not found")
-
-
 def _resolve_scenarios_json() -> Path:
     """Find e2e/scenarios.json - works both locally and in Docker."""
     # In Docker: /app/e2e/scenarios.json (copied during build)
@@ -50,27 +39,83 @@ def _resolve_scenarios_json() -> Path:
     raise FileNotFoundError("e2e/scenarios.json not found")
 
 
-def _fetch_local_results() -> Optional[dict]:
-    """Read scenario-results.json from the local reports directory (for local dev)."""
-    # Docker: /app/reports/e2e-runner/scenario-results.json
-    docker_path = Path(__file__).parent.parent / "reports" / "e2e-runner" / "scenario-results.json"
+def _slugify(name: str) -> str:
+    """Convert suite name to slug: 'Admin — Books Dashboard' → 'admin-books-dashboard'."""
+    s = name.lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-")
+
+
+def _step_to_human(step: dict) -> str:
+    """Convert a scenario step dict to a human-readable string."""
+    action = step.get("action", "")
+    if action == "navigate":
+        url = step.get("url", "/")
+        if url == "/":
+            return "Open the app home page"
+        return f"Go to {url}"
+    elif action == "click":
+        sel = step.get("selector", "")
+        desc = sel.replace("[data-testid='", "").replace("']", "").replace(":first-child", " (first item)")
+        desc = desc.replace("-", " ")
+        return f"Click on {desc}"
+    elif action == "waitForSelector":
+        sel = step.get("selector", "")
+        desc = sel.replace("[data-testid='", "").replace("']", "").replace(":first-child", "")
+        desc = desc.replace("-", " ")
+        return f"Wait for {desc} to appear"
+    elif action == "type":
+        value = step.get("value", "")
+        sel = step.get("selector", "")
+        desc = sel.replace("[data-testid='", "").replace("']", "").replace("-", " ")
+        return f"Type '{value}' into {desc}"
+    elif action == "screenshot":
+        label = step.get("label", "screen")
+        return f"Take a screenshot ({label.replace('-', ' ')})"
+    elif action == "waitForResponse":
+        return "Wait for the response to arrive"
+    else:
+        return f"{action}: {json.dumps(step)}"
+
+
+def _assertions_to_expected(assertions: list) -> str:
+    """Convert assertions list to a human-readable expected result string."""
+    parts = []
+    for a in assertions:
+        atype = a.get("type", "")
+        sel = a.get("selector", "")
+        desc = sel.replace("[data-testid='", "").replace("']", "").replace("-", " ")
+        if atype == "visible":
+            parts.append(f"The {desc} is visible on the page.")
+        elif atype == "countAtLeast":
+            count = a.get("count", 1)
+            parts.append(f"At least {count} {desc} elements are shown.")
+        else:
+            parts.append(f"{atype}: {sel}")
+    return " ".join(parts) if parts else "Page loads without errors."
+
+
+def _fetch_local_playwright_results() -> Optional[dict]:
+    """Read Playwright's test-results.json from local reports directory."""
+    # Docker: /app/reports/e2e-runner/test-results.json
+    docker_path = Path(__file__).parent.parent / "reports" / "e2e-runner" / "test-results.json"
     if docker_path.is_file():
         try:
             return json.loads(docker_path.read_text())
         except Exception as e:
-            logger.warning(f"Failed to read local results at {docker_path}: {e}")
-    # Local dev: repo_root/reports/e2e-runner/scenario-results.json
-    local_path = Path(__file__).parent.parent.parent / "reports" / "e2e-runner" / "scenario-results.json"
+            logger.warning(f"Failed to read local Playwright results at {docker_path}: {e}")
+    # Local dev: repo_root/reports/e2e-runner/test-results.json
+    local_path = Path(__file__).parent.parent.parent / "reports" / "e2e-runner" / "test-results.json"
     if local_path.is_file():
         try:
             return json.loads(local_path.read_text())
         except Exception as e:
-            logger.warning(f"Failed to read local results at {local_path}: {e}")
+            logger.warning(f"Failed to read local Playwright results at {local_path}: {e}")
     return None
 
 
 def _fetch_latest_results() -> Optional[dict]:
-    """Fetch latest results: try S3 first, fall back to local file."""
+    """Fetch latest Playwright results: try S3 first, fall back to local file."""
     try:
         s3 = get_s3_client()
         result = s3.download_json(S3_RESULTS_KEY)
@@ -83,122 +128,128 @@ def _fetch_latest_results() -> Optional[dict]:
         logger.warning(f"Failed to fetch latest results from S3: {e}")
 
     # Fallback: local results file
-    return _fetch_local_results()
+    return _fetch_local_playwright_results()
 
 
-def _slugify(name: str) -> str:
-    """Convert suite name to slug: 'Admin — Books Dashboard' → 'admin-books-dashboard'."""
-    s = name.lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s)
-    return s.strip("-")
+def _load_playwright_results(pw_data: Optional[dict]) -> tuple[dict[tuple[str, str], dict], Optional[str], Optional[str]]:
+    """Parse Playwright's JSON report into a flat lookup.
 
+    Returns:
+        (results_by_key, run_slug, timestamp)
+        results_by_key: dict keyed by (suite_title, spec_title) → {status, duration, error}
+        run_slug: extracted from metadata or None
+        timestamp: from stats.startTime or None
+    """
+    results: dict[tuple[str, str], dict] = {}
+    run_slug = None
+    timestamp = None
 
-def _parse_test_case_md(content: str) -> list[dict]:
-    """Parse a test-cases markdown file into structured scenario data."""
-    scenarios = []
-    current: Optional[dict] = None
-    in_steps = False
+    if not pw_data:
+        return results, run_slug, timestamp
 
-    for line in content.split("\n"):
-        line_stripped = line.strip()
+    # Extract metadata
+    config = pw_data.get("config", {})
+    metadata = config.get("metadata", {})
+    run_slug = metadata.get("runSlug")
 
-        # Match scenario header: ## Test Scenario N: Name
-        m = re.match(r"^## Test Scenario \d+:\s*(.+)$", line_stripped)
-        if m:
-            if current:
-                scenarios.append(current)
-            current = {"name": m.group(1), "id": "", "steps": [], "expected_result": ""}
-            in_steps = False
-            continue
+    # Timestamp from stats
+    stats = pw_data.get("stats", {})
+    timestamp = stats.get("startTime")
 
-        if current is None:
-            continue
+    # Walk the nested suites structure
+    # Playwright JSON: suites[0].suites[0].title = describe block
+    #                  suites[0].suites[0].specs[0].title = test name
+    def walk_suites(suite_list: list, parent_title: str = ""):
+        for suite in suite_list:
+            title = suite.get("title", "")
+            # Use the innermost describe block title as the suite name
+            current_title = title if title else parent_title
 
-        # Match ID line
-        if line_stripped.startswith("**ID:**"):
-            current["id"] = line_stripped.replace("**ID:**", "").strip()
-            continue
+            for spec in suite.get("specs", []):
+                spec_title = spec.get("title", "")
+                tests = spec.get("tests", [])
+                if tests:
+                    # Take the last test (last project run), last result (last retry)
+                    last_test = tests[-1]
+                    test_results = last_test.get("results", [])
+                    if test_results:
+                        last_result = test_results[-1]
+                        status = last_result.get("status", "unknown")
+                        # Map Playwright statuses to our simple statuses
+                        if status == "passed":
+                            mapped_status = "passed"
+                        elif status in ("failed", "timedOut"):
+                            mapped_status = "failed"
+                        else:
+                            mapped_status = status
 
-        # Match steps header
-        if line_stripped == "**Steps:**":
-            in_steps = True
-            continue
+                        error_msg = None
+                        errors = last_result.get("errors", [])
+                        if errors:
+                            error_msg = errors[0].get("message", "")
 
-        # Match step line: a) ...
-        if in_steps and re.match(r"^[a-z]\)\s", line_stripped):
-            step_text = re.sub(r"^[a-z]\)\s*", "", line_stripped)
-            current["steps"].append(step_text)
-            continue
+                        results[(current_title, spec_title)] = {
+                            "status": mapped_status,
+                            "duration": last_result.get("duration", 0),
+                            "error": error_msg,
+                        }
 
-        # Match expected result
-        if line_stripped.startswith("**Expected Result:**"):
-            current["expected_result"] = line_stripped.replace("**Expected Result:**", "").strip()
-            in_steps = False
-            continue
+            # Recurse into nested suites
+            if suite.get("suites"):
+                walk_suites(suite["suites"], current_title)
 
-    if current:
-        scenarios.append(current)
+    walk_suites(pw_data.get("suites", []))
 
-    return scenarios
+    return results, run_slug, timestamp
 
 
 @router.get("")
 def list_test_scenarios():
     """List all test case functionalities with latest results."""
     try:
-        docs_dir = _resolve_docs_dir()
+        scenarios_path = _resolve_scenarios_json()
     except FileNotFoundError:
-        raise HTTPException(status_code=503, detail="Documentation directory not found")
+        raise HTTPException(status_code=503, detail="scenarios.json not found")
 
-    test_cases_dir = docs_dir / "test-cases"
-    if not test_cases_dir.is_dir():
-        return {"functionalities": []}
+    scenarios_data = json.loads(scenarios_path.read_text())
+    suites = scenarios_data.get("suites", [])
 
-    # Fetch latest results from S3
-    results = _fetch_latest_results()
-    results_by_suite: dict[str, dict] = {}
-    results_timestamp = None
-    if results:
-        results_timestamp = results.get("timestamp")
-        for suite in results.get("suites", []):
-            slug = _slugify(suite.get("name", ""))
-            results_by_suite[slug] = suite
+    # Fetch and parse Playwright results
+    pw_data = _fetch_latest_results()
+    pw_results, _run_slug, results_timestamp = _load_playwright_results(pw_data)
 
     functionalities = []
-    for md_file in sorted(test_cases_dir.iterdir()):
-        if not md_file.suffix == ".md":
-            continue
+    for suite in suites:
+        suite_name = suite.get("name", "")
+        slug = _slugify(suite_name)
+        scenarios = suite.get("scenarios", [])
+        scenario_count = len(scenarios)
 
-        slug = md_file.stem  # e.g. "tutor-flow"
-        content = md_file.read_text(encoding="utf-8")
+        # Count pass/fail from Playwright results
+        passed = 0
+        failed = 0
+        has_results = False
+        for sc in scenarios:
+            key = (suite_name, sc.get("name", ""))
+            result = pw_results.get(key)
+            if result:
+                has_results = True
+                if result["status"] == "passed":
+                    passed += 1
+                elif result["status"] == "failed":
+                    failed += 1
 
-        # Extract title from first heading
-        name = slug.replace("-", " ").title()
-        first_line = content.split("\n")[0] if content else ""
-        m = re.match(r"^#\s+(.+?)(?:\s*—\s*Test Cases)?$", first_line)
-        if m:
-            name = m.group(1)
-
-        # Count scenarios
-        scenario_count = len(re.findall(r"^## Test Scenario \d+:", content, re.MULTILINE))
-
-        # Merge with S3 results
-        suite_result = results_by_suite.get(slug, {})
-        scenarios_results = suite_result.get("scenarios", [])
-        passed = sum(1 for s in scenarios_results if s.get("status") == "passed")
-        failed = sum(1 for s in scenarios_results if s.get("status") == "failed")
-
-        if suite_result:
-            status = suite_result.get("status", "not_run")
+        if has_results:
+            status = "failed" if failed > 0 else "passed"
         else:
             status = "not_run"
 
         functionalities.append({
             "slug": slug,
-            "name": name,
-            "filename": md_file.name,
+            "name": suite_name,
+            "filename": f"{slug}.md",
             "scenario_count": scenario_count,
-            "last_tested": results_timestamp if suite_result else None,
+            "last_tested": results_timestamp if has_results else None,
             "status": status,
             "passed": passed,
             "failed": failed,
@@ -210,87 +261,82 @@ def list_test_scenarios():
 @router.get("/{slug}")
 def get_test_scenario_detail(slug: str):
     """Return structured scenario data + test results for a specific functionality."""
-    # Validate slug
     if ".." in slug or "/" in slug:
         raise HTTPException(status_code=404, detail="Invalid slug")
 
     try:
-        docs_dir = _resolve_docs_dir()
-    except FileNotFoundError:
-        raise HTTPException(status_code=503, detail="Documentation directory not found")
-
-    md_path = docs_dir / "test-cases" / f"{slug}.md"
-    if not md_path.is_file():
-        raise HTTPException(status_code=404, detail="Test case document not found")
-
-    content = md_path.read_text(encoding="utf-8")
-    parsed_scenarios = _parse_test_case_md(content)
-
-    # Extract suite name from heading
-    name = slug.replace("-", " ").title()
-    first_line = content.split("\n")[0] if content else ""
-    m = re.match(r"^#\s+(.+?)(?:\s*—\s*Test Cases)?$", first_line)
-    if m:
-        name = m.group(1)
-
-    # Fetch results from S3
-    results = _fetch_latest_results()
-    results_by_id: dict[str, dict] = {}
-    suite_status = "not_run"
-    last_tested = None
-
-    if results:
-        last_tested = results.get("timestamp")
-        for suite in results.get("suites", []):
-            if _slugify(suite.get("name", "")) == slug:
-                suite_status = suite.get("status", "not_run")
-                for sc in suite.get("scenarios", []):
-                    results_by_id[sc.get("id", "")] = sc
-                break
-
-    # Also try to get screenshots from scenarios.json
-    screenshots_by_id: dict[str, list[str]] = {}
-    try:
         scenarios_path = _resolve_scenarios_json()
-        scenarios_data = json.loads(scenarios_path.read_text())
-        for suite in scenarios_data.get("suites", []):
-            if _slugify(suite.get("name", "")) == slug:
-                for sc in suite.get("scenarios", []):
-                    sc_id = sc.get("id", "")
-                    sc_screenshots = []
-                    for step in sc.get("steps", []):
-                        if step.get("action") == "screenshot":
-                            sc_screenshots.append(f"{sc_id}-{step['label']}.png")
-                    screenshots_by_id[sc_id] = sc_screenshots
-                break
     except FileNotFoundError:
-        pass
+        raise HTTPException(status_code=503, detail="scenarios.json not found")
 
-    # Merge parsed docs with results
+    scenarios_data = json.loads(scenarios_path.read_text())
+
+    # Find the matching suite
+    target_suite = None
+    for suite in scenarios_data.get("suites", []):
+        if _slugify(suite.get("name", "")) == slug:
+            target_suite = suite
+            break
+
+    if target_suite is None:
+        raise HTTPException(status_code=404, detail="Test suite not found")
+
+    suite_name = target_suite.get("name", "")
+
+    # Fetch and parse Playwright results
+    pw_data = _fetch_latest_results()
+    pw_results, _run_slug, last_tested = _load_playwright_results(pw_data)
+
+    # Build scenarios response
     scenarios = []
-    for sc in parsed_scenarios:
-        sc_id = sc["id"]
-        result = results_by_id.get(sc_id, {})
+    has_results = False
+    any_failed = False
 
-        # Screenshots: prefer results from S3, fallback to scenarios.json derivation
-        screenshots = result.get("screenshots", screenshots_by_id.get(sc_id, []))
+    for sc in target_suite.get("scenarios", []):
+        sc_id = sc.get("id", "")
+        sc_name = sc.get("name", "")
+
+        # Convert steps to human-readable
+        steps = [_step_to_human(step) for step in sc.get("steps", [])]
+        expected_result = _assertions_to_expected(sc.get("assertions", []))
+
+        # Derive screenshot filenames from scenario steps
+        screenshots = []
+        for step in sc.get("steps", []):
+            if step.get("action") == "screenshot":
+                screenshots.append(f"{sc_id}-{step['label']}.png")
+
+        # Merge Playwright result
+        key = (suite_name, sc_name)
+        result = pw_results.get(key)
+        if result:
+            has_results = True
+            sc_status = result["status"]
+            if sc_status == "failed":
+                any_failed = True
+                # Add failure screenshot
+                screenshots.append(f"{sc_id}-FAILURE.png")
+        else:
+            sc_status = "not_run"
 
         scenarios.append({
             "id": sc_id,
-            "name": sc["name"],
-            "status": result.get("status", "not_run"),
-            "steps": sc["steps"],
-            "expected_result": sc["expected_result"],
+            "name": sc_name,
+            "status": sc_status,
+            "steps": steps,
+            "expected_result": expected_result,
             "screenshots": screenshots,
         })
 
-    if not results_by_id:
+    if has_results:
+        suite_status = "failed" if any_failed else "passed"
+    else:
         suite_status = "not_run"
 
     return {
         "slug": slug,
-        "name": name,
-        "last_tested": last_tested if results_by_id else None,
+        "name": suite_name,
+        "last_tested": last_tested if has_results else None,
         "status": suite_status,
         "scenarios": scenarios,
     }
@@ -302,29 +348,54 @@ def get_scenario_screenshots(slug: str, scenario_id: str):
     if ".." in slug or "/" in slug or ".." in scenario_id or "/" in scenario_id:
         raise HTTPException(status_code=404, detail="Invalid parameters")
 
-    # Get the screenshot filenames from results
-    results = _fetch_latest_results()
-    screenshot_filenames: list[str] = []
+    # Load scenarios.json to derive screenshot filenames
+    try:
+        scenarios_path = _resolve_scenarios_json()
+    except FileNotFoundError:
+        return {"scenario_id": scenario_id, "screenshots": []}
 
-    if results:
-        run_slug = results.get("runSlug", "")
-        for suite in results.get("suites", []):
-            if _slugify(suite.get("name", "")) == slug:
-                for sc in suite.get("scenarios", []):
-                    if sc.get("id") == scenario_id:
-                        screenshot_filenames = sc.get("screenshots", [])
-                        break
-                break
+    scenarios_data = json.loads(scenarios_path.read_text())
+
+    # Find the scenario and derive screenshot filenames from steps
+    screenshot_filenames: list[str] = []
+    suite_name = ""
+    sc_name = ""
+    for suite in scenarios_data.get("suites", []):
+        if _slugify(suite.get("name", "")) == slug:
+            suite_name = suite.get("name", "")
+            for sc in suite.get("scenarios", []):
+                if sc.get("id") == scenario_id:
+                    sc_name = sc.get("name", "")
+                    for step in sc.get("steps", []):
+                        if step.get("action") == "screenshot":
+                            screenshot_filenames.append(f"{scenario_id}-{step['label']}.png")
+                    break
+            break
+
+    # Check Playwright results to see if this scenario failed (add FAILURE screenshot)
+    pw_data = _fetch_latest_results()
+    pw_results, run_slug, _ = _load_playwright_results(pw_data)
+
+    key = (suite_name, sc_name)
+    result = pw_results.get(key)
+    if result and result["status"] == "failed":
+        screenshot_filenames.append(f"{scenario_id}-FAILURE.png")
+
+    if not run_slug:
+        # Try to get run_slug from Playwright metadata
+        if pw_data:
+            config = pw_data.get("config", {})
+            metadata = config.get("metadata", {})
+            run_slug = metadata.get("runSlug", "")
 
     if not screenshot_filenames:
         return {"scenario_id": scenario_id, "screenshots": []}
 
     # Generate presigned URLs
     s3 = get_s3_client()
-    run_slug = results.get("runSlug", "") if results else ""
     screenshots = []
     for filename in screenshot_filenames:
-        s3_key = f"{S3_SCREENSHOTS_PREFIX}/{run_slug}/{filename}"
+        s3_key = f"{S3_SCREENSHOTS_PREFIX}/{run_slug}/{filename}" if run_slug else f"{S3_SCREENSHOTS_PREFIX}/{filename}"
         label = filename.replace(f"{scenario_id}-", "").replace(".png", "").replace("-", " ")
         try:
             url = s3.get_presigned_url(s3_key, expiration=3600)

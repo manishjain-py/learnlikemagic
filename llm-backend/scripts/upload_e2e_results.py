@@ -5,7 +5,7 @@ Usage:
     cd llm-backend && source venv/bin/activate
     python scripts/upload_e2e_results.py --results-dir ../reports/e2e-runner
 
-Reads scenario-results.json from the results directory, uploads:
+Reads Playwright's test-results.json from the results directory, uploads:
   - All screenshots to s3://bucket/e2e-results/screenshots/<run-slug>/
   - latest-results.json to s3://bucket/e2e-results/latest-results.json
   - Timestamped copy to s3://bucket/e2e-results/runs/<run-slug>/results.json
@@ -14,6 +14,7 @@ Reads scenario-results.json from the results directory, uploads:
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -23,7 +24,7 @@ from book_ingestion.utils.s3_client import get_s3_client
 
 
 def upload_results(results_dir: str) -> None:
-    results_path = Path(results_dir) / "scenario-results.json"
+    results_path = Path(results_dir) / "test-results.json"
     screenshots_dir = Path(results_dir) / "screenshots"
 
     if not results_path.exists():
@@ -31,7 +32,20 @@ def upload_results(results_dir: str) -> None:
         sys.exit(1)
 
     results = json.loads(results_path.read_text())
-    run_slug = results.get("runSlug", "unknown-run")
+
+    # Extract runSlug from Playwright config metadata, or generate one
+    config = results.get("config", {})
+    metadata = config.get("metadata", {})
+    run_slug = metadata.get("runSlug")
+    if not run_slug:
+        now = datetime.now(timezone.utc)
+        run_slug = f"e2e-runner-{now.strftime('%Y%m%d-%H%M%S')}"
+        # Inject runSlug into metadata so consumers can find it
+        if "config" not in results:
+            results["config"] = {}
+        if "metadata" not in results["config"]:
+            results["config"]["metadata"] = {}
+        results["config"]["metadata"]["runSlug"] = run_slug
 
     s3 = get_s3_client()
     uploaded_screenshots = 0

@@ -1,6 +1,6 @@
 # E2E Runner — Full App E2E Testing Pipeline
 
-Run the full application locally, execute all E2E test scenarios via Playwright, capture screenshots of every flow, visually inspect each screen, and produce a comprehensive HTML QA report with email delivery.
+Run the full application locally, execute all E2E test scenarios via Playwright, upload results to S3, and email the Playwright HTML report link.
 
 ## Input
 - Optional `$ARGUMENTS` = report slug
@@ -37,7 +37,6 @@ SCREENSHOT_DIR="$REPORT_DIR/screenshots"
 mkdir -p "$SCREENSHOT_DIR"
 LOG_FILE="$REPORT_DIR/${SLUG}.log"
 PROGRESS_FILE="$REPORT_DIR/${SLUG}.progress.json"
-SUMMARY_HTML="$REPORT_DIR/${SLUG}.html"
 
 BRANCH="$(git -C "$ROOT" branch --show-current)"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)"
@@ -149,22 +148,22 @@ fi
 
 ```bash
 cd "$ROOT/e2e"
-npx playwright test --reporter=list,json,html 2>&1 | tee -a "$LOG_FILE"
+npx playwright test 2>&1 | tee -a "$LOG_FILE"
 E2E_EXIT=${PIPESTATUS[0]}
 echo "E2E tests exited with code $E2E_EXIT" | tee -a "$LOG_FILE"
 ```
 
 This executes all scenarios from `e2e/scenarios.json`, capturing screenshots at every labeled step. Failed tests automatically get a failure screenshot.
 
-After Playwright completes, read:
-- `reports/e2e-runner/scenario-results.json` — per-scenario pass/fail with screenshot filenames
-- `reports/e2e-runner/test-results.json` — Playwright's full JSON report
+After Playwright completes, results are in:
+- `reports/e2e-runner/test-results.json` — Playwright's native JSON report (pass/fail, duration, errors)
+- `reports/e2e-runner/screenshots/` — screenshots from test steps
 
 ---
 
 ## Step 3b: Upload test results and screenshots to S3
 
-After Playwright tests complete successfully, upload results and screenshots to S3 so the admin UI can display them.
+After Playwright tests complete, upload results and screenshots to S3 so the admin UI can display them.
 
 ```bash
 cd "$ROOT/llm-backend" && source venv/bin/activate
@@ -182,95 +181,42 @@ fi
 
 This uploads:
 - All screenshots to `s3://bucket/e2e-results/screenshots/<run-slug>/`
-- `e2e-results/latest-results.json` (overwritten each run)
+- `e2e-results/latest-results.json` (Playwright JSON report, overwritten each run)
 - `e2e-results/runs/<run-slug>/results.json` (timestamped history)
 
 ---
 
-## Step 4: Visual inspection with Claude
+## Step 4: Email the report
 
-**This is the key differentiator.** After Playwright finishes, read EVERY screenshot from `$SCREENSHOT_DIR` using the Read tool (which can read images).
-
-For each screenshot, analyze:
-
-1. **Layout**: Is the page rendered correctly? Any overlapping elements, broken layouts, missing components?
-2. **Content**: Is there meaningful content shown (not empty states when data is expected)?
-3. **Errors**: Are there any visible error messages, console error banners, or broken images?
-4. **UX issues**: Are buttons visible and accessible? Is text readable? Is spacing consistent?
-5. **Responsiveness**: Does the viewport look appropriate for the 1280x720 resolution?
-
-Record findings per screenshot as a structured list:
-- Screenshot filename
-- Page/scenario context
-- Observations (list)
-- Severity per observation: `info` | `warning` | `critical`
-
----
-
-## Step 5: Build the HTML QA report
-
-Generate `$SUMMARY_HTML` — a self-contained HTML file with:
-
-1. **Header**: Run timestamp, branch, commit, overall verdict
-2. **Executive Summary**: Total scenarios, passed, failed, visual warnings count
-3. **Per-Suite Breakdown**: Table with scenario name, status (PASS/FAIL), duration, screenshot count
-4. **Screenshot Gallery**: For each scenario, show its screenshots inline (use base64-encoded images so the report is fully self-contained). Apply border colors:
-   - Green border = scenario passed, no visual issues
-   - Yellow border = scenario passed but visual warnings found
-   - Red border = scenario failed
-5. **Visual Inspection Findings**: Claude's observations organized by severity
-   - Critical issues first (red)
-   - Warnings (yellow)
-   - Info observations (blue)
-6. **Test Failure Details**: For any failed scenarios, show the error message and failure screenshot
-7. **Overall Verdict Banner**:
-   - ✅ ALL PASS = all scenarios passed, no visual issues
-   - ⚠️ WARNINGS = all scenarios passed but visual issues found
-   - ❌ FAILURES = one or more scenarios failed
-
-Use clean CSS. Make it look professional — cards, zebra tables, proper typography.
-
-To embed screenshots as base64, read each PNG file and encode it:
-```python
-import base64
-with open(screenshot_path, 'rb') as f:
-    b64 = base64.b64encode(f.read()).decode()
-# Use in HTML: <img src="data:image/png;base64,{b64}" />
-```
-
-You can use a Python helper script to do the base64 encoding of all screenshots.
-
----
-
-## Step 6: Email the report
-
-Primary method (include scenario-results.json as attachment if it exists):
+Primary method:
 ```bash
 cd "$ROOT/llm-backend" && source venv/bin/activate
-SCENARIO_RESULTS="$REPORT_DIR/scenario-results.json"
-EXTRA_ATTACH=""
-[ -f "$SCENARIO_RESULTS" ] && EXTRA_ATTACH="--attachment \"$SCENARIO_RESULTS\""
+
+# Determine verdict from Playwright results
+VERDICT="UNKNOWN"
+if [ "$E2E_EXIT" -eq 0 ]; then
+  VERDICT="ALL PASS"
+else
+  VERDICT="FAILURES"
+fi
 
 python scripts/send_coverage_report.py \
   --to "manishjain.py@gmail.com" \
-  --subject "E2E Runner Report — $BRANCH — $(date +%Y-%m-%d) — <VERDICT>" \
-  --report "$SUMMARY_HTML" \
-  --log "$LOG_FILE" \
-  $EXTRA_ATTACH
+  --subject "E2E Runner Report — $BRANCH — $(date +%Y-%m-%d) — $VERDICT" \
+  --report "$REPORT_DIR/playwright-report/index.html" \
+  --log "$LOG_FILE"
 EMAIL_EXIT=$?
 ```
-
-Replace `<VERDICT>` with the actual verdict (ALL PASS / WARNINGS / FAILURES).
 
 Fallback (macOS Mail.app):
 ```bash
 if [ "$EMAIL_EXIT" -ne 0 ]; then
   osascript <<OSA
 tell application "Mail"
-  set newMessage to make new outgoing message with properties {subject:"E2E Runner Report — $BRANCH — $(date +%Y-%m-%d) — <VERDICT>", content:"See attached QA report and log.", visible:false}
+  set newMessage to make new outgoing message with properties {subject:"E2E Runner Report — $BRANCH — $(date +%Y-%m-%d) — $VERDICT", content:"See attached Playwright report and log.", visible:false}
   tell newMessage
     make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
-    make new attachment with properties {file name:POSIX file "$SUMMARY_HTML"} at after the last paragraph
+    make new attachment with properties {file name:POSIX file "$REPORT_DIR/playwright-report/index.html"} at after the last paragraph
     make new attachment with properties {file name:POSIX file "$LOG_FILE"} at after the last paragraph
   end tell
   send newMessage
@@ -283,17 +229,15 @@ If both fail, log the error and print local paths for manual access.
 
 ---
 
-## Step 7: Final output
+## Step 5: Final output
 
 Print a concise summary:
 - Total scenarios: X
 - Passed: Y | Failed: Z
-- Visual issues found: N (critical: C, warning: W, info: I)
 - Email delivery status
 - Artifact paths:
-  - HTML report:            `$SUMMARY_HTML`
   - Log file:               `$LOG_FILE`
   - Progress file:          `$PROGRESS_FILE`
   - Screenshots:            `$SCREENSHOT_DIR/`
   - Playwright HTML report: `$REPORT_DIR/playwright-report/index.html`
-  - Scenario results JSON:  `$REPORT_DIR/scenario-results.json`
+  - Playwright JSON report: `$REPORT_DIR/test-results.json`

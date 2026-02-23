@@ -1,4 +1,16 @@
 import { defineConfig } from '@playwright/test';
+import { execSync } from 'child_process';
+
+function getGitMeta() {
+  try {
+    return {
+      branch: execSync('git branch --show-current').toString().trim(),
+      commit: execSync('git rev-parse --short HEAD').toString().trim(),
+    };
+  } catch {
+    return { branch: 'unknown', commit: 'unknown' };
+  }
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -6,11 +18,12 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
+  metadata: getGitMeta(),
   retries: 1,
   workers: 1, // Sequential — scenarios may depend on app state
   outputDir: '../reports/e2e-runner/test-output',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:3000',
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
     viewport: { width: 1280, height: 720 },

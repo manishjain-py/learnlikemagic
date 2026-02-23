@@ -2,20 +2,18 @@
  * Dynamic Playwright test runner for e2e/scenarios.json
  *
  * Reads scenario definitions and creates test.describe()/test() blocks dynamically.
- * Outputs structured results to reports/e2e-runner/scenario-results.json.
+ * Results are tracked by Playwright's native JSON reporter (see playwright.config.ts).
  */
 
 import { test, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
 
 // Paths
 const ROOT = path.resolve(__dirname, '../..');
 const SCENARIOS_PATH = path.join(ROOT, 'e2e', 'scenarios.json');
 const REPORT_DIR = path.join(ROOT, 'reports', 'e2e-runner');
 const SCREENSHOT_DIR = path.join(REPORT_DIR, 'screenshots');
-const RESULTS_PATH = path.join(REPORT_DIR, 'scenario-results.json');
 
 // Ensure output directories exist
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
@@ -26,95 +24,6 @@ if (!fs.existsSync(SCENARIOS_PATH)) {
 }
 const scenariosData = JSON.parse(fs.readFileSync(SCENARIOS_PATH, 'utf-8'));
 const suites = scenariosData.suites || [];
-
-// Result types
-interface ScenarioResult {
-  id: string;
-  name: string;
-  status: 'passed' | 'failed';
-  duration_ms: number;
-  screenshots: string[];
-  error?: string;
-}
-
-interface SuiteResult {
-  name: string;
-  status: 'passed' | 'failed';
-  scenarios: ScenarioResult[];
-}
-
-interface ResultsFile {
-  runSlug: string;
-  timestamp: string;
-  branch: string;
-  commit: string;
-  suites: SuiteResult[];
-}
-
-/**
- * Read the current results file, or create a fresh skeleton if it doesn't exist.
- */
-function readResultsFile(): ResultsFile {
-  if (fs.existsSync(RESULTS_PATH)) {
-    try {
-      return JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf-8'));
-    } catch {
-      // Corrupted file — reinitialize
-    }
-  }
-  const git = getGitInfo();
-  const now = new Date();
-  const slug = `e2e-runner-${now.toISOString().replace(/[-:T]/g, '').slice(0, 15)}`;
-  return {
-    runSlug: slug,
-    timestamp: now.toISOString(),
-    branch: git.branch,
-    commit: git.commit,
-    suites: suites.map((s: any) => ({ name: s.name, status: 'passed', scenarios: [] })),
-  };
-}
-
-/**
- * Upsert a scenario result into the results file (incremental write).
- * Finds or creates the suite entry, then upserts by scenario id.
- */
-function writeScenarioResult(suiteName: string, result: ScenarioResult): void {
-  const data = readResultsFile();
-
-  // Find or create the suite
-  let suite = data.suites.find((s) => s.name === suiteName);
-  if (!suite) {
-    suite = { name: suiteName, status: 'passed', scenarios: [] };
-    data.suites.push(suite);
-  }
-
-  // Upsert the scenario by id
-  const idx = suite.scenarios.findIndex((s) => s.id === result.id);
-  if (idx >= 0) {
-    suite.scenarios[idx] = result;
-  } else {
-    suite.scenarios.push(result);
-  }
-
-  // Recompute suite status — failed if any scenario failed
-  suite.status = suite.scenarios.some((s) => s.status === 'failed') ? 'failed' : 'passed';
-
-  // Update timestamp
-  data.timestamp = new Date().toISOString();
-
-  fs.writeFileSync(RESULTS_PATH, JSON.stringify(data, null, 2));
-}
-
-// Git metadata
-function getGitInfo(): { branch: string; commit: string } {
-  try {
-    const branch = execSync('git branch --show-current', { cwd: ROOT }).toString().trim();
-    const commit = execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim();
-    return { branch, commit };
-  } catch {
-    return { branch: 'unknown', commit: 'unknown' };
-  }
-}
 
 /**
  * Execute a single scenario step against a Playwright page.
@@ -187,18 +96,12 @@ async function evaluateAssertions(page: Page, assertions: any[]): Promise<void> 
   }
 }
 
-// Initialize results file with empty suites at load time
-readResultsFile();
-
 // Dynamically create test suites
 for (const suite of suites) {
   test.describe(suite.name, () => {
     for (const scenario of suite.scenarios || []) {
       test(scenario.name, async ({ page }) => {
-        const startTime = Date.now();
         const screenshots: string[] = [];
-        let status: 'passed' | 'failed' = 'passed';
-        let error: string | undefined;
 
         try {
           // Execute steps
@@ -211,9 +114,6 @@ for (const suite of suites) {
             await evaluateAssertions(page, scenario.assertions);
           }
         } catch (err: any) {
-          status = 'failed';
-          error = err.message || String(err);
-
           // Take a failure screenshot
           try {
             const failFilename = `${scenario.id}-FAILURE.png`;
@@ -227,17 +127,6 @@ for (const suite of suites) {
           }
 
           throw err; // Re-throw so Playwright marks the test as failed
-        } finally {
-          // Incremental write — resilient to retries and execution order
-          const result: ScenarioResult = {
-            id: scenario.id,
-            name: scenario.name,
-            status,
-            duration_ms: Date.now() - startTime,
-            screenshots,
-            ...(error ? { error } : {}),
-          };
-          writeScenarioResult(suite.name, result);
         }
       });
     }
