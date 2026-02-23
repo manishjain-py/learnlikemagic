@@ -475,7 +475,7 @@ const TestScenariosPage: React.FC = () => {
                 No test cases found
               </p>
               <p style={{ color: '#9CA3AF' }}>
-                Run the e2e-updater to generate test case documents under docs/test-cases/
+                Run the e2e-updater to generate e2e/scenarios.json, then e2e-runner to produce results.
               </p>
             </div>
           ) : (
