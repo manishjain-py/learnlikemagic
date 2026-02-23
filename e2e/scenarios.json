@@ -1,0 +1,324 @@
+{
+  "meta": {
+    "lastUpdated": "2026-02-22",
+    "lastUpdatedAt": "2026-02-22 20:01:39 IST",
+    "generatedBy": "e2e-updater",
+    "branch": "main",
+    "commit": "fea66c5"
+  },
+  "suites": [
+    {
+      "name": "Tutor Flow",
+      "route": "/",
+      "scenarios": [
+        {
+          "id": "tutor-001",
+          "name": "Landing page loads with subject selection",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/"
+            },
+            {
+              "action": "screenshot",
+              "label": "landing-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='subject-list']"
+            }
+          ]
+        },
+        {
+          "id": "tutor-002",
+          "name": "Subject \u2192 topic list",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subject-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='subject-item']:first-child"
+            },
+            {
+              "action": "screenshot",
+              "label": "topic-selection"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='topic-list']"
+            }
+          ]
+        },
+        {
+          "id": "tutor-003",
+          "name": "Topic \u2192 subtopic list",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subject-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='subject-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='topic-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='topic-item']:first-child"
+            },
+            {
+              "action": "screenshot",
+              "label": "subtopic-selection"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='subtopic-list']"
+            }
+          ]
+        },
+        {
+          "id": "tutor-004",
+          "name": "Start tutor chat session",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subject-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='subject-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='topic-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='topic-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subtopic-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='subtopic-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='chat-container']",
+              "timeout": 30000
+            },
+            {
+              "action": "screenshot",
+              "label": "chat-session-started"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='chat-input']"
+            },
+            {
+              "type": "visible",
+              "selector": "[data-testid='send-button']"
+            }
+          ]
+        },
+        {
+          "id": "tutor-005",
+          "name": "Send message and receive tutor response",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subject-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='subject-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='topic-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='topic-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subtopic-item']",
+              "timeout": 15000
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='subtopic-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='chat-input']",
+              "timeout": 30000
+            },
+            {
+              "action": "type",
+              "selector": "[data-testid='chat-input']",
+              "value": "I think the answer is 5"
+            },
+            {
+              "action": "click",
+              "selector": "[data-testid='send-button']"
+            },
+            {
+              "action": "waitForResponse",
+              "timeout": 30000
+            },
+            {
+              "action": "screenshot",
+              "label": "tutor-response-received"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "countAtLeast",
+              "selector": "[data-testid='teacher-message']",
+              "count": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin \u2014 Books Dashboard",
+      "route": "/admin/books",
+      "scenarios": [
+        {
+          "id": "admin-books-001",
+          "name": "Books dashboard loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/books"
+            },
+            {
+              "action": "screenshot",
+              "label": "books-dashboard"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "h1"
+            }
+          ]
+        },
+        {
+          "id": "admin-books-002",
+          "name": "Create book form loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/books/new"
+            },
+            {
+              "action": "screenshot",
+              "label": "create-book-form"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='create-book-form']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin \u2014 Guidelines Review",
+      "route": "/admin/guidelines",
+      "scenarios": [
+        {
+          "id": "admin-guidelines-001",
+          "name": "Guidelines page loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/guidelines"
+            },
+            {
+              "action": "screenshot",
+              "label": "guidelines-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='guidelines-page']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin \u2014 Evaluation Dashboard",
+      "route": "/admin/evaluation",
+      "scenarios": [
+        {
+          "id": "admin-eval-001",
+          "name": "Evaluation dashboard loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/evaluation"
+            },
+            {
+              "action": "screenshot",
+              "label": "eval-dashboard"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "[data-testid='eval-dashboard']"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

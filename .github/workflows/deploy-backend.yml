@@ -7,6 +7,7 @@ on:
     paths:
       - 'llm-backend/**'
       - 'docs/**'
+      - 'e2e/scenarios.json'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:  # Allow manual trigger
 
