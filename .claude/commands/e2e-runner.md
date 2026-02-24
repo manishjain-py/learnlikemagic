@@ -229,6 +229,28 @@ If both fail, log the error and print local paths for manual access.
 
 ---
 
+## Step 4b: Commit and push e2e/scenarios.json to trigger production deploy
+
+After uploading results to S3, commit and push `e2e/scenarios.json` so the next auto-deploy includes the latest scenario definitions. Production reads scenarios from the Docker image (copied during CI build) and results from S3.
+
+```bash
+cd "$ROOT"
+
+if ! git diff --quiet e2e/scenarios.json 2>/dev/null || ! git diff --cached --quiet e2e/scenarios.json 2>/dev/null; then
+  echo "Committing updated e2e/scenarios.json..." | tee -a "$LOG_FILE"
+  git add e2e/scenarios.json
+  git commit -m "chore: update e2e scenarios.json after e2e-runner
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+  git push
+  echo "e2e/scenarios.json pushed — deploy will trigger automatically" | tee -a "$LOG_FILE"
+else
+  echo "e2e/scenarios.json unchanged, skipping commit" | tee -a "$LOG_FILE"
+fi
+```
+
+---
+
 ## Step 5: Final output
 
 Print a concise summary:
