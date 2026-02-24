@@ -134,6 +134,9 @@ Please provide:
 Format the output clearly with appropriate structure and formatting."""
 
             # Create the API request
+            # Newer OpenAI models (o1, o3, etc.) require max_completion_tokens
+            # instead of max_tokens. Use the right param based on model name.
+            token_param = "max_completion_tokens" if self.model.startswith(("o1", "o3")) else "max_tokens"
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{
@@ -148,7 +151,7 @@ Format the output clearly with appropriate structure and formatting."""
                         },
                     ],
                 }],
-                max_tokens=self.max_tokens
+                **{token_param: self.max_tokens}
             )
 
             # Extract text from response

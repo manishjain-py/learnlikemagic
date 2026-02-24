@@ -180,10 +180,12 @@ class LLMService:
         }))
 
         def _api_call():
+            # Newer OpenAI models (o1, o3, etc.) require max_completion_tokens
+            token_param = "max_completion_tokens" if model.startswith(("o1", "o3")) else "max_tokens"
             kwargs = {
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
+                token_param: max_tokens,
                 "temperature": temperature,
                 "timeout": self.timeout,
             }
