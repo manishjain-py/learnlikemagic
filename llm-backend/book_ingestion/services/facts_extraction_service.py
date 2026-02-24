@@ -111,7 +111,7 @@ class FactsExtractionService:
                         "content": prompt
                     }
                 ],
-                max_tokens=self.max_tokens,
+                max_completion_tokens=self.max_tokens,
                 temperature=0.3,  # Low temperature for consistent extraction
                 response_format={"type": "json_object"}  # Force JSON response
             )

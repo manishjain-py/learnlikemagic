@@ -20,7 +20,7 @@ _LLM_CONFIG_SEEDS = [
     {
         "component_key": "book_ingestion",
         "provider": "openai",
-        "model_id": "gpt-4o-mini",
+        "model_id": "gpt-5.2",
         "description": "All book ingestion services (OCR, boundaries, merge, etc.)",
     },
     {
@@ -32,7 +32,7 @@ _LLM_CONFIG_SEEDS = [
     {
         "component_key": "study_plan_reviewer",
         "provider": "openai",
-        "model_id": "gpt-4o",
+        "model_id": "gpt-5.2",
         "description": "Study plan review and improvement",
     },
     {
@@ -44,7 +44,7 @@ _LLM_CONFIG_SEEDS = [
     {
         "component_key": "eval_simulator",
         "provider": "openai",
-        "model_id": "gpt-4o",
+        "model_id": "gpt-5.2",
         "description": "Student simulator for evaluations",
     },
 ]

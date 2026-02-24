@@ -126,7 +126,7 @@ class TeachingDescriptionGenerator:
                         "content": prompt
                     }
                 ],
-                max_tokens=self.max_tokens,
+                max_completion_tokens=self.max_tokens,
                 temperature=0.4  # Slightly higher for natural language
             )
 

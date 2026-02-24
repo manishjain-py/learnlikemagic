@@ -130,7 +130,7 @@ class DescriptionGenerator:
                         "content": prompt
                     }
                 ],
-                max_tokens=self.max_tokens,
+                max_completion_tokens=self.max_tokens,
                 temperature=0.5  # Balanced creativity and consistency
             )
 

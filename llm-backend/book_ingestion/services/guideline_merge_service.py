@@ -113,7 +113,7 @@ class GuidelineMergeService:
                         "content": prompt
                     }
                 ],
-                max_tokens=self.max_tokens,
+                max_completion_tokens=self.max_tokens,
                 temperature=0.3  # Some creativity for natural merging
             )
 

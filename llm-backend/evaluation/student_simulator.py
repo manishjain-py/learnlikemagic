@@ -167,7 +167,7 @@ CRITICAL RULES:
                     model=self.config.simulator_model,
                     messages=messages,
                     temperature=self.config.simulator_temperature,
-                    max_tokens=self.config.simulator_max_tokens,
+                    max_completion_tokens=self.config.simulator_max_tokens,
                 )
                 return response.choices[0].message.content.strip()
             except RateLimitError:

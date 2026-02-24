@@ -108,7 +108,7 @@ class MinisummaryService:
                         "content": prompt
                     }
                 ],
-                max_tokens=self.max_tokens,
+                max_completion_tokens=self.max_tokens,
                 temperature=0.3  # Low temperature for consistent, factual output
             )
 

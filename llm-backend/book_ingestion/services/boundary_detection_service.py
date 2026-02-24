@@ -122,7 +122,7 @@ class BoundaryDetectionService:
                         "content": prompt
                     }
                 ],
-                max_tokens=self.max_tokens,
+                max_completion_tokens=self.max_tokens,
                 temperature=0.2,  # Low temperature for consistent decisions
                 response_format={"type": "json_object"}  # Force JSON response
             )

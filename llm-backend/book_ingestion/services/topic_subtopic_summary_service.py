@@ -51,7 +51,7 @@ class TopicSubtopicSummaryService:
                     {"role": "system", "content": "You are a helpful assistant that summarizes teaching guidelines."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=50,
+                max_completion_tokens=50,
                 temperature=0.3
             )
             summary = response.choices[0].message.content.strip()
@@ -94,7 +94,7 @@ class TopicSubtopicSummaryService:
             response = self.openai_client.chat.completions.create(
                 model=self.model,
                 temperature=0.3,
-                max_tokens=120,
+                max_completion_tokens=120,
                 messages=[{
                     "role": "user",
                     "content": prompt
