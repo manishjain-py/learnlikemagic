@@ -210,16 +210,19 @@ Format the output clearly with appropriate structure and formatting."""
 _ocr_service: Optional[OCRService] = None
 
 
-def get_ocr_service() -> OCRService:
+def get_ocr_service(model: str) -> OCRService:
     """
     Get or create the global OCR service instance.
+
+    Args:
+        model: LLM model name (e.g. from DB config)
 
     Returns:
         OCRService: OCR service instance
     """
     global _ocr_service
-    if _ocr_service is None:
-        _ocr_service = OCRService()
+    if _ocr_service is None or _ocr_service.model != model:
+        _ocr_service = OCRService(model=model)
     return _ocr_service
 
 

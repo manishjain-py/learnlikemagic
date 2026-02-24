@@ -48,10 +48,13 @@ def _build_service():
     mock_db = MagicMock()
     with patch("book_ingestion.services.page_service.BookRepository") as MockBookRepo, \
          patch("book_ingestion.services.page_service.get_ocr_service") as mock_ocr_factory, \
-         patch("book_ingestion.services.page_service.get_s3_client") as mock_s3_factory:
+         patch("book_ingestion.services.page_service.get_s3_client") as mock_s3_factory, \
+         patch("book_ingestion.services.page_service.LLMConfigService") as MockLLMConfig:
 
         mock_book_repo = MagicMock()
         MockBookRepo.return_value = mock_book_repo
+
+        MockLLMConfig.return_value.get_config.return_value = {"provider": "openai", "model_id": "gpt-4o-mini"}
 
         mock_ocr = MagicMock()
         mock_ocr_factory.return_value = mock_ocr

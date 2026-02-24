@@ -14,6 +14,7 @@ import io
 from book_ingestion.repositories.book_repository import BookRepository
 from book_ingestion.services.ocr_service import get_ocr_service
 from book_ingestion.utils.s3_client import get_s3_client
+from shared.services.llm_config_service import LLMConfigService
 from book_ingestion.models.schemas import (
     PageUploadResponse,
     PageApproveResponse,
@@ -43,7 +44,8 @@ class PageService:
         """
         self.db = db
         self.book_repository = BookRepository(db)
-        self.ocr_service = get_ocr_service()
+        ingestion_config = LLMConfigService(db).get_config("book_ingestion")
+        self.ocr_service = get_ocr_service(model=ingestion_config["model_id"])
         self.s3_client = get_s3_client()
 
     def upload_page(
