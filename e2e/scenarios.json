@@ -1,12 +1,260 @@
 {
   "meta": {
-    "lastUpdated": "2026-02-22",
-    "lastUpdatedAt": "2026-02-22 20:01:39 IST",
+    "lastUpdated": "2026-02-24",
+    "lastUpdatedAt": "2026-02-24 09:54:10 IST",
     "generatedBy": "e2e-updater",
     "branch": "main",
-    "commit": "fea66c5"
+    "commit": "f414241"
   },
   "suites": [
+    {
+      "name": "Auth — Login",
+      "route": "/login",
+      "scenarios": [
+        {
+          "id": "auth-login-001",
+          "name": "Login page loads with three auth method buttons",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/login"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": ".auth-container",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "login-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "button"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth — Email Login",
+      "route": "/login/email",
+      "scenarios": [
+        {
+          "id": "auth-email-login-001",
+          "name": "Email login form loads with email and password fields",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/login/email"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "input[type='email'], input[type='text']",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "email-login-form"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "input[type='password']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth — Phone Login",
+      "route": "/login/phone",
+      "scenarios": [
+        {
+          "id": "auth-phone-001",
+          "name": "Phone login form loads with country code and phone input",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/login/phone"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "input",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "phone-login-form"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "input"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth — Email Signup",
+      "route": "/signup/email",
+      "scenarios": [
+        {
+          "id": "auth-signup-001",
+          "name": "Email signup form loads with email and password fields",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/signup/email"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "input[type='password']",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "email-signup-form"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "input[type='password']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth — Email Verification",
+      "route": "/signup/email/verify",
+      "scenarios": [
+        {
+          "id": "auth-verify-001",
+          "name": "Email verification page loads with code input",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/signup/email/verify"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "input",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "email-verify-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "input"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth — Forgot Password",
+      "route": "/forgot-password",
+      "scenarios": [
+        {
+          "id": "auth-forgot-001",
+          "name": "Forgot password page loads with email input",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/forgot-password"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "input",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "forgot-password-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "input"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Onboarding",
+      "route": "/onboarding",
+      "scenarios": [
+        {
+          "id": "onboarding-001",
+          "name": "Onboarding wizard loads with first step",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/onboarding"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "input",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "onboarding-wizard"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "input"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "route": "/profile",
+      "scenarios": [
+        {
+          "id": "profile-001",
+          "name": "Profile page loads with user info and logout button",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/profile"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "button",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "profile-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "button"
+            }
+          ]
+        }
+      ]
+    },
     {
       "name": "Tutor Flow",
       "route": "/",
@@ -238,6 +486,68 @@
       ]
     },
     {
+      "name": "Scorecard",
+      "route": "/scorecard",
+      "scenarios": [
+        {
+          "id": "scorecard-001",
+          "name": "Scorecard overview page loads with mastery ring",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/scorecard"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": ".scorecard-container, .empty-state, h1, h2",
+              "timeout": 15000
+            },
+            {
+              "action": "screenshot",
+              "label": "scorecard-overview"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "button"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Session History",
+      "route": "/history",
+      "scenarios": [
+        {
+          "id": "history-001",
+          "name": "Session history page loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/history"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "button, .session-list, .empty-state, h1, h2",
+              "timeout": 15000
+            },
+            {
+              "action": "screenshot",
+              "label": "session-history"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "button"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Admin \u2014 Books Dashboard",
       "route": "/admin/books",
       "scenarios": [
@@ -248,6 +558,11 @@
             {
               "action": "navigate",
               "url": "/admin/books"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "h1",
+              "timeout": 10000
             },
             {
               "action": "screenshot",
@@ -270,6 +585,11 @@
               "url": "/admin/books/new"
             },
             {
+              "action": "waitForSelector",
+              "selector": "[data-testid='create-book-form']",
+              "timeout": 10000
+            },
+            {
               "action": "screenshot",
               "label": "create-book-form"
             }
@@ -278,6 +598,31 @@
             {
               "type": "visible",
               "selector": "[data-testid='create-book-form']"
+            }
+          ]
+        },
+        {
+          "id": "admin-books-detail-001",
+          "name": "Book detail page loads for first book",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/books"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "h1",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "books-detail-from-dashboard"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "h1"
             }
           ]
         }
@@ -294,6 +639,11 @@
             {
               "action": "navigate",
               "url": "/admin/guidelines"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='guidelines-page']",
+              "timeout": 10000
             },
             {
               "action": "screenshot",
@@ -322,6 +672,11 @@
               "url": "/admin/evaluation"
             },
             {
+              "action": "waitForSelector",
+              "selector": "[data-testid='eval-dashboard']",
+              "timeout": 10000
+            },
+            {
               "action": "screenshot",
               "label": "eval-dashboard"
             }
@@ -330,6 +685,99 @@
             {
               "type": "visible",
               "selector": "[data-testid='eval-dashboard']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin \u2014 LLM Config",
+      "route": "/admin/llm-config",
+      "scenarios": [
+        {
+          "id": "admin-llm-001",
+          "name": "LLM config page loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/llm-config"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "h1, h2, form",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "llm-config-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "h1, h2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin \u2014 Docs Viewer",
+      "route": "/admin/docs",
+      "scenarios": [
+        {
+          "id": "admin-docs-001",
+          "name": "Docs viewer page loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/docs"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "h1, h2, .docs-container",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "docs-viewer-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "h1, h2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin \u2014 Test Scenarios",
+      "route": "/admin/test-scenarios",
+      "scenarios": [
+        {
+          "id": "admin-test-001",
+          "name": "Test scenarios page loads",
+          "steps": [
+            {
+              "action": "navigate",
+              "url": "/admin/test-scenarios"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "h1, h2",
+              "timeout": 10000
+            },
+            {
+              "action": "screenshot",
+              "label": "test-scenarios-page"
+            }
+          ],
+          "assertions": [
+            {
+              "type": "visible",
+              "selector": "h1, h2"
             }
           ]
         }
