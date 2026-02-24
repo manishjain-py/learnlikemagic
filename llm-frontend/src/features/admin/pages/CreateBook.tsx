@@ -90,7 +90,7 @@ const CreateBook: React.FC = () => {
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} data-testid="create-book-form">
         <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
           {/* Title */}
           <div style={{ marginBottom: '20px' }}>

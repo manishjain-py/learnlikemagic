@@ -456,11 +456,12 @@ function App() {
               {loading ? (
                 <p>Loading subjects...</p>
               ) : (
-                <div className="selection-grid">
+                <div className="selection-grid" data-testid="subject-list">
                   {subjects.map((subject) => (
                     <button
                       key={subject}
                       className="selection-card"
+                      data-testid="subject-item"
                       onClick={() => handleSubjectSelect(subject)}
                     >
                       {subject}
@@ -480,11 +481,12 @@ function App() {
               {loading ? (
                 <p>Loading topics...</p>
               ) : (
-                <div className="selection-grid">
+                <div className="selection-grid" data-testid="topic-list">
                   {topics.map((topic) => (
                     <button
                       key={topic}
                       className="selection-card"
+                      data-testid="topic-item"
                       onClick={() => handleTopicSelect(topic)}
                     >
                       {topic}
@@ -506,11 +508,12 @@ function App() {
               {loading ? (
                 <p>Loading subtopics...</p>
               ) : (
-                <div className="selection-grid">
+                <div className="selection-grid" data-testid="subtopic-list">
                   {subtopics.map((subtopic) => (
                     <button
                       key={subtopic.guideline_id}
                       className="selection-card"
+                      data-testid="subtopic-item"
                       onClick={() => handleSubtopicSelect(subtopic)}
                     >
                       {subtopic.subtopic}
@@ -628,10 +631,10 @@ function App() {
         )}
       </div>
 
-      <div className="chat-container">
+      <div className="chat-container" data-testid="chat-container">
         <div className="messages">
           {messages.map((msg, idx) => (
-            <div key={idx} className={`message ${msg.role}`}>
+            <div key={idx} className={`message ${msg.role}`} {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message' } : {})}>
               <div className="message-content">
                 <ReactMarkdown>{msg.content}</ReactMarkdown>
               </div>
@@ -693,6 +696,7 @@ function App() {
               placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
               disabled={loading || isTranscribing}
               className={`input-field${isRecording ? ' recording' : ''}`}
+              data-testid="chat-input"
             />
             <button
               type="button"
@@ -716,7 +720,7 @@ function App() {
                 </svg>
               )}
             </button>
-            <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button">
+            <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button">
               Send
             </button>
           </form>

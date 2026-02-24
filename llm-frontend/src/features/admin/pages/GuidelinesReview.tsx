@@ -406,7 +406,7 @@ const GuidelinesReviewPage: React.FC = () => {
   const pendingCount = guidelines.filter(g => g.review_status === 'TO_BE_REVIEWED').length;
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }} data-testid="guidelines-page">
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>

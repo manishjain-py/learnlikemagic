@@ -20,6 +20,11 @@
               "url": "/"
             },
             {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subject-list']",
+              "timeout": 15000
+            },
+            {
               "action": "screenshot",
               "label": "landing-page"
             }
@@ -47,6 +52,11 @@
             {
               "action": "click",
               "selector": "[data-testid='subject-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='topic-list']",
+              "timeout": 15000
             },
             {
               "action": "screenshot",
@@ -85,6 +95,11 @@
             {
               "action": "click",
               "selector": "[data-testid='topic-item']:first-child"
+            },
+            {
+              "action": "waitForSelector",
+              "selector": "[data-testid='subtopic-list']",
+              "timeout": 15000
             },
             {
               "action": "screenshot",

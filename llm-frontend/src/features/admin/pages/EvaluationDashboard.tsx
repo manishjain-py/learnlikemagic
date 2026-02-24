@@ -1109,7 +1109,7 @@ const EvaluationDashboard: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }} data-testid="eval-dashboard">
       {/* Animations + markdown message styles */}
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
