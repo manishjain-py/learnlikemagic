@@ -152,7 +152,12 @@ export async function createSession(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create session: ${response.statusText}`);
+    let message = response.statusText;
+    try {
+      const body = await response.json();
+      message = body?.detail?.message || body?.detail || message;
+    } catch { /* use statusText */ }
+    throw new Error(message);
   }
 
   return response.json();
@@ -323,6 +328,12 @@ export async function resumeSession(sessionId: string): Promise<{ session_id: st
 export async function endExamEarly(sessionId: string): Promise<ExamSummary> {
   const response = await apiFetch(`/sessions/${sessionId}/end-exam`, { method: 'POST' });
   if (!response.ok) throw new Error(`Failed to end exam: ${response.statusText}`);
+  return response.json();
+}
+
+export async function getSessionReplay(sessionId: string): Promise<any> {
+  const response = await apiFetch(`/sessions/${sessionId}/replay`);
+  if (!response.ok) throw new Error(`Failed to fetch session replay: ${response.statusText}`);
   return response.json();
 }
 

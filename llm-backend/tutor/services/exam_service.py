@@ -4,16 +4,23 @@ import json
 import logging
 from typing import Optional
 
+from fastapi import HTTPException, status
 from shared.services.llm_service import LLMService
+from shared.utils.exceptions import LearnLikeMagicException
 from tutor.models.session_state import SessionState, ExamQuestion
 from tutor.prompts.exam_prompts import EXAM_QUESTION_GENERATION_PROMPT
 
 logger = logging.getLogger("tutor.exam_service")
 
 
-class ExamGenerationError(Exception):
+class ExamGenerationError(LearnLikeMagicException):
     """Raised when exam question generation fails."""
-    pass
+
+    def to_http_exception(self) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"message": "Exam generation is temporarily unavailable. Please try again.", "type": "ExamGenerationError"},
+        )
 
 
 class ExamService:
@@ -29,6 +36,8 @@ class ExamService:
             raise ExamGenerationError("No topic set for exam generation")
 
         concepts = session.topic.study_plan.get_concepts()
+        if not concepts:
+            raise ExamGenerationError("No concepts found in study plan")
         prompt = EXAM_QUESTION_GENERATION_PROMPT.render(
             grade=session.student_context.grade,
             topic_name=session.topic.topic_name,
@@ -55,10 +64,12 @@ class ExamService:
                             "question_type": {"type": "string", "enum": ["conceptual", "procedural", "application"]},
                         },
                         "required": ["question_text", "expected_answer", "concept", "difficulty", "question_type"],
+                        "additionalProperties": False,
                     },
                 },
             },
             "required": ["questions"],
+            "additionalProperties": False,
         }
 
         try:
@@ -110,10 +121,34 @@ class ExamService:
             f"Generate exactly {count} questions",
         )
 
+        schema = {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question_text": {"type": "string"},
+                            "expected_answer": {"type": "string"},
+                            "concept": {"type": "string"},
+                            "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                            "question_type": {"type": "string", "enum": ["conceptual", "procedural", "application"]},
+                        },
+                        "required": ["question_text", "expected_answer", "concept", "difficulty", "question_type"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["questions"],
+            "additionalProperties": False,
+        }
+
         result = self.llm.call(
             prompt=prompt,
             reasoning_effort="low",
-            json_mode=True,
+            json_schema=schema,
+            schema_name="ExamQuestions",
         )
 
         output_text = result.get("output_text", "{}")

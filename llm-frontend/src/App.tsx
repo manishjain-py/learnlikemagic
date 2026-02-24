@@ -5,7 +5,12 @@
  * /login - Welcome/auth screen
  * /login/* - Auth flow pages
  * /onboarding - Post-signup profile wizard
- * / - Tutor interface (protected)
+ * /learn - Subject selection (protected)
+ * /learn/:subject - Topic selection
+ * /learn/:subject/:topic - Subtopic selection
+ * /learn/:subject/:topic/:subtopic - Mode selection
+ * /session/:sessionId - Chat session (protected)
+ * / - Redirect to /learn
  * /profile - User profile settings (protected)
  * /history - Session history (protected)
  * /admin/* - Admin dashboard
@@ -16,7 +21,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import OnboardingGuard from './components/OnboardingGuard';
-import TutorApp from './TutorApp';
 
 // Auth pages
 import LoginPage from './pages/LoginPage';
@@ -33,6 +37,14 @@ import OnboardingFlow from './pages/OnboardingFlow';
 import ProfilePage from './pages/ProfilePage';
 import SessionHistoryPage from './pages/SessionHistoryPage';
 import ScorecardPage from './pages/ScorecardPage';
+
+// Learn pages
+import LearnLayout from './pages/LearnLayout';
+import SubjectSelect from './pages/SubjectSelect';
+import TopicSelect from './pages/TopicSelect';
+import SubtopicSelect from './pages/SubtopicSelect';
+import ModeSelectPage from './pages/ModeSelectPage';
+import ChatSession from './pages/ChatSession';
 
 // Admin pages
 import BooksDashboard from './features/admin/pages/BooksDashboard';
@@ -66,14 +78,31 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Protected routes */}
-          <Route path="/" element={
+          {/* Learn routes (protected, nested under LearnLayout) */}
+          <Route path="/learn" element={
             <ProtectedRoute>
               <OnboardingGuard>
-                <TutorApp />
+                <LearnLayout />
+              </OnboardingGuard>
+            </ProtectedRoute>
+          }>
+            <Route index element={<SubjectSelect />} />
+            <Route path=":subject" element={<TopicSelect />} />
+            <Route path=":subject/:topic" element={<SubtopicSelect />} />
+            <Route path=":subject/:topic/:subtopic" element={<ModeSelectPage />} />
+          </Route>
+
+          {/* Chat session (protected, standalone layout) */}
+          <Route path="/session/:sessionId" element={
+            <ProtectedRoute>
+              <OnboardingGuard>
+                <ChatSession />
               </OnboardingGuard>
             </ProtectedRoute>
           } />
+
+          {/* Backward compat: redirect / to /learn */}
+          <Route path="/" element={<Navigate to="/learn" replace />} />
 
           <Route path="/profile" element={
             <ProtectedRoute>

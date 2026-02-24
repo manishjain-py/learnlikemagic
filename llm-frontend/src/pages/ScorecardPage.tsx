@@ -508,9 +508,9 @@ export default function ScorecardPage() {
           guideline_id: subtopic.guideline_id,
         },
       });
-      // Navigate to tutor with the new session — pass firstTurn so TutorApp
-      // can skip topic selection and load directly into chat mode.
-      navigate('/', { state: { sessionId: response.session_id, firstTurn: response.first_turn } });
+      navigate(`/session/${response.session_id}`, {
+        state: { firstTurn: response.first_turn, mode: 'teach_me', subject },
+      });
     } catch (err) {
       console.error('Failed to start session:', err);
     } finally {
@@ -523,7 +523,7 @@ export default function ScorecardPage() {
     return (
       <div className="auth-page">
         <div className="auth-container scorecard-page">
-          <button className="auth-back-btn" onClick={() => navigate('/')}>
+          <button className="auth-back-btn" onClick={() => navigate('/learn')}>
             &larr; Back
           </button>
           <h2 className="auth-title">My Scorecard</h2>
@@ -538,7 +538,7 @@ export default function ScorecardPage() {
     return (
       <div className="auth-page">
         <div className="auth-container scorecard-page">
-          <button className="auth-back-btn" onClick={() => navigate('/')}>
+          <button className="auth-back-btn" onClick={() => navigate('/learn')}>
             &larr; Back
           </button>
           <h2 className="auth-title">My Scorecard</h2>
@@ -556,7 +556,7 @@ export default function ScorecardPage() {
     return (
       <div className="auth-page">
         <div className="auth-container scorecard-page">
-          <button className="auth-back-btn" onClick={() => navigate('/')}>
+          <button className="auth-back-btn" onClick={() => navigate('/learn')}>
             &larr; Back
           </button>
           <h2 className="auth-title">My Scorecard</h2>
@@ -570,7 +570,7 @@ export default function ScorecardPage() {
             </p>
             <button
               className="auth-btn auth-btn-primary"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/learn')}
             >
               Start Learning
             </button>
@@ -600,7 +600,7 @@ export default function ScorecardPage() {
   return (
     <div className="auth-page">
       <div className="auth-container scorecard-page">
-        <button className="auth-back-btn" onClick={() => navigate('/')}>
+        <button className="auth-back-btn" onClick={() => navigate('/learn')}>
           &larr; Back
         </button>
         <h2 className="auth-title">My Scorecard</h2>
