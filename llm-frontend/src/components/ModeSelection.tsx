@@ -48,20 +48,20 @@ function ModeSelection({ subtopic, onSelectMode, onResume, onBack }: ModeSelecti
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <div className="selection-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <button className="selection-card" onClick={() => onSelectMode('teach_me')}>
+        <div className="selection-grid" data-testid="mode-selection" style={{ gridTemplateColumns: '1fr' }}>
+          <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
             <strong>Teach Me</strong>
             <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
               Learn this topic from scratch
             </span>
           </button>
-          <button className="selection-card" onClick={() => onSelectMode('clarify_doubts')}>
+          <button className="selection-card" data-testid="mode-clarify-doubts" onClick={() => onSelectMode('clarify_doubts')}>
             <strong>Clarify Doubts</strong>
             <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
               I have questions about this topic
             </span>
           </button>
-          <button className="selection-card" onClick={() => onSelectMode('exam')}>
+          <button className="selection-card" data-testid="mode-exam" onClick={() => onSelectMode('exam')}>
             <strong>Exam</strong>
             <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
               Test my knowledge

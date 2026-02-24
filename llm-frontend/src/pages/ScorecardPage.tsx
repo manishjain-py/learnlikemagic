@@ -159,6 +159,7 @@ function SubjectCards({
           <button
             key={subject.subject}
             className="scorecard-subject-card"
+            data-testid="scorecard-subject-card"
             onClick={() => onSelect(subject)}
           >
             <div className="scorecard-subject-card-header">

@@ -1,10 +1,10 @@
 {
   "meta": {
     "lastUpdated": "2026-02-24",
-    "lastUpdatedAt": "2026-02-24 09:54:10 IST",
+    "lastUpdatedAt": "2026-02-24 12:11:54 IST",
     "generatedBy": "e2e-updater",
     "branch": "main",
-    "commit": "f414241"
+    "commit": "5671ddf"
   },
   "suites": [
     {
@@ -15,25 +15,12 @@
           "id": "auth-login-001",
           "name": "Login page loads with three auth method buttons",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/login"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": ".auth-container",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "login-page"
-            }
+            { "action": "navigate", "url": "/login" },
+            { "action": "waitForSelector", "selector": ".auth-container", "timeout": 10000 },
+            { "action": "screenshot", "label": "login-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "button"
-            }
+            { "type": "visible", "selector": "button" }
           ]
         }
       ]
@@ -46,25 +33,12 @@
           "id": "auth-email-login-001",
           "name": "Email login form loads with email and password fields",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/login/email"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "input[type='email'], input[type='text']",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "email-login-form"
-            }
+            { "action": "navigate", "url": "/login/email" },
+            { "action": "waitForSelector", "selector": "input[type='email'], input[type='text']", "timeout": 10000 },
+            { "action": "screenshot", "label": "email-login-form" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "input[type='password']"
-            }
+            { "type": "visible", "selector": "input[type='password']" }
           ]
         }
       ]
@@ -77,25 +51,12 @@
           "id": "auth-phone-001",
           "name": "Phone login form loads with country code and phone input",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/login/phone"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "input",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "phone-login-form"
-            }
+            { "action": "navigate", "url": "/login/phone" },
+            { "action": "waitForSelector", "selector": "input", "timeout": 10000 },
+            { "action": "screenshot", "label": "phone-login-form" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "input"
-            }
+            { "type": "visible", "selector": "input" }
           ]
         }
       ]
@@ -108,25 +69,12 @@
           "id": "auth-signup-001",
           "name": "Email signup form loads with email and password fields",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/signup/email"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "input[type='password']",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "email-signup-form"
-            }
+            { "action": "navigate", "url": "/signup/email" },
+            { "action": "waitForSelector", "selector": "input[type='password']", "timeout": 10000 },
+            { "action": "screenshot", "label": "email-signup-form" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "input[type='password']"
-            }
+            { "type": "visible", "selector": "input[type='password']" }
           ]
         }
       ]
@@ -139,25 +87,12 @@
           "id": "auth-verify-001",
           "name": "Email verification page loads with code input",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/signup/email/verify"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "input",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "email-verify-page"
-            }
+            { "action": "navigate", "url": "/signup/email/verify" },
+            { "action": "waitForSelector", "selector": "input", "timeout": 10000 },
+            { "action": "screenshot", "label": "email-verify-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "input"
-            }
+            { "type": "visible", "selector": "input" }
           ]
         }
       ]
@@ -170,25 +105,12 @@
           "id": "auth-forgot-001",
           "name": "Forgot password page loads with email input",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/forgot-password"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "input",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "forgot-password-page"
-            }
+            { "action": "navigate", "url": "/forgot-password" },
+            { "action": "waitForSelector", "selector": "input", "timeout": 10000 },
+            { "action": "screenshot", "label": "forgot-password-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "input"
-            }
+            { "type": "visible", "selector": "input" }
           ]
         }
       ]
@@ -201,25 +123,12 @@
           "id": "onboarding-001",
           "name": "Onboarding wizard loads with first step",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/onboarding"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "input",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "onboarding-wizard"
-            }
+            { "action": "navigate", "url": "/onboarding" },
+            { "action": "waitForSelector", "selector": "input", "timeout": 10000 },
+            { "action": "screenshot", "label": "onboarding-wizard" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "input"
-            }
+            { "type": "visible", "selector": "input" }
           ]
         }
       ]
@@ -232,25 +141,12 @@
           "id": "profile-001",
           "name": "Profile page loads with user info and logout button",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/profile"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "button",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "profile-page"
-            }
+            { "action": "navigate", "url": "/profile" },
+            { "action": "waitForSelector", "selector": "button", "timeout": 10000 },
+            { "action": "screenshot", "label": "profile-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "button"
-            }
+            { "type": "visible", "selector": "button" }
           ]
         }
       ]
@@ -263,224 +159,146 @@
           "id": "tutor-001",
           "name": "Landing page loads with subject selection",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subject-list']",
-              "timeout": 15000
-            },
-            {
-              "action": "screenshot",
-              "label": "landing-page"
-            }
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-list']", "timeout": 15000 },
+            { "action": "screenshot", "label": "landing-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='subject-list']"
-            }
+            { "type": "visible", "selector": "[data-testid='subject-list']" }
           ]
         },
         {
           "id": "tutor-002",
-          "name": "Subject \u2192 topic list",
+          "name": "Subject → topic list",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subject-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='subject-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='topic-list']",
-              "timeout": 15000
-            },
-            {
-              "action": "screenshot",
-              "label": "topic-selection"
-            }
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-list']", "timeout": 15000 },
+            { "action": "screenshot", "label": "topic-selection" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='topic-list']"
-            }
+            { "type": "visible", "selector": "[data-testid='topic-list']" }
           ]
         },
         {
           "id": "tutor-003",
-          "name": "Topic \u2192 subtopic list",
+          "name": "Topic → subtopic list",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subject-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='subject-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='topic-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='topic-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subtopic-list']",
-              "timeout": 15000
-            },
-            {
-              "action": "screenshot",
-              "label": "subtopic-selection"
-            }
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='subtopic-list']", "timeout": 15000 },
+            { "action": "screenshot", "label": "subtopic-selection" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='subtopic-list']"
-            }
+            { "type": "visible", "selector": "[data-testid='subtopic-list']" }
+          ]
+        },
+        {
+          "id": "tutor-mode-001",
+          "name": "Subtopic → mode selection with Teach Me, Clarify Doubts, Exam",
+          "steps": [
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='mode-selection']", "timeout": 15000 },
+            { "action": "screenshot", "label": "mode-selection" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "[data-testid='mode-teach-me']" },
+            { "type": "visible", "selector": "[data-testid='mode-clarify-doubts']" },
+            { "type": "visible", "selector": "[data-testid='mode-exam']" }
           ]
         },
         {
           "id": "tutor-004",
-          "name": "Start tutor chat session",
+          "name": "Start tutor chat session via Teach Me mode",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subject-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='subject-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='topic-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='topic-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subtopic-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='subtopic-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='chat-container']",
-              "timeout": 30000
-            },
-            {
-              "action": "screenshot",
-              "label": "chat-session-started"
-            }
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='mode-teach-me']" },
+            { "action": "waitForSelector", "selector": "[data-testid='chat-container']", "timeout": 30000 },
+            { "action": "screenshot", "label": "chat-session-started" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='chat-input']"
-            },
-            {
-              "type": "visible",
-              "selector": "[data-testid='send-button']"
-            }
+            { "type": "visible", "selector": "[data-testid='chat-input']" },
+            { "type": "visible", "selector": "[data-testid='send-button']" }
           ]
         },
         {
           "id": "tutor-005",
           "name": "Send message and receive tutor response",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subject-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='subject-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='topic-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='topic-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='subtopic-item']",
-              "timeout": 15000
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='subtopic-item']:first-child"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='chat-input']",
-              "timeout": 30000
-            },
-            {
-              "action": "type",
-              "selector": "[data-testid='chat-input']",
-              "value": "I think the answer is 5"
-            },
-            {
-              "action": "click",
-              "selector": "[data-testid='send-button']"
-            },
-            {
-              "action": "waitForResponse",
-              "timeout": 30000
-            },
-            {
-              "action": "screenshot",
-              "label": "tutor-response-received"
-            }
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='mode-teach-me']" },
+            { "action": "waitForSelector", "selector": "[data-testid='chat-input']", "timeout": 30000 },
+            { "action": "type", "selector": "[data-testid='chat-input']", "value": "I think the answer is 5" },
+            { "action": "click", "selector": "[data-testid='send-button']" },
+            { "action": "waitForResponse", "timeout": 30000 },
+            { "action": "screenshot", "label": "tutor-response-received" }
           ],
           "assertions": [
-            {
-              "type": "countAtLeast",
-              "selector": "[data-testid='teacher-message']",
-              "count": 2
-            }
+            { "type": "countAtLeast", "selector": "[data-testid='teacher-message']", "count": 2 }
+          ]
+        },
+        {
+          "id": "tutor-voice-001",
+          "name": "Mic button is present in chat session for voice input",
+          "steps": [
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='mode-teach-me']" },
+            { "action": "waitForSelector", "selector": "[data-testid='mic-button']", "timeout": 30000 },
+            { "action": "screenshot", "label": "voice-input-mic-button" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "[data-testid='mic-button']" }
+          ]
+        },
+        {
+          "id": "tutor-pause-001",
+          "name": "Pause button is visible during Teach Me session",
+          "steps": [
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='mode-teach-me']" },
+            { "action": "waitForSelector", "selector": "[data-testid='pause-button']", "timeout": 30000 },
+            { "action": "screenshot", "label": "pause-button-visible" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "[data-testid='pause-button']" }
           ]
         }
       ]
@@ -493,25 +311,26 @@
           "id": "scorecard-001",
           "name": "Scorecard overview page loads with mastery ring",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/scorecard"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": ".scorecard-container, .empty-state, h1, h2",
-              "timeout": 15000
-            },
-            {
-              "action": "screenshot",
-              "label": "scorecard-overview"
-            }
+            { "action": "navigate", "url": "/scorecard" },
+            { "action": "waitForSelector", "selector": ".scorecard-page, .empty-state, h2", "timeout": 15000 },
+            { "action": "screenshot", "label": "scorecard-overview" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "button"
-            }
+            { "type": "visible", "selector": "button" }
+          ]
+        },
+        {
+          "id": "scorecard-detail-001",
+          "name": "Click subject card to see topic/subtopic detail",
+          "steps": [
+            { "action": "navigate", "url": "/scorecard" },
+            { "action": "waitForSelector", "selector": "[data-testid='scorecard-subject-card']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='scorecard-subject-card']:first-child" },
+            { "action": "waitForSelector", "selector": ".scorecard-topic-section", "timeout": 10000 },
+            { "action": "screenshot", "label": "scorecard-subject-detail" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": ".scorecard-topic-section" }
           ]
         }
       ]
@@ -524,261 +343,144 @@
           "id": "history-001",
           "name": "Session history page loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/history"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "button, .session-list, .empty-state, h1, h2",
-              "timeout": 15000
-            },
-            {
-              "action": "screenshot",
-              "label": "session-history"
-            }
+            { "action": "navigate", "url": "/history" },
+            { "action": "waitForSelector", "selector": "button, .session-list, .empty-state, h1, h2", "timeout": 15000 },
+            { "action": "screenshot", "label": "session-history" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "button"
-            }
+            { "type": "visible", "selector": "button" }
           ]
         }
       ]
     },
     {
-      "name": "Admin \u2014 Books Dashboard",
+      "name": "Admin — Books Dashboard",
       "route": "/admin/books",
       "scenarios": [
         {
           "id": "admin-books-001",
           "name": "Books dashboard loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/books"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "h1",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "books-dashboard"
-            }
+            { "action": "navigate", "url": "/admin/books" },
+            { "action": "waitForSelector", "selector": "h1", "timeout": 10000 },
+            { "action": "screenshot", "label": "books-dashboard" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "h1"
-            }
+            { "type": "visible", "selector": "h1" }
           ]
         },
         {
           "id": "admin-books-002",
           "name": "Create book form loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/books/new"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='create-book-form']",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "create-book-form"
-            }
+            { "action": "navigate", "url": "/admin/books/new" },
+            { "action": "waitForSelector", "selector": "[data-testid='create-book-form']", "timeout": 10000 },
+            { "action": "screenshot", "label": "create-book-form" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='create-book-form']"
-            }
+            { "type": "visible", "selector": "[data-testid='create-book-form']" }
           ]
         },
         {
           "id": "admin-books-detail-001",
           "name": "Book detail page loads for first book",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/books"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "h1",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "books-detail-from-dashboard"
-            }
+            { "action": "navigate", "url": "/admin/books" },
+            { "action": "waitForSelector", "selector": "h1", "timeout": 10000 },
+            { "action": "screenshot", "label": "books-detail-from-dashboard" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "h1"
-            }
+            { "type": "visible", "selector": "h1" }
           ]
         }
       ]
     },
     {
-      "name": "Admin \u2014 Guidelines Review",
+      "name": "Admin — Guidelines Review",
       "route": "/admin/guidelines",
       "scenarios": [
         {
           "id": "admin-guidelines-001",
           "name": "Guidelines page loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/guidelines"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='guidelines-page']",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "guidelines-page"
-            }
+            { "action": "navigate", "url": "/admin/guidelines" },
+            { "action": "waitForSelector", "selector": "[data-testid='guidelines-page']", "timeout": 10000 },
+            { "action": "screenshot", "label": "guidelines-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='guidelines-page']"
-            }
+            { "type": "visible", "selector": "[data-testid='guidelines-page']" }
           ]
         }
       ]
     },
     {
-      "name": "Admin \u2014 Evaluation Dashboard",
+      "name": "Admin — Evaluation Dashboard",
       "route": "/admin/evaluation",
       "scenarios": [
         {
           "id": "admin-eval-001",
           "name": "Evaluation dashboard loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/evaluation"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "[data-testid='eval-dashboard']",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "eval-dashboard"
-            }
+            { "action": "navigate", "url": "/admin/evaluation" },
+            { "action": "waitForSelector", "selector": "[data-testid='eval-dashboard']", "timeout": 10000 },
+            { "action": "screenshot", "label": "eval-dashboard" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "[data-testid='eval-dashboard']"
-            }
+            { "type": "visible", "selector": "[data-testid='eval-dashboard']" }
           ]
         }
       ]
     },
     {
-      "name": "Admin \u2014 LLM Config",
+      "name": "Admin — LLM Config",
       "route": "/admin/llm-config",
       "scenarios": [
         {
           "id": "admin-llm-001",
           "name": "LLM config page loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/llm-config"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "h1, h2, form",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "llm-config-page"
-            }
+            { "action": "navigate", "url": "/admin/llm-config" },
+            { "action": "waitForSelector", "selector": "h1, h2, form", "timeout": 10000 },
+            { "action": "screenshot", "label": "llm-config-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "h1, h2"
-            }
+            { "type": "visible", "selector": "h1, h2" }
           ]
         }
       ]
     },
     {
-      "name": "Admin \u2014 Docs Viewer",
+      "name": "Admin — Docs Viewer",
       "route": "/admin/docs",
       "scenarios": [
         {
           "id": "admin-docs-001",
           "name": "Docs viewer page loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/docs"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "h1, h2, .docs-container",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "docs-viewer-page"
-            }
+            { "action": "navigate", "url": "/admin/docs" },
+            { "action": "waitForSelector", "selector": "h1, h2, .docs-container", "timeout": 10000 },
+            { "action": "screenshot", "label": "docs-viewer-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "h1, h2"
-            }
+            { "type": "visible", "selector": "h1, h2" }
           ]
         }
       ]
     },
     {
-      "name": "Admin \u2014 Test Scenarios",
+      "name": "Admin — Test Scenarios",
       "route": "/admin/test-scenarios",
       "scenarios": [
         {
           "id": "admin-test-001",
           "name": "Test scenarios page loads",
           "steps": [
-            {
-              "action": "navigate",
-              "url": "/admin/test-scenarios"
-            },
-            {
-              "action": "waitForSelector",
-              "selector": "h1, h2",
-              "timeout": 10000
-            },
-            {
-              "action": "screenshot",
-              "label": "test-scenarios-page"
-            }
+            { "action": "navigate", "url": "/admin/test-scenarios" },
+            { "action": "waitForSelector", "selector": "h1, h2", "timeout": 10000 },
+            { "action": "screenshot", "label": "test-scenarios-page" }
           ],
           "assertions": [
-            {
-              "type": "visible",
-              "selector": "h1, h2"
-            }
+            { "type": "visible", "selector": "h1, h2" }
           ]
         }
       ]

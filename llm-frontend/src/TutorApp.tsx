@@ -673,7 +673,7 @@ function App() {
           <>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
               {sessionMode === 'teach_me' && !isComplete && (
-                <button onClick={handlePause} className="back-button" style={{ fontSize: '0.8rem' }}>
+                <button onClick={handlePause} className="back-button" data-testid="pause-button" style={{ fontSize: '0.8rem' }}>
                   Pause Session
                 </button>
               )}
@@ -703,6 +703,7 @@ function App() {
               onClick={toggleRecording}
               disabled={loading || isTranscribing}
               className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+              data-testid="mic-button"
               title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
               aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
             >
@@ -726,7 +727,7 @@ function App() {
           </form>
           </>
         ) : (
-          <div className="summary-card">
+          <div className="summary-card" data-testid="session-summary">
             <h2>Session Complete!</h2>
             {summary && (
               <div className="summary-content">
