@@ -8,7 +8,7 @@
  * - Approve/reject guidelines
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   generateGuidelines,
   getGuidelines,
@@ -169,6 +169,7 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   onProcessedPagesChange,
 }) => {
   const [guidelines, setGuidelines] = useState<GuidelineSubtopic[]>([]);
+  const [processedPages, setProcessedPages] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -182,22 +183,8 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     message: string;
   } | null>(null);
 
-  // Compute which pages are already covered by existing guidelines
-  const processedPages = useMemo(() => {
-    const pages = new Set<number>();
-    guidelines.forEach((g) => {
-      for (let p = g.source_page_start; p <= g.source_page_end; p++) {
-        pages.add(p);
-      }
-    });
-    return pages;
-  }, [guidelines]);
-
-  const maxProcessedPage = useMemo(
-    () => (processedPages.size > 0 ? Math.max(...processedPages) : 0),
-    [processedPages]
-  );
-
+  // Derive new-pages range from API-provided processedPages
+  const maxProcessedPage = processedPages.size > 0 ? Math.max(...processedPages) : 0;
   const newPagesStart = maxProcessedPage + 1;
   const newPagesEnd = totalPages;
   const hasNewPages = guidelines.length > 0 && newPagesStart <= totalPages;
@@ -220,9 +207,11 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     try {
       const response = await getGuidelines(bookId);
       setGuidelines(response.guidelines);
+      setProcessedPages(new Set(response.processed_pages));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load guidelines');
       setGuidelines([]);
+      setProcessedPages(new Set());
     } finally {
       setLoading(false);
     }
@@ -302,6 +291,7 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     try {
       await rejectGuidelines(bookId);
       setGuidelines([]);
+      setProcessedPages(new Set());
       setSelectedSubtopic(null);
       setGenerationStats(null);
       setFinalizeStats(null);
