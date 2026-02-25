@@ -376,6 +376,7 @@ class GuidelinesListResponse(BaseModel):
     book_id: str
     total_subtopics: int
     guidelines: List[GuidelineSubtopicResponse]
+    processed_pages: List[int] = []  # Pages that have been processed (from page_index.json)
 
 
 @router.post("/books/{book_id}/generate-guidelines", response_model=GenerateGuidelinesResponse)
@@ -606,6 +607,14 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
 
         index_mgr = IndexManagementService(s3_client)
 
+        # Load page index (tracks which pages have been processed)
+        processed_pages: List[int] = []
+        try:
+            page_index = index_mgr.load_page_index(book_id)
+            processed_pages = sorted(page_index.pages.keys())
+        except FileNotFoundError:
+            pass  # No pages processed yet
+
         try:
             index = index_mgr.load_index(book_id)
         except FileNotFoundError:
@@ -613,7 +622,8 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
             return GuidelinesListResponse(
                 book_id=book_id,
                 total_subtopics=0,
-                guidelines=[]
+                guidelines=[],
+                processed_pages=processed_pages
             )
 
         # Load all shards (V2 only)
@@ -657,7 +667,8 @@ def get_guidelines(book_id: str, db: Session = Depends(get_db)):
         return GuidelinesListResponse(
             book_id=book_id,
             total_subtopics=len(guidelines),
-            guidelines=guidelines
+            guidelines=guidelines,
+            processed_pages=processed_pages
         )
 
     except HTTPException:

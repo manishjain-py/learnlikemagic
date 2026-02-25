@@ -103,6 +103,7 @@ export interface GuidelinesListResponse {
   book_id: string;
   total_subtopics: number;
   guidelines: GuidelineSubtopic[];
+  processed_pages: number[];  // Pages processed for guidelines (from page_index.json)
 }
 
 export interface GenerateGuidelinesRequest {
