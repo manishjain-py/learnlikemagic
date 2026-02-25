@@ -2,7 +2,7 @@
  * Book Detail Page - Main page for managing a specific book
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getBook, deletePage, deleteBook } from '../api/adminApi';
 import { BookDetail as BookDetailType } from '../types';
@@ -23,6 +23,11 @@ const BookDetail: React.FC = () => {
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
   const [showUploadAfterReplace, setShowUploadAfterReplace] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [processedPages, setProcessedPages] = useState<Set<number>>(new Set());
+
+  const handleProcessedPagesChange = useCallback((pages: Set<number>) => {
+    setProcessedPages(pages);
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -247,6 +252,7 @@ const BookDetail: React.FC = () => {
             pages={book.pages}
             selectedPage={selectedPage}
             onSelectPage={handlePageClick}
+            processedPages={processedPages}
           />
         </div>
       </div>
@@ -255,7 +261,11 @@ const BookDetail: React.FC = () => {
       {/* Show guidelines if pages exist */}
       {book.pages.length > 0 && (
         <div style={{ marginTop: '30px' }}>
-          <GuidelinesPanel bookId={book.id} totalPages={book.pages.length} />
+          <GuidelinesPanel
+            bookId={book.id}
+            totalPages={book.pages.length}
+            onProcessedPagesChange={handleProcessedPagesChange}
+          />
         </div>
       )}
     </div>
