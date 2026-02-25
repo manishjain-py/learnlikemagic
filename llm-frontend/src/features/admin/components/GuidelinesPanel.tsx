@@ -8,7 +8,7 @@
  * - Approve/reject guidelines
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   generateGuidelines,
   getGuidelines,
@@ -25,6 +25,7 @@ import {
 interface GuidelinesPanelProps {
   bookId: string;
   totalPages: number;
+  onProcessedPagesChange?: (processedPages: Set<number>) => void;
 }
 
 // Info tooltip component
@@ -165,6 +166,7 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   bookId,
   totalPages,
+  onProcessedPagesChange,
 }) => {
   const [guidelines, setGuidelines] = useState<GuidelineSubtopic[]>([]);
   const [loading, setLoading] = useState(false);
@@ -179,6 +181,32 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     duplicates_merged: number;
     message: string;
   } | null>(null);
+
+  // Compute which pages are already covered by existing guidelines
+  const processedPages = useMemo(() => {
+    const pages = new Set<number>();
+    guidelines.forEach((g) => {
+      for (let p = g.source_page_start; p <= g.source_page_end; p++) {
+        pages.add(p);
+      }
+    });
+    return pages;
+  }, [guidelines]);
+
+  const maxProcessedPage = useMemo(
+    () => (processedPages.size > 0 ? Math.max(...processedPages) : 0),
+    [processedPages]
+  );
+
+  const newPagesStart = maxProcessedPage + 1;
+  const newPagesEnd = totalPages;
+  const hasNewPages = guidelines.length > 0 && newPagesStart <= totalPages;
+  const newPagesCount = hasNewPages ? newPagesEnd - newPagesStart + 1 : 0;
+
+  // Notify parent of processed pages changes
+  useEffect(() => {
+    onProcessedPagesChange?.(processedPages);
+  }, [processedPages, onProcessedPagesChange]);
 
   // Load guidelines on mount
   useEffect(() => {
@@ -208,6 +236,28 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     const request: GenerateGuidelinesRequest = {
       start_page: 1,
       end_page: totalPages,
+      auto_sync_to_db: false,
+    };
+
+    try {
+      const stats = await generateGuidelines(bookId, request);
+      setGenerationStats(stats);
+      await loadGuidelines();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate guidelines');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleGenerateNewPages = async () => {
+    setGenerating(true);
+    setError(null);
+    setGenerationStats(null);
+
+    const request: GenerateGuidelinesRequest = {
+      start_page: newPagesStart,
+      end_page: newPagesEnd,
       auto_sync_to_db: false,
     };
 
@@ -375,6 +425,17 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
             </ActionButton>
           ) : (
             <>
+              {hasNewPages && (
+                <ActionButton
+                  onClick={handleGenerateNewPages}
+                  disabled={generating || loading}
+                  variant="primary"
+                  tooltip={`Incrementally generates guidelines for pages ${newPagesStart}-${newPagesEnd} only. Existing guidelines from pages 1-${maxProcessedPage} are preserved and used as context for accurate topic continuity detection.`}
+                >
+                  {generating ? 'Generating...' : `Generate for New Pages (${newPagesStart}-${newPagesEnd})`}
+                </ActionButton>
+              )}
+
               <ActionButton
                 onClick={handleFinalizeGuidelines}
                 disabled={finalizing || loading}
@@ -406,14 +467,40 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
                 onClick={handleGenerateGuidelines}
                 disabled={generating || loading}
                 variant="secondary"
-                tooltip="Deletes existing guidelines and runs the extraction pipeline again from scratch. Useful if pages were updated or if you want to try different extraction settings."
+                tooltip="Runs the extraction pipeline again from scratch for ALL pages. Useful if pages were updated or if you want to try different extraction settings."
               >
-                {generating ? 'Regenerating...' : 'Regenerate'}
+                {generating ? 'Regenerating...' : 'Regenerate All'}
               </ActionButton>
             </>
           )}
         </div>
       </div>
+
+      {/* New pages available banner */}
+      {hasNewPages && !generating && (
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '14px 16px',
+            backgroundColor: '#FFF7ED',
+            border: '1px solid #FED7AA',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>📄</span>
+          <div>
+            <span style={{ fontSize: '14px', fontWeight: '500', color: '#9A3412' }}>
+              {newPagesCount} new {newPagesCount === 1 ? 'page' : 'pages'} available
+            </span>
+            <span style={{ fontSize: '14px', color: '#C2410C' }}>
+              {' '}— Pages {newPagesStart}-{newPagesEnd} have not been processed for guidelines yet.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Error display */}
       {error && (
