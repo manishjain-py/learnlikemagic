@@ -116,7 +116,8 @@ class MinisummaryService:
 
             response = self.client.chat.completions.create(**call_kwargs)
 
-            summary = response.choices[0].message.content.strip()
+            raw = response.choices[0].message.content
+            summary = raw.strip() if raw else ""
 
             # Validate response
             if not summary:
