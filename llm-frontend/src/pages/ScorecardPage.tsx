@@ -7,7 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  getScorecard,
+  getReportCard,
   createSession,
   ReportCardResponse,
   ReportCardSubject,
@@ -72,7 +72,7 @@ function TopicSection({
               <span className="scorecard-subtopic-name">{st.subtopic}</span>
               <span className="scorecard-subtopic-right">
                 <span className="scorecard-coverage">
-                  {st.coverage.toFixed(0)}% covered
+                  {(st.coverage ?? 0).toFixed(0)}% covered
                 </span>
                 {st.latest_exam_score != null && st.latest_exam_total != null && (
                   <span className="scorecard-exam-score">
@@ -84,7 +84,7 @@ function TopicSection({
             <div className="coverage-bar">
               <div
                 className="coverage-bar-fill"
-                style={{ width: `${st.coverage}%` }}
+                style={{ width: `${Math.min(st.coverage ?? 0, 100)}%` }}
               />
             </div>
             <div className="scorecard-subtopic-detail">
@@ -167,7 +167,7 @@ export default function ScorecardPage() {
     try {
       setLoading(true);
       setError(null);
-      const result = await getScorecard();
+      const result = await getReportCard();
       setData(result);
     } catch (err) {
       console.error('Failed to fetch report card:', err);

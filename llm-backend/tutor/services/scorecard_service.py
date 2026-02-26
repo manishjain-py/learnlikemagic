@@ -65,7 +65,11 @@ class ScorecardService:
                 state = json.loads(session_row.state_json)
             except (json.JSONDecodeError, TypeError):
                 continue
-            topic_data = state.get("topic") or {}
+            if not isinstance(state, dict):
+                continue
+            topic_data = state.get("topic")
+            if not isinstance(topic_data, dict):
+                continue
             topic_id = topic_data.get("topic_id")
             if not topic_id:
                 continue
@@ -85,9 +89,10 @@ class ScorecardService:
             if isinstance(concepts_covered, list):
                 existing["covered_set"].update(concepts_covered)
 
-            # Plan concepts from mastery_estimates keys
+            # Plan concepts from latest session's mastery_estimates keys
             mastery_estimates = state.get("mastery_estimates", {})
-            existing["plan_concepts"].update(mastery_estimates.keys())
+            if isinstance(mastery_estimates, dict) and mastery_estimates:
+                existing["plan_concepts"] = set(mastery_estimates.keys())
 
             existing["session_count"] += 1
             progress[topic_id] = existing
@@ -137,7 +142,11 @@ class ScorecardService:
                 state = json.loads(s.state_json)
             except (json.JSONDecodeError, TypeError):
                 continue
-            topic = state.get("topic") or {}
+            if not isinstance(state, dict):
+                continue
+            topic = state.get("topic")
+            if not isinstance(topic, dict):
+                continue
             topic_id = topic.get("topic_id")
             if topic_id:
                 guideline_ids.add(topic_id)
@@ -184,8 +193,12 @@ class ScorecardService:
                 logger.warning("Skipping session %s: malformed state_json", session_row.id)
                 continue
 
-            topic_data = state.get("topic") or {}
-            if not topic_data:
+            if not isinstance(state, dict):
+                logger.warning("Skipping session %s: state_json is not a dict", session_row.id)
+                continue
+
+            topic_data = state.get("topic")
+            if not isinstance(topic_data, dict) or not topic_data:
                 continue
 
             subject = topic_data.get("subject", session_row.subject or "Unknown")
@@ -228,19 +241,23 @@ class ScorecardService:
                 if isinstance(concepts_covered, list):
                     existing_covered.update(concepts_covered)
 
-                # Plan concepts from mastery_estimates keys
+                # Use latest session's plan concepts (not union) to avoid denominator drift
                 mastery_estimates = state.get("mastery_estimates", {})
-                existing_plan.update(mastery_estimates.keys())
+                if isinstance(mastery_estimates, dict) and mastery_estimates:
+                    existing_plan = set(mastery_estimates.keys())
 
                 existing_last_studied = session_date
 
-            # Track latest exam score
+            # Track latest exam score (with type guards for legacy data)
             if mode == "exam" and state.get("exam_finished", False):
-                exam_score = state.get("exam_total_correct", 0)
-                exam_total = len(state.get("exam_questions", []))
+                raw_score = state.get("exam_total_correct", 0)
+                exam_score = int(raw_score) if isinstance(raw_score, (int, float)) else 0
+                raw_questions = state.get("exam_questions", [])
+                exam_total = len(raw_questions) if isinstance(raw_questions, list) else 0
                 if exam_total > 0:
                     existing_exam_score = exam_score
                     existing_exam_total = exam_total
+                    existing_last_studied = session_date
 
             grouped[subject][topic_key]["topic_name"] = topic_name
             grouped[subject][topic_key]["subtopics"][subtopic_key] = {

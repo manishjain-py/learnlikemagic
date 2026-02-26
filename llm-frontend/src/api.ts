@@ -269,9 +269,9 @@ export interface ExamSummary {
   };
 }
 
-export async function getScorecard(): Promise<ReportCardResponse> {
-  const response = await apiFetch('/sessions/scorecard');
-  if (!response.ok) throw new Error(`Failed to fetch scorecard: ${response.statusText}`);
+export async function getReportCard(): Promise<ReportCardResponse> {
+  const response = await apiFetch('/sessions/report-card');
+  if (!response.ok) throw new Error(`Failed to fetch report card: ${response.statusText}`);
   return response.json();
 }
 
@@ -316,12 +316,6 @@ export async function endExamEarly(sessionId: string): Promise<ExamSummary> {
 export async function getSessionReplay(sessionId: string): Promise<any> {
   const response = await apiFetch(`/sessions/${sessionId}/replay`);
   if (!response.ok) throw new Error(`Failed to fetch session replay: ${response.statusText}`);
-  return response.json();
-}
-
-export async function getReportCard(): Promise<ReportCardResponse> {
-  const response = await apiFetch('/sessions/report-card');
-  if (!response.ok) throw new Error(`Failed to fetch report card: ${response.statusText}`);
   return response.json();
 }
 
