@@ -54,7 +54,7 @@ All subsequent API calls ───────────►  Verify access tok
 
 ### Phone/OTP
 
-1. **Provision**: `POST /auth/phone/provision` → backend creates Cognito user server-side via admin API (needed because client-side signUp can't skip required email/name schema attributes; uses a placeholder email)
+1. **Provision**: `POST /auth/phone/provision` → backend creates Cognito user server-side via admin API (needed because client-side signUp can't skip required email/name schema attributes; uses a placeholder email `phone_{digits}@placeholder.local`). Idempotent — silently skips if user already exists. Also sets a random permanent password to move the user out of `FORCE_CHANGE_PASSWORD` state.
 2. **Initiate auth**: `CognitoUser.initiateAuth()` → Cognito custom auth challenge → sends OTP via SMS
 3. **Verify OTP**: `CognitoUser.sendCustomChallengeAnswer(code)` → authenticated (pending user stored in module-level `pendingCognitoUser` variable)
 4. **Sync**: `POST /auth/sync`
@@ -62,16 +62,17 @@ All subsequent API calls ───────────►  Verify access tok
 ### Google OAuth
 
 1. **Redirect**: Navigate to Cognito hosted UI with `identity_provider=Google` and `scope=openid+email+profile`
-2. **Callback**: `/auth/callback` route renders `OAuthCallbackPage` which receives authorization code
+2. **Callback**: `/auth/callback` route renders `OAuthCallbackPage` which receives authorization code. A 500ms delay is applied before processing to ensure the Cognito SDK has time to settle.
 3. **Exchange**: POST to Cognito `/oauth2/token` endpoint for tokens (using `application/x-www-form-urlencoded` content type)
-4. **Manual session**: Tokens written to localStorage under Cognito SDK key format (`CognitoIdentityServiceProvider.<clientId>.<username>.*`) so `getCurrentUser()` works for session restore
+4. **Manual session**: Tokens written to localStorage under Cognito SDK key format (`CognitoIdentityServiceProvider.<clientId>.<username>.*`) so `getCurrentUser()` works for session restore. The username is extracted from the ID token's `cognito:username` claim (falling back to `sub`).
 5. **Sync**: `POST /auth/sync`
 
 ### Forgot Password
 
-Handled entirely client-side via Cognito SDK (not through AuthContext):
+Handled entirely client-side via Cognito SDK. `ForgotPasswordPage` creates its own `CognitoUserPool` and `CognitoUser` instances directly (not through AuthContext):
 1. `CognitoUser.forgotPassword()` → sends reset code to email
 2. `CognitoUser.confirmPassword(code, newPassword)` → password updated
+3. On success, shows a confirmation screen with a "Go to Login" button (navigates to `/login/email`)
 
 ### Change Password
 
@@ -173,7 +174,7 @@ Global auth state provider. Exposes:
 
 **Methods:** `loginWithEmail`, `signupWithEmail`, `confirmSignUp`, `resendConfirmationCode`, `sendOTP`, `verifyOTP`, `loginWithGoogle`, `completeOAuthLogin`, `logout`, `refreshProfile`
 
-**Internal:** `syncUser(idToken, accessToken)` — calls `POST /auth/sync` with ID token, stores access token in state and `api.ts` module
+**Internal:** `syncUser(idToken, accessToken)` — calls `POST /auth/sync` with ID token, stores access token in state and `api.ts` module via `setAccessToken()`
 
 ### Route Guards
 
@@ -182,13 +183,27 @@ Global auth state provider. Exposes:
 | `ProtectedRoute` | Shows loading spinner during auth check, redirects to `/login` if not authenticated (preserves original location in state) |
 | `OnboardingGuard` | Redirects to `/onboarding` if `onboarding_complete === false` |
 
+**Guard usage per route:**
+
+| Route | `ProtectedRoute` | `OnboardingGuard` | Notes |
+|-------|:-:|:-:|-------|
+| `/learn/*` | Yes | Yes | Main learning flow requires completed onboarding |
+| `/session/:sessionId` | Yes | Yes | Chat sessions require completed onboarding |
+| `/onboarding` | Yes | No | Must be authenticated but onboarding is in progress |
+| `/profile` | Yes | No | Accessible before onboarding is complete |
+| `/history` | Yes | No | Session history |
+| `/scorecard`, `/report-card` | Yes | No | Progress reports |
+| `/login/*`, `/signup/*`, `/forgot-password`, `/auth/callback` | No | No | Public auth routes |
+| `/admin/*` | No | No | Admin routes (no auth required currently) |
+
 ### Token Management
 
 - Access token stored in module-level `_accessToken` variable in `api.ts`
-- Set via `setAccessToken()` after authentication
+- Set via `setAccessToken()` after authentication; read via `getAccessToken()` (both exported)
 - Attached as `Authorization: Bearer <token>` on all API calls via `apiFetch()`
 - Cleared on logout via `setAccessToken(null)`
 - Cognito tokens stored in localStorage by the SDK for session restore (`CognitoIdentityServiceProvider.<clientId>.*`)
+- **401 auto-redirect**: `apiFetch()` intercepts 401 responses and redirects the browser to `/login`. This covers token expiry without explicit refresh logic. The `transcribeAudio` function handles 401 separately since it uses raw `fetch` (not `apiFetch`) due to `FormData` content type requirements.
 
 ### Auth Middleware (Backend)
 
@@ -201,8 +216,9 @@ Global auth state provider. Exposes:
 - Fetches JWKS from Cognito, caches for 1 hour
 - On key-not-found, force-refreshes JWKS (handles key rotation)
 - Validates issuer, audience/client_id, token_use claim
-- ID tokens validated with `aud` = app client ID
-- Access tokens validated with `client_id` claim (no `aud` in Cognito access tokens)
+- ID tokens validated with `aud` = app client ID (`at_hash` verification is skipped since tokens are validated independently)
+- Access tokens validated with `client_id` claim (no `aud` in Cognito access tokens; `verify_aud` disabled in decode, `client_id` checked manually)
+- If Cognito is not configured (no `cognito_user_pool_id`), raises 401 immediately
 
 ---
 
@@ -222,7 +238,7 @@ Global auth state provider. Exposes:
 | `llm-frontend/src/pages/EmailSignupPage.tsx` | Email signup with inline password rules |
 | `llm-frontend/src/pages/EmailVerifyPage.tsx` | Email verification code entry with auto-login |
 | `llm-frontend/src/pages/ForgotPasswordPage.tsx` | Two-step password reset (send code, set new password) |
-| `llm-frontend/src/pages/OAuthCallbackPage.tsx` | Google OAuth redirect handler, token exchange |
+| `llm-frontend/src/pages/OAuthCallbackPage.tsx` | Google OAuth redirect handler, token exchange, error display with retry |
 | `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard (5 steps + done screen) |
 | `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with logout |
 | `llm-frontend/src/config/auth.ts` | Cognito configuration (env vars) |

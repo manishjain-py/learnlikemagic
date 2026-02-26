@@ -103,6 +103,8 @@ The admin evaluation page shows:
 
 An existing conversation can be re-evaluated without re-running the simulation. This is useful when the evaluator model is changed -- re-run the judge on the same conversation to compare scoring across different models.
 
+Re-evaluation is available through the API only; the dashboard does not currently have a re-evaluate button.
+
 ---
 
 ## Key Details

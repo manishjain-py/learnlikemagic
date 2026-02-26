@@ -134,7 +134,19 @@ The directory name includes the persona ID when run from CLI, and a `_r{N}` suff
 | `run.log` | Text | Timestamped execution log from session runner |
 | `error.txt` | Text | Written only on pipeline failure -- contains timestamp, error message, and traceback |
 
-The `problems.md` report includes suggested fixes for certain root causes (e.g., "Increase the conversation history window" for `conversation_history_window`, "Improve session summary to capture narrative context" for `session_summary_lossy`).
+The `problems.md` report includes suggested fixes for certain root causes. The suggestion map in `_root_cause_suggestion()` covers:
+
+| Root Cause | Suggested Fix |
+|------------|---------------|
+| `conversation_history_window` | Increase the conversation history window or implement better context compression |
+| `session_summary_lossy` | Improve session summary to capture narrative context |
+| `multi_agent_composition` | Improve response composition to feel holistic |
+| `turn_level_processing` | Add session-level narrative tracking |
+| `rigid_study_plan` | Make the study plan more adaptive |
+| `prompt_quality` | Review and improve relevant agent prompts |
+| `model_capability` | Consider testing with different models or adjusting parameters |
+
+Note: Several of these root causes (`session_summary_lossy`, `multi_agent_composition`, `turn_level_processing`, `rigid_study_plan`) are not in the evaluator's `ROOT_CAUSE_CATEGORIES` list but are handled here for forward-compatibility -- the LLM judge may produce them despite not being explicitly listed.
 
 Multi-persona comparison (`--persona all`): `comparison_{timestamp}/comparison.md` + `comparison.json`. When `--runs-per-persona` > 1, the comparison report includes per-run detail tables and averaged scores across runs.
 
@@ -249,6 +261,8 @@ Each run includes:
 
 The `source` field is `"simulated"` for new simulations or `"existing_session"` for evaluated real sessions. When source is `"existing_session"`, `source_session_id` contains the original session UUID.
 
+**Note:** The `GET /api/evaluation/runs` endpoint parses run directory names to extract timestamps using the format `run_{YYYYMMDD}_{HHMMSS}`. CLI-generated multi-persona runs with persona ID suffixes (e.g., `run_20260222_143000_ace`) and comparison directories will fail timestamp parsing and are silently skipped. Only API-generated runs (which use the plain timestamp format) and single-persona CLI runs appear in the API listing.
+
 ---
 
 ## CLI Usage
@@ -305,7 +319,9 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
-**Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display. The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data.
+**Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display (coherence, non_repetition, natural_flow, engagement, responsiveness, pacing, grade_appropriateness, topic_coverage, session_arc, overall_naturalness). The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data -- legacy dimensions without scores simply show 0.
+
+The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

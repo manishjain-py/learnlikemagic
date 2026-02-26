@@ -18,7 +18,8 @@ Pipeline architecture for book ingestion, OCR, guideline extraction, and study p
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────────┐
-│  PostgreSQL: Book, BookJob, BookGuideline, TeachingGuideline        │
+│  PostgreSQL: Book, BookJob, BookGuideline, TeachingGuideline,       │
+│              StudyPlan, LLMConfig                                   │
 │  S3: books/{book_id}/ (pages, OCR text, guideline shards, index)   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -46,25 +47,32 @@ Pipeline architecture for book ingestion, OCR, guideline extraction, and study p
 ### Create Book
 ```
 POST /admin/books → BookService.create_book()
-  1. Generate book_id (slug: author_subject_grade_year, uniqueness checked)
-  2. Insert Book row in PostgreSQL via BookRepository
-  3. Create S3: books/{book_id}/metadata.json
+  1. Generate book_id (slug: author_subject_grade_year, uniqueness checked against DB)
+  2. Insert Book row in PostgreSQL via BookRepository (created_by defaults to "admin")
+  3. Create S3: books/{book_id}/metadata.json (empty pages list, total_pages=0)
+```
+
+### Delete Book
+```
+DELETE /admin/books/{id} → BookService.delete_book()
+  1. Delete all S3 files under books/{book_id}/ prefix
+  2. Delete Book row from PostgreSQL (cascades to book_guidelines, book_jobs)
 ```
 
 ### Upload Page + OCR
 ```
 POST /admin/books/{id}/pages → PageService.upload_page()
   1. Validate image (png/jpg/jpeg/tiff/webp, max 20MB)
-  2. Convert to PNG, upload to S3 as books/{book_id}/{page_num}.png
-  3. OCR via OpenAI Vision (model from DB config)
+  2. Convert to PNG via PIL, upload to S3 as books/{book_id}/{page_num}.png
+  3. OCR via OpenAI Vision (model from DB config, with retry up to 2 attempts)
   4. Save OCR text to S3 as books/{book_id}/{page_num}.txt
   5. Update metadata.json (add page entry with status "pending_review")
 ```
 
 ### Page Operations
-- `PUT .../pages/{num}/approve` — Set status to "approved" in metadata.json
-- `DELETE .../pages/{num}` — Delete S3 files, renumber remaining pages
-- `GET /admin/books/{id}/pages/{num}` — Get page with presigned URLs and OCR text
+- `PUT .../pages/{num}/approve` — Set status to "approved" in metadata.json, records `approved_at` timestamp
+- `DELETE .../pages/{num}` — Delete image + text from S3, renumber all remaining pages sequentially, update `total_pages`
+- `GET /admin/books/{id}/pages/{num}` — Get page with presigned URLs (image + text), inline OCR text, and status
 
 ---
 
@@ -150,20 +158,34 @@ Finalization acquires a job lock (prevents concurrent operations) and runs:
 
 ## Phase 6: Sync to DB
 
-Two routes trigger DB sync:
+Two routes trigger DB sync, using **different mechanisms**:
 
-1. **Book routes**: `PUT /admin/books/{id}/guidelines/approve` — Approve all non-final shards to "final" in index, then sync
-2. **Guidelines admin routes**: `POST /admin/guidelines/books/{id}/sync-to-database` — Direct sync
+1. **Book routes**: `PUT /admin/books/{id}/guidelines/approve` — Per-shard upsert sync
+2. **Guidelines admin routes**: `POST /admin/guidelines/books/{id}/sync-to-database` — Full snapshot sync
 
-### Sync Mechanism (Full Snapshot)
+### Sync Mechanism 1: Per-Shard Upsert (Book Routes)
 
 ```python
+# PUT /admin/books/{id}/guidelines/approve
+  1. Update all non-final shards to "final" in GuidelinesIndex
+  2. For each final shard: DBSyncService.sync_shard(shard, ...)
+     - _find_existing_guideline(book_id, topic_key, subtopic_key)
+     - If exists: UPDATE row
+     - If new: INSERT row with review_status = "TO_BE_REVIEWED"
+```
+
+### Sync Mechanism 2: Full Snapshot (Guidelines Admin Routes)
+
+```python
+# POST /admin/guidelines/books/{id}/sync-to-database
 DBSyncService.sync_book_guidelines(book_id, s3_client, book_metadata)
   1. Load GuidelinesIndex from S3
   2. Load all SubtopicShard files referenced by the index
   3. DELETE all existing teaching_guidelines rows for this book_id
   4. INSERT all shards as new rows with review_status = "TO_BE_REVIEWED"
 ```
+
+### Field Mapping (Both Methods)
 
 Each row maps shard fields to the `teaching_guidelines` table:
 - `guideline` column receives the single `guidelines` text field from the shard
@@ -176,14 +198,15 @@ Each row maps shard fields to the `teaching_guidelines` table:
 ## Phase 7-8: Review Workflow
 
 Two-level review:
-1. **Book-level** — Approve all guidelines for a book at once
-2. **Guideline-level** — Individual review via `/admin/guidelines`
+1. **Book-level** — View guidelines by book via `GET /admin/guidelines/books/{id}/review`, filter by status
+2. **Cross-book** — Browse all guidelines via `GET /admin/guidelines/review` with filters (country, board, grade, subject, status). Use `GET /admin/guidelines/review/filters` to get available filter options and status counts (total, pending, approved).
+3. **Individual** — Approve/reject via `POST /admin/guidelines/{id}/approve` (body: `{approved: bool}`)
 
-Review statuses: `TO_BE_REVIEWED` (default), `APPROVED`. Rejecting sets back to `TO_BE_REVIEWED`.
+Review statuses: `TO_BE_REVIEWED` (default after sync), `APPROVED`. Rejecting sets back to `TO_BE_REVIEWED`.
 
-Guidelines can also be deleted individually from the database.
+Guidelines can also be deleted individually from the database via `DELETE /admin/guidelines/{id}`.
 
-Manual editing of guidelines in S3 is disabled for MVP (returns 501 Not Implemented).
+Manual editing of guidelines in S3 is disabled for MVP (`PUT /admin/guidelines/books/{id}/subtopics/{key}` returns 501 Not Implemented).
 
 ---
 
@@ -197,21 +220,24 @@ The study plan system uses separate LLM configurations for generator and reviewe
 - `LLMConfigService.get_config("study_plan_generator")` — provider + model for generation
 - `LLMConfigService.get_config("study_plan_reviewer")` — provider + model for review
 
-Each config can specify a different provider (OpenAI, Google, Anthropic) and model.
+Each config can specify a different provider (OpenAI, Google, Anthropic) and model. The orchestrator is built via the `_build_study_plan_orchestrator(db)` helper in the admin API, which creates two separate `LLMService` instances with the appropriate API keys and configs.
 
 ### AI-to-AI Review Loop
 
 ```python
-StudyPlanOrchestrator.generate_study_plan(guideline_id)
-  1. Load TeachingGuideline from DB
-  2. StudyPlanGeneratorService.generate_plan(guideline)
+StudyPlanOrchestrator.generate_study_plan(guideline_id, force_regenerate=False)
+  1. Check if plan exists — return existing if not force_regenerate
+  2. Load TeachingGuideline from DB
+  3. StudyPlanGeneratorService.generate_plan(guideline)
      - Uses high reasoning effort
-     - Strict structured output (Pydantic schema → JSON schema)
+     - Strict structured output (Pydantic schema → JSON schema via LLMService.make_schema_strict)
      - Returns: {plan, reasoning, model}
-  3. StudyPlanReviewerService.review_plan(plan, guideline)
+  4. StudyPlanReviewerService.review_plan(plan, guideline)
+     - Uses JSON mode
      - Returns: {approved, feedback, suggested_improvements, overall_rating, model}
-  4. If not approved: _improve_plan() — single revision pass using reviewer LLM
-  5. Save StudyPlan row to DB (create or update)
+  5. If not approved: _improve_plan() — single revision pass using reviewer LLM
+     - On improvement failure: saves original plan anyway (fail-safe)
+  6. Save StudyPlan row to DB (create or update, tracks version, was_revised flag)
 ```
 
 ### Study Plan Schema
@@ -326,16 +352,32 @@ books/{book_id}/
 ### Database Tables
 
 #### `books`
-Core book metadata. Key fields: `id`, `title`, `author`, `edition`, `edition_year`, `country`, `board`, `grade`, `subject`, `s3_prefix`, `metadata_s3_key`. Index on `(country, board, grade, subject)`.
+Core book metadata. Key fields: `id`, `title`, `author`, `edition`, `edition_year`, `country`, `board`, `grade`, `subject`, `cover_image_s3_key`, `s3_prefix`, `metadata_s3_key`, `created_by`. Index on `(country, board, grade, subject)`.
 
 #### `book_guidelines`
 AI-generated guideline versions for review tracking. Fields: `id`, `book_id` (FK), `guideline_s3_key`, `status`, `review_status`, `version`. Index on `book_id`.
 
 #### `book_jobs`
-Active job tracking for concurrency control. Fields: `id`, `book_id` (FK), `job_type` (extraction/finalization/sync), `status` (running/completed/failed), `started_at`, `completed_at`, `error_message`. Partial unique index ensures only one running job per book.
+Active job tracking for concurrency control. Fields: `id`, `book_id` (FK), `job_type` (extraction/finalization/sync), `status` (running/completed/failed), `started_at`, `completed_at`, `error_message`. Partial unique index on `(book_id, status)` with `WHERE status = 'running'` ensures only one running job per book at the database level.
 
 #### `teaching_guidelines`
 Production guidelines used by the tutor. Created by DB sync. Key fields: `id`, `book_id`, `country`, `board`, `grade`, `subject`, `topic`, `subtopic`, `guideline` (text), `topic_key`, `subtopic_key`, `topic_title`, `subtopic_title`, `topic_summary`, `subtopic_summary`, `source_page_start`, `source_page_end`, `status`, `version`, `review_status`.
+
+#### `teaching_guidelines` — V1/V2 Column Coexistence
+
+The table currently has both V1 structured fields and V2 fields. V1 columns remain in the schema for backward compatibility but are not populated by the V2 pipeline:
+
+**V2 columns (active):** `id`, `country`, `board`, `grade`, `subject`, `book_id`, `topic`, `subtopic`, `guideline`, `topic_key`, `subtopic_key`, `topic_title`, `subtopic_title`, `topic_summary`, `subtopic_summary`, `source_page_start`, `source_page_end`, `status`, `version`, `review_status`, `created_at`, `updated_at`.
+
+**V1 columns (deprecated, nullable):** `objectives_json`, `examples_json`, `misconceptions_json`, `assessments_json`, `teaching_description`, `description`, `evidence_summary`, `confidence`, `metadata_json`, `source_pages`.
+
+#### `study_plans`
+
+Pre-generated study plans with a 1:1 relationship to `teaching_guidelines`. Fields: `id`, `guideline_id` (FK, unique), `plan_json` (JSON string), `generator_model`, `reviewer_model`, `generation_reasoning`, `reviewer_feedback`, `was_revised` (0/1), `status` (generated/approved), `version`, `created_at`, `updated_at`. Index on `guideline_id`.
+
+#### `llm_config`
+
+Centralized LLM model configuration per component. Key: `component_key` (e.g., `"book_ingestion"`, `"study_plan_generator"`, `"study_plan_reviewer"`). Fields: `provider` (openai/anthropic/google), `model_id`, `description`, `updated_at`, `updated_by`.
 
 ### Derived Book Status
 
@@ -356,7 +398,7 @@ All book ingestion services use the same model from DB config (`LLMConfigService
 | Service | Config Key | Purpose | Temp |
 |---------|-----------|---------|------|
 | OCRService | `book_ingestion` | Extract text from images | - |
-| MinisummaryService | `book_ingestion` | Detailed page summary (5-6 lines) | 0.3 |
+| MinisummaryService | `book_ingestion` | Detailed page summary (5-6 lines, ~150 words, no hard token cap) | 0.3 |
 | BoundaryDetectionService | `book_ingestion` | Topic detection + guidelines extraction | 0.2 |
 | GuidelineMergeService | `book_ingestion` | LLM-based intelligent merge | 0.3 |
 | TopicSubtopicSummaryService | `book_ingestion` | Generate subtopic/topic summaries | 0.3 |
@@ -365,7 +407,9 @@ All book ingestion services use the same model from DB config (`LLMConfigService
 | StudyPlanGeneratorService | `study_plan_generator` | Generate study plans (high reasoning) | - |
 | StudyPlanReviewerService | `study_plan_reviewer` | Review study plans | - |
 
-Book ingestion prompt templates are stored in `llm-backend/book_ingestion/prompts/` as `.txt` files and loaded at service initialization. Study plan prompts are stored in `llm-backend/shared/prompts/templates/` (`study_plan_generator.txt`, `study_plan_reviewer.txt`, `study_plan_improve.txt`) and loaded via the shared `PromptLoader`.
+Book ingestion prompt templates are stored in `llm-backend/book_ingestion/prompts/` as `.txt` files and loaded at service initialization. The MinisummaryService specifically loads `minisummary_v2.txt` (not the V1 `minisummary.txt`). Study plan prompts are stored in `llm-backend/shared/prompts/templates/` (`study_plan_generator.txt`, `study_plan_reviewer.txt`, `study_plan_improve.txt`) and loaded via the shared `PromptLoader`.
+
+The study plan generator uses `LLMService` which supports multiple providers (OpenAI, Google, Anthropic). The reviewer calls the LLM with `json_mode=True`. The improvement step also uses the reviewer LLM with `json_mode=True`.
 
 ---
 
@@ -404,6 +448,7 @@ Book ingestion prompt templates are stored in `llm-backend/book_ingestion/prompt
 | `POST` | `/books/{id}/extract?start_page=&end_page=` | Extract for page range (with job lock) |
 | `POST` | `/books/{id}/finalize?auto_sync=` | Finalize book (with job lock) |
 | `POST` | `/books/{id}/sync-to-database` | Full snapshot sync to DB |
+| `PUT` | `/books/{id}/subtopics/{key}?topic_key=` | Update guideline (returns 501 — disabled for MVP) |
 | `POST` | `/{id}/approve` | Approve/reject guideline (body: `{approved: bool}`) |
 | `DELETE` | `/{id}` | Delete guideline from DB |
 | `POST` | `/{id}/generate-study-plan?force_regenerate=` | Generate study plan |
@@ -460,13 +505,13 @@ The following services exist in the codebase but are NOT used by the current V2 
 | `services/guideline_extraction_orchestrator.py` | Main V2 pipeline coordinator |
 | `services/book_service.py` | Book CRUD + derived status counts (uses BookRepository) |
 | `services/page_service.py` | Page upload, OCR, approval, deletion |
-| `services/ocr_service.py` | OpenAI Vision API wrapper (model from DB config) |
+| `services/ocr_service.py` | OpenAI Vision API wrapper (model from DB config, retry support) |
 | `services/boundary_detection_service.py` | Topic detection + guidelines extraction (combined LLM call) |
 | `services/guideline_merge_service.py` | LLM-based intelligent guideline merging |
 | `services/context_pack_service.py` | Build LLM context (5 recent pages + full guidelines) |
 | `services/minisummary_service.py` | Detailed page summaries (5-6 lines) |
 | `services/index_management_service.py` | GuidelinesIndex + PageIndex CRUD, snapshots |
-| `services/db_sync_service.py` | Full snapshot sync to PostgreSQL teaching_guidelines |
+| `services/db_sync_service.py` | Sync to PostgreSQL teaching_guidelines (per-shard upsert + full snapshot) |
 | `services/topic_name_refinement_service.py` | LLM-based name polishing during finalization |
 | `services/topic_deduplication_service.py` | LLM-based duplicate subtopic detection |
 | `services/topic_subtopic_summary_service.py` | LLM-generated subtopic/topic summaries |
@@ -487,14 +532,19 @@ The following services exist in the codebase but are NOT used by the current V2 
 | `repositories/book_guideline_repository.py` | BookGuideline table data access |
 | **Utils** | |
 | `utils/s3_client.py` | S3 operations (upload, download, presigned URLs, delete) |
-| **Prompts** | |
+| **Prompts (V2 — Active)** | |
 | `prompts/boundary_detection.txt` | Boundary detection + guidelines extraction prompt |
 | `prompts/guideline_merge_v2.txt` | LLM-based guideline merge prompt |
-| `prompts/minisummary_v2.txt` | Detailed page summary prompt |
+| `prompts/minisummary_v2.txt` | Detailed page summary prompt (5-6 lines) |
 | `prompts/subtopic_summary.txt` | Subtopic summary generation prompt |
 | `prompts/topic_summary.txt` | Topic summary generation prompt |
 | `prompts/topic_name_refinement.txt` | Name refinement prompt |
 | `prompts/topic_deduplication_v2.txt` | Duplicate detection prompt |
+| **Prompts (V1 — Parked)** | |
+| `prompts/minisummary.txt` | V1: Compact summary prompt (60 words) |
+| `prompts/facts_extraction.txt` | V1: Structured facts extraction prompt |
+| `prompts/description_generation.txt` | V1: Comprehensive description prompt |
+| `prompts/teaching_description.txt` | V1: Teaching description prompt |
 
 ### Backend — Study Plans (`llm-backend/study_plans/`)
 
@@ -502,5 +552,14 @@ The following services exist in the codebase but are NOT used by the current V2 
 |------|---------|
 | `api/admin.py` | Guidelines review + study plan endpoints (under `/admin/guidelines`) |
 | `services/orchestrator.py` | AI-to-AI review loop coordinator |
-| `services/generator_service.py` | Study plan generation with strict structured output |
+| `services/generator_service.py` | Study plan generation with strict structured output (Pydantic models: `StudyPlan`, `StudyPlanStep`, `StudyPlanMetadata`) |
 | `services/reviewer_service.py` | Study plan review and quality assessment |
+
+### Backend — Shared (`llm-backend/shared/`)
+
+| File | Purpose |
+|------|---------|
+| `models/entities.py` | SQLAlchemy ORM: `TeachingGuideline`, `StudyPlan`, `LLMConfig` |
+| `services/llm_config_service.py` | LLM config CRUD — reads provider + model per component key |
+| `services/llm_service.py` | `LLMService` — multi-provider LLM wrapper (OpenAI, Google, Anthropic) |
+| `prompts/loader.py` | `PromptLoader` — loads `.txt` prompt templates from `shared/prompts/templates/` |
