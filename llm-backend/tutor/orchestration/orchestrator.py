@@ -492,11 +492,14 @@ class TeacherOrchestrator:
     ) -> TurnResult:
         """Process an Exam turn — evaluate answer and move to next question."""
         if session.exam_finished or session.exam_current_question_idx >= len(session.exam_questions):
+            session.add_message(create_student_message(context.student_message))
+            response = "The exam is already complete. Check your results!"
+            session.add_message(create_teacher_message(response))
             return TurnResult(
-                response="The exam is already complete. Check your results!",
+                response=response,
                 intent="exam_complete",
                 specialists_called=[],
-                state_changed=False,
+                state_changed=True,
             )
 
         current_q = session.exam_questions[session.exam_current_question_idx]
