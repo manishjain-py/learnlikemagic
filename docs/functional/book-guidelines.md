@@ -20,21 +20,21 @@ Book Pages → OCR Text → Teaching Guidelines → Study Plans
 
 ## Uploading a Book
 
-1. **Create a book** — Enter the book's title, author, edition, grade, subject, board, and country
+1. **Create a book** — Enter the book's title, author, edition, edition year, grade, subject, board, and country
 2. **Upload pages** — Drag and drop page images (PNG, JPG, JPEG, TIFF, or WebP, max 20MB each)
-3. Each uploaded page is automatically processed with OCR to extract text
+3. Each uploaded page is automatically processed with OCR to extract text (with automatic retry on failure)
 
 ---
 
 ## Page OCR & Approval
 
 After uploading, each page shows:
-- The original page image
+- The original page image (all formats are converted to PNG for consistency)
 - The extracted text from OCR
 
 Admins can:
 - **Approve** pages where the OCR looks correct
-- **Delete** pages where the OCR is unusable or the page isn't needed
+- **Delete** pages where the OCR is unusable or the page isn't needed (remaining pages are automatically renumbered)
 
 A pages sidebar lets you navigate between pages and see their status. Clicking an approved page opens a view panel showing the image alongside the OCR text.
 
@@ -79,7 +79,10 @@ Finalization runs after all pages are extracted and performs these steps:
 
 After finalization, guidelines must be synced to the production database before they become available for review and tutoring.
 
-Syncing is a **full snapshot operation**: it deletes all previous guidelines for the book and inserts all current guidelines as new rows. All review statuses are reset to "to be reviewed" after each sync.
+There are two ways to sync:
+
+1. **Full snapshot sync** (recommended) — Deletes all previous guidelines for the book and inserts all current guidelines as new rows. All review statuses are reset to "to be reviewed." This is used by the dedicated sync action.
+2. **Approve-and-sync** — Marks all non-final guidelines as final in the index, then syncs each guideline individually (upserts). This is used by the "approve all" action from the book detail view.
 
 ---
 
@@ -87,15 +90,16 @@ Syncing is a **full snapshot operation**: it deletes all previous guidelines for
 
 After syncing to the database, guidelines go through a two-level review:
 
-### Book-Level Approval
-1. View all generated guidelines for a book
-2. Approve the entire set at once
+### Book-Level Review
+1. View all synced guidelines for a book
+2. Filter by review status (to be reviewed, approved)
 
 ### Individual Guideline Review
-1. Browse guidelines with filters (country, board, grade, subject, review status)
-2. Review each guideline's content
-3. Approve or reject individual guidelines (rejecting resets to "to be reviewed")
-4. Delete guidelines that are not needed
+1. Browse all guidelines across books with filters (country, board, grade, subject, review status)
+2. See counts of total, pending, and approved guidelines
+3. Review each guideline's content
+4. Approve or reject individual guidelines (rejecting resets to "to be reviewed")
+5. Delete guidelines that are not needed
 
 Only approved guidelines become available for tutoring sessions.
 
@@ -107,11 +111,17 @@ After a guideline is synced to the database, a study plan can be generated:
 
 1. **Generate** — AI creates an initial study plan with a structured todo list of 3-5 teaching steps
 2. **AI Review** — A separate AI reviewer evaluates the plan's quality, providing a rating, feedback, and suggested improvements
-3. **Improve** — If the reviewer does not approve, the plan is automatically refined based on the feedback
+3. **Improve** — If the reviewer does not approve, the plan is automatically refined based on the feedback (single revision pass)
 
 Each study plan step includes a title, description, teaching approach, and success criteria. Plans include metadata such as estimated duration, difficulty level, and an optional creative theme.
 
-Study plans can be generated individually or in bulk for multiple guidelines at once. The generator and reviewer can use different AI models and providers, configured independently in the system.
+Study plans can be generated individually or in bulk for multiple guidelines at once. The generator and reviewer can use different AI models and providers, configured independently in the admin settings. If a plan already exists, re-generation must be explicitly forced.
+
+---
+
+## Deleting a Book
+
+Admins can delete a book entirely. This removes the book record from the database and all associated files from cloud storage (page images, OCR text, guideline shards, indexes).
 
 ---
 
@@ -123,3 +133,4 @@ Study plans can be generated individually or in bulk for multiple guidelines at 
 - The AI model used for ingestion and study plan generation is configurable in the admin settings (not hardcoded)
 - Pages are stored in cloud storage; guidelines are stored in both cloud storage (as JSON shards) and the production database
 - Manual editing of guidelines is not supported; to change guidelines, re-run extraction and finalize
+- If the study plan improvement step fails, the original plan is saved anyway

@@ -16,7 +16,7 @@ cp .env.example .env  # Edit with your credentials
 
 **Required `.env` variables:** `OPENAI_API_KEY`, `DATABASE_URL`
 
-**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`
+**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`
 
 Configuration is managed by `config.py` using pydantic-settings, which loads from the `.env` file automatically.
 
@@ -88,6 +88,8 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 
 **pytest.ini defaults:** Coverage is enabled by default (`--cov=.`, `--cov-report=term-missing`, `--cov-report=html`), strict markers, short tracebacks, warnings disabled.
 
+**Coverage omissions:** `tests/`, `__pycache__/`, `venv/`, `migrations/`, `scripts/`, `evaluation/run_evaluation.py`, `book_ingestion/utils/setup_s3.py`, `book_ingestion/utils/create_bucket.py`, `db.py`.
+
 **Markers:**
 
 | Marker | Purpose |
@@ -115,12 +117,30 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 | `mock_llm_provider` | Mock LLM provider (no real API calls) |
 
 ### Frontend
+
+The frontend does not currently have test, lint, or type-check scripts configured in `package.json`. Available scripts are limited to `dev`, `build`, and `preview`.
+
+### E2E Tests (Playwright)
+
+End-to-end tests live in `e2e/` and use Playwright.
+
 ```bash
-cd llm-frontend
-npm test          # Unit tests
-npm run lint      # Linting
-npm run type-check
+cd e2e
+npm install
+npx playwright install chromium
+
+# Run tests (requires the app running at http://localhost:3000)
+npm test                 # Headless
+npm run test:headed      # With browser UI
+npm run test:ui          # Interactive Playwright UI
+npm run report           # View HTML report
 ```
+
+**Configuration:** `e2e/playwright.config.ts` -- baseURL `http://localhost:3000`, Chromium only, sequential execution (workers: 1), 60s timeout.
+
+**Auth setup:** Tests use a `setup` project (`auth.setup.ts`) that stores auth state in `e2e/.auth/user.json`, reused by subsequent tests.
+
+**Scenarios:** `e2e/scenarios.json` defines test scenarios. This file is also copied into the backend Docker image during CI/CD builds.
 
 ### Manual API Testing
 ```bash
@@ -158,7 +178,7 @@ See `docs/technical/architecture-overview.md` for detailed file structure and co
 ## Deployment
 
 **Automatic:** Push to `main` triggers GitHub Actions
-- Backend changes (`llm-backend/**` or `docs/**`) --> ECR --> App Runner
+- Backend changes (`llm-backend/**`, `docs/**`, or `e2e/scenarios.json`) --> ECR --> App Runner
 - Frontend changes (`llm-frontend/**`) --> S3 --> CloudFront
 
 **Manual:**
@@ -201,7 +221,8 @@ aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/s
 |------|---------|
 | Run backend | `cd llm-backend && make run` |
 | Run frontend | `cd llm-frontend && npm run dev` |
-| Run tests | `pytest` / `npm test` |
+| Run backend tests | `pytest` |
+| Run E2E tests | `cd e2e && npm test` |
 | Run in Docker locally | `make build-local && make run-docker` |
 | Check architecture | `make check-arch` |
 | Run migrations | `make db-migrate` |
@@ -227,3 +248,5 @@ aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/s
 | `llm-backend/tests/conftest.py` | Shared test fixtures |
 | `llm-backend/db.py` | Database migration CLI |
 | `llm-backend/database.py` | DatabaseManager, connection pooling |
+| `e2e/playwright.config.ts` | E2E test configuration (Playwright) |
+| `e2e/scenarios.json` | E2E test scenarios (also bundled into backend Docker image) |

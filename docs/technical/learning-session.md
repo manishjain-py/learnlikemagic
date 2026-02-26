@@ -36,11 +36,11 @@ Two-agent pipeline: a fast safety check followed by a single master tutor call t
 
 The system supports three session modes, set at creation time and stored on `SessionState.mode`:
 
-| Mode | Purpose | Study Plan | Mastery Tracking | Step Advancement |
-|------|---------|------------|------------------|------------------|
-| `teach_me` | Structured lesson | Yes | Yes (per-concept) | Yes |
-| `clarify_doubts` | Student-led Q&A | Concepts tracked but no steps | Concepts discussed tracked | No |
-| `exam` | Knowledge assessment | Questions generated from plan | Score tracking | Question index advances |
+| Mode | Purpose | Study Plan | Mastery Tracking | Step Advancement | Completion |
+|------|---------|------------|------------------|------------------|------------|
+| `teach_me` | Structured lesson | Yes | Yes (per-concept) | Yes | `current_step > total_steps` |
+| `clarify_doubts` | Student-led Q&A | Concepts tracked but no steps | Concepts discussed tracked | No | `clarify_complete` flag (via end-clarify endpoint or tutor intent) |
+| `exam` | Knowledge assessment | Questions generated from plan | Score tracking | Question index advances | All questions answered or early end |
 
 Mode-specific processing happens in the orchestrator after the shared safety check:
 - `teach_me` → `process_turn()` main path
@@ -84,13 +84,13 @@ TutorTurnOutput {
 
 `TeacherOrchestrator.process_turn(session, student_message)`:
 
-1. **Post-completion check** — If session already complete (and no extension, or extension_turns > 10): generate LLM-powered context-aware response, return immediately
+1. **Post-completion check** — If session already complete: for `clarify_doubts` mode, always short-circuit with a context-aware response. For `teach_me`, short-circuit if no extension allowed or extension_turns > 10. The context-aware response is LLM-generated and responds naturally to whatever the student said.
 2. **Increment turn** — Add student message to history
 3. **Build AgentContext** — Current state, mastery, study plan
 4. **Safety Agent** — Fast content moderation gate. If unsafe: return guidance + log safety flag
 5. **Mode Router** — Branch based on `session.mode`:
-   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed, no step advancement
-   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question, builds feedback when all questions answered
+   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed via `mastery_updates`, no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
+   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question, builds feedback when all questions answered. Partial scoring: `answer_correct == False` with `mastery_signal != "needs_remediation"` → partial.
    - `teach_me` → continues to step 6
 6. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 10 teaching rules + personalization block) and turn prompt (current state, mastery, pacing directive, student style, history)
 7. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:...")
@@ -134,9 +134,10 @@ Contains:
 ### Mode-Specific Prompts
 
 **Clarify Doubts** (`clarify_doubts_prompts.py`):
-- System prompt: answers directly (no Socratic method), concise, brief follow-up check
+- System prompt: answers directly (no Socratic method), concise, brief follow-up check. Includes session closure rules: after resolving a doubt, ask one closure question ("any other doubts?"); when student says done, give brief warm goodbye and set `session_complete = true` without further questions
 - Turn prompt: tracks concepts discussed, sets intent to question/followup/done/off_topic
 - `mastery_updates` used to track which study plan concepts were substantively discussed
+- `answer_correct` always null in clarify mode; `advance_to_step` never set
 
 **Exam** (`exam_prompts.py`):
 - Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard)
@@ -175,12 +176,12 @@ Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mas
 | `POST` | `/sessions/{id}/step` | Submit student answer, get next turn |
 | `POST` | `/sessions/{id}/pause` | Pause a Teach Me session |
 | `POST` | `/sessions/{id}/resume` | Resume a paused session (returns conversation history) |
+| `POST` | `/sessions/{id}/end-clarify` | End a Clarify Doubts session (marks complete server-side) |
 | `POST` | `/sessions/{id}/end-exam` | End an exam early and get results |
 | `GET` | `/sessions/{id}/summary` | Session performance summary |
 | `GET` | `/sessions` | List all sessions for current user |
 | `GET` | `/sessions/history` | Paginated session history (filterable by subject) |
 | `GET` | `/sessions/stats` | Aggregated learning stats |
-| `GET` | `/sessions/scorecard` | Full student scorecard |
 | `GET` | `/sessions/report-card` | Student report card with coverage and exam data |
 | `GET` | `/sessions/subtopic-progress` | Lightweight progress map |
 | `GET` | `/sessions/resumable?guideline_id=X` | Find a paused Teach Me session for a subtopic |
@@ -193,7 +194,9 @@ Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mas
 
 `WS /sessions/ws/{session_id}` — Used by both the frontend and the evaluation pipeline for real-time chat.
 
-Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong to session owner. Anonymous sessions allowed without token for backward compatibility.
+Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong to session owner (validated via Cognito). Anonymous sessions allowed without token for backward compatibility.
+
+**Connection flow:** Auth check → accept connection → send initial `state_update` → if first turn (turn_count == 0), generate and send welcome message → enter main message loop.
 
 **Client sends:** `{"type": "chat", "payload": {"message": "..."}}`
 
@@ -205,12 +208,18 @@ Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong
 {"type": "error", "payload": {"error": "..."}}
 ```
 
-The `state_update` payload includes mode-specific data:
+The `state_update` payload includes (via `SessionStateDTO`):
+- `session_id`, `current_step`, `total_steps`, `current_concept`, `progress_percentage`
+- `mastery_estimates`: `{concept: score}` dict
+- `is_complete`: whether session has ended
 - `mode`: current session mode
 - `coverage`: concept coverage percentage (teach_me)
 - `concepts_discussed`: list of concepts discussed (clarify_doubts)
-- `exam_progress`: `{current_question, total_questions, correct_so_far}` (exam)
+- `exam_progress`: `{current_question, total_questions, correct_so_far}` (exam, only when questions exist)
 - `is_paused`: whether session is paused
+
+**Additional client message types:**
+- `{"type": "get_state"}` — requests the current state (server responds with a `state_update`)
 
 ### Session Creation
 
@@ -225,12 +234,15 @@ Body: {
 
 Flow:
 - Load guideline → Load study plan → Convert via topic_adapter → Create SessionState (with mode)
+- Build StudentContext from user profile when authenticated (name, age, about_me for personalization)
 - For `exam` mode: generate exam questions via ExamService before welcome
-- Generate mode-specific welcome message
+- Generate mode-specific welcome message (each mode has its own welcome generator)
 - For `exam`: append first question to welcome message
 - Persist session to DB (with state_version=1)
-- For `clarify_doubts`: attach past discussions for same user + guideline
+- For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent)
 - Return `{session_id, first_turn, mode}`
+
+Session ownership: user-linked sessions require the caller to be the session owner. Anonymous sessions (user_id=None) allow access for backward compatibility.
 
 ---
 
@@ -258,6 +270,7 @@ class SessionState(BaseModel):
     concepts_covered_set: set[str]       # Concepts covered in this session
     # Clarify Doubts state
     concepts_discussed: list[str]        # Concepts discussed in Q&A
+    clarify_complete: bool               # Whether student ended the Clarify session
     # Exam state
     exam_questions: list[ExamQuestion]
     exam_current_question_idx: int
@@ -291,9 +304,12 @@ class Question(BaseModel):
     question_text: str
     expected_answer: str
     concept: str
+    rubric: str = ""               # Evaluation criteria
+    hints: list[str] = []          # Available hints
+    hints_used: int = 0            # Number of hints provided
     wrong_attempts: int = 0
-    previous_student_answers: List[str] = []
-    phase: str = "asked"  # asked → probe → hint → explain
+    previous_student_answers: list[str] = []
+    phase: str = "asked"           # asked → probe → hint → explain
 ```
 
 Phase progression:
@@ -314,7 +330,9 @@ The orchestrator handles five question lifecycle cases:
 
 Master tutor sets `advance_to_step` in output. Applied in `_apply_state_updates()`. When advancing, all intermediate step concepts are added to `concepts_covered_set`.
 
-Session completion: `current_step > total_steps` → `is_complete = true`.
+Session completion logic (`is_complete` property):
+- `clarify_doubts` mode: returns `clarify_complete`
+- `teach_me` / `exam` mode: `current_step > total_steps` → `True`
 
 Extension: Advanced students can continue up to 10 turns beyond `total_steps * 2`.
 
@@ -349,9 +367,9 @@ Exam questions are generated at session creation time via `ExamService.generate_
 Session state is persisted to the database as serialized JSON (`state_json`). All writes use **compare-and-swap (CAS)** via a `state_version` column:
 
 - REST path (`_persist_session_state`): atomic `UPDATE ... WHERE state_version = expected_version`, raises `StaleStateError` on conflict
-- WebSocket path (`_save_session_to_db`): same CAS check, but on conflict reloads the DB state and sends an error message to the client ("Session was updated from another tab")
+- WebSocket path (`_save_session_to_db`): same CAS check, returns `(new_version, None)` on success or `(db_version, reloaded_session)` on conflict. On conflict, the caller adopts the reloaded state (so subsequent saves use the correct version) and sends an error message to the client: "Session was updated from another tab. Your last message was not saved. Please resend."
 
-This prevents concurrent REST calls (e.g., pause from one tab while chatting in another) from silently overwriting each other's state.
+This prevents concurrent REST calls (e.g., pause from one tab while chatting in another) from silently overwriting each other's state. The WebSocket path also persists `exam_score`/`exam_total` and `is_paused` fields to the session record alongside the full state JSON.
 
 ---
 
@@ -375,7 +393,9 @@ If no study plan exists in the DB, a default 4-step plan is generated: explain �
 |------|-------|---------|--------|
 | Safety | Configurable (DB) | Content moderation | SafetyOutput (strict) |
 | Master Tutor | Configurable (DB) | All teaching (teach_me, clarify_doubts, exam evaluation) | TutorTurnOutput (strict) |
-| Welcome | Configurable (DB) | Welcome message (mode-specific) | Plain text |
+| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | Plain text |
+| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | Plain text |
+| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | Plain text |
 | Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text |
 | Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) |
 
@@ -407,7 +427,7 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 
 | File | Purpose |
 |------|---------|
-| `orchestrator.py` | TeacherOrchestrator: safety → mode router → master_tutor → state updates. Mode-specific methods: `_process_clarify_turn()`, `_process_exam_turn()`. Exam feedback builder. CAS-based welcome message persistence. |
+| `orchestrator.py` | TeacherOrchestrator: safety → mode router → master_tutor → state updates. Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with partial scoring). Exam feedback builder. Separate welcome generators per mode (`generate_welcome_message`, `generate_clarify_welcome`, `generate_exam_welcome`). Post-completion response generator. |
 
 ### Models (`tutor/models/`)
 
@@ -433,18 +453,18 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 | File | Purpose |
 |------|---------|
 | `schema_utils.py` | get_strict_schema(), validate_agent_output(), parse_json_safely() |
-| `prompt_utils.py` | format_conversation_history() |
+| `prompt_utils.py` | format_conversation_history(max_turns default=5, overridden to 10 by master tutor) |
 | `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step(), get_mastery_level() |
 
 ### Services & API
 
 | File | Purpose |
 |------|---------|
-| `tutor/services/session_service.py` | Session creation (all modes), step processing, pause/resume, end exam, summary, CAS persistence |
-| `tutor/services/exam_service.py` | Exam question generation via LLM with retry |
+| `tutor/services/session_service.py` | Session creation (all modes), step processing, pause/resume, end clarify, end exam, summary, CAS persistence |
+| `tutor/services/exam_service.py` | Exam question generation via LLM with retry. ExamGenerationError (LearnLikeMagicException subclass) |
 | `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model |
 | `tutor/services/scorecard_service.py` | Scorecard aggregation, subtopic progress |
-| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks |
+| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint |
 | `tutor/api/transcription.py` | Audio transcription endpoint (OpenAI Whisper) |
 | `tutor/api/curriculum.py` | Curriculum discovery endpoints |
 | `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError) |

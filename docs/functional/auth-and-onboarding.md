@@ -57,9 +57,9 @@ New email accounts need to verify their email address:
 ## Forgot Password
 
 1. Tap "Forgot password?" on the email login screen
-2. Enter your email address
+2. Enter your email address and tap "Send Reset Code"
 3. Check your email for a reset code
-4. Enter the code and your new password (at least 8 characters)
+4. Enter the code and your new password (at least 8 characters) in the form that appears
 5. After resetting, tap "Go to Login" to sign in with your new password
 
 ---
@@ -72,8 +72,8 @@ First-time users go through a short onboarding flow before they can start learni
 2. **How old are you?** — Enter your age (5-18)
 3. **What grade are you in?** — Tap your grade from a grid of 1-12
 4. **What's your school board?** — Tap your board (CBSE, ICSE, State Board, or Other)
-5. **Tell us about yourself** — Optional free-text about interests and learning style (can be skipped with "Skip for now")
-6. **You're all set!** — Confirmation screen with a "Start Learning" button
+5. **Tell us about yourself** — Optional free-text about interests and learning style. If you enter text, the button says "Save & Continue"; if left empty, it says "Continue". You can also skip entirely with "Skip for now"
+6. **You're all set!** — Personalized confirmation screen ("You're all set, {name}!") with a "Start Learning" button
 
 Progress dots at the top show which step you're on. Each step saves automatically — even if you leave mid-flow, your progress is kept. Onboarding is marked complete once your name, age, grade, and board are all filled in.
 
@@ -84,24 +84,26 @@ Progress dots at the top show which step you're on. Each step saves automaticall
 After onboarding, you can view and update your profile from the profile page:
 
 - **View mode** — Shows all your profile fields in read-only format, plus your sign-in method (email, phone, or Google) and account details
-- **Edit mode** — Tap "Edit Profile" to make changes, then "Save Changes" to confirm or "Cancel" to discard
+- **Edit mode** — Tap "Edit Profile" to make changes, then "Save Changes" to confirm or "Cancel" to discard. A success message appears after saving.
 
 Editable fields:
 - Name
 - Age
-- Grade
-- Board
+- Grade (dropdown selector)
+- Board (dropdown selector)
 - School name (optional)
 - About me (optional)
 
-The profile page also has a "Log Out" button to sign out of your account.
+The profile page also has a "Log Out" button to sign out of your account. The "Back" button returns you to the home screen.
 
 ---
 
 ## Key Details
 
 - All three auth methods (phone, email, Google) lead to the same app experience
+- The login screen includes a "By continuing, you agree to our Terms of Service" notice at the bottom
 - The onboarding wizard only appears once — after completing it, you go straight to the tutor on future logins
 - Profile data (grade, board) is used to personalize the tutoring experience and show relevant curriculum
 - OTP and email verification codes use a 6-digit input with auto-submit — no need to tap a button after entering all digits
 - Resend buttons have a 30-second cooldown to prevent spamming
+- You can access your profile page even before completing onboarding, but the learning pages require onboarding to be finished

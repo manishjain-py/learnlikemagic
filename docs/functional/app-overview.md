@@ -27,6 +27,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Book & Guidelines** | Admin tool to upload textbooks and extract teaching guidelines |
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
+| **Test Scenarios** | Admin tool to view end-to-end test results and screenshots |
 | **Docs Viewer** | Admin tool to browse project documentation inside the app |
 
 ---
@@ -51,11 +52,13 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 
 1. **Sign up** — Using phone, email, or Google
 2. **Onboard** — Share your name, age, grade, and board
-3. **Pick a topic** — Choose a subject, topic, and subtopic from the curriculum
-4. **Choose a mode** — Teach Me, Clarify Doubts, or Exam (or resume a paused session)
-5. **Learn** — Interact with the tutor through text or voice
-6. **Review progress** — Check your scorecard to see strengths and areas to practice
-7. **Practice again** — Jump back into topics that need more work
+3. **Pick a subject** — Choose a subject from the curriculum
+4. **Pick a topic** — Choose a topic within that subject
+5. **Pick a subtopic** — Choose a specific subtopic to study
+6. **Choose a mode** — Teach Me, Clarify Doubts, or Exam (or resume a paused session)
+7. **Learn** — Interact with the tutor through text or voice; pause to come back later or end early to see results
+8. **Review progress** — Check your scorecard to see strengths and areas to practice
+9. **Practice again** — Jump back into topics that need more work
 
 ### Admins
 
@@ -65,7 +68,8 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 4. **Generate study plans** — AI creates step-by-step teaching plans from guidelines
 5. **Run evaluations** — Test the tutor with simulated students and review quality scores
 6. **Configure AI models** — Choose which AI provider and model powers each component
-7. **Browse documentation** — View project docs directly in the admin interface
+7. **View test scenarios** — Review end-to-end test results and screenshots for each feature
+8. **Browse documentation** — View project docs directly in the admin interface
 
 ---
 

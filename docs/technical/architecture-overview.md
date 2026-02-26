@@ -10,7 +10,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ┌─────────────────────────────────────────────────────────────────┐
 │  Frontend (React + TypeScript + Vite)                           │
 │  S3 + CloudFront                                                │
-│  Routes: /, /login, /profile, /scorecard, /admin/*              │
+│  Routes: /learn/*, /session/:id, /login/*, /profile,            │
+│          /scorecard, /admin/*                                   │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST API + WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -18,8 +19,9 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  AWS App Runner                                                 │
 │                                                                 │
 │  Modules: tutor, book_ingestion, study_plans, evaluation, auth  │
+│  Root API: api/ (docs, test_scenarios)                          │
 │  Shared: llm_service, llm_config_service, anthropic_adapter,    │
-│          models, utils, repositories                            │
+│          models, utils, repositories, prompts                   │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -80,7 +82,8 @@ llm-backend/
 ├── evaluation/           # Session evaluation pipeline
 ├── auth/                 # Authentication & user profiles
 ├── shared/               # Cross-module utilities
-├── api/                  # Root-level API (docs endpoint)
+├── api/                  # Root-level API (docs, test scenarios)
+├── scripts/              # Utility scripts
 ├── tests/
 ├── main.py               # FastAPI app entrypoint
 ├── config.py             # Pydantic settings
@@ -110,12 +113,13 @@ Each module follows the same internal structure:
 | sessions | `/sessions` | Session management, scorecard, WebSocket |
 | transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
 | evaluation | `/api/evaluation` | Evaluation pipeline |
-| admin books | `/admin/books` | Book ingestion admin |
+| admin books | `/admin` | Book ingestion admin (`/admin/books/*`) |
 | admin guidelines | `/admin/guidelines` | Guidelines admin |
 | auth | `/auth` | Auth sync (Cognito to local DB) |
 | profile | `/profile` | User profile CRUD |
 | docs | `/api/docs` | Documentation API for admin viewer |
 | llm config | `/api/admin/llm-config` | LLM model configuration admin |
+| test scenarios | `/api/test-scenarios` | E2E test scenario results and screenshots |
 
 ---
 
@@ -124,16 +128,24 @@ Each module follows the same internal structure:
 ```
 llm-frontend/src/
 ├── App.tsx               # Root component + routing
-├── TutorApp.tsx          # Main tutor UI (topic selection + chat + modes)
+├── TutorApp.tsx          # Legacy redirect (→ /learn)
 ├── api.ts                # API client with auth token handling
 ├── pages/                # Route-level pages
 │   ├── LoginPage.tsx, EmailLoginPage.tsx, PhoneLoginPage.tsx
 │   ├── OTPVerifyPage.tsx, EmailSignupPage.tsx, EmailVerifyPage.tsx
 │   ├── ForgotPasswordPage.tsx, OAuthCallbackPage.tsx
 │   ├── OnboardingFlow.tsx
+│   ├── LearnLayout.tsx       # Shared layout for /learn/* (header, nav menu)
+│   ├── SubjectSelect.tsx     # Subject picker (/learn)
+│   ├── TopicSelect.tsx       # Topic picker (/learn/:subject)
+│   ├── SubtopicSelect.tsx    # Subtopic picker (/learn/:subject/:topic)
+│   ├── ModeSelectPage.tsx    # Mode picker (/learn/:subject/:topic/:subtopic)
+│   ├── ChatSession.tsx       # Chat UI (/session/:sessionId)
 │   ├── ProfilePage.tsx
 │   ├── SessionHistoryPage.tsx
 │   └── ScorecardPage.tsx
+├── hooks/
+│   └── useStudentProfile.ts  # Student profile hook (board, grade, country)
 ├── contexts/
 │   └── AuthContext.tsx    # Global auth state (Cognito SDK)
 ├── components/
@@ -144,8 +156,9 @@ llm-frontend/src/
 │   │   └── pages/
 │   │       ├── BooksDashboard.tsx, CreateBook.tsx, BookDetail.tsx
 │   │       ├── GuidelinesReview.tsx, EvaluationDashboard.tsx
-│   │       ├── DocsViewer.tsx    # In-app documentation browser
-│   │       └── LLMConfigPage.tsx # LLM model config admin
+│   │       ├── DocsViewer.tsx        # In-app documentation browser
+│   │       ├── LLMConfigPage.tsx     # LLM model config admin
+│   │       └── TestScenariosPage.tsx # E2E test results viewer
 │   └── devtools/         # Debug tools (agent logs, guidelines, study plan)
 └── config/               # Cognito config, constants
 ```
@@ -162,7 +175,12 @@ llm-frontend/src/
 | `/signup/email/verify` | EmailVerifyPage | Public | Email verification |
 | `/forgot-password` | ForgotPasswordPage | Public | Password reset |
 | `/auth/callback` | OAuthCallbackPage | Public | Google OAuth callback |
-| `/` | TutorApp | Protected + Onboarding | Main tutoring interface (topic selection + chat) |
+| `/` | (redirect) | — | Redirects to `/learn` |
+| `/learn` | LearnLayout > SubjectSelect | Protected + Onboarding | Subject picker |
+| `/learn/:subject` | LearnLayout > TopicSelect | Protected + Onboarding | Topic picker |
+| `/learn/:subject/:topic` | LearnLayout > SubtopicSelect | Protected + Onboarding | Subtopic picker |
+| `/learn/:subject/:topic/:subtopic` | LearnLayout > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/exam/resume) |
+| `/session/:sessionId` | ChatSession | Protected + Onboarding | Chat session UI |
 | `/profile` | ProfilePage | Protected | Profile management |
 | `/history` | SessionHistoryPage | Protected | Past sessions |
 | `/scorecard` | ScorecardPage | Protected | Student scorecard |
@@ -176,6 +194,7 @@ llm-frontend/src/
 | `/admin/evaluation` | EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | LLMConfigPage | Unprotected | LLM provider/model configuration |
+| `/admin/test-scenarios` | TestScenariosPage | Unprotected | E2E test results and screenshots |
 
 ---
 

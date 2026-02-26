@@ -173,12 +173,12 @@ Centralized model configuration per component. Single source of truth for which 
 
 | Component Key | Provider | Model | Purpose |
 |---------------|----------|-------|---------|
-| `tutor` | openai | gpt-5.2 | Main tutoring pipeline |
-| `book_ingestion` | openai | gpt-4o-mini | Book ingestion services |
-| `study_plan_generator` | openai | gpt-5.2 | Study plan creation |
-| `study_plan_reviewer` | openai | gpt-4o | Study plan review |
-| `eval_evaluator` | openai | gpt-5.2 | Evaluation judge |
-| `eval_simulator` | openai | gpt-4o | Student simulator |
+| `tutor` | openai | gpt-5.2 | Main tutoring pipeline (safety + master tutor + welcome) |
+| `book_ingestion` | openai | gpt-5.2 | All book ingestion services (OCR, boundaries, merge, etc.) |
+| `study_plan_generator` | openai | gpt-5.2 | Study plan creation from teaching guidelines |
+| `study_plan_reviewer` | openai | gpt-5.2 | Study plan review and improvement |
+| `eval_evaluator` | openai | gpt-5.2 | Evaluation judge (scores tutor quality) |
+| `eval_simulator` | openai | gpt-5.2 | Student simulator for evaluations |
 
 ### Books (Book Ingestion)
 
@@ -299,6 +299,8 @@ python db.py --migrate
 | `echo` | false | SQL logging (enabled when `LOG_LEVEL=DEBUG`) |
 
 **FastAPI integration:** `get_db()` dependency yields a session and closes in `finally`.
+
+**Transaction scope:** `session_scope()` context manager provides automatic commit/rollback -- commits on success, rolls back on exception, always closes.
 
 **Health check:** `health_check()` runs `SELECT 1` to verify connectivity.
 

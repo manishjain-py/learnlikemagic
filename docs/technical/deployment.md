@@ -52,7 +52,7 @@ Use `make build-prod` (not `make build-local`) for AWS deployments.
 
 **Dockerfile:** Uses `python:3.11-slim`, copies `entrypoint.sh` as CMD. The entrypoint script checks for required env vars (`DATABASE_URL`, `OPENAI_API_KEY`) before starting Uvicorn.
 
-**Build note:** `make build-prod` copies `docs/` into the backend build context before building, then removes it after. The CI/CD pipeline does the same via `cp -r docs/ llm-backend/docs/`.
+**Build note:** `make build-prod` copies `docs/` into the backend build context before building, then removes it after. The CI/CD pipeline does the same via `cp -r docs/ llm-backend/docs/` and also copies `e2e/scenarios.json` into `llm-backend/e2e/`.
 
 ---
 
@@ -121,10 +121,10 @@ Sets (via Terraform outputs): `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REGISTRY`, `ECR
 
 | Workflow | File | Trigger | What it does |
 |----------|------|---------|--------------|
-| Deploy Backend | `deploy-backend.yml` | Push to `main` (changes in `llm-backend/**`, `docs/**`, or the workflow file); manual | Build AMD64 image --> Push ECR --> Deploy App Runner --> Wait for completion |
+| Deploy Backend | `deploy-backend.yml` | Push to `main` (changes in `llm-backend/**`, `docs/**`, `e2e/scenarios.json`, or the workflow file); manual | Build AMD64 image --> Push ECR --> Deploy App Runner --> Wait for completion |
 | Deploy Frontend | `deploy-frontend.yml` | Push to `main` (changes in `llm-frontend/**` or the workflow file); manual | Build with Vite --> Sync S3 (with cache headers) --> Invalidate CloudFront |
-| Manual Deploy | `manual-deploy.yml` | Manual only | Deploy frontend, backend, or both (selectable) |
-| Daily Coverage | `daily-coverage.yml` | Daily at 6:00 AM UTC; manual | Run pytest coverage --> Generate HTML report --> Email report --> Check 80% threshold |
+| Manual Deploy | `manual-deploy.yml` | Manual only | Deploy frontend, backend, or both (selectable). **Note:** backend build uses native arch (no `--platform linux/amd64`) and does not copy `docs/` or `e2e/` into build context -- prefer the main deploy workflow for production |
+| Daily Coverage | `daily-coverage.yml` | Daily at 6:00 AM UTC; manual | Run pytest coverage --> Generate HTML report (with priority tier breakdown) --> Email report --> Upload artifacts (30-day retention) --> Check 80% threshold |
 
 All workflows use **GitHub OIDC** for AWS authentication (no long-lived credentials).
 
@@ -133,7 +133,7 @@ All workflows use **GitHub OIDC** for AWS authentication (no long-lived credenti
 1. Checkout code
 2. Configure AWS via OIDC (`aws-actions/configure-aws-credentials@v4`)
 3. Login to ECR (`aws-actions/amazon-ecr-login@v2`)
-4. Copy `docs/` into backend build context
+4. Copy `docs/` and `e2e/scenarios.json` into backend build context
 5. Build AMD64 Docker image (tagged with commit SHA + `latest`)
 6. Push both tags to ECR
 7. Trigger App Runner deployment via `aws apprunner start-deployment`
@@ -145,8 +145,21 @@ All workflows use **GitHub OIDC** for AWS authentication (no long-lived credenti
 2. `npm ci` and `npm run build` with environment variables:
    - `VITE_API_URL`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_APP_CLIENT_ID`
    - `VITE_COGNITO_REGION`, `VITE_COGNITO_DOMAIN`, `VITE_GOOGLE_CLIENT_ID`
-3. S3 sync: all assets with `max-age=31536000, immutable`; `index.html` with `no-cache, must-revalidate`
+3. S3 sync: all assets with `max-age=31536000, immutable`; `index.html` with `no-cache, no-store, must-revalidate`
 4. CloudFront cache invalidation (`/*`)
+
+### Daily Coverage Details
+
+1. Checkout, setup Python 3.11, install dependencies
+2. Run `pytest tests/unit/` with JSON + HTML coverage reports
+3. Generate styled HTML report with priority tier breakdown:
+   - **P0 (Critical Runtime, target 90%):** tutor agents/services/orchestration, shared services/repositories
+   - **P1 (Business Logic, target 80%):** shared models/utils/prompts, study plans
+   - **P2 (Offline Pipeline, target 70%):** book ingestion
+   - **P3 (Infrastructure, target 60%):** config, database, API routes, evaluation
+4. Email report via SMTP (`scripts/send_coverage_report.py`)
+5. Upload artifacts (HTML report, JSON data, coverage output) with 30-day retention
+6. Fail if overall coverage < 80%
 
 ---
 
@@ -182,11 +195,14 @@ make outputs       # Show all outputs
 make gh-secrets    # Export outputs to GitHub secrets
 make summary       # Show deployment summary
 make urls          # Show frontend + backend URLs
+make fe-url        # Show frontend URL only
+make be-url        # Show backend API URL only
 make db-url        # Show database connection string
 make tf-fmt        # Format Terraform files
 make tf-validate   # Validate configuration
 make destroy       # Tear down (requires confirmation)
-make clean         # Remove .terraform directory (keeps state)
+make clean         # Remove .terraform, .terraform.lock.hcl, and tfstate backup (keeps terraform.tfstate)
+make setup         # Print step-by-step initial setup guide
 ```
 
 ### Backend
@@ -274,3 +290,5 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db
 | `.github/workflows/deploy-frontend.yml` | Frontend CI/CD pipeline |
 | `.github/workflows/manual-deploy.yml` | Manual deployment workflow |
 | `.github/workflows/daily-coverage.yml` | Daily test coverage report + email |
+| `llm-backend/scripts/send_coverage_report.py` | SMTP email sender for coverage reports |
+| `e2e/scenarios.json` | E2E test scenarios (bundled into backend Docker image during CI/CD) |

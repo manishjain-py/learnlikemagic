@@ -32,8 +32,8 @@ See the detailed sections below for how the tutor teaches, session progression, 
 #### Pausing and Resuming
 
 You can pause a Teach Me session at any time using the "Pause Session" button. When you pause:
-- Your progress is saved, including which concepts you've covered
-- A coverage summary tells you how far you got (e.g., "You've covered 60% so far")
+- Your progress is saved, including which specific concepts you've covered
+- A coverage summary tells you how far you got (e.g., "You've covered 60% so far") along with the list of concepts covered
 - Next time you select the same subtopic, you can resume from where you left off
 - Your full conversation history is restored when you resume
 
@@ -44,8 +44,11 @@ A student-led Q&A session where you ask questions and the tutor answers them dir
 - The tutor answers questions directly without Socratic scaffolding
 - After answering, the tutor may ask a brief follow-up to check your understanding
 - If a question reveals a deep misunderstanding, the tutor addresses it
+- If you seem unsure what to ask, the tutor suggests related areas to explore
 - The concepts you discuss are tracked and shown as tags in the session header
 - You can end the session at any time using the "End Session" button
+- You can also end the session naturally by saying something like "I'm done", "no more doubts", or "that's all" — the tutor will wrap up warmly without asking further questions
+- After resolving a doubt, the tutor asks if you have more questions or would like to end — it does not keep adding extra teaching questions
 - Past discussions for the same subtopic are available so you can see what you've already asked about
 
 ### Exam
@@ -55,12 +58,14 @@ A knowledge test with a set of questions (typically 7) covering the subtopic's c
 - Questions span three difficulty levels: easy (~30%), medium (~50%), and hard (~20%)
 - Questions cover different types: conceptual, procedural, and application
 - After each answer, the tutor gives brief feedback (1-2 sentences) — it does not teach or remediate
+- Answers are scored as correct, partially correct, or incorrect
 - Your score is tracked as you go: you can see how many questions you've answered and how many are correct
 - You can end the exam early using the "End Exam Early" button and still get your results
 - At the end, you see a results summary with:
   - Score and percentage
   - Strengths (concepts you got right)
   - Weak areas (concepts to review)
+  - Patterns (overall performance observations)
   - Suggested next steps (e.g., "Review these concepts in Teach Me")
 
 ---
@@ -81,10 +86,11 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
    - Third wrong answer → explains directly, trying a completely different approach
    - Fourth+ wrong answer → steps back to a simpler prerequisite skill or breaks the problem into smaller pieces
    - If the same misconception keeps recurring, the tutor names it explicitly and creates a targeted exercise
+   - If repeated errors reveal you lack a foundational skill, the tutor pauses the topic, drills that skill first, then returns to the original topic
 
 4. **Never repeat** — The tutor varies how it explains things and the types of questions it asks. If something isn't working, it changes strategy.
 
-5. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects.
+5. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it.
 
 6. **Be real** — Praise is calibrated to difficulty. Easy answers don't get over-the-top celebration. Genuine breakthroughs get genuine enthusiasm. No stock phrases or excessive emojis.
 
@@ -124,6 +130,8 @@ If the tutor notices a pattern of misunderstanding (e.g., thinking a bigger deno
 
 ## Ending a Session
 
+### Teach Me
+
 A Teach Me session ends when:
 - All study plan steps are completed and mastery is sufficient
 - You pause the session to come back later
@@ -136,6 +144,26 @@ After the session, you see a summary with:
 - Suggestions for next steps
 
 Advanced students who finish early can continue beyond the study plan for additional practice (up to 10 extra turns).
+
+### Clarify Doubts
+
+A Clarify Doubts session ends when:
+- You tap the "End Session" button
+- You tell the tutor you're done (e.g., "no more doubts", "that's all")
+
+After the session, you see the list of concepts you discussed.
+
+### Exam
+
+An Exam session ends when:
+- You answer all the questions
+- You tap the "End Exam Early" button
+
+After the session, you see a results summary with your score, strengths, weak areas, and suggested next steps.
+
+### After Any Session
+
+From the session completion screen, you can start a new session or view your scorecard to see overall progress.
 
 ---
 
