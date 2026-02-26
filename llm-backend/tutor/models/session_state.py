@@ -144,6 +144,10 @@ class SessionState(BaseModel):
         default_factory=list,
         description="Concepts discussed in this Clarify Doubts session"
     )
+    clarify_complete: bool = Field(
+        default=False,
+        description="Whether this Clarify Doubts session has been ended by the student"
+    )
 
     # Memory
     session_summary: SessionSummary = Field(default_factory=SessionSummary)
@@ -159,6 +163,8 @@ class SessionState(BaseModel):
 
     @property
     def is_complete(self) -> bool:
+        if self.mode == "clarify_doubts":
+            return self.clarify_complete
         if not self.topic:
             return False
         return self.current_step > self.topic.study_plan.total_steps

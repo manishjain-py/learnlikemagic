@@ -102,18 +102,31 @@ class TeacherOrchestrator:
         )
 
         try:
-            # Check if session is already complete (allow extension for advanced students)
-            max_extension_turns = 10
-            extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
-            if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
-                # Still record the student's message in history
+            # Check if session is already complete
+            # Clarify Doubts: always short-circuit once student ended the session
+            # Teach Me: allow extension turns for advanced students
+            if session.is_complete and session.mode == "clarify_doubts":
                 session.add_message(create_student_message(student_message))
                 response = await self._generate_post_completion_response(session, student_message)
+                session.add_message(create_teacher_message(response))
                 return TurnResult(
                     response=response,
                     intent="session_complete",
                     specialists_called=[],
-                    state_changed=False,
+                    state_changed=True,
+                )
+            max_extension_turns = 10
+            extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
+            if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
+                # Record both student message and assistant reply in history
+                session.add_message(create_student_message(student_message))
+                response = await self._generate_post_completion_response(session, student_message)
+                session.add_message(create_teacher_message(response))
+                return TurnResult(
+                    response=response,
+                    intent="session_complete",
+                    specialists_called=[],
+                    state_changed=True,
                 )
 
             # Increment turn counter and add student message
@@ -450,6 +463,11 @@ class TeacherOrchestrator:
                     session.concepts_discussed.append(update.concept)
                 session.concepts_covered_set.add(update.concept)
 
+        # Mark session complete when student indicates they are done
+        if tutor_output.intent == "done" or tutor_output.session_complete:
+            session.clarify_complete = True
+            logger.info(f"Clarify Doubts session {session.session_id} marked complete (intent={tutor_output.intent})")
+
         session.add_message(create_teacher_message(tutor_output.response))
 
         duration_ms = int((time.time() - start_time) * 1000)
@@ -459,7 +477,7 @@ class TeacherOrchestrator:
             agent_name="orchestrator",
             event_type="turn_completed",
             duration_ms=duration_ms,
-            metadata={"mode": "clarify_doubts", "intent": tutor_output.intent},
+            metadata={"mode": "clarify_doubts", "intent": tutor_output.intent, "clarify_complete": session.clarify_complete},
         )
 
         return TurnResult(
@@ -474,11 +492,13 @@ class TeacherOrchestrator:
     ) -> TurnResult:
         """Process an Exam turn — evaluate answer and move to next question."""
         if session.exam_finished or session.exam_current_question_idx >= len(session.exam_questions):
+            response = "The exam is already complete. Check your results!"
+            session.add_message(create_teacher_message(response))
             return TurnResult(
-                response="The exam is already complete. Check your results!",
+                response=response,
                 intent="exam_complete",
                 specialists_called=[],
-                state_changed=False,
+                state_changed=True,
             )
 
         current_q = session.exam_questions[session.exam_current_question_idx]

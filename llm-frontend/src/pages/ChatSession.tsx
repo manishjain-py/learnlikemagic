@@ -9,6 +9,7 @@ import {
   transcribeAudio,
   pauseSession,
   endExamEarly,
+  endClarifySession,
   Turn,
   SummaryResponse,
   PauseSummary,
@@ -116,9 +117,27 @@ export default function ChatSession() {
               content: m.content,
             })),
           );
-          if (state.current_step_idx != null) setStepIdx(state.current_step_idx);
+          // Hydrate step — backend field is current_step
+          if (state.current_step != null) setStepIdx(state.current_step);
           if (state.mode) setSessionMode(state.mode);
-          if (state.is_complete) setIsComplete(true);
+          if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
+
+          // Hydrate completion for all modes
+          const completed = state.clarify_complete
+            || state.exam_finished
+            || (state.topic && state.current_step > (state.topic?.study_plan?.steps?.length ?? Infinity));
+          if (completed) {
+            setIsComplete(true);
+            // Reconstruct exam summary from persisted feedback
+            if (state.exam_finished && state.exam_feedback) {
+              setSummary({
+                steps_completed: state.exam_feedback.total,
+                mastery_score: state.exam_feedback.percentage / 100,
+                misconceptions_seen: state.exam_feedback.weak_areas || [],
+                suggestions: state.exam_feedback.next_steps || [],
+              });
+            }
+          }
         })
         .catch((err) => console.error('Failed to load session:', err))
         .finally(() => setReplayLoading(false));
@@ -150,10 +169,17 @@ export default function ChatSession() {
       setStepIdx(response.next_turn.step_idx);
       setMastery(response.next_turn.mastery_score);
 
+      // Update concepts discussed for clarify_doubts mode
+      if (response.next_turn.concepts_discussed) {
+        setConceptsDiscussed(response.next_turn.concepts_discussed);
+      }
+
       if (response.next_turn.is_complete) {
         setIsComplete(true);
-        const summaryData = await getSummary(sessionId);
-        setSummary(summaryData);
+        if (sessionMode !== 'clarify_doubts') {
+          const summaryData = await getSummary(sessionId);
+          setSummary(summaryData);
+        }
       }
     } catch (error) {
       console.error('Failed to submit answer:', error);
@@ -175,6 +201,24 @@ export default function ChatSession() {
       setIsComplete(true);
     } catch (error) {
       console.error('Failed to pause session:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEndClarify = async () => {
+    if (!sessionId) return;
+    try {
+      setLoading(true);
+      const result = await endClarifySession(sessionId);
+      if (result.concepts_discussed) {
+        setConceptsDiscussed(result.concepts_discussed);
+      }
+      setIsComplete(true);
+    } catch (error) {
+      console.error('Failed to end clarify session:', error);
+      // Fallback: still mark complete locally so user isn't stuck
+      setIsComplete(true);
     } finally {
       setLoading(false);
     }
@@ -398,7 +442,7 @@ export default function ChatSession() {
                   </button>
                 )}
                 {sessionMode === 'clarify_doubts' && (
-                  <button onClick={() => setIsComplete(true)} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  <button onClick={handleEndClarify} className="back-button" style={{ fontSize: '0.8rem' }}>
                     End Session
                   </button>
                 )}
@@ -448,46 +492,73 @@ export default function ChatSession() {
             </>
           ) : (
             <div className="summary-card" data-testid="session-summary">
-              <h2>Session Complete!</h2>
-              {summary && (
-                <div className="summary-content">
-                  <p>
-                    <strong>Steps Completed:</strong> {summary.steps_completed}
-                  </p>
-                  <p>
-                    <strong>Final Mastery:</strong>{' '}
-                    {(summary.mastery_score * 100).toFixed(0)}%
-                  </p>
-                  {summary.misconceptions_seen.length > 0 && (
-                    <div>
-                      <strong>Areas to Review:</strong>
-                      <ul>
-                        {summary.misconceptions_seen.map((m, i) => (
-                          <li key={i}>{m}</li>
+              {sessionMode === 'clarify_doubts' ? (
+                <>
+                  <h2>Doubts Session Complete!</h2>
+                  {conceptsDiscussed.length > 0 && (
+                    <div className="summary-content">
+                      <p><strong>Concepts Discussed:</strong></p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                        {conceptsDiscussed.map((c, i) => (
+                          <span key={i} style={{
+                            display: 'inline-block',
+                            background: '#e2e8f0',
+                            borderRadius: '12px',
+                            padding: '4px 12px',
+                            fontSize: '0.85rem',
+                          }}>{c}</span>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   )}
-                  <div>
-                    <strong>Next Steps:</strong>
-                    <ul>
-                      {summary.suggestions.map((s, i) => (
-                        <li key={i}>{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+                  <button onClick={() => navigate('/learn')} className="restart-button">
+                    Start New Session
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h2>Session Complete!</h2>
+                  {summary && (
+                    <div className="summary-content">
+                      <p>
+                        <strong>Steps Completed:</strong> {summary.steps_completed}
+                      </p>
+                      <p>
+                        <strong>Final Mastery:</strong>{' '}
+                        {(summary.mastery_score * 100).toFixed(0)}%
+                      </p>
+                      {summary.misconceptions_seen.length > 0 && (
+                        <div>
+                          <strong>Areas to Review:</strong>
+                          <ul>
+                            {summary.misconceptions_seen.map((m, i) => (
+                              <li key={i}>{m}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div>
+                        <strong>Next Steps:</strong>
+                        <ul>
+                          {summary.suggestions.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={() => navigate('/learn')} className="restart-button">
+                    Start New Session
+                  </button>
+                  <button
+                    onClick={() => navigate('/scorecard')}
+                    className="restart-button"
+                    style={{ marginTop: '10px', background: 'white', color: '#667eea', border: '2px solid #667eea' }}
+                  >
+                    View Scorecard
+                  </button>
+                </>
               )}
-              <button onClick={() => navigate('/learn')} className="restart-button">
-                Start New Session
-              </button>
-              <button
-                onClick={() => navigate('/scorecard')}
-                className="restart-button"
-                style={{ marginTop: '10px', background: 'white', color: '#667eea', border: '2px solid #667eea' }}
-              >
-                View Scorecard
-              </button>
             </div>
           )}
         </div>

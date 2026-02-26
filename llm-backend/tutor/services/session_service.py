@@ -179,6 +179,10 @@ class SessionService:
             "is_complete": session.is_complete,
         }
 
+        # Include clarify_doubts-specific data
+        if session.mode == "clarify_doubts":
+            next_turn["concepts_discussed"] = session.concepts_discussed
+
         # Map intent to routing for backward compatibility
         routing = "Advance" if turn_result.intent == "continuation" else "Continue"
 
@@ -360,6 +364,23 @@ class SessionService:
             "message": "Session resumed",
             "current_step": session.current_step,
             "conversation_history": history,
+        }
+
+    def end_clarify_session(self, session_id: str) -> dict:
+        """End a Clarify Doubts session with version-safe persistence."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+        session.clarify_complete = True
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        return {
+            "concepts_discussed": session.concepts_discussed,
+            "message": "Doubts session ended successfully.",
         }
 
     def end_exam(self, session_id: str) -> dict:

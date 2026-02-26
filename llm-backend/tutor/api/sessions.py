@@ -281,6 +281,34 @@ def resume_session(
         raise e.to_http_exception()
 
 
+@router.post("/{session_id}/end-clarify")
+def end_clarify_session(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """End a Clarify Doubts session, marking it complete server-side."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode != "clarify_doubts":
+        raise HTTPException(status_code=400, detail="Only Clarify Doubts sessions can use this endpoint")
+
+    session_state = SessionState.model_validate_json(session_row.state_json)
+    if session_state.clarify_complete:
+        raise HTTPException(status_code=400, detail="Session already ended")
+
+    try:
+        service = SessionService(db)
+        result = service.end_clarify_session(session_id)
+        return result
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+
+
 @router.post("/{session_id}/end-exam", response_model=EndExamResponse)
 def end_exam_early(
     session_id: str,
