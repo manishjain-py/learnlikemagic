@@ -544,8 +544,17 @@ class TeacherOrchestrator:
         if session.exam_current_question_idx >= len(session.exam_questions):
             session.exam_finished = True
             session.exam_feedback = self._build_exam_feedback(session)
+
+            total = len(session.exam_questions)
+            review_lines = [
+                f"Q{q.question_idx + 1}: {'✅ Correct' if q.result == 'correct' else '🟨 Partial' if q.result == 'partial' else '❌ Incorrect'}"
+                for q in session.exam_questions
+            ]
             response = (
-                "✅ Exam complete! Here are your final results."
+                "✅ Exam complete!\n"
+                f"Final Score: **{session.exam_total_correct}/{total}** ({session.exam_feedback.percentage:.1f}%)\n\n"
+                "Question Review:\n"
+                + "\n".join(review_lines)
             )
         else:
             next_q = session.exam_questions[session.exam_current_question_idx]

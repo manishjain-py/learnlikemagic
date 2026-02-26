@@ -56,6 +56,7 @@ export default function ChatSession() {
   const [coverage, setCoverage] = useState(0);
   const [conceptsDiscussed, setConceptsDiscussed] = useState<string[]>([]);
   const [examProgress, setExamProgress] = useState<{ current: number; total: number; answered: number } | null>(null);
+  const [examFeedback, setExamFeedback] = useState<{ score: number; total: number; percentage: number } | null>(null);
   const [examResults, setExamResults] = useState<Array<{ question_idx: number; question_text: string; student_answer?: string | null; result?: 'correct' | 'partial' | 'incorrect' | null }>>([]);
   const [pauseSummaryData, setPauseSummaryData] = useState<PauseSummary | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -161,6 +162,11 @@ export default function ChatSession() {
                 misconceptions_seen: state.exam_feedback.weak_areas || [],
                 suggestions: state.exam_feedback.next_steps || [],
               });
+              setExamFeedback({
+                score: state.exam_feedback.score,
+                total: state.exam_feedback.total,
+                percentage: state.exam_feedback.percentage,
+              });
             }
           }
         })
@@ -216,6 +222,11 @@ export default function ChatSession() {
               mastery_score: response.next_turn.exam_feedback.percentage / 100,
               misconceptions_seen: response.next_turn.exam_feedback.weak_areas || [],
               suggestions: response.next_turn.exam_feedback.next_steps || [],
+            });
+            setExamFeedback({
+              score: response.next_turn.exam_feedback.score,
+              total: response.next_turn.exam_feedback.total,
+              percentage: response.next_turn.exam_feedback.percentage,
             });
           }
           setExamResults(response.next_turn.exam_results || []);
@@ -566,10 +577,17 @@ export default function ChatSession() {
                       <p>
                         <strong>Steps Completed:</strong> {summary.steps_completed}
                       </p>
-                      <p>
-                        <strong>Final Mastery:</strong>{' '}
-                        {(summary.mastery_score * 100).toFixed(0)}%
-                      </p>
+                      {sessionMode === 'exam' && examFeedback ? (
+                        <p>
+                          <strong>Final Exam Score:</strong>{' '}
+                          {examFeedback.score}/{examFeedback.total} ({examFeedback.percentage.toFixed(1)}%)
+                        </p>
+                      ) : (
+                        <p>
+                          <strong>Final Mastery:</strong>{' '}
+                          {(summary.mastery_score * 100).toFixed(0)}%
+                        </p>
+                      )}
                       {summary.misconceptions_seen.length > 0 && (
                         <div>
                           <strong>Areas to Review:</strong>

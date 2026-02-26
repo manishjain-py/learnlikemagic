@@ -600,6 +600,8 @@ class TestExamTurn:
 
         assert session.exam_finished is True
         assert "exam complete" in result.response.lower()
+        assert "final score" in result.response.lower()
+        assert "q1: ✅ correct" in result.response.lower()
 
 
 class TestHandleUnsafeMessage:
