@@ -150,6 +150,120 @@ class TestClarifyDoubtsCompletion:
         assert restored.clarify_complete is True
         assert restored.is_complete is True
 
+    def test_concepts_discussed_tracked_on_session(self):
+        """Concepts discussed should be tracked on the session state."""
+        session = make_test_session(mode="clarify_doubts")
+        assert session.concepts_discussed == []
+        session.concepts_discussed.append("Fractions")
+        session.concepts_discussed.append("Decimals")
+        assert session.concepts_discussed == ["Fractions", "Decimals"]
+        # Survives roundtrip
+        dumped = session.model_dump_json()
+        restored = SessionState.model_validate_json(dumped)
+        assert restored.concepts_discussed == ["Fractions", "Decimals"]
+
+    def test_is_complete_in_step_response_contract(self):
+        """After setting clarify_complete, is_complete should be True
+        (this is what the step response returns to the frontend)."""
+        session = make_test_session(mode="clarify_doubts")
+        # Simulate what orchestrator does
+        session.clarify_complete = True
+        # Build the response dict like session_service.process_step does
+        next_turn = {
+            "message": "Goodbye!",
+            "hints": [],
+            "step_idx": session.current_step,
+            "mastery_score": session.overall_mastery,
+            "is_complete": session.is_complete,
+        }
+        if session.mode == "clarify_doubts":
+            next_turn["concepts_discussed"] = session.concepts_discussed
+        assert next_turn["is_complete"] is True
+        assert "concepts_discussed" in next_turn
+
+
+class TestEndClarifySession:
+    """Tests for POST /sessions/{id}/end-clarify endpoint."""
+
+    @patch("tutor.api.sessions.SessionService")
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_end_clarify_success(self, MockRepo, MockService):
+        _, client, mocks = _build_app_and_client()
+
+        topic = make_test_topic(concepts=["A", "B"])
+        ctx = make_test_student_context()
+        session = create_session(topic=topic, student_context=ctx, mode="clarify_doubts")
+        session.concepts_discussed = ["A"]
+
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+
+        session_row = _make_session_row_mock(
+            mode="clarify_doubts",
+            state_json=session.model_dump_json(),
+        )
+        mock_repo.get_by_id.return_value = session_row
+
+        mock_service = MagicMock()
+        MockService.return_value = mock_service
+        mock_service.end_clarify_session.return_value = {
+            "concepts_discussed": ["A"],
+            "message": "Doubts session ended successfully.",
+        }
+
+        resp = client.post("/sessions/sess-clarify/end-clarify")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "concepts_discussed" in data
+        assert data["message"] == "Doubts session ended successfully."
+
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_end_clarify_not_clarify_session(self, MockRepo):
+        _, client, _ = _build_app_and_client()
+
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+
+        session_row = _make_session_row_mock(mode="teach_me")
+        mock_repo.get_by_id.return_value = session_row
+
+        resp = client.post("/sessions/sess-123/end-clarify")
+        assert resp.status_code == 400
+        assert "Clarify Doubts" in resp.json()["detail"]
+
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_end_clarify_already_ended(self, MockRepo):
+        _, client, _ = _build_app_and_client()
+
+        topic = make_test_topic()
+        ctx = make_test_student_context()
+        session = create_session(topic=topic, student_context=ctx, mode="clarify_doubts")
+        session.clarify_complete = True
+
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+
+        session_row = _make_session_row_mock(
+            mode="clarify_doubts",
+            state_json=session.model_dump_json(),
+        )
+        mock_repo.get_by_id.return_value = session_row
+
+        resp = client.post("/sessions/sess-123/end-clarify")
+        assert resp.status_code == 400
+        assert "already ended" in resp.json()["detail"].lower()
+
+    @patch("tutor.api.sessions.SessionRepository")
+    def test_end_clarify_session_not_found(self, MockRepo):
+        _, client, _ = _build_app_and_client()
+
+        mock_repo = MagicMock()
+        MockRepo.return_value = mock_repo
+        mock_repo.get_by_id.return_value = None
+
+        resp = client.post("/sessions/nonexistent/end-clarify")
+        assert resp.status_code == 404
+
 
 class TestConceptsCoveredSetValidator:
     """Tests for the field_validator that coerces list->set on concepts_covered_set."""

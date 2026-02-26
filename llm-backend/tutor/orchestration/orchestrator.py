@@ -102,7 +102,18 @@ class TeacherOrchestrator:
         )
 
         try:
-            # Check if session is already complete (allow extension for advanced students)
+            # Check if session is already complete
+            # Clarify Doubts: always short-circuit once student ended the session
+            # Teach Me: allow extension turns for advanced students
+            if session.is_complete and session.mode == "clarify_doubts":
+                session.add_message(create_student_message(student_message))
+                response = await self._generate_post_completion_response(session, student_message)
+                return TurnResult(
+                    response=response,
+                    intent="session_complete",
+                    specialists_called=[],
+                    state_changed=False,
+                )
             max_extension_turns = 10
             extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
             if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):

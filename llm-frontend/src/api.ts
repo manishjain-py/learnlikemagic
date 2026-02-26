@@ -77,6 +77,7 @@ export interface Turn {
   step_idx: number;
   mastery_score: number;
   is_complete?: boolean;
+  concepts_discussed?: string[];
 }
 
 export interface CreateSessionResponse {
@@ -322,6 +323,12 @@ export async function pauseSession(sessionId: string): Promise<PauseSummary> {
 export async function resumeSession(sessionId: string): Promise<{ session_id: string; message: string; current_step: number }> {
   const response = await apiFetch(`/sessions/${sessionId}/resume`, { method: 'POST' });
   if (!response.ok) throw new Error(`Failed to resume session: ${response.statusText}`);
+  return response.json();
+}
+
+export async function endClarifySession(sessionId: string): Promise<{ concepts_discussed: string[]; message: string }> {
+  const response = await apiFetch(`/sessions/${sessionId}/end-clarify`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to end clarify session: ${response.statusText}`);
   return response.json();
 }
 

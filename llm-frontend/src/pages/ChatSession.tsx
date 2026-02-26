@@ -9,6 +9,7 @@ import {
   transcribeAudio,
   pauseSession,
   endExamEarly,
+  endClarifySession,
   Turn,
   SummaryResponse,
   PauseSummary,
@@ -118,7 +119,8 @@ export default function ChatSession() {
           );
           if (state.current_step_idx != null) setStepIdx(state.current_step_idx);
           if (state.mode) setSessionMode(state.mode);
-          if (state.is_complete) setIsComplete(true);
+          if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
+          if (state.clarify_complete || state.is_complete) setIsComplete(true);
         })
         .catch((err) => console.error('Failed to load session:', err))
         .finally(() => setReplayLoading(false));
@@ -182,6 +184,24 @@ export default function ChatSession() {
       setIsComplete(true);
     } catch (error) {
       console.error('Failed to pause session:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEndClarify = async () => {
+    if (!sessionId) return;
+    try {
+      setLoading(true);
+      const result = await endClarifySession(sessionId);
+      if (result.concepts_discussed) {
+        setConceptsDiscussed(result.concepts_discussed);
+      }
+      setIsComplete(true);
+    } catch (error) {
+      console.error('Failed to end clarify session:', error);
+      // Fallback: still mark complete locally so user isn't stuck
+      setIsComplete(true);
     } finally {
       setLoading(false);
     }
@@ -405,7 +425,7 @@ export default function ChatSession() {
                   </button>
                 )}
                 {sessionMode === 'clarify_doubts' && (
-                  <button onClick={() => setIsComplete(true)} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  <button onClick={handleEndClarify} className="back-button" style={{ fontSize: '0.8rem' }}>
                     End Session
                   </button>
                 )}
