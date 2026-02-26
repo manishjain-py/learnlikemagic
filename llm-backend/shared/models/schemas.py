@@ -66,130 +66,37 @@ class CurriculumResponse(BaseModel):
     subtopics: Optional[List[SubtopicInfo]] = None
 
 
-# ── Scorecard schemas ──
-
-class ScorecardMisconception(BaseModel):
-    """A misconception detected during a session."""
-    description: str
-    resolved: bool
-
-
-class ScorecardSubtopic(BaseModel):
-    """Subtopic-level performance data."""
-    subtopic: str
-    subtopic_key: str
-    guideline_id: Optional[str] = None
-    score: float
-    session_count: int
-    latest_session_date: Optional[str] = None
-    concepts: Dict[str, float]
-    misconceptions: List[ScorecardMisconception]
-
-
-class ScorecardTopic(BaseModel):
-    """Topic-level aggregated performance."""
-    topic: str
-    topic_key: str
-    score: float
-    subtopics: List[ScorecardSubtopic]
-
-
-class ScorecardTrendPoint(BaseModel):
-    """A single data point for mastery trend over time."""
-    date: Optional[str] = None
-    date_label: Optional[str] = None
-    score: float
-
-
-class ScorecardSubject(BaseModel):
-    """Subject-level aggregated performance with trend data."""
-    subject: str
-    score: float
-    session_count: int
-    topics: List[ScorecardTopic]
-    trend: List[ScorecardTrendPoint]
-
-
-class ScorecardHighlight(BaseModel):
-    """A highlighted subtopic (strength or needs-practice)."""
-    subtopic: str
-    subject: str
-    score: float
-
-
-class ScorecardResponse(BaseModel):
-    """Complete student scorecard response."""
-    overall_score: float
-    total_sessions: int
-    total_topics_studied: int
-    subjects: List[ScorecardSubject]
-    strengths: List[ScorecardHighlight]
-    needs_practice: List[ScorecardHighlight]
-
-
-class ExamHistoryEntry(BaseModel):
-    """A single exam attempt for trend display."""
-    date: str
-    score: int
-    total: int
-    percentage: float
-
-
-class ExamFeedbackResponse(BaseModel):
-    """Exam feedback shown in report card."""
-    strengths: list[str]
-    weak_areas: list[str]
-    patterns: list[str]
-    next_steps: list[str]
-
+# ── Report Card schemas ──
 
 class ReportCardSubtopic(BaseModel):
     """Subtopic-level data for report card."""
     subtopic: str
     subtopic_key: str
     guideline_id: Optional[str] = None
-    coverage: float
+    coverage: float                          # 0-100%, teach_me sessions only
+    latest_exam_score: Optional[int] = None  # X in X/Y
+    latest_exam_total: Optional[int] = None  # Y in X/Y
     last_studied: Optional[str] = None
-    revision_nudge: Optional[str] = None
-    latest_exam_score: Optional[int] = None
-    latest_exam_total: Optional[int] = None
-    latest_exam_feedback: Optional[ExamFeedbackResponse] = None
-    exam_count: int = 0
-    exam_history: list[ExamHistoryEntry] = Field(default_factory=list)
-    teach_me_sessions: int = 0
-    clarify_sessions: int = 0
-    # Legacy compat
-    score: float = 0.0
-    session_count: int = 0
-    concepts: Dict[str, float] = Field(default_factory=dict)
-    misconceptions: list[ScorecardMisconception] = Field(default_factory=list)
 
 
 class ReportCardTopic(BaseModel):
-    """Topic-level aggregated data for report card."""
+    """Topic-level data for report card."""
     topic: str
     topic_key: str
-    score: float
     subtopics: list[ReportCardSubtopic]
 
 
 class ReportCardSubject(BaseModel):
-    """Subject-level aggregated data for report card."""
+    """Subject-level data for report card."""
     subject: str
-    score: float
-    session_count: int
     topics: list[ReportCardTopic]
-    trend: list[ScorecardTrendPoint]
 
 
 class ReportCardResponse(BaseModel):
     """Complete student report card response."""
-    overall_score: float
     total_sessions: int
     total_topics_studied: int
     subjects: list[ReportCardSubject]
-    strengths: list[ScorecardHighlight]
-    needs_practice: list[ScorecardHighlight]
 
 
 class ResumableSessionResponse(BaseModel):
@@ -218,9 +125,9 @@ class EndExamResponse(BaseModel):
 
 class SubtopicProgressEntry(BaseModel):
     """Progress for a single subtopic (used in topic selection indicators)."""
-    score: float
+    coverage: float
     session_count: int
-    status: str  # "mastered" | "in_progress"
+    status: str  # "studied" | "not_started"
 
 
 class SubtopicProgressResponse(BaseModel):

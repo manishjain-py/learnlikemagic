@@ -1,7 +1,7 @@
 """Unit tests for tutor/services/scorecard_service.py
 
-Tests scorecard aggregation logic using an in-memory SQLite database.
-All database interactions go through the db_session fixture from conftest.py.
+Tests deterministic scorecard aggregation (coverage + exam score only)
+using an in-memory SQLite database.
 """
 
 import json
@@ -72,15 +72,21 @@ def _create_session(
     guideline_id="g1",
     mastery=0.75,
     mastery_estimates=None,
-    misconceptions=None,
+    concepts_covered_set=None,
+    mode="teach_me",
+    exam_finished=False,
+    exam_total_correct=0,
+    exam_questions=None,
     created_at=None,
     session_id=None,
 ):
     """Create a session with realistic state_json for scorecard testing."""
     if mastery_estimates is None:
         mastery_estimates = {"concept_a": 0.8, "concept_b": 0.7}
-    if misconceptions is None:
-        misconceptions = []
+    if concepts_covered_set is None:
+        concepts_covered_set = []
+    if exam_questions is None:
+        exam_questions = []
     if created_at is None:
         created_at = datetime.utcnow()
     if session_id is None:
@@ -88,6 +94,7 @@ def _create_session(
 
     state = {
         "session_id": session_id,
+        "mode": mode,
         "topic": {
             "topic_id": guideline_id,
             "topic_name": topic_name,
@@ -95,11 +102,12 @@ def _create_session(
             "grade_level": 3,
         },
         "mastery_estimates": mastery_estimates,
-        "misconceptions": misconceptions,
-        "weak_areas": [],
+        "concepts_covered_set": concepts_covered_set,
+        "exam_finished": exam_finished,
+        "exam_total_correct": exam_total_correct,
+        "exam_questions": exam_questions,
     }
 
-    # Minimal student/goal JSON
     student_json = json.dumps({"id": user_id, "grade": 3})
     goal_json = json.dumps({"topic": topic_name, "guideline_id": guideline_id})
 
@@ -131,23 +139,23 @@ class TestScorecardEmpty:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        assert result["overall_score"] == 0
         assert result["total_sessions"] == 0
         assert result["total_topics_studied"] == 0
         assert result["subjects"] == []
-        assert result["strengths"] == []
-        assert result["needs_practice"] == []
+        assert "overall_score" not in result
+        assert "strengths" not in result
+        assert "needs_practice" not in result
 
     def test_nonexistent_user_returns_empty(self, db_session):
         service = ScorecardService(db_session)
         result = service.get_scorecard("nonexistent-user")
 
-        assert result["overall_score"] == 0
         assert result["total_sessions"] == 0
+        assert result["total_topics_studied"] == 0
 
 
 # ===========================================================================
-# Single Session
+# Single Session Structure
 # ===========================================================================
 
 class TestScorecardSingleSession:
@@ -165,7 +173,7 @@ class TestScorecardSingleSession:
         assert len(result["subjects"]) == 1
         assert result["subjects"][0]["subject"] == "Mathematics"
 
-    def test_single_session_mastery_propagates(self, db_session):
+    def test_single_session_has_no_aggregate_scores(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(db_session, mastery=0.8)
@@ -174,200 +182,289 @@ class TestScorecardSingleSession:
         result = service.get_scorecard(USER_ID)
 
         subject = result["subjects"][0]
-        assert subject["score"] == 0.8
-        assert subject["topics"][0]["score"] == 0.8
-        assert subject["topics"][0]["subtopics"][0]["score"] == 0.8
+        assert "score" not in subject
+        topic = subject["topics"][0]
+        assert "score" not in topic
 
-    def test_single_session_concepts_extracted(self, db_session):
+    def test_single_session_subtopic_has_coverage(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(
             db_session,
-            mastery=0.85,
-            mastery_estimates={"addition": 0.9, "carrying": 0.8},
+            mastery_estimates={"concept_a": 0.8, "concept_b": 0.7},
+            concepts_covered_set=["concept_a"],
         )
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
         subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["concepts"]["addition"] == 0.9
-        assert subtopic["concepts"]["carrying"] == 0.8
+        assert subtopic["coverage"] == 50.0  # 1 of 2 concepts covered
 
-    def test_single_session_misconceptions_extracted(self, db_session):
+
+# ===========================================================================
+# Coverage (teach_me only)
+# ===========================================================================
+
+class TestScorecardCoverage:
+    """Test coverage computation from teach_me sessions only."""
+
+    def test_coverage_from_teach_me_session(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(
             db_session,
-            mastery=0.6,
-            misconceptions=[
-                {"concept": "fractions", "description": "Larger denominator = larger fraction", "resolved": False},
-            ],
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7, "c3": 0.5},
+            concepts_covered_set=["c1", "c2"],
         )
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
         subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert len(subtopic["misconceptions"]) == 1
-        assert subtopic["misconceptions"][0]["description"] == "Larger denominator = larger fraction"
-        assert subtopic["misconceptions"][0]["resolved"] is False
+        assert subtopic["coverage"] == pytest.approx(66.7, abs=0.1)  # 2/3
 
+    def test_clarify_doubts_excluded_from_coverage(self, db_session):
+        """clarify_doubts sessions should not contribute to coverage."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(
+            db_session,
+            mode="clarify_doubts",
+            mastery_estimates={"c1": 0.9, "c2": 0.7},
+            concepts_covered_set=["c1", "c2"],
+        )
 
-# ===========================================================================
-# Multiple Sessions
-# ===========================================================================
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
 
-class TestScorecardMultipleSessions:
-    """Test scorecard aggregation across sessions."""
+        # clarify_doubts session creates a subject entry but coverage stays 0
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["coverage"] == 0.0
 
-    def test_latest_session_per_subtopic_wins(self, db_session):
+    def test_coverage_accumulates_across_sessions(self, db_session):
+        """Coverage from multiple teach_me sessions should accumulate."""
         _create_user(db_session)
         _create_guideline(db_session)
         now = datetime.utcnow()
 
-        # Older session with lower mastery
-        _create_session(db_session, mastery=0.5, created_at=now - timedelta(days=2))
-        # Newer session with higher mastery
-        _create_session(db_session, mastery=0.9, created_at=now)
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7, "c3": 0.5, "c4": 0.3},
+            concepts_covered_set=["c1", "c2"],
+            created_at=now - timedelta(days=1),
+        )
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7, "c3": 0.5, "c4": 0.3},
+            concepts_covered_set=["c3"],
+            created_at=now,
+        )
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
         subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["score"] == 0.9
-        assert subtopic["session_count"] == 2
+        assert subtopic["coverage"] == 75.0  # 3 of 4 concepts
 
-    def test_topic_score_averages_subtopics(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", subtopic="Comparing Fractions",
-                          subtopic_key="comparing-fractions")
-        _create_guideline(db_session, guideline_id="g2", subtopic="Adding Fractions",
-                          subtopic_key="adding-fractions")
-
-        _create_session(db_session, guideline_id="g1",
-                        topic_name="Fractions - Comparing Fractions", mastery=0.9)
-        _create_session(db_session, guideline_id="g2",
-                        topic_name="Fractions - Adding Fractions", mastery=0.7)
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        topic = result["subjects"][0]["topics"][0]
-        assert topic["score"] == 0.8  # avg of 0.9 and 0.7
-
-    def test_subject_score_averages_topics(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", topic="Fractions",
-                          subtopic="Comparing", topic_key="fractions", subtopic_key="comparing")
-        _create_guideline(db_session, guideline_id="g2", topic="Geometry",
-                          subtopic="Shapes", topic_key="geometry", subtopic_key="shapes")
-
-        _create_session(db_session, guideline_id="g1",
-                        topic_name="Fractions - Comparing", mastery=0.9)
-        _create_session(db_session, guideline_id="g2",
-                        topic_name="Geometry - Shapes", mastery=0.7)
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        assert result["subjects"][0]["score"] == 0.8  # avg of 0.9 and 0.7
-
-    def test_overall_score_averages_subjects(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", subject="Mathematics",
-                          topic="Fractions", subtopic="Comparing",
-                          topic_key="fractions", subtopic_key="comparing")
-        _create_guideline(db_session, guideline_id="g2", subject="Science",
-                          topic="Plants", subtopic="Parts",
-                          topic_key="plants", subtopic_key="parts")
-
-        _create_session(db_session, guideline_id="g1", subject="Mathematics",
-                        topic_name="Fractions - Comparing", mastery=0.9)
-        _create_session(db_session, guideline_id="g2", subject="Science",
-                        topic_name="Plants - Parts", mastery=0.7)
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        assert result["overall_score"] == 0.8  # avg of 0.9 and 0.7
-        assert len(result["subjects"]) == 2
-
-    def test_multiple_subjects_grouped_correctly(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", subject="Mathematics",
-                          topic="Numbers", subtopic="Addition",
-                          topic_key="numbers", subtopic_key="addition")
-        _create_guideline(db_session, guideline_id="g2", subject="Science",
-                          topic="Plants", subtopic="Parts",
-                          topic_key="plants", subtopic_key="parts")
-
-        _create_session(db_session, guideline_id="g1", subject="Mathematics",
-                        topic_name="Numbers - Addition", mastery=0.85)
-        _create_session(db_session, guideline_id="g2", subject="Science",
-                        topic_name="Plants - Parts", mastery=0.72)
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        subject_names = [s["subject"] for s in result["subjects"]]
-        assert "Mathematics" in subject_names
-        assert "Science" in subject_names
-
-    def test_zero_score_included_in_averages(self, db_session):
-        """Regression: subtopics with score 0.0 must count in averages, not be excluded."""
-        _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", subtopic="Easy",
-                          subtopic_key="easy", topic_key="t")
-        _create_guideline(db_session, guideline_id="g2", subtopic="Hard",
-                          subtopic_key="hard", topic_key="t")
-
-        _create_session(db_session, guideline_id="g1",
-                        topic_name="Fractions - Easy", mastery=1.0)
-        # mastery_estimates={} avoids the `not overall_mastery` fallback path
-        _create_session(db_session, guideline_id="g2",
-                        topic_name="Fractions - Hard", mastery=0.0,
-                        mastery_estimates={})
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        # Topic average: (1.0 + 0.0) / 2 = 0.5 — NOT 1.0
-        topic = result["subjects"][0]["topics"][0]
-        assert topic["score"] == 0.5
-
-        # Subject average should propagate the same
-        assert result["subjects"][0]["score"] == 0.5
-
-        # Overall average should propagate the same
-        assert result["overall_score"] == 0.5
-
-    def test_trend_data_includes_all_sessions(self, db_session):
+    def test_latest_plan_used_not_union(self, db_session):
+        """Coverage denominator should use the latest session's plan, not union of all."""
         _create_user(db_session)
         _create_guideline(db_session)
         now = datetime.utcnow()
 
-        _create_session(db_session, mastery=0.5, created_at=now - timedelta(days=2))
-        _create_session(db_session, mastery=0.7, created_at=now - timedelta(days=1))
-        _create_session(db_session, mastery=0.9, created_at=now)
+        # Session 1: plan has c1, c2 — covers c1
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7},
+            concepts_covered_set=["c1"],
+            created_at=now - timedelta(days=1),
+        )
+        # Session 2: plan changes to c1, c2, c3 — covers c2
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7, "c3": 0.5},
+            concepts_covered_set=["c2"],
+            created_at=now,
+        )
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        trend = result["subjects"][0]["trend"]
-        assert len(trend) == 3
-        scores = [t["score"] for t in trend]
-        assert scores == [0.5, 0.7, 0.9]
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        # covered = {c1, c2}, plan = {c1, c2, c3} (latest), coverage = 2/3 ≈ 66.7%
+        assert subtopic["coverage"] == pytest.approx(66.7, abs=0.1)
+
+    def test_zero_plan_concepts_gives_zero_coverage(self, db_session):
+        """If no plan concepts (empty mastery_estimates), coverage is 0."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={},
+            concepts_covered_set=["c1"],
+        )
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["coverage"] == 0.0
 
 
 # ===========================================================================
-# Strengths & Weaknesses
+# Exam Score
 # ===========================================================================
 
-class TestScorecardStrengthsAndWeaknesses:
-    """Test strengths/needs-practice identification."""
+class TestScorecardExamScore:
+    """Test latest exam score passthrough."""
 
-    def test_strengths_sorted_by_score_desc(self, db_session):
+    def test_latest_exam_shown(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        now = datetime.utcnow()
+
+        # teach_me session first
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
+            created_at=now - timedelta(days=2),
+        )
+        # exam session
+        _create_session(
+            db_session,
+            mode="exam",
+            mastery_estimates={},
+            concepts_covered_set=[],
+            exam_finished=True,
+            exam_total_correct=7,
+            exam_questions=[{} for _ in range(10)],
+            created_at=now,
+        )
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["latest_exam_score"] == 7
+        assert subtopic["latest_exam_total"] == 10
+
+    def test_no_exam_returns_none(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
+        )
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["latest_exam_score"] is None
+        assert subtopic["latest_exam_total"] is None
+
+    def test_exam_updates_last_studied(self, db_session):
+        """Exam sessions should also update last_studied."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        now = datetime.utcnow()
+
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
+            created_at=now - timedelta(days=5),
+        )
+        _create_session(
+            db_session,
+            mode="exam",
+            mastery_estimates={},
+            exam_finished=True,
+            exam_total_correct=8,
+            exam_questions=[{} for _ in range(10)],
+            created_at=now,
+        )
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["last_studied"] == now.isoformat()
+
+    def test_latest_exam_wins(self, db_session):
+        """When multiple exams exist, the latest one should be shown."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        now = datetime.utcnow()
+
+        _create_session(
+            db_session,
+            mode="exam",
+            mastery_estimates={},
+            exam_finished=True,
+            exam_total_correct=3,
+            exam_questions=[{} for _ in range(10)],
+            created_at=now - timedelta(days=1),
+        )
+        _create_session(
+            db_session,
+            mode="exam",
+            mastery_estimates={},
+            exam_finished=True,
+            exam_total_correct=8,
+            exam_questions=[{} for _ in range(10)],
+            created_at=now,
+        )
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["latest_exam_score"] == 8
+        assert subtopic["latest_exam_total"] == 10
+
+
+# ===========================================================================
+# No Aggregate Scores
+# ===========================================================================
+
+class TestScorecardNoAggregateScores:
+    """Verify no aggregate scores, strengths, or needs_practice in output."""
+
+    def test_no_overall_score(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(db_session)
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        assert "overall_score" not in result
+
+    def test_no_strengths_or_needs_practice(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(db_session)
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        assert "strengths" not in result
+        assert "needs_practice" not in result
+
+    def test_no_score_on_subject_or_topic(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session, guideline_id="g1", subtopic="A",
                           subtopic_key="a", topic_key="t")
@@ -375,62 +472,28 @@ class TestScorecardStrengthsAndWeaknesses:
                           subtopic_key="b", topic_key="t")
 
         _create_session(db_session, guideline_id="g1",
-                        topic_name="Fractions - A", mastery=0.7)
+                        topic_name="Fractions - A")
         _create_session(db_session, guideline_id="g2",
-                        topic_name="Fractions - B", mastery=0.9)
+                        topic_name="Fractions - B")
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        assert result["strengths"][0]["score"] == 0.9
-        assert result["strengths"][1]["score"] == 0.7
+        subject = result["subjects"][0]
+        assert "score" not in subject
+        topic = subject["topics"][0]
+        assert "score" not in topic
 
-    def test_needs_practice_below_065_threshold(self, db_session):
+    def test_no_trend_data(self, db_session):
         _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", subtopic="Easy",
-                          subtopic_key="easy", topic_key="t")
-        _create_guideline(db_session, guideline_id="g2", subtopic="Hard",
-                          subtopic_key="hard", topic_key="t")
-
-        _create_session(db_session, guideline_id="g1",
-                        topic_name="Fractions - Easy", mastery=0.9)
-        _create_session(db_session, guideline_id="g2",
-                        topic_name="Fractions - Hard", mastery=0.4)
+        _create_guideline(db_session)
+        _create_session(db_session)
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        assert len(result["needs_practice"]) == 1
-        assert result["needs_practice"][0]["subtopic"] == "Hard"
-        assert result["needs_practice"][0]["score"] == 0.4
-
-    def test_max_five_strengths(self, db_session):
-        _create_user(db_session)
-        for i in range(7):
-            gid = f"g{i}"
-            _create_guideline(db_session, guideline_id=gid, subtopic=f"Sub{i}",
-                              subtopic_key=f"sub{i}", topic_key="t")
-            _create_session(db_session, guideline_id=gid,
-                            topic_name=f"Fractions - Sub{i}", mastery=0.7 + i * 0.03)
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        assert len(result["strengths"]) == 5
-
-    def test_max_five_needs_practice(self, db_session):
-        _create_user(db_session)
-        for i in range(7):
-            gid = f"g{i}"
-            _create_guideline(db_session, guideline_id=gid, subtopic=f"Sub{i}",
-                              subtopic_key=f"sub{i}", topic_key="t")
-            _create_session(db_session, guideline_id=gid,
-                            topic_name=f"Fractions - Sub{i}", mastery=0.1 + i * 0.05)
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        assert len(result["needs_practice"]) <= 5
+        subject = result["subjects"][0]
+        assert "trend" not in subject
 
 
 # ===========================================================================
@@ -448,7 +511,7 @@ class TestScorecardGuidelineLookup:
             topic_key="fractions", subtopic_key="comparing-fractions",
         )
         _create_session(db_session, guideline_id="g1",
-                        topic_name="Fractions - Comparing Fractions", mastery=0.8)
+                        topic_name="Fractions - Comparing Fractions")
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
@@ -461,9 +524,8 @@ class TestScorecardGuidelineLookup:
     def test_fallback_to_topic_name_split(self, db_session):
         """If guideline_id is not found, fall back to splitting topic_name."""
         _create_user(db_session)
-        # No guideline created, so lookup will fail
         _create_session(db_session, guideline_id="nonexistent",
-                        topic_name="Geometry - Shapes", mastery=0.7)
+                        topic_name="Geometry - Shapes")
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
@@ -483,7 +545,7 @@ class TestScorecardGuidelineLookup:
             topic_key="new-topic", subtopic_key="new-subtopic",
         )
         _create_session(db_session, guideline_id="g1",
-                        topic_name="old - names", mastery=0.8)
+                        topic_name="old - names")
 
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
@@ -503,7 +565,6 @@ class TestScorecardResilience:
 
     def test_malformed_state_json_skipped_not_500(self, db_session):
         _create_user(db_session)
-        # Create a session with invalid JSON
         session = SessionModel(
             id="bad-session",
             student_json="{}",
@@ -521,7 +582,6 @@ class TestScorecardResilience:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        # Should not raise, just return empty since the only session is malformed
         assert result["total_sessions"] == 1
         assert result["subjects"] == []
 
@@ -547,26 +607,13 @@ class TestScorecardResilience:
         assert result["total_sessions"] == 1
         assert result["subjects"] == []
 
-    def test_empty_mastery_estimates_uses_session_mastery(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session)
-        _create_session(db_session, mastery=0.75, mastery_estimates={})
-
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
-
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["score"] == 0.75
-
     def test_mixed_valid_and_invalid_sessions(self, db_session):
         """Valid sessions still aggregated when some are malformed."""
         _create_user(db_session)
         _create_guideline(db_session)
 
-        # One valid session
         _create_session(db_session, mastery=0.8)
 
-        # One malformed session
         session = SessionModel(
             id="bad-session-2",
             student_json="{}",
@@ -586,7 +633,153 @@ class TestScorecardResilience:
 
         assert result["total_sessions"] == 2
         assert len(result["subjects"]) == 1
-        assert result["subjects"][0]["score"] == 0.8
+
+    def test_non_dict_mastery_estimates_handled(self, db_session):
+        """mastery_estimates as a non-dict (e.g. string) should not crash."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        session = SessionModel(
+            id="bad-mastery",
+            student_json="{}",
+            goal_json="{}",
+            state_json=json.dumps({
+                "mode": "teach_me",
+                "topic": {"topic_id": "g1", "topic_name": "Fractions - Comparing Fractions", "subject": "Mathematics"},
+                "mastery_estimates": "not a dict",
+                "concepts_covered_set": ["c1"],
+            }),
+            mastery=0.5, step_idx=1, user_id=USER_ID,
+            subject="Mathematics", created_at=datetime.utcnow(),
+        )
+        db_session.add(session)
+        db_session.commit()
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["coverage"] == 0.0  # no plan concepts → 0%
+
+    def test_non_list_exam_questions_handled(self, db_session):
+        """exam_questions as a non-list should not crash."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        session = SessionModel(
+            id="bad-exam",
+            student_json="{}",
+            goal_json="{}",
+            state_json=json.dumps({
+                "mode": "exam",
+                "topic": {"topic_id": "g1", "topic_name": "Fractions - Comparing Fractions", "subject": "Mathematics"},
+                "mastery_estimates": {},
+                "exam_finished": True,
+                "exam_total_correct": 5,
+                "exam_questions": "not a list",
+            }),
+            mastery=0.5, step_idx=1, user_id=USER_ID,
+            subject="Mathematics", created_at=datetime.utcnow(),
+        )
+        db_session.add(session)
+        db_session.commit()
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["latest_exam_score"] is None  # exam_total=0, so not recorded
+
+    def test_non_int_exam_total_correct_handled(self, db_session):
+        """exam_total_correct as a string should be handled gracefully."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        session = SessionModel(
+            id="bad-score",
+            student_json="{}",
+            goal_json="{}",
+            state_json=json.dumps({
+                "mode": "exam",
+                "topic": {"topic_id": "g1", "topic_name": "Fractions - Comparing Fractions", "subject": "Mathematics"},
+                "mastery_estimates": {},
+                "exam_finished": True,
+                "exam_total_correct": "not a number",
+                "exam_questions": [{}, {}, {}],
+            }),
+            mastery=0.5, step_idx=1, user_id=USER_ID,
+            subject="Mathematics", created_at=datetime.utcnow(),
+        )
+        db_session.add(session)
+        db_session.commit()
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        assert subtopic["latest_exam_score"] == 0  # defaults to 0
+
+    def test_topic_as_non_dict_skipped(self, db_session):
+        """topic as a string instead of dict should be skipped."""
+        _create_user(db_session)
+        session = SessionModel(
+            id="bad-topic",
+            student_json="{}",
+            goal_json="{}",
+            state_json=json.dumps({
+                "mode": "teach_me",
+                "topic": "just a string",
+                "mastery_estimates": {"c1": 0.9},
+            }),
+            mastery=0.5, step_idx=1, user_id=USER_ID,
+            subject="Mathematics", created_at=datetime.utcnow(),
+        )
+        db_session.add(session)
+        db_session.commit()
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        assert result["total_sessions"] == 1
+        assert result["subjects"] == []
+
+    def test_state_json_as_array_skipped(self, db_session):
+        """state_json that parses as a list (not dict) should be skipped."""
+        _create_user(db_session)
+        session = SessionModel(
+            id="array-state",
+            student_json="{}",
+            goal_json="{}",
+            state_json="[1, 2, 3]",
+            mastery=0.5, step_idx=1, user_id=USER_ID,
+            subject="Mathematics", created_at=datetime.utcnow(),
+        )
+        db_session.add(session)
+        db_session.commit()
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        assert result["total_sessions"] == 1
+        assert result["subjects"] == []
+
+    def test_multiple_subjects_grouped_correctly(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session, guideline_id="g1", subject="Mathematics",
+                          topic="Numbers", subtopic="Addition",
+                          topic_key="numbers", subtopic_key="addition")
+        _create_guideline(db_session, guideline_id="g2", subject="Science",
+                          topic="Plants", subtopic="Parts",
+                          topic_key="plants", subtopic_key="parts")
+
+        _create_session(db_session, guideline_id="g1", subject="Mathematics",
+                        topic_name="Numbers - Addition")
+        _create_session(db_session, guideline_id="g2", subject="Science",
+                        topic_name="Plants - Parts")
+
+        service = ScorecardService(db_session)
+        result = service.get_scorecard(USER_ID)
+
+        subject_names = [s["subject"] for s in result["subjects"]]
+        assert "Mathematics" in subject_names
+        assert "Science" in subject_names
 
 
 # ===========================================================================
@@ -603,49 +796,78 @@ class TestSubtopicProgress:
 
         assert result["user_progress"] == {}
 
-    def test_mastered_status_above_085(self, db_session):
+    def test_studied_status_for_teach_me(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
-        _create_session(db_session, mastery=0.9)
+        _create_session(
+            db_session,
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7},
+            concepts_covered_set=["c1"],
+        )
 
         service = ScorecardService(db_session)
         result = service.get_subtopic_progress(USER_ID)
 
-        assert result["user_progress"]["g1"]["status"] == "mastered"
-        assert result["user_progress"]["g1"]["score"] == 0.9
+        assert result["user_progress"]["g1"]["status"] == "studied"
+        assert result["user_progress"]["g1"]["coverage"] == 50.0
 
-    def test_in_progress_status_below_085(self, db_session):
+    def test_clarify_doubts_excluded(self, db_session):
+        """clarify_doubts sessions should not appear in subtopic progress."""
         _create_user(db_session)
         _create_guideline(db_session)
-        _create_session(db_session, mastery=0.6)
+        _create_session(
+            db_session,
+            mode="clarify_doubts",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
+        )
 
         service = ScorecardService(db_session)
         result = service.get_subtopic_progress(USER_ID)
 
-        assert result["user_progress"]["g1"]["status"] == "in_progress"
-        assert result["user_progress"]["g1"]["score"] == 0.6
+        assert result["user_progress"] == {}
 
     def test_session_count_increments(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         now = datetime.utcnow()
-        _create_session(db_session, mastery=0.5, created_at=now - timedelta(days=1))
-        _create_session(db_session, mastery=0.7, created_at=now)
+        _create_session(
+            db_session, mode="teach_me",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
+            created_at=now - timedelta(days=1),
+        )
+        _create_session(
+            db_session, mode="teach_me",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
+            created_at=now,
+        )
 
         service = ScorecardService(db_session)
         result = service.get_subtopic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["session_count"] == 2
 
-    def test_latest_session_score_wins(self, db_session):
+    def test_coverage_accumulates_across_sessions(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         now = datetime.utcnow()
-        _create_session(db_session, mastery=0.4, created_at=now - timedelta(days=1))
-        _create_session(db_session, mastery=0.9, created_at=now)
+        _create_session(
+            db_session, mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7},
+            concepts_covered_set=["c1"],
+            created_at=now - timedelta(days=1),
+        )
+        _create_session(
+            db_session, mode="teach_me",
+            mastery_estimates={"c1": 0.9, "c2": 0.7},
+            concepts_covered_set=["c2"],
+            created_at=now,
+        )
 
         service = ScorecardService(db_session)
         result = service.get_subtopic_progress(USER_ID)
 
-        assert result["user_progress"]["g1"]["score"] == 0.9
-        assert result["user_progress"]["g1"]["status"] == "mastered"
+        assert result["user_progress"]["g1"]["coverage"] == 100.0

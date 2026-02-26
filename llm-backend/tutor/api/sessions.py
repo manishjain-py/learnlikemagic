@@ -14,7 +14,6 @@ from shared.models import (
     StepRequest,
     StepResponse,
     SummaryResponse,
-    ScorecardResponse,
     SubtopicProgressResponse,
     ResumableSessionResponse,
     PauseSummary,
@@ -100,16 +99,6 @@ def get_learning_stats(
     """Aggregated learning stats for the current user."""
     repo = SessionRepository(db)
     return repo.get_user_stats(current_user.id)
-
-
-@router.get("/scorecard", response_model=ScorecardResponse)
-def get_scorecard(
-    current_user=Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    """Get student scorecard with aggregated performance data."""
-    service = ScorecardService(db)
-    return service.get_scorecard(current_user.id)
 
 
 @router.get("/report-card", response_model=ReportCardResponse)
