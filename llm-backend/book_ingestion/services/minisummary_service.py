@@ -44,8 +44,9 @@ class MinisummaryService:
         self.client = openai_client or OpenAI()
         self.model = model
 
-        # Use 300 tokens for detailed summaries (5-6 lines)
-        self.max_tokens = 300
+        # No hard token limit — prompt controls output length (5-6 sentences).
+        # A hard cap caused silent empty responses when the model hit the limit.
+        self.max_tokens = None
 
         # Load prompt template
         self.prompt_template = self._load_prompt_template()
@@ -96,7 +97,7 @@ class MinisummaryService:
             }))
 
             # Call LLM
-            response = self.client.chat.completions.create(
+            call_kwargs = dict(
                 model=self.model,
                 messages=[
                     {
@@ -108,9 +109,12 @@ class MinisummaryService:
                         "content": prompt
                     }
                 ],
-                max_completion_tokens=self.max_tokens,
-                temperature=0.3  # Low temperature for consistent, factual output
+                temperature=0.3,  # Low temperature for consistent, factual output
             )
+            if self.max_tokens is not None:
+                call_kwargs["max_completion_tokens"] = self.max_tokens
+
+            response = self.client.chat.completions.create(**call_kwargs)
 
             summary = response.choices[0].message.content.strip()
 
