@@ -108,23 +108,25 @@ class TeacherOrchestrator:
             if session.is_complete and session.mode == "clarify_doubts":
                 session.add_message(create_student_message(student_message))
                 response = await self._generate_post_completion_response(session, student_message)
+                session.add_message(create_teacher_message(response))
                 return TurnResult(
                     response=response,
                     intent="session_complete",
                     specialists_called=[],
-                    state_changed=False,
+                    state_changed=True,
                 )
             max_extension_turns = 10
             extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
             if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
-                # Still record the student's message in history
+                # Record both student message and assistant reply in history
                 session.add_message(create_student_message(student_message))
                 response = await self._generate_post_completion_response(session, student_message)
+                session.add_message(create_teacher_message(response))
                 return TurnResult(
                     response=response,
                     intent="session_complete",
                     specialists_called=[],
-                    state_changed=False,
+                    state_changed=True,
                 )
 
             # Increment turn counter and add student message

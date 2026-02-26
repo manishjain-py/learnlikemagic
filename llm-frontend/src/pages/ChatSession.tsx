@@ -117,10 +117,27 @@ export default function ChatSession() {
               content: m.content,
             })),
           );
-          if (state.current_step_idx != null) setStepIdx(state.current_step_idx);
+          // Hydrate step — backend field is current_step
+          if (state.current_step != null) setStepIdx(state.current_step);
           if (state.mode) setSessionMode(state.mode);
           if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
-          if (state.clarify_complete || state.is_complete) setIsComplete(true);
+
+          // Hydrate completion for all modes
+          const completed = state.clarify_complete
+            || state.exam_finished
+            || (state.topic && state.current_step > (state.topic?.study_plan?.steps?.length ?? Infinity));
+          if (completed) {
+            setIsComplete(true);
+            // Reconstruct exam summary from persisted feedback
+            if (state.exam_finished && state.exam_feedback) {
+              setSummary({
+                steps_completed: state.exam_feedback.total,
+                mastery_score: state.exam_feedback.percentage / 100,
+                misconceptions_seen: state.exam_feedback.weak_areas || [],
+                suggestions: state.exam_feedback.next_steps || [],
+              });
+            }
+          }
         })
         .catch((err) => console.error('Failed to load session:', err))
         .finally(() => setReplayLoading(false));
