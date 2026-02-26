@@ -538,16 +538,21 @@ class TeacherOrchestrator:
             current_q.result = "incorrect"
             session.exam_total_incorrect += 1
 
-        # Move to next question
+        # Move to next question (do not reveal correctness mid-exam)
         session.exam_current_question_idx += 1
-        response = tutor_output.response
 
         if session.exam_current_question_idx >= len(session.exam_questions):
             session.exam_finished = True
             session.exam_feedback = self._build_exam_feedback(session)
+            response = (
+                "✅ Exam complete! Here are your final results."
+            )
         else:
             next_q = session.exam_questions[session.exam_current_question_idx]
-            response = f"{tutor_output.response}\n\n**Question {next_q.question_idx + 1}:** {next_q.question_text}"
+            response = (
+                "Got it — let's continue.\n\n"
+                f"**Question {next_q.question_idx + 1}:** {next_q.question_text}"
+            )
 
         session.add_message(create_teacher_message(response))
 
