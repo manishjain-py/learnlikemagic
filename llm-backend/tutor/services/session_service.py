@@ -179,6 +179,10 @@ class SessionService:
             "is_complete": session.is_complete,
         }
 
+        # Include clarify_doubts-specific data
+        if session.mode == "clarify_doubts":
+            next_turn["concepts_discussed"] = session.concepts_discussed
+
         # Map intent to routing for backward compatibility
         routing = "Advance" if turn_result.intent == "continuation" else "Continue"
 

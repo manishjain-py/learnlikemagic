@@ -123,6 +123,34 @@ class TestCreateSession:
         assert session.student_context.grade == 3
 
 
+class TestClarifyDoubtsCompletion:
+    """Tests for clarify_doubts session completion via clarify_complete flag."""
+
+    def test_clarify_session_not_complete_by_default(self):
+        session = make_test_session(mode="clarify_doubts")
+        assert session.clarify_complete is False
+        assert session.is_complete is False
+
+    def test_clarify_session_complete_when_flag_set(self):
+        session = make_test_session(mode="clarify_doubts")
+        session.clarify_complete = True
+        assert session.is_complete is True
+
+    def test_teach_me_not_affected_by_clarify_complete(self):
+        """clarify_complete should not affect teach_me sessions."""
+        session = make_test_session(mode="teach_me")
+        session.clarify_complete = True  # should be ignored for teach_me
+        assert session.is_complete is False  # still based on step progression
+
+    def test_clarify_complete_survives_json_roundtrip(self):
+        session = make_test_session(mode="clarify_doubts")
+        session.clarify_complete = True
+        dumped = session.model_dump_json()
+        restored = SessionState.model_validate_json(dumped)
+        assert restored.clarify_complete is True
+        assert restored.is_complete is True
+
+
 class TestConceptsCoveredSetValidator:
     """Tests for the field_validator that coerces list->set on concepts_covered_set."""
 

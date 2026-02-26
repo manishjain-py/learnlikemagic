@@ -450,6 +450,11 @@ class TeacherOrchestrator:
                     session.concepts_discussed.append(update.concept)
                 session.concepts_covered_set.add(update.concept)
 
+        # Mark session complete when student indicates they are done
+        if tutor_output.intent == "done" or tutor_output.session_complete:
+            session.clarify_complete = True
+            logger.info(f"Clarify Doubts session {session.session_id} marked complete (intent={tutor_output.intent})")
+
         session.add_message(create_teacher_message(tutor_output.response))
 
         duration_ms = int((time.time() - start_time) * 1000)
@@ -459,7 +464,7 @@ class TeacherOrchestrator:
             agent_name="orchestrator",
             event_type="turn_completed",
             duration_ms=duration_ms,
-            metadata={"mode": "clarify_doubts", "intent": tutor_output.intent},
+            metadata={"mode": "clarify_doubts", "intent": tutor_output.intent, "clarify_complete": session.clarify_complete},
         )
 
         return TurnResult(
