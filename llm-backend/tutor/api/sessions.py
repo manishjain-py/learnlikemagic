@@ -14,7 +14,6 @@ from shared.models import (
     StepRequest,
     StepResponse,
     SummaryResponse,
-    ScorecardResponse,
     SubtopicProgressResponse,
     ResumableSessionResponse,
     PauseSummary,
@@ -102,7 +101,7 @@ def get_learning_stats(
     return repo.get_user_stats(current_user.id)
 
 
-@router.get("/scorecard", response_model=ScorecardResponse)
+@router.get("/scorecard", response_model=ReportCardResponse)
 def get_scorecard(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),

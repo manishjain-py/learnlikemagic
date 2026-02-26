@@ -1025,35 +1025,11 @@ body {
   max-width: 520px;
 }
 
-/* Hero card */
-.scorecard-hero {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: #f8f9ff;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 1.5rem;
-}
-
-.scorecard-hero-score {
-  flex-shrink: 0;
-}
-
-.scorecard-hero-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.scorecard-hero-label {
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.scorecard-hero-stats {
-  font-size: 0.85rem;
+/* Stats line */
+.scorecard-stats-line {
+  font-size: 0.9rem;
   color: #888;
+  margin-bottom: 1.5rem;
 }
 
 /* Sections */
@@ -1068,44 +1044,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 10px;
-}
-
-/* Highlights (strengths / needs-practice) */
-.scorecard-highlights {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.scorecard-highlight-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: #fafafa;
-  border-radius: 8px;
-  border: 1px solid #eee;
-}
-
-.scorecard-highlights.strength .scorecard-highlight-icon {
-  color: #38a169;
-  font-weight: 700;
-}
-
-.scorecard-highlights.needs-practice .scorecard-highlight-icon {
-  color: #ff9800;
-}
-
-.scorecard-highlight-name {
-  flex: 1;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #333;
-}
-
-.scorecard-highlight-score {
-  font-size: 0.9rem;
-  font-weight: 700;
 }
 
 /* Subject cards grid */
@@ -1147,66 +1085,40 @@ body {
   color: #333;
 }
 
-.scorecard-subject-score {
-  font-weight: 700;
-  font-size: 1rem;
-}
-
 .scorecard-subject-meta {
   font-size: 0.8rem;
   color: #888;
 }
 
-/* Mastery bar (reusable) */
-.mastery-bar {
+/* Coverage bar */
+.coverage-bar {
   height: 6px;
   background: #e0e0e0;
   border-radius: 3px;
   overflow: hidden;
 }
 
-.mastery-bar-fill {
+.coverage-bar-fill {
   height: 100%;
   border-radius: 3px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
   transition: width 0.3s ease;
 }
 
-/* Mastery badge (reusable) */
-.mastery-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.7rem;
+/* Coverage & exam score labels */
+.scorecard-coverage {
+  font-size: 0.8rem;
   font-weight: 600;
-  white-space: nowrap;
-}
-
-.mastery-badge.mastered {
-  background: #f0fff4;
-  color: #38a169;
-}
-
-.mastery-badge.getting-strong {
-  background: #f0f3ff;
   color: #667eea;
 }
 
-.mastery-badge.getting-there {
-  background: #fff8e1;
-  color: #f57c00;
-}
-
-.mastery-badge.needs-practice {
-  background: #fff5f5;
-  color: #e53e3e;
-}
-
-/* Chart container */
-.scorecard-chart {
-  background: #fafafa;
+.scorecard-exam-score {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #38a169;
+  background: #f0fff4;
+  padding: 2px 8px;
   border-radius: 10px;
-  padding: 12px 8px 4px;
-  border: 1px solid #eee;
 }
 
 /* Subject detail header */
@@ -1215,11 +1127,6 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
-}
-
-.scorecard-subject-detail-score {
-  font-size: 1.5rem;
-  font-weight: 700;
 }
 
 /* Topic section */
@@ -1242,11 +1149,6 @@ body {
   font-weight: 600;
   font-size: 0.95rem;
   color: #333;
-}
-
-.scorecard-topic-score {
-  font-weight: 700;
-  font-size: 0.95rem;
 }
 
 /* Subtopic rows */
@@ -1286,79 +1188,12 @@ body {
   gap: 8px;
 }
 
-.scorecard-subtopic-score {
-  font-weight: 700;
-  font-size: 0.85rem;
-  min-width: 36px;
-  text-align: right;
-}
-
-.scorecard-chevron {
-  font-size: 0.65rem;
-  color: #999;
-}
-
-/* Subtopic detail (expanded) */
+/* Subtopic detail */
 .scorecard-subtopic-detail {
-  padding: 10px 0 4px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.scorecard-detail-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #888;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-
-.scorecard-concepts {
-  margin-bottom: 10px;
-}
-
-.scorecard-concept-row {
+  padding: 6px 0 4px;
   display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 0.85rem;
-}
-
-.scorecard-concept-name {
-  color: #555;
-}
-
-.scorecard-concept-score {
-  font-weight: 600;
-}
-
-/* Misconceptions */
-.scorecard-misconceptions,
-.scorecard-misconceptions-list {
-  margin-bottom: 10px;
-}
-
-.scorecard-misconception {
-  padding: 8px 10px;
-  background: #fff8e1;
-  border-left: 3px solid #ff9800;
-  border-radius: 4px;
-  margin-bottom: 6px;
-  font-size: 0.85rem;
-  color: #555;
-}
-
-.scorecard-misconception.resolved {
-  background: #f0fff4;
-  border-left-color: #38a169;
-}
-
-.scorecard-misconception-status,
-.scorecard-misconception-meta {
-  display: block;
-  font-size: 0.75rem;
-  color: #888;
-  margin-top: 4px;
+  align-items: center;
+  gap: 12px;
 }
 
 .scorecard-subtopic-meta {
@@ -1402,12 +1237,12 @@ body {
   margin-left: 8px;
 }
 
-.subtopic-status.mastered {
+.subtopic-status.studied {
   color: #38a169;
   background: #f0fff4;
 }
 
-.subtopic-status.in_progress {
-  color: #667eea;
-  background: #f0f3ff;
+.subtopic-status.not_started {
+  color: #888;
+  background: #f5f5f5;
 }

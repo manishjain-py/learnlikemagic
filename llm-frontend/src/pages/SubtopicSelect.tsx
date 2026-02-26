@@ -54,9 +54,9 @@ export default function SubtopicSelect() {
               {st.subtopic}
               {progress[st.guideline_id] && (
                 <span className={`subtopic-status ${progress[st.guideline_id].status}`}>
-                  {progress[st.guideline_id].status === 'mastered' ? '\u2713' : '\u25CF'}
+                  {progress[st.guideline_id].status === 'studied' ? '\u2713' : '\u25CF'}
                   {' '}
-                  {(progress[st.guideline_id].score * 100).toFixed(0)}%
+                  {progress[st.guideline_id].coverage.toFixed(0)}%
                 </span>
               )}
             </button>

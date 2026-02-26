@@ -207,65 +207,40 @@ export async function getSummary(sessionId: string): Promise<SummaryResponse> {
 }
 
 // ──────────────────────────────────────────────
-// Scorecard types & API
+// Report Card types & API
 // ──────────────────────────────────────────────
 
-export interface ScorecardMisconception {
-  description: string;
-  resolved: boolean;
-}
-
-export interface ScorecardSubtopic {
+export interface ReportCardSubtopic {
   subtopic: string;
   subtopic_key: string;
   guideline_id: string | null;
-  score: number;
-  session_count: number;
-  latest_session_date: string | null;
-  concepts: Record<string, number>;
-  misconceptions: ScorecardMisconception[];
+  coverage: number;
+  latest_exam_score: number | null;
+  latest_exam_total: number | null;
+  last_studied: string | null;
 }
 
-export interface ScorecardTopic {
+export interface ReportCardTopic {
   topic: string;
   topic_key: string;
-  score: number;
-  subtopics: ScorecardSubtopic[];
+  subtopics: ReportCardSubtopic[];
 }
 
-export interface ScorecardTrendPoint {
-  date: string | null;
-  date_label: string | null;
-  score: number;
-}
-
-export interface ScorecardSubject {
+export interface ReportCardSubject {
   subject: string;
-  score: number;
-  session_count: number;
-  topics: ScorecardTopic[];
-  trend: ScorecardTrendPoint[];
+  topics: ReportCardTopic[];
 }
 
-export interface ScorecardHighlight {
-  subtopic: string;
-  subject: string;
-  score: number;
-}
-
-export interface ScorecardResponse {
-  overall_score: number;
+export interface ReportCardResponse {
   total_sessions: number;
   total_topics_studied: number;
-  subjects: ScorecardSubject[];
-  strengths: ScorecardHighlight[];
-  needs_practice: ScorecardHighlight[];
+  subjects: ReportCardSubject[];
 }
 
 export interface SubtopicProgress {
-  score: number;
+  coverage: number;
   session_count: number;
-  status: 'mastered' | 'in_progress';
+  status: 'studied' | 'not_started';
 }
 
 export interface ResumableSession {
@@ -294,7 +269,7 @@ export interface ExamSummary {
   };
 }
 
-export async function getScorecard(): Promise<ScorecardResponse> {
+export async function getScorecard(): Promise<ReportCardResponse> {
   const response = await apiFetch('/sessions/scorecard');
   if (!response.ok) throw new Error(`Failed to fetch scorecard: ${response.statusText}`);
   return response.json();
@@ -344,7 +319,7 @@ export async function getSessionReplay(sessionId: string): Promise<any> {
   return response.json();
 }
 
-export async function getReportCard(): Promise<ScorecardResponse> {
+export async function getReportCard(): Promise<ReportCardResponse> {
   const response = await apiFetch('/sessions/report-card');
   if (!response.ok) throw new Error(`Failed to fetch report card: ${response.statusText}`);
   return response.json();
