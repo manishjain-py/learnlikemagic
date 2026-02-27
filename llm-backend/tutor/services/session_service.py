@@ -477,13 +477,24 @@ class SessionService:
         return suggestions
 
     def _find_incomplete_session(self, user_id: str, guideline_id: str, mode: str) -> Optional[str]:
-        """Find an incomplete session for user+guideline+mode. Returns session_id or None."""
+        """Find an incomplete session with actual progress for user+guideline+mode.
+
+        Returns session_id or None. Skips orphaned sessions with zero progress
+        (e.g. exam with 0 answers, teach_me with 0% coverage) so they don't
+        block new session creation.
+        """
         sessions = self.session_repo.list_by_guideline(
             user_id=user_id, guideline_id=guideline_id, mode=mode,
         )
         for s in sessions:
-            if not s["is_complete"]:
-                return s["session_id"]
+            if s["is_complete"]:
+                continue
+            # Skip zero-progress orphaned sessions
+            if mode == "exam" and (s.get("exam_answered") or 0) == 0:
+                continue
+            if mode == "teach_me" and (s.get("coverage") or 0) == 0:
+                continue
+            return s["session_id"]
         return None
 
     def _get_past_discussions(self, user_id: str, guideline_id: str) -> list[dict]:
