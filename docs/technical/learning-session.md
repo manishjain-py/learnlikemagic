@@ -135,17 +135,16 @@ Contains:
 
 ### Mode-Specific Prompts
 
-**Clarify Doubts** (`clarify_doubts_prompts.py`):
-- System prompt: answers directly (no Socratic method), concise, brief follow-up check. Includes session closure rules: after resolving a doubt, ask one closure question ("any other doubts?"); when student says done, give brief warm goodbye and set `session_complete = true` without further questions. Includes personalization block (student name/age/about_me) when available.
-- Turn prompt: tracks concepts discussed, sets intent to question/followup/done/off_topic
+**Clarify Doubts**:
+- Currently uses the same master tutor prompts (`master_tutor_prompts.py`) — mode-specific behavior is driven by the orchestrator's `_process_clarify_turn()` routing, which does not use step advancement or question lifecycle
+- `clarify_doubts_prompts.py` defines dedicated system/turn prompt templates (direct answers, session closure rules, concept tracking) but these are not yet wired into the pipeline
 - `mastery_updates` used to track which study plan concepts were substantively discussed
 - `answer_correct` always null in clarify mode; `advance_to_step` never set
 
 **Exam** (`exam_prompts.py`):
-- Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard)
-- Evaluation system prompt: brief feedback only (1-2 sentences), no teaching. Includes personalization block when available.
-- Evaluation turn prompt: evaluates answer, sets answer_correct/mastery_signal
-- Note: evaluation feedback is stored on `ExamQuestion.feedback` but NOT shown to the student mid-exam. The orchestrator constructs its own neutral "Got it" response between questions.
+- Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard) — used by `ExamService.generate_questions()`
+- Evaluation: currently uses the same master tutor prompts — mode-specific behavior driven by `_process_exam_turn()`. The evaluation system/turn prompt templates in `exam_prompts.py` exist but are not yet wired into the pipeline.
+- Evaluation feedback is stored on `ExamQuestion.feedback` but NOT shown to the student mid-exam. The orchestrator constructs its own neutral "Got it" response between questions.
 
 ### Dynamic Signals
 
@@ -393,15 +392,15 @@ If no study plan exists in the DB, a default 4-step plan is generated: explain �
 
 ## LLM Calls
 
-| Call | Model | Purpose | Output |
-|------|-------|---------|--------|
-| Safety | Configurable (DB) | Content moderation | SafetyOutput (strict) |
-| Master Tutor | Configurable (DB) | All teaching (teach_me, clarify_doubts, exam evaluation) | TutorTurnOutput (strict) |
-| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | Plain text |
-| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | Plain text |
-| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | Plain text |
-| Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text |
-| Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) |
+| Call | Model | Purpose | Output | Prompt Source |
+|------|-------|---------|--------|---------------|
+| Safety | Configurable (DB) | Content moderation | SafetyOutput (strict) | `templates.py` SAFETY_TEMPLATE |
+| Master Tutor | Configurable (DB) | All teaching (teach_me, clarify_doubts, exam evaluation) | TutorTurnOutput (strict) | `master_tutor_prompts.py` (shared across all modes) |
+| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | Plain text | `orchestrator_prompts.py` |
+| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | Plain text | Inline in `orchestrator.py` |
+| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | Plain text | Inline in `orchestrator.py` |
+| Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text | Inline in `orchestrator.py` |
+| Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) | `exam_prompts.py` EXAM_QUESTION_GENERATION_PROMPT |
 
 LLM provider/model is resolved at session creation from the `llm_config` DB table via `LLMConfigService.get_config("tutor")`. The Anthropic adapter maps structured output to tool_use, and reasoning effort to thinking budgets.
 
@@ -446,10 +445,10 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 
 | File | Purpose |
 |------|---------|
-| `master_tutor_prompts.py` | System prompt (study plan + guidelines + rules + personalization) and turn prompt |
-| `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode |
-| `exam_prompts.py` | Exam question generation prompt and evaluation prompts |
-| `orchestrator_prompts.py` | Welcome message and session summary prompts |
+| `master_tutor_prompts.py` | System prompt (study plan + guidelines + rules + personalization) and turn prompt. Used for ALL modes. |
+| `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode. **Defined but not yet wired** — clarify mode currently uses master tutor prompts. |
+| `exam_prompts.py` | Exam question generation prompt (actively used by ExamService) and evaluation prompts (**evaluation prompts defined but not yet wired** — exam eval uses master tutor prompts). |
+| `orchestrator_prompts.py` | Welcome message (Teach Me) and session summary prompts |
 | `templates.py` | PromptTemplate class, SAFETY_TEMPLATE, format helpers |
 
 ### Utils (`tutor/utils/`)
