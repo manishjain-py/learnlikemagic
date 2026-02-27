@@ -13,22 +13,25 @@ Student Message
 SAFETY AGENT (fast gate)
     │
     v
-MODE ROUTER (teach_me / clarify_doubts / exam)
-    │
-    v
-MASTER TUTOR (single LLM call handles everything)
-    │
-    v
-SANITIZATION CHECK (detect leaked internal language)
-    │
-    v
-STATE UPDATES (mastery, misconceptions, step advance, exam scoring)
+MODE ROUTER ──────────────────────────────────────┐
+    │                                              │
+    │ teach_me              clarify_doubts / exam  │
+    v                                              v
+MASTER TUTOR                              MASTER TUTOR
+    │                                              │
+    v                                              v
+SANITIZATION CHECK (log-only)        MODE-SPECIFIC STATE
+    │                                (concepts/scoring)
+    v                                              │
+STATE UPDATES                                      v
+(mastery, misconceptions,                   Response
+ step advance, coverage)
     │
     v
 Response to Student
 ```
 
-Two-agent pipeline: a fast safety check followed by a single master tutor call that handles all teaching. The orchestrator routes to mode-specific processing after the safety check.
+Two-agent pipeline: a fast safety check followed by a single master tutor call that handles all teaching. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode.
 
 ---
 
@@ -155,11 +158,11 @@ Contains:
 | TURN 1 | First turn | Keep opening to 2-3 sentences, ask ONE simple question |
 | ACCELERATE | avg_mastery >= 0.8 & improving (or 60%+ concepts >= 0.7 & improving) | Skip steps aggressively, minimal scaffolding |
 | EXTEND | Aced plan & is_complete | Push to harder territory |
-| SIMPLIFY | avg_mastery < 0.4 or struggling | Shorter sentences, 1-2 ideas per response |
-| CONSOLIDATE | avg_mastery 0.4-0.65 & 2+ wrong & steady | Same-level problem to build confidence |
+| SIMPLIFY | (avg_mastery < 0.4 with real data) or trend == struggling | Shorter sentences, 1-2 ideas per response |
+| CONSOLIDATE | avg_mastery 0.4-0.65 & steady & current question has 2+ wrong attempts | Same-level problem to build confidence |
 | STEADY | Default | One idea at a time |
 
-Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mastery >= 0.7, the system forces the accelerate path when the student is also improving.
+Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mastery >= 0.7 AND avg_mastery >= 0.65 AND trend is improving, the system forces the accelerate path.
 
 **Student Style** (`_compute_student_style`):
 - Analyzes avg words/message, emoji usage, question-asking
