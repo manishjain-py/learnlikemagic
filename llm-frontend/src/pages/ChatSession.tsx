@@ -66,6 +66,7 @@ export default function ChatSession() {
   const [examQuestions, setExamQuestions] = useState<ExamQuestionDraft[]>([]);
   const [examDraftAnswers, setExamDraftAnswers] = useState<Record<number, string>>({});
   const [activeExamQuestionIdx, setActiveExamQuestionIdx] = useState(0);
+  const [examSubmittedIdxs, setExamSubmittedIdxs] = useState<Set<number>>(new Set());
   const [pauseSummaryData, setPauseSummaryData] = useState<PauseSummary | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -94,10 +95,15 @@ export default function ChatSession() {
     setExamQuestions(questions);
 
     const existingAnswers: Record<number, string> = {};
+    const alreadySubmitted = new Set<number>();
     state.exam_questions.forEach((q: any) => {
-      if (q.student_answer) existingAnswers[q.question_idx] = q.student_answer;
+      if (q.student_answer) {
+        existingAnswers[q.question_idx] = q.student_answer;
+        alreadySubmitted.add(q.question_idx);
+      }
     });
     setExamDraftAnswers(existingAnswers);
+    setExamSubmittedIdxs(alreadySubmitted);
 
     const answeredCount = Object.values(existingAnswers).filter((a) => a.trim().length > 0).length;
     const firstUnansweredIdx = questions.findIndex((q: ExamQuestionDraft) => !(existingAnswers[q.question_idx] || '').trim());
@@ -313,7 +319,10 @@ export default function ChatSession() {
   const handleSubmitAllExamAnswers = async () => {
     if (!sessionId || loading) return;
 
-    const missing = examQuestions.filter((q) => !(examDraftAnswers[q.question_idx] || '').trim());
+    // Only validate and submit questions not yet graded server-side
+    const toSubmit = examQuestions.filter((q) => !examSubmittedIdxs.has(q.question_idx));
+
+    const missing = toSubmit.filter((q) => !(examDraftAnswers[q.question_idx] || '').trim());
     if (missing.length > 0) {
       setActiveExamQuestionIdx(examQuestions.findIndex((q) => q.question_idx === missing[0].question_idx));
       return;
@@ -323,8 +332,16 @@ export default function ChatSession() {
       setLoading(true);
       let finalResponse: any = null;
 
-      for (const q of examQuestions) {
-        finalResponse = await submitStep(sessionId, (examDraftAnswers[q.question_idx] || '').trim());
+      for (const q of toSubmit) {
+        try {
+          finalResponse = await submitStep(sessionId, (examDraftAnswers[q.question_idx] || '').trim());
+          // Track successful submission so retries skip this question
+          setExamSubmittedIdxs((prev) => new Set(prev).add(q.question_idx));
+        } catch (err) {
+          console.error(`Failed to submit answer for Q${q.question_idx + 1}:`, err);
+          // Stop on first failure so the student can retry remaining questions
+          break;
+        }
       }
 
       if (!finalResponse?.next_turn?.is_complete) return;
