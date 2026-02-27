@@ -117,7 +117,7 @@ class PauseSummary(BaseModel):
 
 class EndExamResponse(BaseModel):
     """Response for POST /sessions/{id}/end-exam."""
-    score: int
+    score: float
     total: int
     percentage: float
     feedback: Optional[dict] = None

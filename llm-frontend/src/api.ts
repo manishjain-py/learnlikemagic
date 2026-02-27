@@ -97,6 +97,10 @@ export interface Turn {
     question_text: string;
     student_answer?: string | null;
     result?: 'correct' | 'partial' | 'incorrect' | null;
+    score?: number;
+    marks_rationale?: string;
+    feedback?: string;
+    expected_answer?: string;
   }>;
   exam_questions?: Array<{ question_idx: number; question_text: string }>;
 }

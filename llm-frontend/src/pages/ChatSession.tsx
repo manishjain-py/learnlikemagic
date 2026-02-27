@@ -62,7 +62,7 @@ export default function ChatSession() {
   const [conceptsDiscussed, setConceptsDiscussed] = useState<string[]>([]);
   const [examProgress, setExamProgress] = useState<{ current: number; total: number; answered: number } | null>(null);
   const [examFeedback, setExamFeedback] = useState<{ score: number; total: number; percentage: number } | null>(null);
-  const [examResults, setExamResults] = useState<Array<{ question_idx: number; question_text: string; student_answer?: string | null; result?: 'correct' | 'partial' | 'incorrect' | null }>>([]);
+  const [examResults, setExamResults] = useState<Array<{ question_idx: number; question_text: string; student_answer?: string | null; result?: 'correct' | 'partial' | 'incorrect' | null; score?: number; marks_rationale?: string; feedback?: string; expected_answer?: string }>>([]);
   const [examQuestions, setExamQuestions] = useState<ExamQuestionDraft[]>([]);
   const [examDraftAnswers, setExamDraftAnswers] = useState<Record<number, string>>({});
   const [activeExamQuestionIdx, setActiveExamQuestionIdx] = useState(0);
@@ -205,6 +205,10 @@ export default function ChatSession() {
                   question_text: q.question_text,
                   student_answer: q.student_answer,
                   result: q.result,
+                  score: q.score,
+                  marks_rationale: q.marks_rationale,
+                  feedback: q.feedback,
+                  expected_answer: q.expected_answer,
                 })),
               );
             }
@@ -847,54 +851,90 @@ export default function ChatSession() {
                 </>
               ) : (
                 <>
-                  <h2>Session Complete!</h2>
-                  {summary && (
-                    <div className="summary-content">
-                      <p>
-                        <strong>Steps Completed:</strong> {summary.steps_completed}
-                      </p>
-                      {sessionMode === 'exam' && examFeedback ? (
-                        <p>
-                          <strong>Final Exam Score:</strong>{' '}
-                          {examFeedback.score}/{examFeedback.total} ({examFeedback.percentage.toFixed(1)}%)
-                        </p>
-                      ) : (
-                        <p>
-                          <strong>Final Mastery:</strong>{' '}
-                          {(summary.mastery_score * 100).toFixed(0)}%
-                        </p>
-                      )}
-                      {summary.misconceptions_seen.length > 0 && (
-                        <div>
-                          <strong>Areas to Review:</strong>
-                          <ul>
-                            {summary.misconceptions_seen.map((m, i) => (
-                              <li key={i}>{m}</li>
-                            ))}
-                          </ul>
+                  {sessionMode === 'exam' && examFeedback ? (
+                    <>
+                      <h2>Exam Complete!</h2>
+                      <div style={{ textAlign: 'center', margin: '12px 0 16px' }}>
+                        <div style={{ fontSize: '2rem', fontWeight: 700, color: examFeedback.percentage >= 70 ? '#38a169' : examFeedback.percentage >= 40 ? '#dd6b20' : '#e53e3e' }}>
+                          {examFeedback.score % 1 === 0 ? examFeedback.score.toFixed(0) : examFeedback.score.toFixed(1)}/{examFeedback.total}
                         </div>
-                      )}
-                      <div>
-                        <strong>Next Steps:</strong>
-                        <ul>
-                          {summary.suggestions.map((s, i) => (
-                            <li key={i}>{s}</li>
-                          ))}
-                        </ul>
+                        <div style={{ fontSize: '0.9rem', color: '#718096' }}>{examFeedback.percentage.toFixed(1)}%</div>
                       </div>
-                      {sessionMode === 'exam' && examResults.length > 0 && (
-                        <div>
-                          <strong>Question Review:</strong>
+                      {examResults.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                          {examResults.map((r) => {
+                            const scoreColor = (r.score ?? 0) >= 0.8 ? '#38a169' : (r.score ?? 0) >= 0.2 ? '#dd6b20' : '#e53e3e';
+                            return (
+                              <div key={r.question_idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#fafafa' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Q{r.question_idx + 1}</span>
+                                  <span style={{ fontWeight: 700, color: scoreColor, fontSize: '0.9rem' }}>
+                                    {r.score != null ? (r.score % 1 === 0 ? r.score.toFixed(0) : r.score.toFixed(1)) : '?'}/1
+                                  </span>
+                                </div>
+                                <p style={{ fontSize: '0.85rem', color: '#2d3748', marginBottom: '6px' }}>{r.question_text}</p>
+                                <div style={{ fontSize: '0.8rem', color: '#4a5568', marginBottom: '4px' }}>
+                                  <strong>Your answer:</strong> {r.student_answer || '(no answer)'}
+                                </div>
+                                {r.expected_answer && (
+                                  <div style={{ fontSize: '0.8rem', color: '#4a5568', marginBottom: '4px' }}>
+                                    <strong>Expected:</strong> {r.expected_answer}
+                                  </div>
+                                )}
+                                {r.marks_rationale && (
+                                  <div style={{ fontSize: '0.8rem', color: '#718096', fontStyle: 'italic', borderTop: '1px solid #e2e8f0', paddingTop: '6px', marginTop: '6px' }}>
+                                    {r.marks_rationale}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {summary && summary.suggestions.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <strong>Next Steps:</strong>
                           <ul>
-                            {examResults.map((r) => (
-                              <li key={r.question_idx}>
-                                Q{r.question_idx + 1}: {r.result === 'correct' ? '✅ Correct' : r.result === 'partial' ? '🟨 Partial' : '❌ Incorrect'}
-                              </li>
+                            {summary.suggestions.map((s, i) => (
+                              <li key={i}>{s}</li>
                             ))}
                           </ul>
                         </div>
                       )}
-                    </div>
+                    </>
+                  ) : (
+                    <>
+                      <h2>Session Complete!</h2>
+                      {summary && (
+                        <div className="summary-content">
+                          <p>
+                            <strong>Steps Completed:</strong> {summary.steps_completed}
+                          </p>
+                          <p>
+                            <strong>Final Mastery:</strong>{' '}
+                            {(summary.mastery_score * 100).toFixed(0)}%
+                          </p>
+                          {summary.misconceptions_seen.length > 0 && (
+                            <div>
+                              <strong>Areas to Review:</strong>
+                              <ul>
+                                {summary.misconceptions_seen.map((m, i) => (
+                                  <li key={i}>{m}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <div>
+                            <strong>Next Steps:</strong>
+                            <ul>
+                              {summary.suggestions.map((s, i) => (
+                                <li key={i}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                   <button onClick={() => navigate('/learn')} className="restart-button">
                     Start New Session

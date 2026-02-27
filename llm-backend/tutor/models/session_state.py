@@ -52,11 +52,13 @@ class ExamQuestion(BaseModel):
     student_answer: Optional[str] = None
     result: Optional[Literal["correct", "partial", "incorrect"]] = None
     feedback: str = ""
+    score: float = 0.0
+    marks_rationale: str = ""
 
 
 class ExamFeedback(BaseModel):
     """Post-exam evaluation feedback."""
-    score: int
+    score: float
     total: int
     percentage: float
     strengths: list[str]

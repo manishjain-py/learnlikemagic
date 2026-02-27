@@ -44,6 +44,12 @@ class TutorTurnOutput(BaseModel):
     mastery_signal: Optional[str] = Field(
         default=None, description="Mastery signal: strong, adequate, or needs_remediation"
     )
+    answer_score: Optional[float] = Field(
+        default=None, description="Fractional score 0.0–1.0 for the student's answer. Used in exam mode for partial credit."
+    )
+    marks_rationale: Optional[str] = Field(
+        default=None, description="Brief justification for the score awarded (1-2 sentences)"
+    )
 
     # State updates
     advance_to_step: Optional[int] = Field(
@@ -317,6 +323,22 @@ class MasterTutorAgent(BaseAgent):
             )
         else:
             awaiting_answer_section = ""
+
+        # Exam mode: inject exam question context with expected answer and scoring instructions
+        if session.mode == "exam" and session.exam_current_question_idx < len(session.exam_questions):
+            eq = session.exam_questions[session.exam_current_question_idx]
+            awaiting_answer_section = (
+                f"**EXAM EVALUATION — Question {eq.question_idx + 1}/{len(session.exam_questions)}:**\n"
+                f"Question: {eq.question_text}\n"
+                f"Expected answer: {eq.expected_answer}\n"
+                f"Concept: {eq.concept}\n"
+                f"Difficulty: {eq.difficulty}\n\n"
+                "Score the student's answer from 0.0 to 1.0. If the question has multiple parts, "
+                "award partial credit proportionally (e.g., 1 of 3 parts correct = ~0.3). "
+                "Set `answer_score` to the fractional score and `marks_rationale` to a brief "
+                "1-2 sentence justification explaining what the student got right/wrong and why "
+                "this score was awarded. Also set `answer_correct` based on whether the core answer is right."
+            )
 
         # Compute dynamic signals
         pacing_directive = self._compute_pacing_directive(session)

@@ -523,17 +523,18 @@ class TeacherOrchestrator:
         current_q.student_answer = context.student_message
         current_q.feedback = tutor_output.turn_summary
 
-        # Determine result from mastery signal
-        if tutor_output.answer_correct is True:
+        # Fractional scoring: use answer_score if available, fallback to binary
+        score = tutor_output.answer_score if tutor_output.answer_score is not None else (1.0 if tutor_output.answer_correct else 0.0)
+        current_q.score = round(max(0.0, min(1.0, score)), 2)
+        current_q.marks_rationale = tutor_output.marks_rationale or tutor_output.turn_summary or ""
+
+        # Derive categorical result from fractional score
+        if current_q.score >= 0.8:
             current_q.result = "correct"
             session.exam_total_correct += 1
-        elif tutor_output.answer_correct is False:
-            if tutor_output.mastery_signal == "needs_remediation":
-                current_q.result = "incorrect"
-                session.exam_total_incorrect += 1
-            else:
-                current_q.result = "partial"
-                session.exam_total_partial += 1
+        elif current_q.score >= 0.2:
+            current_q.result = "partial"
+            session.exam_total_partial += 1
         else:
             current_q.result = "incorrect"
             session.exam_total_incorrect += 1
@@ -546,13 +547,14 @@ class TeacherOrchestrator:
             session.exam_feedback = self._build_exam_feedback(session)
 
             total = len(session.exam_questions)
+            total_score = session.exam_feedback.score
             review_lines = [
-                f"Q{q.question_idx + 1}: {'✅ Correct' if q.result == 'correct' else '🟨 Partial' if q.result == 'partial' else '❌ Incorrect'}"
+                f"Q{q.question_idx + 1}: {q.score:.1f}/1 — {q.marks_rationale}"
                 for q in session.exam_questions
             ]
             response = (
-                "✅ Exam complete!\n"
-                f"Final Score: **{session.exam_total_correct}/{total}** ({session.exam_feedback.percentage:.1f}%)\n\n"
+                "Exam complete!\n"
+                f"Final Score: **{total_score:.1f}/{total}** ({session.exam_feedback.percentage:.1f}%)\n\n"
                 "Question Review:\n"
                 + "\n".join(review_lines)
             )
@@ -606,10 +608,11 @@ class TeacherOrchestrator:
             next_steps.append("Great job! Try a harder topic or retake to aim for a perfect score.")
 
         total = len(session.exam_questions)
+        total_score = round(sum(q.score for q in session.exam_questions), 1)
         return ExamFeedback(
-            score=session.exam_total_correct,
+            score=total_score,
             total=total,
-            percentage=round(session.exam_total_correct / total * 100, 1) if total else 0.0,
+            percentage=round(total_score / total * 100, 1) if total else 0.0,
             strengths=strengths,
             weak_areas=weak_areas,
             patterns=patterns,

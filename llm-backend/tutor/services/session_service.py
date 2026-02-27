@@ -203,6 +203,10 @@ class SessionService:
                         "question_text": q.question_text,
                         "student_answer": q.student_answer,
                         "result": q.result,
+                        "score": q.score,
+                        "marks_rationale": q.marks_rationale,
+                        "feedback": q.feedback,
+                        "expected_answer": q.expected_answer,
                     }
                     for q in session.exam_questions
                 ]
@@ -427,10 +431,11 @@ class SessionService:
         self._persist_session_state(session_id, session, expected_version)
 
         total = len(session.exam_questions)
+        total_score = round(sum(q.score for q in session.exam_questions), 1)
         return {
-            "score": session.exam_total_correct,
+            "score": total_score,
             "total": total,
-            "percentage": round(session.exam_total_correct / total * 100, 1) if total else 0.0,
+            "percentage": round(total_score / total * 100, 1) if total else 0.0,
             "feedback": session.exam_feedback.model_dump() if session.exam_feedback else None,
         }
 
