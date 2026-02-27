@@ -6,6 +6,23 @@ Stale detection: running jobs with expired heartbeat are auto-marked failed.
 
 All job state transitions go through this service. No code outside this
 service may directly update BookJob.status.
+
+Invariants:
+  - At most one pending/running job per book (enforced by partial unique index + check).
+  - Terminal states (completed, failed) are irreversible — release_lock on a terminal
+    job is a silent no-op.
+  - update_progress on a non-running job is a silent no-op (safe for late arrivals
+    after stale detection or external cancellation).
+  - Stale detection runs server-side on every get_latest_job call, NOT only in the UI.
+  - _mark_stale re-checks under row lock to prevent TOCTOU race with start_job.
+  - Heartbeat staleness threshold: HEARTBEAT_STALE_THRESHOLD (2 min).
+
+Retry/resume contract:
+  - last_completed_item is the authoritative resume point for callers.
+  - error_type in progress_detail distinguishes 'retryable' (429, timeout, connection)
+    from 'terminal' (corrupt data) errors — callers use this to decide retry strategy.
+  - error_message is always set when status == 'failed'; null otherwise.
+  - completed_at is always set when status in ('completed', 'failed'); null otherwise.
 """
 import uuid
 import logging

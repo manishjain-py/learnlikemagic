@@ -41,7 +41,10 @@ def run_in_background(target_fn, job_id: str, *args, **kwargs):
             from book_ingestion.services.job_lock_service import JobLockService
             job_lock = JobLockService(session)
 
-            # Transition pending → running (sets initial heartbeat)
+            # Transition pending → running (sets initial heartbeat).
+            # If this fails (InvalidStateTransition), the except block
+            # calls release_lock(failed) which works because release_lock
+            # accepts jobs in 'pending' state.
             job_lock.start_job(job_id)
 
             # Run the actual task

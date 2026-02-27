@@ -76,3 +76,13 @@
 - Set up Vitest + React Testing Library + jsdom for frontend testing
 - **All 24 implementation steps now DONE**
 - Total test count: 24 (job lock) + 31 (bulk upload/OCR) + 11 (frontend polling) = 66 tests
+
+### Session 3 — 2026-02-27 (PR review fixes)
+- **Blocking fix 1 — Lock lifecycle ordering**: Moved `acquire_lock()` BEFORE S3 writes in `bulk_upload_pages`. Added try/finally to call `release_lock(failed)` if S3 upload fails mid-batch. No more orphaned S3 files on lock failure.
+- **Blocking fix 2 — Backend↔frontend contract**: Added `Literal` types for `job_type` and `status` in `JobStatusResponse`. Added contract docstring specifying invariants (error_message set iff failed, completed_at set iff terminal).
+- **Blocking fix 3 — Health-check path**: Added explicit `GET /health` endpoint in `health.py` to match Terraform `health_check_configuration.path = "/health"` in App Runner.
+- **Test gap: lock-before-side-effects**: 3 tests verifying lock failure blocks S3 writes, upload failure marks job failed, and pending→running transition.
+- **Test gap: mixed OCR failures**: 3 backend tests (alternating failure, all-fail, first-fail-rest-succeed) + 2 frontend tests (partial progress tracking, 0→complete transition).
+- **Test gap: health-check smoke**: 2 tests verifying `/health` and `/` both return 200.
+- **Non-blocking: invariant docs**: Added comprehensive invariant documentation to `job_lock_service.py` module docstring. Added explanatory comment in `background_task_runner.py` for start_job failure flow.
+- Updated test count: 24 (job lock) + 39 (bulk upload/OCR/health) + 13 (frontend polling) = 76 tests

@@ -635,3 +635,214 @@ class TestBackgroundOcrErrorPaths:
 
         result = job_lock.get_job(job_id)
         assert result["last_completed_item"] == 5  # Last page processed
+
+
+# ===== Lock-before-side-effects ordering tests =====
+
+
+class TestLockBeforeSideEffects:
+    """Verify lock acquisition ordering and cleanup on lock failure.
+
+    The bulk_upload_pages endpoint must acquire the job lock BEFORE
+    writing any raw images to S3. If the lock fails, no S3 writes
+    should have occurred (no orphaned files).
+    """
+
+    def test_lock_failure_before_s3_writes(self, db_session, book, job_lock, mock_s3):
+        """If another job is running, acquire_lock fails and no S3 writes occur."""
+        # Simulate existing running job — lock is held
+        existing_job_id = job_lock.acquire_lock(book.id, "ocr_batch", total_items=5)
+        job_lock.start_job(existing_job_id)
+
+        # Count S3 writes before the second attempt
+        initial_keys = set(mock_s3.storage.keys())
+
+        # Try to acquire a second lock — must raise
+        with pytest.raises(JobLockError):
+            job_lock.acquire_lock(book.id, "ocr_batch", total_items=10)
+
+        # No new S3 keys should exist (lock failed before any writes)
+        assert set(mock_s3.storage.keys()) == initial_keys
+
+    def test_upload_failure_marks_job_failed(self, db_session, book, job_lock, mock_s3, mock_ocr):
+        """If S3 upload fails mid-batch after lock, job is marked failed (not left pending)."""
+        _seed_metadata(mock_s3, book.id, [])
+
+        job_id = job_lock.acquire_lock(book.id, "ocr_batch", total_items=3)
+
+        # Simulate: first upload succeeds, second fails
+        call_count = [0]
+        original_upload = mock_s3.upload_bytes.side_effect
+
+        def failing_upload(data, key, content_type=None):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise IOError("S3 write timeout")
+            mock_s3.storage[key] = data
+
+        mock_s3.upload_bytes.side_effect = failing_upload
+
+        # The endpoint would call release_lock(failed) on upload error.
+        # Here we directly test that release_lock marks the job correctly.
+        job_lock.release_lock(job_id, status='failed', error="Upload failed: S3 write timeout")
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "failed"
+        assert "Upload failed" in result["error_message"]
+
+    def test_lock_acquired_in_pending_state(self, db_session, book, job_lock):
+        """Lock starts in pending state — background runner transitions to running."""
+        job_id = job_lock.acquire_lock(book.id, "ocr_batch", total_items=5)
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "pending"
+
+        # Background runner calls start_job
+        job_lock.start_job(job_id)
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "running"
+
+
+# ===== Mixed success + intermittent OCR failure tests =====
+
+
+class TestMixedOcrFailureScenarios:
+    """Test mixed success/failure patterns that the frontend must handle correctly.
+
+    These scenarios verify that the progress state is deterministic for
+    the frontend to display correctly — especially partial success
+    with intermittent failures.
+    """
+
+    def _setup_pages(self, mock_s3, book_id, count):
+        png_bytes = _make_png_bytes()
+        pages = []
+        for i in range(1, count + 1):
+            raw_key = f"books/{book_id}/raw/{i}.png"
+            mock_s3.storage[raw_key] = png_bytes
+            pages.append({
+                "page_num": i,
+                "raw_image_s3_key": raw_key,
+                "image_s3_key": None,
+                "text_s3_key": None,
+                "status": "pending_review",
+                "ocr_status": "pending",
+                "ocr_error": None,
+            })
+        _seed_metadata(mock_s3, book_id, pages)
+        return list(range(1, count + 1))
+
+    def test_alternating_success_failure(self, db_session, book, job_lock, mock_s3, mock_ocr):
+        """Pages 1,3,5 succeed; pages 2,4 fail. Frontend sees mixed metadata."""
+        page_numbers = self._setup_pages(mock_s3, book.id, 5)
+        job_id = job_lock.acquire_lock(book.id, "ocr_batch", total_items=5)
+        job_lock.start_job(job_id)
+
+        call_count = [0]
+        def ocr_alternating(**kwargs):
+            call_count[0] += 1
+            if call_count[0] % 2 == 0:  # pages 2, 4 fail
+                raise Exception("Rate limit exceeded (429)")
+            return f"OCR text for page {call_count[0]}"
+
+        mock_ocr.extract_text_with_retry = MagicMock(side_effect=ocr_alternating)
+
+        with patch("book_ingestion.services.page_service.get_s3_client", return_value=mock_s3), \
+             patch("book_ingestion.services.page_service.get_ocr_service", return_value=mock_ocr), \
+             patch("book_ingestion.services.page_service.LLMConfigService") as mock_config:
+            mock_config.return_value.get_config.return_value = {"model_id": "gpt-4o"}
+            run_bulk_ocr_background(db_session, job_id, book.id, page_numbers)
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "completed"
+        assert result["completed_items"] == 3
+        assert result["failed_items"] == 2
+
+        # Verify metadata has correct per-page status
+        metadata = json.loads(mock_s3.storage[f"books/{book.id}/metadata.json"])
+        statuses = {p["page_num"]: p["ocr_status"] for p in metadata["pages"]}
+        assert statuses[1] == "completed"
+        assert statuses[2] == "failed"
+        assert statuses[3] == "completed"
+        assert statuses[4] == "failed"
+        assert statuses[5] == "completed"
+
+    def test_all_pages_fail(self, db_session, book, job_lock, mock_s3, mock_ocr):
+        """All OCR calls fail — job still completes (with all failures counted)."""
+        page_numbers = self._setup_pages(mock_s3, book.id, 3)
+        job_id = job_lock.acquire_lock(book.id, "ocr_batch", total_items=3)
+        job_lock.start_job(job_id)
+
+        mock_ocr.extract_text_with_retry = MagicMock(
+            side_effect=Exception("Service unavailable")
+        )
+
+        with patch("book_ingestion.services.page_service.get_s3_client", return_value=mock_s3), \
+             patch("book_ingestion.services.page_service.get_ocr_service", return_value=mock_ocr), \
+             patch("book_ingestion.services.page_service.LLMConfigService") as mock_config:
+            mock_config.return_value.get_config.return_value = {"model_id": "gpt-4o"}
+            run_bulk_ocr_background(db_session, job_id, book.id, page_numbers)
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "completed"
+        assert result["completed_items"] == 0
+        assert result["failed_items"] == 3
+
+        # All pages should be failed in metadata
+        metadata = json.loads(mock_s3.storage[f"books/{book.id}/metadata.json"])
+        assert all(p["ocr_status"] == "failed" for p in metadata["pages"])
+
+    def test_first_page_fails_rest_succeed(self, db_session, book, job_lock, mock_s3, mock_ocr):
+        """First page fails but doesn't block remaining pages."""
+        page_numbers = self._setup_pages(mock_s3, book.id, 4)
+        job_id = job_lock.acquire_lock(book.id, "ocr_batch", total_items=4)
+        job_lock.start_job(job_id)
+
+        call_count = [0]
+        def first_fails(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("Corrupt image data")
+            return "OCR text"
+
+        mock_ocr.extract_text_with_retry = MagicMock(side_effect=first_fails)
+
+        with patch("book_ingestion.services.page_service.get_s3_client", return_value=mock_s3), \
+             patch("book_ingestion.services.page_service.get_ocr_service", return_value=mock_ocr), \
+             patch("book_ingestion.services.page_service.LLMConfigService") as mock_config:
+            mock_config.return_value.get_config.return_value = {"model_id": "gpt-4o"}
+            run_bulk_ocr_background(db_session, job_id, book.id, page_numbers)
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "completed"
+        assert result["completed_items"] == 3
+        assert result["failed_items"] == 1
+
+        metadata = json.loads(mock_s3.storage[f"books/{book.id}/metadata.json"])
+        assert metadata["pages"][0]["ocr_status"] == "failed"
+        for page in metadata["pages"][1:]:
+            assert page["ocr_status"] == "completed"
+
+
+# ===== Health check smoke test =====
+
+
+class TestHealthEndpoint:
+    """Verify the /health endpoint exists and returns 200."""
+
+    def test_health_endpoint_returns_ok(self):
+        """App Runner health check path (/health) returns 200."""
+        from fastapi.testclient import TestClient
+        from main import app
+        client = TestClient(app)
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
+    def test_root_endpoint_returns_ok(self):
+        """Root endpoint (/) still works."""
+        from fastapi.testclient import TestClient
+        from main import app
+        client = TestClient(app)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"

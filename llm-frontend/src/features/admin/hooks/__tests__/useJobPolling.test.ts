@@ -313,4 +313,102 @@ describe('useJobPolling', () => {
       expect(result.current.isPolling).toBe(false);
     });
   });
+
+  describe('Mixed success + intermittent failure patterns', () => {
+    it('tracks progress through partial OCR failures', async () => {
+      // Simulates: job running with 3/5 completed, 2 failed
+      const partialJob = makeJob({
+        status: 'running',
+        total_items: 5,
+        completed_items: 3,
+        failed_items: 2,
+        current_item: 5,
+        progress_detail: JSON.stringify({
+          page_errors: {
+            '2': { error: 'Rate limit 429', error_type: 'retryable' },
+            '4': { error: 'Rate limit 429', error_type: 'retryable' },
+          },
+        }),
+      });
+
+      const completedJob = makeJob({
+        status: 'completed',
+        total_items: 5,
+        completed_items: 3,
+        failed_items: 2,
+        current_item: 5,
+        progress_detail: partialJob.progress_detail,
+      });
+
+      mockGetLatestJob.mockResolvedValue(partialJob);
+      mockGetJobStatus
+        .mockResolvedValueOnce(partialJob)
+        .mockResolvedValueOnce(completedJob);
+
+      const { result } = renderHook(() => useJobPolling('book-1'));
+
+      await act(async () => {
+        await flushPromises();
+      });
+
+      // While running, job reflects partial progress
+      expect(result.current.job?.completed_items).toBe(3);
+      expect(result.current.job?.failed_items).toBe(2);
+      expect(result.current.isPolling).toBe(true);
+
+      // Next poll: completed with same counts
+      await act(async () => {
+        vi.advanceTimersByTime(3100);
+        await flushPromises();
+      });
+
+      expect(result.current.job?.status).toBe('completed');
+      expect(result.current.job?.completed_items).toBe(3);
+      expect(result.current.job?.failed_items).toBe(2);
+      expect(result.current.isPolling).toBe(false);
+
+      // Frontend can parse progress_detail for per-page errors
+      const detail = JSON.parse(result.current.job!.progress_detail!);
+      expect(detail.page_errors['2'].error_type).toBe('retryable');
+      expect(detail.page_errors['4'].error_type).toBe('retryable');
+    });
+
+    it('handles job transitioning from 0 progress to completed', async () => {
+      const freshJob = makeJob({
+        status: 'running',
+        completed_items: 0,
+        failed_items: 0,
+        current_item: 1,
+      });
+
+      const doneJob = makeJob({
+        status: 'completed',
+        completed_items: 10,
+        failed_items: 0,
+        current_item: 10,
+      });
+
+      mockGetLatestJob.mockResolvedValue(freshJob);
+      mockGetJobStatus
+        .mockResolvedValueOnce(freshJob)
+        .mockResolvedValueOnce(doneJob);
+
+      const { result } = renderHook(() => useJobPolling('book-1'));
+
+      await act(async () => {
+        await flushPromises();
+      });
+
+      expect(result.current.job?.completed_items).toBe(0);
+
+      await act(async () => {
+        vi.advanceTimersByTime(3100);
+        await flushPromises();
+      });
+
+      expect(result.current.job?.status).toBe('completed');
+      expect(result.current.job?.completed_items).toBe(10);
+      expect(result.current.isPolling).toBe(false);
+    });
+  });
 });

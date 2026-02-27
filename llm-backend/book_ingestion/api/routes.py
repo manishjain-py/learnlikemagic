@@ -345,7 +345,7 @@ from book_ingestion.services.guideline_extraction_orchestrator import GuidelineE
 from book_ingestion.utils.s3_client import S3Client
 from openai import OpenAI
 from pydantic import BaseModel
-from typing import List
+from typing import List, Literal
 
 
 class GenerateGuidelinesRequest(BaseModel):
@@ -971,17 +971,27 @@ async def reject_guidelines(book_id: str, db: Session = Depends(get_db)):
 # ===== Job Status Polling Endpoints =====
 
 class JobStatusResponse(BaseModel):
-    """Response for job status polling."""
+    """
+    Response for job status polling.
+
+    Contract (must stay in sync with frontend JobStatus type):
+    - job_type: one of 'extraction', 'finalization', 'ocr_batch'
+    - status: one of 'pending', 'running', 'completed', 'failed'
+    - completed_items / failed_items: always integers (0 when null in DB)
+    - progress_detail: JSON string with shape {"page_errors": {...}, "stats": {...}}
+    - error_message: set whenever status == 'failed'; null otherwise
+    - completed_at: set whenever status in ('completed', 'failed'); null otherwise
+    """
     job_id: str
     book_id: str
-    job_type: str
-    status: str  # pending, running, completed, failed
+    job_type: Literal['extraction', 'finalization', 'ocr_batch']
+    status: Literal['pending', 'running', 'completed', 'failed']
     total_items: Optional[int] = None
     completed_items: int = 0
     failed_items: int = 0
     current_item: Optional[int] = None
     last_completed_item: Optional[int] = None
-    progress_detail: Optional[str] = None  # JSON string
+    progress_detail: Optional[str] = None
     heartbeat_at: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -1049,6 +1059,9 @@ async def bulk_upload_pages(
     Upload multiple page images at once.
     Images are streamed to S3 as raw files (no conversion in request path).
     Image conversion + OCR runs in the background.
+
+    Ordering guarantee: lock is acquired BEFORE any S3 writes.
+    If the lock fails (409), no side effects have occurred.
     """
     from book_ingestion.services.job_lock_service import JobLockService, JobLockError
     from book_ingestion.services.background_task_runner import run_in_background
@@ -1076,27 +1089,35 @@ async def bulk_upload_pages(
         for img in images:
             page_service._validate_image_metadata(img.filename, img.size)
 
-        # Sort files by filename for consistent page ordering
-        sorted_images = sorted(images, key=lambda f: f.filename or "")
-
-        # Stream raw files to S3 one at a time (no conversion, no OCR)
-        page_numbers = []
-        for img in sorted_images:
-            data = await img.read()
-            page_num = page_service.upload_raw_image(book_id, data, img.filename)
-            page_numbers.append(page_num)
-            del data  # Free memory immediately
-
-        # Acquire job lock for background processing
+        # Acquire job lock BEFORE any S3 writes.
+        # If another job is running, we fail fast with 409 — no orphaned S3 files.
         job_lock = JobLockService(db)
         try:
             job_id = job_lock.acquire_lock(
-                book_id, job_type="ocr_batch", total_items=len(page_numbers)
+                book_id, job_type="ocr_batch", total_items=len(images)
             )
         except JobLockError as e:
             raise HTTPException(status_code=409, detail=str(e))
 
-        # Launch background thread for conversion + OCR
+        # Sort files by filename for consistent page ordering
+        sorted_images = sorted(images, key=lambda f: f.filename or "")
+
+        # Stream raw files to S3 one at a time (no conversion, no OCR).
+        # Lock is already held, so these writes are associated with a tracked job.
+        page_numbers = []
+        try:
+            for img in sorted_images:
+                data = await img.read()
+                page_num = page_service.upload_raw_image(book_id, data, img.filename)
+                page_numbers.append(page_num)
+                del data  # Free memory immediately
+        except Exception as upload_err:
+            # S3 upload failed mid-batch: mark job as failed so it doesn't stay pending
+            job_lock.release_lock(job_id, status='failed', error=f"Upload failed: {upload_err}")
+            raise
+
+        # Update job with actual page count (may differ if some uploads were skipped)
+        # Now launch background thread for conversion + OCR
         run_in_background(
             run_bulk_ocr_background,
             job_id=job_id,
