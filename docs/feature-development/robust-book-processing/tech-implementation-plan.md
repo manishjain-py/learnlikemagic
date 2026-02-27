@@ -427,6 +427,126 @@ def get_latest_job(self, book_id: str, job_type: Optional[str] = None) -> Option
 
 Also update `acquire_lock` to accept `total_items` (shown above).
 
+### 3d. Race Condition Handling
+
+#### Race 1: `start_job()` vs `_mark_stale()` (TOCTOU on heartbeat)
+
+**Scenario:** A polling request calls `get_latest_job()` at the exact moment a background thread calls `start_job()`. The polling thread reads a stale `heartbeat_at`, decides the job is stale, and marks it `failed` — just as the background thread transitions it to `running`.
+
+**Mitigation:** `start_job()` uses a `SELECT ... FOR UPDATE` row lock:
+
+```python
+def start_job(self, job_id: str):
+    """Transition pending → running. Uses row-level lock to prevent stale-detection race."""
+    job = self.db.query(BookJob).filter(BookJob.id == job_id).with_for_update().first()
+    if not job:
+        raise InvalidStateTransition(f"Job {job_id} not found")
+    if job.status != 'pending':
+        raise InvalidStateTransition(f"Cannot start job in '{job.status}' state")
+    job.status = 'running'
+    job.heartbeat_at = datetime.utcnow()
+    self.db.commit()
+```
+
+Similarly, `_mark_stale()` must acquire the row lock and re-check status:
+
+```python
+def _mark_stale(self, job: BookJob):
+    """Transition running → failed. Re-checks under row lock to prevent race with start_job."""
+    job = self.db.query(BookJob).filter(BookJob.id == job.id).with_for_update().first()
+    if job.status != 'running':
+        return  # Another thread already transitioned it
+    if not self._is_stale(job):
+        return  # Heartbeat was refreshed between our check and lock acquisition
+    job.status = 'failed'
+    job.completed_at = datetime.utcnow()
+    job.error_message = (
+        f"Job interrupted (no heartbeat since "
+        f"{job.heartbeat_at.isoformat() if job.heartbeat_at else 'never'}). "
+        f"Container may have restarted. Resume from page {job.last_completed_item or 'start'}."
+    )
+    self.db.commit()
+    logger.warning(f"Marked job {job.id} as stale/failed")
+```
+
+**Key invariant:** Any method that transitions `BookJob.status` must acquire the row lock first (`with_for_update()`), then re-validate the precondition. This eliminates TOCTOU races.
+
+#### Race 2: `release_lock()` failure (DB error during terminal transition)
+
+**Scenario:** The background thread finishes processing and calls `release_lock(status='completed')`, but the DB write fails (connection timeout, full disk, etc.). The job stays in `running` state with a stale heartbeat.
+
+**Mitigation:** The catch-all handler in `background_task_runner.py` retries the `release_lock` call once before giving up:
+
+```python
+except Exception as e:
+    logger.error(f"Background task failed: {e}", exc_info=True)
+    for attempt in range(2):  # Try twice
+        try:
+            job_lock = JobLockService(session)
+            job_lock.release_lock(job_id, status='failed', error=str(e))
+            break
+        except Exception:
+            if attempt == 0:
+                logger.warning("First release_lock attempt failed, retrying...")
+                time.sleep(1)
+            else:
+                logger.error(f"Could not mark job {job_id} as failed — will be caught by stale detection")
+```
+
+If both attempts fail, the job remains in `running` with a stale heartbeat. The next `get_latest_job()` call will detect it via heartbeat expiry and transition it to `failed`. This is the safety net — stale detection is the ultimate backstop for any incomplete state transition.
+
+#### Race 3: `acquire_lock()` concurrent calls (two admins or double-click)
+
+**Scenario:** Two near-simultaneous `acquire_lock()` calls for the same book. Both read "no active job exists" and both attempt to insert.
+
+**Mitigation:** The partial index `idx_book_running_job` (PostgreSQL `UNIQUE` on `(book_id)` WHERE `status IN ('pending', 'running')`) guarantees at most one active job per book at the database level. The second insert raises `IntegrityError`, which `acquire_lock` catches and converts to `JobLockError`.
+
+```python
+try:
+    self.db.add(job)
+    self.db.commit()
+except IntegrityError:
+    self.db.rollback()
+    raise JobLockError(f"Another job was just created for book {book_id}")
+```
+
+### 3e. Concurrency Primitive: Partial Index
+
+The primary concurrency control mechanism is a PostgreSQL partial unique index:
+
+```sql
+CREATE UNIQUE INDEX idx_book_running_job ON book_jobs (book_id)
+WHERE status IN ('pending', 'running');
+```
+
+**What this guarantees:**
+- At most **one** job in `pending` or `running` state per `book_id` at any point in time
+- This is enforced by the database engine, not application code — immune to application-level race conditions
+- Multiple `completed`/`failed` jobs can coexist (they're excluded by the `WHERE` clause)
+- Any `INSERT` that would create a second active job for the same book fails with `IntegrityError`
+
+**Why this is sufficient:** Combined with `SELECT ... FOR UPDATE` row locks on state transitions, this gives us:
+1. **At-most-one active job** (partial index) — prevents duplicate job creation
+2. **Atomic state transitions** (row lock) — prevents TOCTOU races on status changes
+3. **Stale detection as backstop** (heartbeat check) — catches leaked `running` jobs from container restarts
+
+No additional application-level mutexes, distributed locks, or advisory locks are needed.
+
+### 3f. Idempotency Guarantees for `update_progress`
+
+`update_progress()` is called after every page. It must be safe to call multiple times with the same arguments (e.g., if the caller retries after a transient DB error):
+
+| Field | Idempotency Behavior |
+|-------|---------------------|
+| `current_item` | Overwritten — always reflects latest call. Safe to replay. |
+| `completed_items` | Overwritten — caller passes cumulative count, not delta. Replaying same value is a no-op. |
+| `failed_items` | Same as `completed_items` — cumulative, not delta. |
+| `last_completed_item` | Monotonically increasing. A replay with the same value is a no-op. A replay with a lower value is harmless (overwritten by next progress call). |
+| `heartbeat_at` | Always set to `now()`. Replaying refreshes the heartbeat — desirable behavior. |
+| `progress_detail` | Overwritten entirely. Caller passes full JSON, not a patch. Replaying same JSON is a no-op. |
+
+**Key design choice:** All progress fields use **absolute values** (cumulative counts, full JSON), not **deltas** (increment by 1). This makes every `update_progress` call independently idempotent — the system converges to the correct state regardless of how many times a call is replayed.
+
 ---
 
 ## 4. Backend: Background Task Runner
@@ -767,6 +887,75 @@ The guideline extraction pipeline is **idempotent per-page** in the forward dire
 
 After each successful page, the background function updates `last_completed_item`. If a page fails (per-page exception caught), it's recorded in `page_errors` but `last_completed_item` stays at the previous page. If the entire process crashes, the DB has the last known good page.
 
+### 7d. metadata.json Reconciliation on Resume
+
+**Problem:** The background OCR processor uses batched metadata.json writes (every 5 pages). If the process dies between flushes, metadata.json is stale — it may show pages as `"pending"` when they actually completed (per DB progress), or show pages as `"processing"` when they failed.
+
+**Invariant:** The `BookJob` table is the **authoritative source of truth** for progress. metadata.json is a **derived cache** that must be reconciled on resume.
+
+**Reconciliation procedure** (runs at the start of any resume operation):
+
+```python
+def _reconcile_metadata_from_db(
+    self,
+    book_id: str,
+    last_job: dict,
+    s3_client: S3Client,
+) -> dict:
+    """
+    Reconcile metadata.json with DB state after a crash/resume.
+    Returns the reconciled metadata dict (already flushed to S3).
+    """
+    metadata = s3_client.download_json(f"books/{book_id}/metadata.json")
+    progress_detail = json.loads(last_job["progress_detail"] or "{}")
+    page_errors = progress_detail.get("page_errors", {})
+    last_completed = last_job["last_completed_item"]
+
+    for page_entry in metadata["pages"]:
+        page_num = page_entry["page_num"]
+        page_str = str(page_num)
+
+        if page_str in page_errors:
+            # DB says this page failed
+            page_entry["ocr_status"] = "failed"
+            page_entry["ocr_error"] = page_errors[page_str].get("error", "Unknown error")
+        elif last_completed is not None and page_num <= last_completed:
+            # DB says this page completed — verify S3 artifacts exist
+            text_key = f"books/{book_id}/{page_num}.txt"
+            if s3_client.exists(text_key):
+                page_entry["ocr_status"] = "completed"
+                page_entry["text_s3_key"] = text_key
+                page_entry["ocr_error"] = None
+            else:
+                # DB says complete but artifact missing — treat as failed
+                page_entry["ocr_status"] = "failed"
+                page_entry["ocr_error"] = "OCR text missing from S3 (possible partial write)"
+        elif page_entry.get("ocr_status") == "processing":
+            # Was in-flight when process died — reset to pending for retry
+            page_entry["ocr_status"] = "pending"
+            page_entry["ocr_error"] = None
+
+    # Flush reconciled state
+    metadata["last_updated"] = datetime.utcnow().isoformat()
+    metadata["reconciled_from_job"] = last_job["job_id"]
+    s3_client.update_metadata_json(book_id, metadata)
+
+    return metadata
+```
+
+**When this runs:**
+- At the start of `run_bulk_ocr_background` when `start_page > 1` (i.e., this is a resume, not a fresh run)
+- At the start of `run_extraction_background` when `start_page > 1`
+
+**What it fixes:**
+| metadata.json state | DB state | Reconciled to |
+|---------------------|----------|---------------|
+| `"processing"` | job failed | `"pending"` (retry eligible) |
+| `"pending"` | page completed | `"completed"` (with S3 verification) |
+| `"completed"` | page in `page_errors` | `"failed"` (DB is authoritative) |
+| `"pending"` | page in `page_errors` | `"failed"` |
+| Any status | page > `last_completed_item` | Unchanged (hasn't been processed yet) |
+
 ---
 
 ## 8. Backend: Job Status Polling Endpoints
@@ -792,6 +981,40 @@ class JobStatusResponse(BaseModel):
     completed_at: Optional[str] = None
     error_message: Optional[str] = None
 
+
+### 8b. Backend-Frontend Progress Contract
+
+Every field in `JobStatusResponse` has explicit nullability rules, invariants, and frontend interpretation:
+
+| Field | Type | Null when? | Invariants | Frontend Interpretation |
+|-------|------|-----------|------------|------------------------|
+| `job_id` | `str` | Never | Always set on creation | Primary key for polling |
+| `book_id` | `str` | Never | FK to books table | Used for routing |
+| `job_type` | `str` | Never | One of: `extraction`, `finalization`, `ocr_batch` | Determines which progress UI to show |
+| `status` | `str` | Never | One of: `pending`, `running`, `completed`, `failed`. `stale` is never returned — always auto-transitioned to `failed` before response. | Controls UI state: progress bar / success banner / error+resume UI |
+| `total_items` | `int?` | When job is `pending` and total not yet known | Set by `acquire_lock(total_items=N)`. Immutable after creation. | Denominator for progress bar. If null, show indeterminate spinner. |
+| `completed_items` | `int` | Never (default 0) | Monotonically increasing. `0 ≤ completed_items ≤ total_items`. | Numerator for progress bar percentage. |
+| `failed_items` | `int` | Never (default 0) | `0 ≤ failed_items`. `completed_items + failed_items ≤ total_items`. | Shown as "N pages had errors" warning text. |
+| `current_item` | `int?` | When `pending` or `completed`/`failed` (not currently processing) | Set during `running`. Cleared to last value on terminal state (not nulled). | "Currently processing: Page X" text. Hidden when null. |
+| `last_completed_item` | `int?` | When no items have completed yet | Monotonically increasing. The page number of the last successfully processed page. | Used in resume UI: "Resume from Page {last_completed_item + 1}" |
+| `progress_detail` | `str?` | When no per-page data yet | JSON string. Frontend must `JSON.parse()` with try/catch (may be malformed in edge cases). | Parsed for per-page errors and stats display. |
+| `heartbeat_at` | `str?` | Before first `update_progress` | ISO 8601 timestamp. Not directly displayed to user. | Not displayed. Used internally by backend for stale detection. |
+| `started_at` | `str?` | Never (set on creation) | ISO 8601 timestamp. | "Started X minutes ago" elapsed time display. |
+| `completed_at` | `str?` | When job not yet terminal | Set when status transitions to `completed` or `failed`. | "Completed X minutes ago" or used to compute total duration. |
+| `error_message` | `str?` | When no error | **Non-null if and only if `status == 'failed'`**. Human-readable error description. | Displayed in error banner. For stale jobs, contains resume instructions. |
+
+**Completion semantics:**
+- A job is **terminal** when `status ∈ {'completed', 'failed'}`. Terminal jobs are never polled again.
+- A `completed` job may still have `failed_items > 0` (some pages had errors but processing continued). The frontend shows a success banner with a warning about failed pages.
+- A `failed` job means processing stopped. `error_message` explains why. `last_completed_item` indicates where to resume.
+
+**Frontend polling rules:**
+1. On mount: call `getLatestJob(bookId, jobType)` once
+2. If result is `null`: no job exists — show default UI
+3. If `status == 'pending'` or `status == 'running'`: start `setInterval` polling at 3s
+4. If `status == 'completed'` or `status == 'failed'`: show terminal UI, do not poll
+5. On each poll response: if status becomes terminal, clear interval immediately
+6. On unmount: clear interval (prevent memory leak and state-after-unmount warnings)
 
 @router.get("/books/{book_id}/jobs/latest", response_model=Optional[JobStatusResponse])
 def get_latest_job(
@@ -1755,28 +1978,44 @@ All tests below must pass before merge. Tests are organized by category with exp
 | 5.4 | Multiple mount/unmount cycles | No duplicate intervals. Each mount starts fresh. |
 | 5.5 | Resume button triggers new job | Clicking "Resume" calls `generateGuidelines({ resume: true })` and starts polling new job. |
 
-#### Category 6: Stress / Boundary
+#### Category 6: Race Conditions, Restart, & Error-Path Verification
 
 | # | Test | Pass Criteria |
 |---|------|---------------|
-| 6.1 | 100-page extraction (integration) | Completes within expected time (~50 min). Memory stays under 1.5 GB. No leaked DB sessions. |
-| 6.2 | 200-page bulk upload (integration) | All images uploaded. OCR completes. metadata.json is consistent at end. |
-| 6.3 | Malformed `progress_detail` JSON in DB | Polling endpoint returns job without crashing. Frontend handles gracefully. |
-| 6.4 | Job with NULL progress columns | Legacy jobs (pre-migration) don't break polling endpoint. |
+| 6.1 | `start_job` and `_mark_stale` race (concurrent threads) | Run `start_job` and `_mark_stale` concurrently on the same job (use threading + small sleep). Only one wins. Job ends in either `running` (start won) or `failed` (stale won) — never in an inconsistent state. No exceptions raised. |
+| 6.2 | `acquire_lock` concurrent double-call (simulate double-click) | Two threads call `acquire_lock` for the same book simultaneously. Exactly one succeeds, the other raises `JobLockError`. Verified by checking that only one `pending`/`running` job exists in DB. |
+| 6.3 | `release_lock` fails (DB connection error during terminal transition) | Mock DB commit to raise on first call, succeed on retry. Job transitions to `failed` on second attempt. If both fail, job remains `running` and is caught by stale detection within 2 minutes. |
+| 6.4 | Restart during processing: new `generate-guidelines` while job is `running` | Returns 409 Conflict. The running job is not affected. |
+| 6.5 | Restart after stale: new job after stale job is auto-recovered | First job goes stale (heartbeat expired). New `acquire_lock` call detects stale, marks it `failed`, and creates new job. Both operations succeed atomically. |
+| 6.6 | Duplicate/replayed `update_progress` calls | Call `update_progress(job_id, current_item=5, completed=5, failed=0)` twice with identical arguments. Second call is a no-op. DB state is unchanged after second call. |
+| 6.7 | Out-of-order `update_progress` (lower completed count after higher) | Call with `completed=5`, then `completed=3`. DB shows `completed=3` (latest call wins — caller is authoritative). This is harmless because the caller's state is the source of truth; a lower count would only happen in a retry-after-rollback scenario. |
+| 6.8 | metadata.json reconciliation after crash | Simulate: process 10 pages, flush metadata at page 5, crash at page 8. Resume: reconciliation marks pages 6-7 as `completed` (DB says so + S3 artifacts exist), page 8 as `pending` (was in-flight). metadata.json matches DB truth. |
+| 6.9 | Error-path state invariants after failure | After any job failure (per-page exception, catastrophic exception, stale detection): verify `status == 'failed'`, `error_message IS NOT NULL`, `last_completed_item` reflects last known good page, `completed_at IS NOT NULL`. |
+| 6.10 | `update_progress` on externally-cancelled job | Job is marked `failed` by stale detection. Background thread (unaware) calls `update_progress`. Call is a silent no-op (returns without error, does not update DB). |
+
+#### Category 7: Stress / Boundary
+
+| # | Test | Pass Criteria |
+|---|------|---------------|
+| 7.1 | 100-page extraction (integration) | Completes within expected time (~50 min). Memory stays under 1.5 GB. No leaked DB sessions. |
+| 7.2 | 200-page bulk upload (integration) | All images uploaded. OCR completes. metadata.json is consistent at end. |
+| 7.3 | Malformed `progress_detail` JSON in DB | Polling endpoint returns job without crashing. Frontend handles gracefully. |
+| 7.4 | Job with NULL progress columns | Legacy jobs (pre-migration) don't break polling endpoint. |
 
 ### 19b. Test Implementation Approach
 
 - **Unit tests** (Categories 1, 4): Mock S3 and LLM API. Test state machine transitions in isolation.
 - **Integration tests** (Categories 2, 3): Use real DB (test database), mock S3 via `moto`, mock LLM responses.
 - **Frontend tests** (Category 5): React Testing Library with fake timers for `setInterval`.
-- **Stress tests** (Category 6): Run manually before deploy. Not part of CI gate (too slow).
+- **Race condition & error-path tests** (Category 6): Use real DB with concurrent threads. Mock DB failures where needed. These are CI-gated (fast to run, critical for correctness).
+- **Stress tests** (Category 7): Run manually before deploy. Not part of CI gate (too slow).
 
 ### 19c. Merge Gate Criteria
 
 The PR is mergeable when:
 
-1. All unit and integration tests pass (Categories 1-5)
-2. Stress smoke test (6.1 or 6.2) has been run at least once manually
+1. All unit, integration, and race condition tests pass (Categories 1-6)
+2. Stress smoke test (7.1 or 7.2) has been run at least once manually
 3. App Runner provisioned CPU mode is verified in Terraform config
 4. Image conversion and OCR are fully out of the HTTP request path
 5. State machine transitions are enforced in `JobLockService` (no direct status updates elsewhere)
@@ -1797,6 +2036,34 @@ The PR is mergeable when:
 | **S3 consistency for page_index.json during resume** | Orchestrator already handles "shard exists but not in index" gracefully. Resume reprocesses the failed page, overwriting any partial artifacts. | **Existing behavior** |
 | **OpenAI rate limits (429s)** | Exponential backoff: 2s → 4s → 8s → 16s (5 attempts). Pages marked `failed` individually with `error_type: "retryable"`. Admin can retry later. | **Resolved in design** |
 | **OOM on large bulk uploads** | Raw file streaming to S3 (no conversion in request path). Files read one at a time with `del data` after each upload. Max 200 files per request. | **Resolved in design** |
+
+### Error-Path State Invariants
+
+After **any** failure path — per-page exception, catastrophic exception, stale detection, or container restart — the following invariants must hold:
+
+| Invariant | Description | Enforced By |
+|-----------|-------------|-------------|
+| **I1: Terminal status** | `status == 'failed'` | `release_lock(status='failed')` in catch-all handler; `_mark_stale()` for container restarts |
+| **I2: Error message present** | `error_message IS NOT NULL` | `release_lock(error=str(e))` always passes the exception message; `_mark_stale()` writes a descriptive message |
+| **I3: Completion timestamp** | `completed_at IS NOT NULL` | `release_lock()` sets `completed_at = now()` for both `completed` and `failed` |
+| **I4: Last known good page** | `last_completed_item` reflects the last page that fully succeeded (all S3 artifacts written) | `update_progress(last_completed_item=page_num)` only called after successful page processing |
+| **I5: No orphaned running state** | No job stays in `running` state indefinitely after its thread dies | Heartbeat-based stale detection (2-min threshold) on every `get_latest_job()` call |
+| **I6: Progress detail preserved** | `progress_detail` JSON contains per-page error details for all failed pages up to the crash point | Updated after each page via `update_progress(detail=...)` |
+
+**Verification approach:** Test 6.9 in the test matrix explicitly validates I1-I4 and I6 for each failure mode:
+- Per-page exception (caught, continues processing)
+- Catastrophic exception (uncaught, hits catch-all in `background_task_runner`)
+- Stale detection (container restart simulation)
+- DB error during `release_lock` (retry + fallback to stale detection)
+
+**What the admin sees after any failure:**
+```
+Status: Failed
+Error: [specific error message — never generic "Unknown error"]
+Pages completed: [last_completed_item] of [total_items]
+Failed pages: [list from progress_detail with per-page errors]
+→ [Resume from Page X] button (X = last_completed_item + 1)
+```
 
 ### Observability
 
