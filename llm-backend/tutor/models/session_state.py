@@ -47,7 +47,7 @@ class ExamQuestion(BaseModel):
     question_text: str
     concept: str
     difficulty: Literal["easy", "medium", "hard"]
-    question_type: Literal["conceptual", "procedural", "application"]
+    question_type: Literal["conceptual", "procedural", "application", "real_world", "error_spotting", "reasoning"]
     expected_answer: str
     student_answer: Optional[str] = None
     result: Optional[Literal["correct", "partial", "incorrect"]] = None
