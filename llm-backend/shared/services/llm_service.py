@@ -19,7 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Models that use the OpenAI Responses API (vs Chat Completions)
-_RESPONSES_API_MODELS = {"gpt-5.2", "gpt-5.1"}
+_RESPONSES_API_MODELS = {"gpt-5.3-codex", "gpt-5.2", "gpt-5.1"}
 
 
 class LLMService:
