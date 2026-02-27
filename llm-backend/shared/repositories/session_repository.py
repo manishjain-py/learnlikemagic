@@ -191,6 +191,71 @@ class SessionRepository:
             "total_steps": total_steps,
         }
 
+    def list_by_guideline(
+        self, user_id: str, guideline_id: str,
+        mode: Optional[str] = None, finished_only: bool = False,
+    ) -> list[dict]:
+        """List sessions for a user+guideline, optionally filtered by mode and completion."""
+        query = (
+            self.db.query(SessionModel)
+            .filter(SessionModel.user_id == user_id, SessionModel.guideline_id == guideline_id)
+        )
+        if mode:
+            query = query.filter(SessionModel.mode == mode)
+        rows = query.order_by(SessionModel.created_at.desc()).all()
+
+        results = []
+        for row in rows:
+            try:
+                state = json.loads(row.state_json)
+            except Exception:
+                state = {}
+
+            exam_finished = state.get("exam_finished", False)
+            is_complete = state.get("clarify_complete", False) if state.get("mode") == "clarify_doubts" else False
+
+            # For teach_me: complete when current_step > total_steps
+            if state.get("mode") == "teach_me":
+                topic = state.get("topic") or {}
+                plan = topic.get("study_plan", {})
+                total_steps = plan.get("total_steps") or len(plan.get("steps", []))
+                current_step = state.get("current_step", 1)
+                is_complete = current_step > total_steps if total_steps else False
+
+            if state.get("mode") == "exam":
+                is_complete = exam_finished
+
+            if finished_only and not is_complete:
+                continue
+
+            # Compute exam score from fractional scores
+            exam_questions = state.get("exam_questions", [])
+            exam_score = round(sum(q.get("score", 0) for q in exam_questions), 1) if exam_questions else None
+            exam_answered = sum(1 for q in exam_questions if q.get("student_answer"))
+
+            # Coverage for teach_me
+            coverage = None
+            if state.get("mode") == "teach_me":
+                covered_set = set(state.get("concepts_covered_set", []))
+                topic = state.get("topic") or {}
+                plan_steps = (topic.get("study_plan") or {}).get("steps", [])
+                all_concepts = [s.get("concept") for s in plan_steps if s.get("concept")]
+                if all_concepts:
+                    coverage = round(len(covered_set & set(all_concepts)) / len(all_concepts) * 100, 1)
+
+            results.append({
+                "session_id": row.id,
+                "mode": state.get("mode", row.mode or "teach_me"),
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "is_complete": is_complete,
+                "exam_finished": exam_finished,
+                "exam_score": exam_score if state.get("mode") == "exam" else None,
+                "exam_total": len(exam_questions) if state.get("mode") == "exam" else None,
+                "exam_answered": exam_answered if state.get("mode") == "exam" else None,
+                "coverage": coverage,
+            })
+        return results
+
     def delete(self, session_id: str) -> bool:
         """
         Delete a session.

@@ -60,6 +60,10 @@ class Session(Base):
     events = relationship("Event", back_populates="session", cascade="all, delete-orphan")
     user = relationship("User", back_populates="sessions")
 
+    __table_args__ = (
+        Index("idx_session_user_guideline", "user_id", "guideline_id", "mode"),
+    )
+
 
 class Event(Base):
     """Event log - tracks each node execution."""

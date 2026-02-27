@@ -135,6 +135,46 @@ class SubtopicProgressResponse(BaseModel):
     user_progress: Dict[str, SubtopicProgressEntry]
 
 
+class GuidelineSessionEntry(BaseModel):
+    """A session summary for a specific guideline."""
+    session_id: str
+    mode: str
+    created_at: Optional[str] = None
+    is_complete: bool
+    exam_finished: bool = False
+    exam_score: Optional[float] = None
+    exam_total: Optional[int] = None
+    exam_answered: Optional[int] = None
+    coverage: Optional[float] = None
+
+
+class GuidelineSessionsResponse(BaseModel):
+    """Response for GET /sessions/guideline/{guideline_id}."""
+    sessions: list[GuidelineSessionEntry]
+
+
+class ExamReviewQuestion(BaseModel):
+    """A single exam question with full review details."""
+    question_idx: int
+    question_text: str
+    student_answer: Optional[str] = None
+    expected_answer: str
+    result: Optional[str] = None
+    score: float = 0.0
+    marks_rationale: str = ""
+    feedback: str = ""
+    concept: str = ""
+    difficulty: str = ""
+
+
+class ExamReviewResponse(BaseModel):
+    """Response for GET /sessions/{id}/exam-review."""
+    session_id: str
+    created_at: Optional[str] = None
+    exam_feedback: Optional[dict] = None
+    questions: list[ExamReviewQuestion]
+
+
 # Import GuidelineMetadata for forward reference
 from .domain import GuidelineMetadata
 GuidelineResponse.model_rebuild()

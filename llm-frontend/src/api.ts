@@ -345,6 +345,63 @@ export async function getSessionReplay(sessionId: string): Promise<any> {
 }
 
 // ──────────────────────────────────────────────
+// Guideline sessions & exam review
+// ──────────────────────────────────────────────
+
+export interface GuidelineSessionEntry {
+  session_id: string;
+  mode: string;
+  created_at: string | null;
+  is_complete: boolean;
+  exam_finished: boolean;
+  exam_score: number | null;
+  exam_total: number | null;
+  exam_answered: number | null;
+  coverage: number | null;
+}
+
+export interface ExamReviewQuestion {
+  question_idx: number;
+  question_text: string;
+  student_answer: string | null;
+  expected_answer: string;
+  result: string | null;
+  score: number;
+  marks_rationale: string;
+  feedback: string;
+  concept: string;
+  difficulty: string;
+}
+
+export interface ExamReviewResponse {
+  session_id: string;
+  created_at: string | null;
+  exam_feedback: { score: number; total: number; percentage: number; strengths?: string[]; weak_areas?: string[]; patterns?: string[]; next_steps?: string[] } | null;
+  questions: ExamReviewQuestion[];
+}
+
+export async function getGuidelineSessions(
+  guidelineId: string,
+  mode?: string,
+  finishedOnly?: boolean,
+): Promise<GuidelineSessionEntry[]> {
+  const params = new URLSearchParams();
+  if (mode) params.set('mode', mode);
+  if (finishedOnly) params.set('finished_only', 'true');
+  const qs = params.toString();
+  const response = await apiFetch(`/sessions/guideline/${guidelineId}${qs ? `?${qs}` : ''}`);
+  if (!response.ok) throw new Error(`Failed to fetch guideline sessions: ${response.statusText}`);
+  const data = await response.json();
+  return data.sessions;
+}
+
+export async function getExamReview(sessionId: string): Promise<ExamReviewResponse> {
+  const response = await apiFetch(`/sessions/${sessionId}/exam-review`);
+  if (!response.ok) throw new Error(`Failed to fetch exam review: ${response.statusText}`);
+  return response.json();
+}
+
+// ──────────────────────────────────────────────
 // Audio transcription
 // ──────────────────────────────────────────────
 
