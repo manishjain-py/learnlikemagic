@@ -43,7 +43,7 @@
 | 14 | Add run_bulk_ocr_background with batched metadata writes | DONE | `llm-backend/book_ingestion/services/page_service.py` | Flushes every 5 pages |
 | 15 | Add bulk upload endpoint with concurrency guard | DONE | `llm-backend/book_ingestion/api/routes.py` | POST /pages/bulk, 409 on single-page during OCR |
 | 16 | Add retry-ocr endpoint | DONE | `llm-backend/book_ingestion/api/routes.py` | POST /pages/{page_num}/retry-ocr |
-| 17 | Write Phase 3 tests | TODO | `llm-backend/tests/` | Integration tests needed |
+| 17 | Write Phase 3 tests | DONE | `llm-backend/tests/unit/test_bulk_upload_ocr.py` | 31 tests: validation, upload, OCR, batching, retry, error classification |
 
 ## Phase 4: Frontend
 
@@ -55,7 +55,7 @@
 | 21 | Update GuidelinesPanel with progress + resume | DONE | `llm-frontend/src/features/admin/components/GuidelinesPanel.tsx` | JobProgressBar, resume UI, polling-based state |
 | 22 | Update PageUploadPanel with bulk upload | DONE | `llm-frontend/src/features/admin/components/PageUploadPanel.tsx` | Bulk/single mode toggle, OCR progress bar |
 | 23 | Update PagesSidebar with OCR status | DONE | `llm-frontend/src/features/admin/components/PagesSidebar.tsx` | OCR status icons, retry-on-click for failed |
-| 24 | Write frontend tests | TODO | `llm-frontend/src/features/admin/` | React Testing Library tests needed |
+| 24 | Write frontend tests | DONE | `llm-frontend/src/features/admin/hooks/__tests__/useJobPolling.test.ts` | 11 tests: mount detection, polling stop, cleanup, error handling |
 
 ---
 
@@ -69,3 +69,10 @@
 - Completed Phase 3 (Steps 12-16: bulk upload, background OCR, retry endpoint, concurrency guard)
 - Completed Phase 4 (Steps 18-23: types, API client, useJobPolling hook, GuidelinesPanel, PageUploadPanel, PagesSidebar)
 - Remaining: Phase 3 integration tests (Step 17), frontend tests (Step 24)
+
+### Session 2 — 2026-02-27
+- Completed Step 17: 31 backend tests for bulk upload, OCR, metadata batching, retry, error classification (all passing)
+- Completed Step 24: 11 frontend tests for useJobPolling hook — mount detection, polling lifecycle, cleanup, error handling (all passing)
+- Set up Vitest + React Testing Library + jsdom for frontend testing
+- **All 24 implementation steps now DONE**
+- Total test count: 24 (job lock) + 31 (bulk upload/OCR) + 11 (frontend polling) = 66 tests
