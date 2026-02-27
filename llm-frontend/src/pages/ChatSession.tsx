@@ -720,7 +720,7 @@ export default function ChatSession() {
                       return (
                         <div key={q.question_idx} style={{ background: '#fff', border: '2px solid #667eea', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
                           <div style={{ fontWeight: 600, marginBottom: '10px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
-                          <form className="input-form" onSubmit={handleSubmit}>
+                          <form className="input-form" onSubmit={handleSubmit} style={{ padding: 0, borderTop: 'none', marginTop: '8px' }}>
                             <input
                               type="text"
                               value={input}
