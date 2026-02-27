@@ -910,3 +910,171 @@ class GuidelineExtractionOrchestrator:
 
         except Exception as e:
             logger.error(f"Failed to update index names: {e}")
+
+
+# ===== Background Task Functions =====
+# These are top-level functions (not methods) called by background_task_runner.
+# They create their own orchestrator instance with its own dependencies.
+
+
+def run_extraction_background(
+    db_session: Session,
+    job_id: str,
+    book_id: str,
+    book_metadata: dict,
+    start_page: int,
+    end_page: int,
+    model: str,
+):
+    """
+    Background task: extract guidelines for a range of pages.
+    Called by background_task_runner with its own DB session.
+    """
+    import asyncio
+    import json
+    from .job_lock_service import JobLockService
+
+    job_lock = JobLockService(db_session)
+    s3_client = S3Client()
+    openai_client = OpenAI()
+
+    orchestrator = GuidelineExtractionOrchestrator(
+        s3_client=s3_client,
+        openai_client=openai_client,
+        db_session=db_session,
+        model=model,
+    )
+
+    completed = 0
+    failed = 0
+    page_errors = {}
+    stats = {"subtopics_created": 0, "subtopics_merged": 0}
+
+    try:
+        for page_num in range(start_page, end_page + 1):
+            # Update: currently processing this page
+            job_lock.update_progress(
+                job_id,
+                current_item=page_num,
+                completed=completed,
+                failed=failed,
+                detail=json.dumps({"page_errors": page_errors, "stats": stats}),
+            )
+
+            try:
+                page_result = asyncio.run(orchestrator.process_page(
+                    book_id=book_id,
+                    page_num=page_num,
+                    book_metadata=book_metadata,
+                ))
+
+                completed += 1
+                if page_result.get("is_new_topic"):
+                    stats["subtopics_created"] += 1
+                else:
+                    stats["subtopics_merged"] += 1
+
+                # Check stability
+                orchestrator._check_and_mark_stable_subtopics(
+                    book_id=book_id,
+                    current_page=page_num,
+                )
+
+            except Exception as e:
+                failed += 1
+                error_type = "retryable" if _is_retryable_error(e) else "terminal"
+                page_errors[str(page_num)] = {
+                    "error": str(e),
+                    "error_type": error_type,
+                }
+                logger.error(f"Page {page_num} failed: {e}", extra={
+                    "job_id": job_id, "book_id": book_id, "page_num": page_num,
+                })
+
+            # Update progress (including last_completed_item for resume)
+            job_lock.update_progress(
+                job_id,
+                current_item=page_num,
+                completed=completed,
+                failed=failed,
+                last_completed_item=page_num if str(page_num) not in page_errors else None,
+                detail=json.dumps({"page_errors": page_errors, "stats": stats}),
+            )
+
+        # All pages processed — mark complete
+        job_lock.release_lock(
+            job_id,
+            status='completed',
+            error=None if not page_errors else f"{len(page_errors)} pages had errors",
+        )
+
+    except Exception as e:
+        # Catastrophic failure — mark failed with last progress
+        logger.error(
+            f"Extraction job {job_id} failed catastrophically: {e}",
+            exc_info=True,
+            extra={"job_id": job_id, "book_id": book_id},
+        )
+        job_lock.release_lock(job_id, status='failed', error=str(e))
+
+
+def run_finalization_background(
+    db_session: Session,
+    job_id: str,
+    book_id: str,
+    book_metadata: dict,
+    model: str,
+    auto_sync_to_db: bool = False,
+):
+    """
+    Background task: finalize book guidelines.
+    Called by background_task_runner with its own DB session.
+    """
+    import asyncio
+    import json
+    from .job_lock_service import JobLockService
+
+    job_lock = JobLockService(db_session)
+    s3_client = S3Client()
+    openai_client = OpenAI()
+
+    orchestrator = GuidelineExtractionOrchestrator(
+        s3_client=s3_client,
+        openai_client=openai_client,
+        db_session=db_session,
+        model=model,
+    )
+
+    try:
+        job_lock.update_progress(job_id, current_item=1, completed=0, failed=0)
+
+        result = asyncio.run(orchestrator.finalize_book(
+            book_id=book_id,
+            book_metadata=book_metadata,
+            auto_sync_to_db=auto_sync_to_db,
+        ))
+
+        job_lock.update_progress(
+            job_id,
+            current_item=1,
+            completed=1,
+            failed=0,
+            last_completed_item=1,
+            detail=json.dumps(result),
+        )
+        job_lock.release_lock(job_id, status='completed')
+
+    except Exception as e:
+        logger.error(
+            f"Finalization job {job_id} failed: {e}",
+            exc_info=True,
+            extra={"job_id": job_id, "book_id": book_id},
+        )
+        job_lock.release_lock(job_id, status='failed', error=str(e))
+
+
+def _is_retryable_error(e: Exception) -> bool:
+    """Classify errors as retryable (transient) or terminal (data problem)."""
+    error_str = str(e).lower()
+    retryable_patterns = ['rate limit', '429', 'timeout', 'connection', 'temporary']
+    return any(pattern in error_str for pattern in retryable_patterns)

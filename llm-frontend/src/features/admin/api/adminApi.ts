@@ -11,7 +11,9 @@ import {
   GuidelinesListResponse,
   GuidelineSubtopic,
   GenerateGuidelinesRequest,
-  GenerateGuidelinesResponse,
+  GenerateGuidelinesStartResponse,
+  JobStatus,
+  BulkUploadResponse,
   GuidelineReview,
   GuidelineFilters,
   StudyPlan,
@@ -146,8 +148,8 @@ export async function getPage(
 export async function generateGuidelines(
   bookId: string,
   request: GenerateGuidelinesRequest
-): Promise<GenerateGuidelinesResponse> {
-  return apiFetch<GenerateGuidelinesResponse>(
+): Promise<GenerateGuidelinesStartResponse> {
+  return apiFetch<GenerateGuidelinesStartResponse>(
     `/admin/books/${bookId}/generate-guidelines`,
     {
       method: 'POST',
@@ -191,17 +193,66 @@ export async function finalizeGuidelines(
   bookId: string,
   autoSyncToDb: boolean = false
 ): Promise<{
-  book_id: string;
+  job_id: string;
   status: string;
-  subtopics_finalized: number;
-  subtopics_renamed: number;
-  duplicates_merged: number;
   message: string;
 }> {
   return apiFetch(`/admin/books/${bookId}/finalize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ auto_sync_to_db: autoSyncToDb }),
+  });
+}
+
+// ===== Job Status =====
+
+export async function getLatestJob(
+  bookId: string,
+  jobType?: string
+): Promise<JobStatus | null> {
+  const params = jobType ? `?job_type=${jobType}` : '';
+  return apiFetch<JobStatus | null>(`/admin/books/${bookId}/jobs/latest${params}`);
+}
+
+export async function getJobStatus(
+  bookId: string,
+  jobId: string
+): Promise<JobStatus> {
+  return apiFetch<JobStatus>(`/admin/books/${bookId}/jobs/${jobId}`);
+}
+
+// ===== Bulk Upload =====
+
+export async function bulkUploadPages(
+  bookId: string,
+  imageFiles: File[]
+): Promise<BulkUploadResponse> {
+  const formData = new FormData();
+  imageFiles.forEach(file => {
+    formData.append('images', file);
+  });
+
+  const response = await fetch(`${API_BASE_URL}/admin/books/${bookId}/pages/bulk`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ===== OCR Retry =====
+
+export async function retryPageOcr(
+  bookId: string,
+  pageNum: number
+): Promise<{ page_num: number; ocr_status: string }> {
+  return apiFetch(`/admin/books/${bookId}/pages/${pageNum}/retry-ocr`, {
+    method: 'POST',
   });
 }
 

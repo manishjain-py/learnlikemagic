@@ -203,6 +203,16 @@ async def upload_page(
         HTTPException: If upload or OCR fails
     """
     try:
+        # Block single-page upload during bulk OCR to prevent metadata.json conflicts
+        from book_ingestion.services.job_lock_service import JobLockService
+        job_lock = JobLockService(db)
+        active_ocr = job_lock.get_latest_job(book_id, job_type="ocr_batch")
+        if active_ocr and active_ocr["status"] in ("pending", "running"):
+            raise HTTPException(
+                status_code=409,
+                detail="Bulk OCR job in progress. Wait for completion before uploading individual pages."
+            )
+
         # Read image data
         image_data = await image.read()
 
@@ -335,7 +345,7 @@ from book_ingestion.services.guideline_extraction_orchestrator import GuidelineE
 from book_ingestion.utils.s3_client import S3Client
 from openai import OpenAI
 from pydantic import BaseModel
-from typing import List
+from typing import List, Literal
 
 
 class GenerateGuidelinesRequest(BaseModel):
@@ -343,10 +353,22 @@ class GenerateGuidelinesRequest(BaseModel):
     start_page: Optional[int] = 1
     end_page: Optional[int] = None
     auto_sync_to_db: bool = False
+    resume: bool = False  # Auto-resume from last failure point
 
 
+class GenerateGuidelinesStartResponse(BaseModel):
+    """Response from starting guideline generation (background job)."""
+    job_id: Optional[str] = None
+    status: str
+    start_page: int = 0
+    end_page: int = 0
+    total_pages: int = 0
+    message: str
+
+
+# Keep old response model for backward compatibility with tests
 class GenerateGuidelinesResponse(BaseModel):
-    """Response from guideline generation"""
+    """Response from guideline generation (legacy sync mode)"""
     book_id: str
     status: str
     pages_processed: int
@@ -379,92 +401,94 @@ class GuidelinesListResponse(BaseModel):
     processed_pages: List[int] = []  # Pages that have been processed (from page_index.json)
 
 
-@router.post("/books/{book_id}/generate-guidelines", response_model=GenerateGuidelinesResponse)
-async def generate_guidelines(
+@router.post("/books/{book_id}/generate-guidelines", response_model=GenerateGuidelinesStartResponse)
+def generate_guidelines(
     book_id: str,
     request: GenerateGuidelinesRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
-    Generate teaching guidelines for a book.
-
-    This triggers the Phase 6 guideline extraction pipeline:
-    1. Process each page (minisummary, boundary detection, facts extraction)
-    2. Merge facts into subtopic shards
-    3. Detect stable subtopics and generate teaching descriptions
-    4. Run quality validation
-    5. Optionally sync to database
-
-    Args:
-        book_id: Book identifier
-        request: Generation request with options
-        db: Database session
-
-    Returns:
-        Generation results with statistics
-
-    Raises:
-        HTTPException: If book not found or generation fails
+    Start guideline generation as a background job.
+    Returns immediately with job_id. Poll GET /books/{book_id}/jobs/latest for progress.
     """
+    from book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    from book_ingestion.services.background_task_runner import run_in_background
+    from book_ingestion.services.guideline_extraction_orchestrator import run_extraction_background
+
     try:
-        # Get book metadata
+        # Validate book exists
         book_service = BookService(db)
         book = book_service.get_book(book_id)
-
         if not book:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Book not found: {book_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
 
-        # Load total_pages from S3 metadata (page count is stored in S3, not DB)
+        # Load total_pages from S3 metadata
         s3_client = S3Client()
         try:
-            metadata_key = f"books/{book_id}/metadata.json"
-            metadata = s3_client.download_json(metadata_key)
+            metadata = s3_client.download_json(f"books/{book_id}/metadata.json")
             total_pages = metadata.get("total_pages", 0)
-        except Exception as e:
-            # If metadata.json doesn't exist yet (no pages uploaded), default to 0
+        except Exception:
             total_pages = 0
 
-        # Build book metadata
+        if total_pages == 0:
+            raise HTTPException(status_code=400, detail="No pages uploaded for this book")
+
+        start_page = request.start_page or 1
+        end_page = request.end_page or total_pages
+
+        # Handle resume
+        if request.resume:
+            job_lock_svc = JobLockService(db)
+            latest = job_lock_svc.get_latest_job(book_id, job_type="extraction")
+            if latest and latest["last_completed_item"]:
+                start_page = latest["last_completed_item"] + 1
+                if start_page > end_page:
+                    return GenerateGuidelinesStartResponse(
+                        job_id=None,
+                        status="already_complete",
+                        message="All pages already processed",
+                    )
+
+        total_to_process = end_page - start_page + 1
+
+        # Acquire job lock (409 if already running)
+        job_lock_svc = JobLockService(db)
+        try:
+            job_id = job_lock_svc.acquire_lock(
+                book_id, job_type="extraction", total_items=total_to_process
+            )
+        except JobLockError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+        # Read model config
+        from shared.services.llm_config_service import LLMConfigService
+        ingestion_config = LLMConfigService(db).get_config("book_ingestion")
+
         book_metadata = {
             "grade": book.grade,
             "subject": book.subject,
             "board": book.board,
-            "total_pages": total_pages
+            "total_pages": total_pages,
         }
 
-        # Initialize orchestrator — read model from DB config
-        from shared.services.llm_config_service import LLMConfigService
-        ingestion_config = LLMConfigService(db).get_config("book_ingestion")
-        openai_client = OpenAI()
-        orchestrator = GuidelineExtractionOrchestrator(
-            s3_client=s3_client,
-            openai_client=openai_client,
-            db_session=db,
+        # Launch background task
+        run_in_background(
+            run_extraction_background,
+            job_id=job_id,
+            book_id=book_id,
+            book_metadata=book_metadata,
+            start_page=start_page,
+            end_page=end_page,
             model=ingestion_config["model_id"],
         )
 
-        # Extract guidelines
-        stats = await orchestrator.extract_guidelines_for_book(
-            book_id=book_id,
-            book_metadata=book_metadata,
-            start_page=request.start_page,
-            end_page=request.end_page,
-            auto_sync_to_db=request.auto_sync_to_db
-        )
-
-        return GenerateGuidelinesResponse(
-            book_id=book_id,
-            status="completed",
-            pages_processed=stats["pages_processed"],
-            subtopics_created=stats["subtopics_created"],
-            subtopics_merged=stats.get("subtopics_merged", 0),
-            subtopics_finalized=stats["subtopics_finalized"],
-            duplicates_merged=stats.get("duplicates_merged", 0),
-            errors=stats["errors"],
-            warnings=stats.get("warnings", [])
+        return GenerateGuidelinesStartResponse(
+            job_id=job_id,
+            status="started",
+            start_page=start_page,
+            end_page=end_page,
+            total_pages=total_to_process,
+            message=f"Guideline generation started for pages {start_page}-{end_page}",
         )
 
     except HTTPException:
@@ -472,7 +496,7 @@ async def generate_guidelines(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate guidelines: {str(e)}"
+            detail=f"Failed to start guideline generation: {str(e)}"
         )
 
 
@@ -481,8 +505,16 @@ class FinalizeRequest(BaseModel):
     auto_sync_to_db: bool = False
 
 
+class FinalizeStartResponse(BaseModel):
+    """Response from starting finalization (background job)."""
+    job_id: str
+    status: str
+    message: str
+
+
+# Keep old response model for backward compatibility
 class FinalizeResponse(BaseModel):
-    """Response from finalization"""
+    """Response from finalization (legacy sync mode)"""
     book_id: str
     status: str
     subtopics_finalized: int
@@ -491,79 +523,61 @@ class FinalizeResponse(BaseModel):
     message: str
 
 
-@router.post("/books/{book_id}/finalize", response_model=FinalizeResponse)
-async def finalize_guidelines(
+@router.post("/books/{book_id}/finalize", response_model=FinalizeStartResponse)
+def finalize_guidelines(
     book_id: str,
     request: FinalizeRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
-    Finalize and consolidate guidelines for a book.
-
-    This triggers the finalization pipeline:
-    1. Mark all open/stable subtopics as final
-    2. Refine topic/subtopic names using LLM
-    3. Run deduplication to merge similar topics
-    4. Optionally sync to database
-
-    Args:
-        book_id: Book identifier
-        request: Finalization request with options
-        db: Database session
-
-    Returns:
-        Finalization results with statistics
-
-    Raises:
-        HTTPException: If book not found or finalization fails
+    Start guideline finalization as a background job.
+    Returns immediately with job_id. Poll GET /books/{book_id}/jobs/latest for progress.
     """
+    from book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    from book_ingestion.services.background_task_runner import run_in_background
+    from book_ingestion.services.guideline_extraction_orchestrator import run_finalization_background
+
     try:
-        # Get book metadata
+        # Validate book exists
         book_service = BookService(db)
         book = book_service.get_book(book_id)
-
         if not book:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Book not found: {book_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
 
-        # Build book metadata
         book_metadata = {
             "grade": book.grade,
             "subject": book.subject,
             "board": book.board,
-            "country": book.country
+            "country": book.country,
         }
 
-        # Initialize V2 orchestrator — read model from DB config
+        # Acquire job lock (409 if already running)
+        job_lock_svc = JobLockService(db)
+        try:
+            job_id = job_lock_svc.acquire_lock(
+                book_id, job_type="finalization", total_items=1
+            )
+        except JobLockError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+        # Read model config
         from shared.services.llm_config_service import LLMConfigService
         ingestion_config = LLMConfigService(db).get_config("book_ingestion")
-        s3_client = S3Client()
-        openai_client = OpenAI()
-        orchestrator = GuidelineExtractionOrchestrator(
-            s3_client=s3_client,
-            openai_client=openai_client,
-            db_session=db,
-            model=ingestion_config["model_id"],
-        )
 
-        # Run finalization
-        result = await orchestrator.finalize_book(
+        # Launch background task
+        run_in_background(
+            run_finalization_background,
+            job_id=job_id,
             book_id=book_id,
             book_metadata=book_metadata,
-            auto_sync_to_db=request.auto_sync_to_db
+            model=ingestion_config["model_id"],
+            auto_sync_to_db=request.auto_sync_to_db,
         )
 
-        return FinalizeResponse(
-            book_id=book_id,
-            status="completed",
-            subtopics_finalized=result.get("subtopics_finalized", 0),
-            subtopics_renamed=result.get("subtopics_renamed", 0),
-            duplicates_merged=result.get("duplicates_merged", 0),
-            message=f"Successfully finalized {result.get('subtopics_finalized', 0)} subtopics, "
-                   f"refined {result.get('subtopics_renamed', 0)} names, "
-                   f"merged {result.get('duplicates_merged', 0)} duplicates"
+        return FinalizeStartResponse(
+            job_id=job_id,
+            status="started",
+            message="Finalization started in background",
         )
 
     except HTTPException:
@@ -571,7 +585,7 @@ async def finalize_guidelines(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to finalize guidelines: {str(e)}"
+            detail=f"Failed to start finalization: {str(e)}"
         )
 
 
@@ -951,4 +965,204 @@ async def reject_guidelines(book_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to reject guidelines: {str(e)}"
+        )
+
+
+# ===== Job Status Polling Endpoints =====
+
+class JobStatusResponse(BaseModel):
+    """
+    Response for job status polling.
+
+    Contract (must stay in sync with frontend JobStatus type):
+    - job_type: one of 'extraction', 'finalization', 'ocr_batch'
+    - status: one of 'pending', 'running', 'completed', 'failed'
+    - completed_items / failed_items: always integers (0 when null in DB)
+    - progress_detail: JSON string with shape {"page_errors": {...}, "stats": {...}}
+    - error_message: set whenever status == 'failed'; null otherwise
+    - completed_at: set whenever status in ('completed', 'failed'); null otherwise
+    """
+    job_id: str
+    book_id: str
+    job_type: Literal['extraction', 'finalization', 'ocr_batch']
+    status: Literal['pending', 'running', 'completed', 'failed']
+    total_items: Optional[int] = None
+    completed_items: int = 0
+    failed_items: int = 0
+    current_item: Optional[int] = None
+    last_completed_item: Optional[int] = None
+    progress_detail: Optional[str] = None
+    heartbeat_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+@router.get("/books/{book_id}/jobs/latest")
+def get_latest_job(
+    book_id: str,
+    job_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Get the latest job for a book. Used by frontend to:
+    - Detect if a job is running when page loads
+    - Poll for progress during active jobs
+    - Show failure details for resume
+    """
+    from book_ingestion.services.job_lock_service import JobLockService
+
+    job_lock = JobLockService(db)
+    result = job_lock.get_latest_job(book_id, job_type)
+    if not result:
+        return None
+    return JobStatusResponse(**result)
+
+
+@router.get("/books/{book_id}/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(
+    book_id: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+):
+    """Get specific job status."""
+    from book_ingestion.services.job_lock_service import JobLockService
+
+    job_lock = JobLockService(db)
+    result = job_lock.get_job(job_id)
+    if not result or result["book_id"] != book_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobStatusResponse(**result)
+
+
+# ===== Bulk Upload Endpoints =====
+
+MAX_BULK_UPLOAD_FILES = 200
+
+
+class BulkUploadResponse(BaseModel):
+    """Response from bulk page upload."""
+    job_id: str
+    pages_uploaded: List[int]
+    total_pages: int
+    status: str
+    message: str
+
+
+@router.post("/books/{book_id}/pages/bulk", response_model=BulkUploadResponse)
+async def bulk_upload_pages(
+    book_id: str,
+    images: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload multiple page images at once.
+    Images are streamed to S3 as raw files (no conversion in request path).
+    Image conversion + OCR runs in the background.
+
+    Ordering guarantee: lock is acquired BEFORE any S3 writes.
+    If the lock fails (409), no side effects have occurred.
+    """
+    from book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    from book_ingestion.services.background_task_runner import run_in_background
+    from book_ingestion.services.page_service import PageService, run_bulk_ocr_background
+
+    try:
+        # Validate book exists
+        book_service = BookService(db)
+        book = book_service.get_book(book_id)
+        if not book:
+            raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
+
+        if not images:
+            raise HTTPException(status_code=400, detail="No images provided")
+
+        if len(images) > MAX_BULK_UPLOAD_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Max {MAX_BULK_UPLOAD_FILES} files per upload"
+            )
+
+        page_service = PageService(db)
+
+        # Lightweight validation only (metadata, not content)
+        for img in images:
+            page_service._validate_image_metadata(img.filename, img.size)
+
+        # Acquire job lock BEFORE any S3 writes.
+        # If another job is running, we fail fast with 409 — no orphaned S3 files.
+        job_lock = JobLockService(db)
+        try:
+            job_id = job_lock.acquire_lock(
+                book_id, job_type="ocr_batch", total_items=len(images)
+            )
+        except JobLockError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+        # Sort files by filename for consistent page ordering
+        sorted_images = sorted(images, key=lambda f: f.filename or "")
+
+        # Stream raw files to S3 one at a time (no conversion, no OCR).
+        # Lock is already held, so these writes are associated with a tracked job.
+        page_numbers = []
+        try:
+            for img in sorted_images:
+                data = await img.read()
+                page_num = page_service.upload_raw_image(book_id, data, img.filename)
+                page_numbers.append(page_num)
+                del data  # Free memory immediately
+        except Exception as upload_err:
+            # S3 upload failed mid-batch: mark job as failed so it doesn't stay pending
+            job_lock.release_lock(job_id, status='failed', error=f"Upload failed: {upload_err}")
+            raise
+
+        # Update job with actual page count (may differ if some uploads were skipped)
+        # Now launch background thread for conversion + OCR
+        run_in_background(
+            run_bulk_ocr_background,
+            job_id=job_id,
+            book_id=book_id,
+            page_numbers=page_numbers,
+        )
+
+        return BulkUploadResponse(
+            job_id=job_id,
+            pages_uploaded=page_numbers,
+            total_pages=len(page_numbers),
+            status="processing",
+            message=f"Uploaded {len(page_numbers)} raw images. Conversion + OCR processing in background.",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to bulk upload pages: {str(e)}"
+        )
+
+
+@router.post("/books/{book_id}/pages/{page_num}/retry-ocr")
+def retry_page_ocr(
+    book_id: str,
+    page_num: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Retry OCR for a single page that previously failed.
+    Runs synchronously since it's a single page (~10s).
+    """
+    from book_ingestion.services.page_service import PageService
+
+    try:
+        service = PageService(db)
+        result = service.retry_page_ocr(book_id, page_num)
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OCR retry failed: {str(e)}"
         )

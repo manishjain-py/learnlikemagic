@@ -155,9 +155,19 @@ resource "aws_apprunner_service" "backend" {
 
   auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.backend.arn
 
+  # Network configuration: provisioned instances for background job support.
+  # Background threads (guidelines extraction, bulk OCR) need continuous CPU
+  # between HTTP requests. Request-driven mode throttles CPU when idle.
+  # Cost: ~$25/mo per always-on instance (acceptable for admin tool).
+  network_configuration {
+    ingress_configuration {
+      is_publicly_accessible = true
+    }
+  }
+
   health_check_configuration {
     protocol            = "HTTP"
-    path                = "/"
+    path                = "/health"
     interval            = 10
     timeout             = 5
     healthy_threshold   = 1

@@ -33,9 +33,12 @@ export interface BookDetail extends Book {
 export interface PageInfo {
   page_num: number;
   image_s3_key: string;
-  text_s3_key: string;
+  text_s3_key: string | null;
   status: 'pending_review' | 'approved';
   approved_at: string | null;
+  ocr_status?: 'pending' | 'processing' | 'completed' | 'failed';
+  ocr_error?: string | null;
+  raw_image_s3_key?: string;
 }
 
 export interface CreateBookRequest {
@@ -110,19 +113,64 @@ export interface GenerateGuidelinesRequest {
   start_page?: number;
   end_page?: number;
   auto_sync_to_db?: boolean;
-  version?: 'v1' | 'v2';  // V2: Version selection (defaults to v2)
+  resume?: boolean;
 }
 
+export interface GenerateGuidelinesStartResponse {
+  job_id: string | null;
+  status: string;
+  start_page: number;
+  end_page: number;
+  total_pages: number;
+  message: string;
+}
+
+// Legacy sync response (kept for backward compatibility)
 export interface GenerateGuidelinesResponse {
   book_id: string;
   status: string;
   pages_processed: number;
   subtopics_created: number;
-  subtopics_merged?: number;  // V2: Number of merge operations
+  subtopics_merged?: number;
   subtopics_finalized: number;
-  duplicates_merged?: number;  // V2: Number of duplicates merged
+  duplicates_merged?: number;
   errors: string[];
   warnings: string[];
+}
+
+// ===== Job Status Types =====
+
+export interface JobStatus {
+  job_id: string;
+  book_id: string;
+  job_type: 'extraction' | 'finalization' | 'ocr_batch';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  total_items: number | null;
+  completed_items: number;
+  failed_items: number;
+  current_item: number | null;
+  last_completed_item: number | null;
+  progress_detail: string | null;  // JSON string
+  heartbeat_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface JobProgressDetail {
+  page_errors: Record<string, { error: string; error_type: string }>;
+  stats?: {
+    subtopics_created: number;
+    subtopics_merged: number;
+  };
+}
+
+export interface BulkUploadResponse {
+  job_id: string;
+  pages_uploaded: number[];
+  total_pages: number;
+  status: string;
+  message: string;
 }
 
 // ===== Guidelines Review Types =====

@@ -7,15 +7,58 @@
 
 import React from 'react';
 import { PageInfo } from '../types';
+import { retryPageOcr } from '../api/adminApi';
 
 interface PagesSidebarProps {
   pages: PageInfo[];
   selectedPage: number | null;
   onSelectPage: (pageNum: number) => void;
   processedPages?: Set<number>;
+  bookId?: string;
+  onPageProcessed?: () => void;
 }
 
-const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSelectPage, processedPages }) => {
+// OCR status indicator
+const OcrStatusIcon: React.FC<{ status?: string; pageNum: number; bookId?: string; onRetry?: () => void }> = ({ status, pageNum, bookId, onRetry }) => {
+  // Treat missing ocr_status as completed (legacy pages)
+  const effectiveStatus = status || 'completed';
+
+  switch (effectiveStatus) {
+    case 'completed':
+      return <span style={{ color: '#10B981', fontSize: '12px' }} title="OCR complete">&#9679;</span>;
+    case 'processing':
+      return <span style={{ color: '#F59E0B', fontSize: '12px', animation: 'pulse 1s infinite' }} title="OCR processing">&#9679;</span>;
+    case 'failed':
+      return (
+        <span
+          style={{ color: '#EF4444', fontSize: '12px', cursor: bookId ? 'pointer' : 'default' }}
+          title="OCR failed - click to retry"
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (bookId) {
+              try {
+                await retryPageOcr(bookId, pageNum);
+                onRetry?.();
+              } catch {
+                // Silently handle
+              }
+            }
+          }}
+        >
+          &#10007;
+        </span>
+      );
+    case 'pending':
+      return <span style={{ color: '#D1D5DB', fontSize: '12px' }} title="OCR pending">&#9675;</span>;
+    default:
+      return null;
+  }
+};
+
+const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSelectPage, processedPages, bookId, onPageProcessed }) => {
+  // Show all pages (not just approved) if some have pending OCR
+  const hasOcrPages = pages.some(p => p.ocr_status && p.ocr_status !== 'completed');
+  const displayPages = hasOcrPages ? pages : pages.filter((p) => p.status === 'approved');
   const approvedPages = pages.filter((p) => p.status === 'approved');
   const hasGuidelines = processedPages != null && processedPages.size > 0;
   const unprocessedCount = hasGuidelines
@@ -42,7 +85,7 @@ const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSele
         </div>
       ) : (
         <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
-          {approvedPages.map((page) => {
+          {displayPages.map((page) => {
             const isProcessed = hasGuidelines && processedPages.has(page.page_num);
             const isUnprocessed = hasGuidelines && !processedPages.has(page.page_num);
             const isSelected = selectedPage === page.page_num;
@@ -99,8 +142,14 @@ const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSele
                     {page.page_num}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: '500', marginBottom: '2px' }}>
                       Page {page.page_num}
+                      <OcrStatusIcon
+                        status={page.ocr_status}
+                        pageNum={page.page_num}
+                        bookId={bookId}
+                        onRetry={onPageProcessed}
+                      />
                     </div>
                     {isUnprocessed ? (
                       <div style={{ fontSize: '12px', color: '#C2410C', fontWeight: '500' }}>

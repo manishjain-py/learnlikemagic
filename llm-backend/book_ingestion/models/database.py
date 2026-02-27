@@ -65,21 +65,37 @@ class BookGuideline(Base):
 class BookJob(Base):
     """
     Track active jobs per book to prevent concurrent operations.
-    
-    Job types: extraction, finalization, sync
+
+    Job types: extraction, finalization, sync, ocr_batch
+
+    State machine: pending → running → completed|failed
+    Stale detection: running jobs with expired heartbeat are auto-marked failed.
+    See job_lock_service.py for transition enforcement.
     """
     __tablename__ = "book_jobs"
 
     id = Column(String, primary_key=True)
     book_id = Column(String, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
-    job_type = Column(String, nullable=False)  # extraction, finalization, sync
-    status = Column(String, default='running')  # running, completed, failed
+    job_type = Column(String, nullable=False)  # extraction, finalization, sync, ocr_batch
+    status = Column(String, default='pending')  # pending, running, completed, failed
+
+    # Progress tracking
+    total_items = Column(Integer, nullable=True)           # Total pages to process
+    completed_items = Column(Integer, default=0)           # Pages completed so far
+    failed_items = Column(Integer, default=0)              # Pages that errored
+    current_item = Column(Integer, nullable=True)          # Page currently being processed
+    last_completed_item = Column(Integer, nullable=True)   # Last successfully processed page (for resume)
+    progress_detail = Column(Text, nullable=True)          # JSON: per-page errors + running stats
+
+    # Heartbeat for stale detection (background thread updates every 30s)
+    heartbeat_at = Column(DateTime, nullable=True)
+
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
 
     __table_args__ = (
-        # Ensure only one running job per book
+        # Ensure at most one pending/running job per book
         Index('idx_book_running_job', 'book_id', 'status',
-              postgresql_where=text("status = 'running'")),
+              postgresql_where=text("status IN ('pending', 'running')")),
     )

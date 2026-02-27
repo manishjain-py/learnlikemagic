@@ -9,12 +9,22 @@ router = APIRouter(tags=["health"])
 
 @router.get("/")
 def read_root():
-    """Health check endpoint."""
+    """Root endpoint."""
     return {
         "status": "ok",
         "service": "LearnLikeMagic LLM Backend",
         "version": "1.0.0"
     }
+
+
+@router.get("/health")
+def health_check():
+    """
+    Health check endpoint — used by App Runner (path: /health).
+    Must return 200 with any body. Keep this in sync with
+    infra/terraform/modules/app-runner/main.tf health_check_configuration.path.
+    """
+    return {"status": "ok"}
 
 
 @router.get("/config/models")
