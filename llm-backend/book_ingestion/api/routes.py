@@ -203,6 +203,16 @@ async def upload_page(
         HTTPException: If upload or OCR fails
     """
     try:
+        # Block single-page upload during bulk OCR to prevent metadata.json conflicts
+        from book_ingestion.services.job_lock_service import JobLockService
+        job_lock = JobLockService(db)
+        active_ocr = job_lock.get_latest_job(book_id, job_type="ocr_batch")
+        if active_ocr and active_ocr["status"] in ("pending", "running"):
+            raise HTTPException(
+                status_code=409,
+                detail="Bulk OCR job in progress. Wait for completion before uploading individual pages."
+            )
+
         # Read image data
         image_data = await image.read()
 
@@ -1013,3 +1023,125 @@ def get_job_status(
     if not result or result["book_id"] != book_id:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobStatusResponse(**result)
+
+
+# ===== Bulk Upload Endpoints =====
+
+MAX_BULK_UPLOAD_FILES = 200
+
+
+class BulkUploadResponse(BaseModel):
+    """Response from bulk page upload."""
+    job_id: str
+    pages_uploaded: List[int]
+    total_pages: int
+    status: str
+    message: str
+
+
+@router.post("/books/{book_id}/pages/bulk", response_model=BulkUploadResponse)
+async def bulk_upload_pages(
+    book_id: str,
+    images: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload multiple page images at once.
+    Images are streamed to S3 as raw files (no conversion in request path).
+    Image conversion + OCR runs in the background.
+    """
+    from book_ingestion.services.job_lock_service import JobLockService, JobLockError
+    from book_ingestion.services.background_task_runner import run_in_background
+    from book_ingestion.services.page_service import PageService, run_bulk_ocr_background
+
+    try:
+        # Validate book exists
+        book_service = BookService(db)
+        book = book_service.get_book(book_id)
+        if not book:
+            raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
+
+        if not images:
+            raise HTTPException(status_code=400, detail="No images provided")
+
+        if len(images) > MAX_BULK_UPLOAD_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Max {MAX_BULK_UPLOAD_FILES} files per upload"
+            )
+
+        page_service = PageService(db)
+
+        # Lightweight validation only (metadata, not content)
+        for img in images:
+            page_service._validate_image_metadata(img.filename, img.size)
+
+        # Sort files by filename for consistent page ordering
+        sorted_images = sorted(images, key=lambda f: f.filename or "")
+
+        # Stream raw files to S3 one at a time (no conversion, no OCR)
+        page_numbers = []
+        for img in sorted_images:
+            data = await img.read()
+            page_num = page_service.upload_raw_image(book_id, data, img.filename)
+            page_numbers.append(page_num)
+            del data  # Free memory immediately
+
+        # Acquire job lock for background processing
+        job_lock = JobLockService(db)
+        try:
+            job_id = job_lock.acquire_lock(
+                book_id, job_type="ocr_batch", total_items=len(page_numbers)
+            )
+        except JobLockError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+        # Launch background thread for conversion + OCR
+        run_in_background(
+            run_bulk_ocr_background,
+            job_id=job_id,
+            book_id=book_id,
+            page_numbers=page_numbers,
+        )
+
+        return BulkUploadResponse(
+            job_id=job_id,
+            pages_uploaded=page_numbers,
+            total_pages=len(page_numbers),
+            status="processing",
+            message=f"Uploaded {len(page_numbers)} raw images. Conversion + OCR processing in background.",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to bulk upload pages: {str(e)}"
+        )
+
+
+@router.post("/books/{book_id}/pages/{page_num}/retry-ocr")
+def retry_page_ocr(
+    book_id: str,
+    page_num: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Retry OCR for a single page that previously failed.
+    Runs synchronously since it's a single page (~10s).
+    """
+    from book_ingestion.services.page_service import PageService
+
+    try:
+        service = PageService(db)
+        result = service.retry_page_ocr(book_id, page_num)
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OCR retry failed: {str(e)}"
+        )

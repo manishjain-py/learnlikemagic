@@ -16,10 +16,12 @@ import {
   rejectGuidelines,
   finalizeGuidelines,
 } from '../api/adminApi';
+import { useJobPolling } from '../hooks/useJobPolling';
 import {
   GuidelineSubtopic,
   GenerateGuidelinesRequest,
-  GenerateGuidelinesResponse,
+  JobStatus,
+  JobProgressDetail,
 } from '../types';
 
 interface GuidelinesPanelProps {
@@ -163,6 +165,53 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   );
 };
 
+// Progress bar component for active jobs
+const JobProgressBar: React.FC<{ job: JobStatus; label: string }> = ({ job, label }) => {
+  const total = job.total_items || 1;
+  const done = job.completed_items;
+  const pct = Math.round((done / total) * 100);
+  let detail: JobProgressDetail | null = null;
+  try {
+    detail = job.progress_detail ? JSON.parse(job.progress_detail) : null;
+  } catch { /* ignore */ }
+
+  return (
+    <div style={{ padding: '16px', backgroundColor: '#EFF6FF', borderRadius: '8px', border: '1px solid #BFDBFE', marginBottom: '16px' }}>
+      <div style={{ fontSize: '14px', fontWeight: '600', color: '#1E40AF', marginBottom: '8px' }}>
+        {label}
+      </div>
+      {/* Progress bar */}
+      <div style={{ height: '8px', backgroundColor: '#DBEAFE', borderRadius: '4px', overflow: 'hidden', marginBottom: '12px' }}>
+        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: '#3B82F6', borderRadius: '4px', transition: 'width 0.3s' }} />
+      </div>
+
+      {/* Stats */}
+      <div style={{ fontSize: '14px', color: '#1E40AF', fontWeight: '600', marginBottom: '4px' }}>
+        {done}/{total} pages ({pct}%)
+      </div>
+      {job.current_item && (
+        <div style={{ fontSize: '13px', color: '#6B7280' }}>
+          Currently processing: Page {job.current_item}
+        </div>
+      )}
+      {detail?.stats && (
+        <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>
+          Subtopics: {detail.stats.subtopics_created} created, {detail.stats.subtopics_merged} merged
+        </div>
+      )}
+      {job.failed_items > 0 && (
+        <div style={{ fontSize: '13px', color: '#DC2626', marginTop: '4px' }}>
+          {job.failed_items} page(s) had errors
+        </div>
+      )}
+
+      <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '8px', fontStyle: 'italic' }}>
+        You can leave this page - processing continues in the background.
+      </div>
+    </div>
+  );
+};
+
 export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   bookId,
   totalPages,
@@ -171,17 +220,16 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   const [guidelines, setGuidelines] = useState<GuidelineSubtopic[]>([]);
   const [processedPages, setProcessedPages] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSubtopic, setSelectedSubtopic] = useState<GuidelineSubtopic | null>(null);
-  const [generationStats, setGenerationStats] = useState<GenerateGuidelinesResponse | null>(null);
-  const [finalizeStats, setFinalizeStats] = useState<{
-    subtopics_finalized: number;
-    subtopics_renamed: number;
-    duplicates_merged: number;
-    message: string;
-  } | null>(null);
+
+  // Job polling for extraction and finalization
+  const { job: extractionJob, isPolling: isExtracting, startPolling: startExtractionPolling } = useJobPolling(bookId, 'extraction');
+  const { job: finalizationJob, isPolling: isFinalizing, startPolling: startFinalizationPolling } = useJobPolling(bookId, 'finalization');
+
+  // Derive UI state from jobs
+  const generating = isExtracting || extractionJob?.status === 'pending';
+  const finalizing = isFinalizing || finalizationJob?.status === 'pending';
 
   // Derive new-pages range from API-provided processedPages
   const maxProcessedPage = processedPages.size > 0 ? Math.max(...processedPages) : 0;
@@ -217,10 +265,15 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     }
   };
 
+  // Reload guidelines when extraction or finalization completes
+  useEffect(() => {
+    if (extractionJob?.status === 'completed' || finalizationJob?.status === 'completed') {
+      loadGuidelines();
+    }
+  }, [extractionJob?.status, finalizationJob?.status]);
+
   const handleGenerateGuidelines = async () => {
-    setGenerating(true);
     setError(null);
-    setGenerationStats(null);
 
     const request: GenerateGuidelinesRequest = {
       start_page: 1,
@@ -229,20 +282,17 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     };
 
     try {
-      const stats = await generateGuidelines(bookId, request);
-      setGenerationStats(stats);
-      await loadGuidelines();
+      const result = await generateGuidelines(bookId, request);
+      if (result.job_id) {
+        startExtractionPolling(result.job_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate guidelines');
-    } finally {
-      setGenerating(false);
     }
   };
 
   const handleGenerateNewPages = async () => {
-    setGenerating(true);
     setError(null);
-    setGenerationStats(null);
 
     const request: GenerateGuidelinesRequest = {
       start_page: newPagesStart,
@@ -251,13 +301,24 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
     };
 
     try {
-      const stats = await generateGuidelines(bookId, request);
-      setGenerationStats(stats);
-      await loadGuidelines();
+      const result = await generateGuidelines(bookId, request);
+      if (result.job_id) {
+        startExtractionPolling(result.job_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate guidelines');
-    } finally {
-      setGenerating(false);
+    }
+  };
+
+  const handleResumeGuidelines = async () => {
+    setError(null);
+    try {
+      const result = await generateGuidelines(bookId, { resume: true });
+      if (result.job_id) {
+        startExtractionPolling(result.job_id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resume generation');
     }
   };
 
@@ -303,18 +364,15 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
   };
 
   const handleFinalizeGuidelines = async () => {
-    setFinalizing(true);
     setError(null);
-    setFinalizeStats(null);
 
     try {
-      const stats = await finalizeGuidelines(bookId, false);
-      setFinalizeStats(stats);
-      await loadGuidelines();
+      const result = await finalizeGuidelines(bookId, false);
+      if (result.job_id) {
+        startFinalizationPolling(result.job_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to finalize guidelines');
-    } finally {
-      setFinalizing(false);
     }
   };
 
@@ -509,8 +567,41 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
         </div>
       )}
 
-      {/* Generation stats */}
-      {generationStats && (
+      {/* Extraction progress bar */}
+      {extractionJob && (extractionJob.status === 'running' || extractionJob.status === 'pending') && (
+        <JobProgressBar job={extractionJob} label="Guideline Generation" />
+      )}
+
+      {/* Extraction failed — show resume UI */}
+      {extractionJob?.status === 'failed' && extractionJob.last_completed_item !== null && (
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '16px',
+            backgroundColor: '#FEF2F2',
+            border: '1px solid #FECACA',
+            borderRadius: '8px',
+          }}
+        >
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#991B1B', marginBottom: '8px' }}>
+            Generation stopped at page {extractionJob.last_completed_item}/{extractionJob.total_items}
+          </div>
+          <div style={{ fontSize: '13px', color: '#991B1B', marginBottom: '12px' }}>
+            {extractionJob.error_message}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <ActionButton onClick={handleResumeGuidelines} variant="primary">
+              Resume from Page {(extractionJob.last_completed_item || 0) + 1}
+            </ActionButton>
+            <ActionButton onClick={handleGenerateGuidelines} variant="secondary">
+              Restart from Page 1
+            </ActionButton>
+          </div>
+        </div>
+      )}
+
+      {/* Extraction completed */}
+      {extractionJob?.status === 'completed' && (
         <div
           style={{
             marginBottom: '16px',
@@ -525,61 +616,61 @@ export const GuidelinesPanel: React.FC<GuidelinesPanelProps> = ({
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
             <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: '600', color: '#3B82F6' }}>{generationStats.pages_processed}</div>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#3B82F6' }}>{extractionJob.completed_items}</div>
               <div style={{ fontSize: '12px', color: '#6B7280' }}>Pages Processed</div>
             </div>
-            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: '600', color: '#10B981' }}>{generationStats.subtopics_created}</div>
-              <div style={{ fontSize: '12px', color: '#6B7280' }}>Subtopics Created</div>
-            </div>
-            {generationStats.subtopics_merged !== undefined && generationStats.subtopics_merged > 0 && (
+            {extractionJob.failed_items > 0 && (
               <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: '#8B5CF6' }}>{generationStats.subtopics_merged}</div>
-                <div style={{ fontSize: '12px', color: '#6B7280' }}>Merged</div>
+                <div style={{ fontSize: '24px', fontWeight: '600', color: '#EF4444' }}>{extractionJob.failed_items}</div>
+                <div style={{ fontSize: '12px', color: '#6B7280' }}>Failed</div>
               </div>
             )}
           </div>
-          {generationStats.errors.length > 0 && (
-            <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#FEF2F2', borderRadius: '6px' }}>
-              <p style={{ fontSize: '13px', fontWeight: '500', color: '#991B1B', marginBottom: '4px' }}>Errors:</p>
-              {generationStats.errors.map((err, idx) => (
-                <p key={idx} style={{ fontSize: '13px', color: '#991B1B' }}>• {err}</p>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
-      {/* Finalize stats */}
-      {finalizeStats && (
-        <div
-          style={{
-            marginBottom: '16px',
-            padding: '16px',
-            backgroundColor: '#F5F3FF',
-            border: '1px solid #DDD6FE',
-            borderRadius: '8px',
-          }}
-        >
-          <h3 style={{ fontSize: '15px', fontWeight: '600', color: '#6D28D9', marginBottom: '12px' }}>
-            Refinement Complete
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
-            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: '600', color: '#10B981' }}>{finalizeStats.subtopics_finalized}</div>
-              <div style={{ fontSize: '12px', color: '#6B7280' }}>Finalized</div>
-            </div>
-            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: '600', color: '#8B5CF6' }}>{finalizeStats.subtopics_renamed}</div>
-              <div style={{ fontSize: '12px', color: '#6B7280' }}>Names Refined</div>
-            </div>
-            <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: '600', color: '#F59E0B' }}>{finalizeStats.duplicates_merged}</div>
-              <div style={{ fontSize: '12px', color: '#6B7280' }}>Duplicates Merged</div>
-            </div>
-          </div>
-        </div>
+      {/* Finalization progress bar */}
+      {finalizationJob && (finalizationJob.status === 'running' || finalizationJob.status === 'pending') && (
+        <JobProgressBar job={finalizationJob} label="Refining & Consolidating" />
       )}
+
+      {/* Finalization completed */}
+      {finalizationJob?.status === 'completed' && finalizationJob.progress_detail && (() => {
+        try {
+          const detail = JSON.parse(finalizationJob.progress_detail);
+          return (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '16px',
+                backgroundColor: '#F5F3FF',
+                border: '1px solid #DDD6FE',
+                borderRadius: '8px',
+              }}
+            >
+              <h3 style={{ fontSize: '15px', fontWeight: '600', color: '#6D28D9', marginBottom: '12px' }}>
+                Refinement Complete
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', fontWeight: '600', color: '#10B981' }}>{detail.subtopics_finalized || 0}</div>
+                  <div style={{ fontSize: '12px', color: '#6B7280' }}>Finalized</div>
+                </div>
+                <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', fontWeight: '600', color: '#8B5CF6' }}>{detail.subtopics_renamed || 0}</div>
+                  <div style={{ fontSize: '12px', color: '#6B7280' }}>Names Refined</div>
+                </div>
+                <div style={{ padding: '12px', backgroundColor: 'white', borderRadius: '6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', fontWeight: '600', color: '#F59E0B' }}>{detail.duplicates_merged || 0}</div>
+                  <div style={{ fontSize: '12px', color: '#6B7280' }}>Duplicates Merged</div>
+                </div>
+              </div>
+            </div>
+          );
+        } catch {
+          return null;
+        }
+      })()}
 
       {/* Loading state */}
       {loading && guidelines.length === 0 && (

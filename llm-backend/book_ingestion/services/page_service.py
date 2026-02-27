@@ -2,7 +2,9 @@
 Page service - business logic for page upload and management.
 
 Handles page upload, OCR processing, approval workflow, and metadata management.
+Includes bulk upload and background OCR processing.
 """
+import json
 import logging
 import tempfile
 from pathlib import Path
@@ -143,6 +145,8 @@ class PageService:
                 "image_s3_key": image_s3_key,
                 "text_s3_key": text_s3_key,
                 "status": "pending_review",
+                "ocr_status": "completed",  # Inline OCR already done
+                "ocr_error": None,
                 "uploaded_at": datetime.utcnow().isoformat()
             }
 
@@ -333,6 +337,146 @@ class PageService:
 
         raise ValueError(f"Page {page_num} not found for book {book_id}")
 
+    def _validate_image_metadata(self, filename: str, size: Optional[int] = None):
+        """
+        Lightweight validation for bulk upload (metadata only, no content check).
+
+        Args:
+            filename: Original filename
+            size: File size in bytes (optional)
+
+        Raises:
+            ValueError: If validation fails
+        """
+        if size and size > MAX_FILE_SIZE:
+            raise ValueError(
+                f"Image file too large: {size} bytes. "
+                f"Maximum size: {MAX_FILE_SIZE} bytes"
+            )
+        ext = Path(filename).suffix.lower()
+        if ext not in SUPPORTED_FORMATS:
+            raise ValueError(
+                f"Unsupported image format: {ext}. "
+                f"Supported formats: {', '.join(SUPPORTED_FORMATS)}"
+            )
+
+    def upload_raw_image(
+        self,
+        book_id: str,
+        image_data: bytes,
+        filename: str,
+    ) -> int:
+        """
+        Upload a single raw image to S3 without conversion or OCR.
+        Assigns a page number and updates metadata.
+        Called once per file from the request path — must be fast.
+
+        Args:
+            book_id: Book identifier
+            image_data: Raw image bytes
+            filename: Original filename
+
+        Returns:
+            Assigned page number
+        """
+        metadata = self._load_metadata(book_id)
+        page_num = self._get_next_page_number(metadata)
+
+        # Determine content type from filename extension
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'png'
+        content_type = {
+            'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'tiff': 'image/tiff', 'tif': 'image/tiff', 'webp': 'image/webp',
+        }.get(ext, 'application/octet-stream')
+
+        # Upload raw bytes to S3 (no conversion — fast)
+        raw_s3_key = f"books/{book_id}/raw/{page_num}.{ext}"
+        self.s3_client.upload_bytes(image_data, raw_s3_key, content_type=content_type)
+
+        # Add to metadata with ocr_status: pending
+        page_info = {
+            "page_num": page_num,
+            "raw_image_s3_key": raw_s3_key,
+            "image_s3_key": None,       # Set after PNG conversion in background
+            "text_s3_key": None,        # Set after OCR in background
+            "status": "pending_review",
+            "ocr_status": "pending",
+            "ocr_error": None,
+            "uploaded_at": datetime.utcnow().isoformat(),
+        }
+        metadata["pages"].append(page_info)
+        metadata["total_pages"] = len(metadata["pages"])
+
+        # Save metadata after each page (idempotent — safe if request dies mid-batch)
+        metadata["last_updated"] = datetime.utcnow().isoformat()
+        self.s3_client.update_metadata_json(book_id, metadata)
+
+        return page_num
+
+    def retry_page_ocr(self, book_id: str, page_num: int) -> Dict[str, Any]:
+        """
+        Retry OCR for a single page that previously failed.
+        Runs synchronously since it's a single page (~10s).
+
+        Args:
+            book_id: Book identifier
+            page_num: Page number to retry
+
+        Returns:
+            Dict with page_num, ocr_status, ocr_text
+
+        Raises:
+            ValueError: If page not found or no image available
+        """
+        metadata = self._load_metadata(book_id)
+        page_entry = next(
+            (p for p in metadata["pages"] if p["page_num"] == page_num), None
+        )
+        if not page_entry:
+            raise ValueError(f"Page {page_num} not found for book {book_id}")
+
+        # Get the image key — prefer converted PNG, fall back to raw
+        image_key = page_entry.get("image_s3_key") or page_entry.get("raw_image_s3_key")
+        if not image_key:
+            raise ValueError(f"No image available for page {page_num}")
+
+        try:
+            # Load image
+            image_bytes = self.s3_client.download_bytes(image_key)
+
+            # If raw image, convert to PNG first
+            if page_entry.get("image_s3_key") is None:
+                png_bytes = self._convert_to_png(image_bytes)
+                image_s3_key = f"books/{book_id}/{page_num}.png"
+                self.s3_client.upload_bytes(png_bytes, image_s3_key, content_type="image/png")
+                page_entry["image_s3_key"] = image_s3_key
+                image_bytes = png_bytes
+
+            # Run OCR
+            ocr_text = self.ocr_service.extract_text_with_retry(image_bytes=image_bytes)
+
+            # Save text
+            text_s3_key = f"books/{book_id}/{page_num}.txt"
+            self.s3_client.upload_bytes(
+                ocr_text.encode('utf-8'), text_s3_key, content_type="text/plain"
+            )
+
+            page_entry["text_s3_key"] = text_s3_key
+            page_entry["ocr_status"] = "completed"
+            page_entry["ocr_error"] = None
+
+            metadata["last_updated"] = datetime.utcnow().isoformat()
+            self.s3_client.update_metadata_json(book_id, metadata)
+
+            return {"page_num": page_num, "ocr_status": "completed", "ocr_text": ocr_text}
+
+        except Exception as e:
+            page_entry["ocr_status"] = "failed"
+            page_entry["ocr_error"] = str(e)
+            metadata["last_updated"] = datetime.utcnow().isoformat()
+            self.s3_client.update_metadata_json(book_id, metadata)
+            raise
+
     def _validate_image(self, image_data: bytes, filename: str):
         """
         Validate image format and size.
@@ -367,6 +511,11 @@ class PageService:
             raise ValueError(f"Invalid image file: {e}")
 
     def _convert_to_png(self, image_data: bytes) -> bytes:
+        """Convert image to PNG format (instance method wrapper)."""
+        return PageService._convert_to_png_static(image_data)
+
+    @staticmethod
+    def _convert_to_png_static(image_data: bytes) -> bytes:
         """
         Convert image to PNG format.
 
@@ -429,3 +578,148 @@ class PageService:
         # Get highest page number and add 1
         max_page = max(page["page_num"] for page in metadata["pages"])
         return max_page + 1
+
+
+# ===== Background OCR Function =====
+# Top-level function called by background_task_runner.
+
+METADATA_FLUSH_INTERVAL = 5  # Flush metadata.json every N pages
+
+
+def run_bulk_ocr_background(
+    db_session,
+    job_id: str,
+    book_id: str,
+    page_numbers: List[int],
+):
+    """
+    Background task: convert images to PNG + run OCR.
+    Progress tracked in BookJob (DB). metadata.json updated in batches.
+
+    Args:
+        db_session: SQLAlchemy session (from background_task_runner)
+        job_id: BookJob ID
+        book_id: Book identifier
+        page_numbers: List of page numbers to process
+    """
+    from .job_lock_service import JobLockService
+
+    job_lock = JobLockService(db_session)
+    ingestion_config = LLMConfigService(db_session).get_config("book_ingestion")
+    ocr_service = get_ocr_service(model=ingestion_config["model_id"])
+    s3_client = get_s3_client()
+
+    completed = 0
+    failed = 0
+    page_errors = {}
+    pages_since_flush = 0
+
+    # Load metadata once into memory
+    metadata = s3_client.download_json(f"books/{book_id}/metadata.json")
+
+    def flush_metadata():
+        """Write current in-memory metadata to S3."""
+        nonlocal pages_since_flush
+        metadata["last_updated"] = datetime.utcnow().isoformat()
+        s3_client.update_metadata_json(book_id, metadata)
+        pages_since_flush = 0
+
+    try:
+        for page_num in page_numbers:
+            # Update DB progress: currently processing this page
+            job_lock.update_progress(
+                job_id, current_item=page_num,
+                completed=completed, failed=failed,
+            )
+
+            # Find this page in metadata (in-memory)
+            page_entry = next(
+                (p for p in metadata["pages"] if p["page_num"] == page_num), None
+            )
+            if not page_entry:
+                logger.error(f"Page {page_num} not found in metadata",
+                             extra={"job_id": job_id, "book_id": book_id})
+                failed += 1
+                page_errors[str(page_num)] = {
+                    "error": "Page not found in metadata",
+                    "error_type": "terminal",
+                }
+                continue
+
+            page_entry["ocr_status"] = "processing"
+
+            try:
+                # Step 1: Load raw image from S3
+                raw_s3_key = page_entry.get("raw_image_s3_key")
+                if not raw_s3_key:
+                    raise ValueError("No raw image uploaded for this page")
+                raw_bytes = s3_client.download_bytes(raw_s3_key)
+
+                # Step 2: Convert to PNG
+                png_bytes = PageService._convert_to_png_static(raw_bytes)
+                image_s3_key = f"books/{book_id}/{page_num}.png"
+                s3_client.upload_bytes(png_bytes, image_s3_key, content_type="image/png")
+                page_entry["image_s3_key"] = image_s3_key
+                del raw_bytes, png_bytes  # Free memory
+
+                # Step 3: Run OCR
+                image_bytes = s3_client.download_bytes(image_s3_key)
+                ocr_text = ocr_service.extract_text_with_retry(image_bytes=image_bytes)
+                del image_bytes
+
+                # Step 4: Save OCR text to S3
+                text_s3_key = f"books/{book_id}/{page_num}.txt"
+                s3_client.upload_bytes(
+                    ocr_text.encode('utf-8'), text_s3_key, content_type="text/plain"
+                )
+
+                # Update in-memory metadata
+                page_entry["text_s3_key"] = text_s3_key
+                page_entry["ocr_status"] = "completed"
+                page_entry["ocr_error"] = None
+                completed += 1
+
+            except Exception as e:
+                failed += 1
+                error_type = "retryable" if _is_retryable(e) else "terminal"
+                page_errors[str(page_num)] = {
+                    "error": str(e), "error_type": error_type,
+                }
+                page_entry["ocr_status"] = "failed"
+                page_entry["ocr_error"] = str(e)
+                logger.error(f"OCR failed for page {page_num}: {e}",
+                             extra={"job_id": job_id, "book_id": book_id})
+
+            # Update DB progress (authoritative source of truth)
+            job_lock.update_progress(
+                job_id, current_item=page_num,
+                completed=completed, failed=failed,
+                last_completed_item=page_num,
+                detail=json.dumps({"page_errors": page_errors}),
+            )
+
+            # Batched metadata.json flush
+            pages_since_flush += 1
+            if pages_since_flush >= METADATA_FLUSH_INTERVAL:
+                flush_metadata()
+
+        # Final flush + mark complete
+        flush_metadata()
+        job_lock.release_lock(job_id, status='completed')
+
+    except Exception as e:
+        logger.error(f"Bulk OCR job {job_id} failed: {e}", exc_info=True,
+                     extra={"job_id": job_id, "book_id": book_id})
+        # Best-effort final flush
+        try:
+            flush_metadata()
+        except Exception:
+            pass
+        job_lock.release_lock(job_id, status='failed', error=str(e))
+
+
+def _is_retryable(e: Exception) -> bool:
+    """Classify errors as retryable (transient) or terminal (data problem)."""
+    error_str = str(e).lower()
+    retryable_patterns = ['rate limit', '429', 'timeout', 'connection', 'temporary']
+    return any(pattern in error_str for pattern in retryable_patterns)

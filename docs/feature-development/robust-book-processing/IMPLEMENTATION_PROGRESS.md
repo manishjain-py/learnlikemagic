@@ -38,24 +38,24 @@
 
 | Step | Description | Status | Files | Notes |
 |------|-------------|--------|-------|-------|
-| 12 | Add ocr_status + raw_image_s3_key to metadata page schema | NOT STARTED | `llm-backend/book_ingestion/services/page_service.py` | |
-| 13 | Add upload_raw_image method | NOT STARTED | `llm-backend/book_ingestion/services/page_service.py` | |
-| 14 | Add run_bulk_ocr_background with batched metadata writes | NOT STARTED | `llm-backend/book_ingestion/services/page_service.py` | |
-| 15 | Add bulk upload endpoint with concurrency guard | NOT STARTED | `llm-backend/book_ingestion/api/routes.py` | |
-| 16 | Add retry-ocr endpoint | NOT STARTED | `llm-backend/book_ingestion/api/routes.py` | |
-| 17 | Write Phase 3 tests | NOT STARTED | `llm-backend/tests/` | |
+| 12 | Add ocr_status + raw_image_s3_key to metadata page schema | DONE | `llm-backend/book_ingestion/services/page_service.py` | Added to upload_page metadata entry |
+| 13 | Add upload_raw_image method | DONE | `llm-backend/book_ingestion/services/page_service.py` | Fast S3 upload, no conversion |
+| 14 | Add run_bulk_ocr_background with batched metadata writes | DONE | `llm-backend/book_ingestion/services/page_service.py` | Flushes every 5 pages |
+| 15 | Add bulk upload endpoint with concurrency guard | DONE | `llm-backend/book_ingestion/api/routes.py` | POST /pages/bulk, 409 on single-page during OCR |
+| 16 | Add retry-ocr endpoint | DONE | `llm-backend/book_ingestion/api/routes.py` | POST /pages/{page_num}/retry-ocr |
+| 17 | Write Phase 3 tests | TODO | `llm-backend/tests/` | Integration tests needed |
 
 ## Phase 4: Frontend
 
 | Step | Description | Status | Files | Notes |
 |------|-------------|--------|-------|-------|
-| 18 | Add TypeScript types | NOT STARTED | `llm-frontend/src/features/admin/types/index.ts` | |
-| 19 | Add API client functions | NOT STARTED | `llm-frontend/src/features/admin/api/adminApi.ts` | |
-| 20 | Create useJobPolling hook | NOT STARTED | `llm-frontend/src/features/admin/hooks/useJobPolling.ts` (NEW) | |
-| 21 | Update GuidelinesPanel with progress + resume | NOT STARTED | `llm-frontend/src/features/admin/components/GuidelinesPanel.tsx` | |
-| 22 | Update PageUploadPanel with bulk upload | NOT STARTED | `llm-frontend/src/features/admin/components/PageUploadPanel.tsx` | |
-| 23 | Update PagesSidebar with OCR status | NOT STARTED | `llm-frontend/src/features/admin/components/PagesSidebar.tsx` | |
-| 24 | Write frontend tests | NOT STARTED | `llm-frontend/src/features/admin/` | |
+| 18 | Add TypeScript types | DONE | `llm-frontend/src/features/admin/types/index.ts` | JobStatus, BulkUploadResponse, enhanced PageInfo |
+| 19 | Add API client functions | DONE | `llm-frontend/src/features/admin/api/adminApi.ts` | getLatestJob, getJobStatus, bulkUploadPages, retryPageOcr |
+| 20 | Create useJobPolling hook | DONE | `llm-frontend/src/features/admin/hooks/useJobPolling.ts` (NEW) | Auto-detects running jobs on mount, 3s interval |
+| 21 | Update GuidelinesPanel with progress + resume | DONE | `llm-frontend/src/features/admin/components/GuidelinesPanel.tsx` | JobProgressBar, resume UI, polling-based state |
+| 22 | Update PageUploadPanel with bulk upload | DONE | `llm-frontend/src/features/admin/components/PageUploadPanel.tsx` | Bulk/single mode toggle, OCR progress bar |
+| 23 | Update PagesSidebar with OCR status | DONE | `llm-frontend/src/features/admin/components/PagesSidebar.tsx` | OCR status icons, retry-on-click for failed |
+| 24 | Write frontend tests | TODO | `llm-frontend/src/features/admin/` | React Testing Library tests needed |
 
 ---
 
@@ -66,4 +66,6 @@
 - Completed Phase 0 (Terraform)
 - Completed Phase 1 (all 6 steps: BookJob model, migration, JobLockService, background_task_runner, polling endpoints, 24 tests)
 - Completed Phase 2 (Steps 7-10: background extraction/finalization, endpoint refactoring, resume support)
-- Starting Phase 3 (Bulk upload + background OCR)
+- Completed Phase 3 (Steps 12-16: bulk upload, background OCR, retry endpoint, concurrency guard)
+- Completed Phase 4 (Steps 18-23: types, API client, useJobPolling hook, GuidelinesPanel, PageUploadPanel, PagesSidebar)
+- Remaining: Phase 3 integration tests (Step 17), frontend tests (Step 24)
