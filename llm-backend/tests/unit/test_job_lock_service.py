@@ -362,3 +362,104 @@ class TestErrorPathInvariants:
         assert "interrupted" in result["error_message"].lower()
         assert result["completed_at"] is not None
         assert result["last_completed_item"] == 5
+
+
+class TestStalePendingDetection:
+    """Tests for abandoned pending job recovery."""
+
+    def test_stale_pending_detected_on_get_latest(self, db_session, book, job_lock):
+        """Pending job past threshold is auto-marked failed on get_latest_job."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+
+        # Age the started_at past the threshold
+        job = db_session.query(BookJob).filter(BookJob.id == job_id).first()
+        job.started_at = datetime.utcnow() - HEARTBEAT_STALE_THRESHOLD - timedelta(seconds=10)
+        db_session.commit()
+
+        result = job_lock.get_latest_job(book.id)
+        assert result["status"] == "failed"
+        assert "abandoned" in result["error_message"].lower()
+        assert result["completed_at"] is not None
+
+    def test_stale_pending_allows_new_lock(self, db_session, book, job_lock):
+        """Stale pending job is auto-recovered so a new lock can be acquired."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+
+        # Age it past the threshold
+        job = db_session.query(BookJob).filter(BookJob.id == job_id).first()
+        job.started_at = datetime.utcnow() - HEARTBEAT_STALE_THRESHOLD - timedelta(seconds=10)
+        db_session.commit()
+
+        # New acquire should detect the stale pending, mark it failed, and succeed
+        new_job_id = job_lock.acquire_lock(book.id, "extraction")
+        assert new_job_id != job_id
+
+        # Old job should be failed
+        old_job = db_session.query(BookJob).filter(BookJob.id == job_id).first()
+        assert old_job.status == "failed"
+
+    def test_fresh_pending_not_marked_stale(self, db_session, book, job_lock):
+        """A recently created pending job should NOT be marked stale."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+
+        # Immediately check — should still be pending
+        result = job_lock.get_latest_job(book.id)
+        assert result["status"] == "pending"
+
+    def test_stale_pending_has_required_invariants(self, db_session, book, job_lock):
+        """Abandoned pending job has error_message and completed_at set."""
+        job_id = job_lock.acquire_lock(book.id, "extraction", total_items=10)
+
+        job = db_session.query(BookJob).filter(BookJob.id == job_id).first()
+        job.started_at = datetime.utcnow() - HEARTBEAT_STALE_THRESHOLD - timedelta(seconds=10)
+        db_session.commit()
+
+        result = job_lock.get_latest_job(book.id)
+        assert result["status"] == "failed"
+        assert result["error_message"] is not None
+        assert result["completed_at"] is not None
+
+
+class TestTerminalStateInvariants:
+    """Verify error_message and completed_at coupling for terminal states."""
+
+    def test_completed_job_has_completed_at_and_no_error(self, db_session, book, job_lock):
+        """Completed job: completed_at set, error_message null."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+        job_lock.start_job(job_id)
+        job_lock.release_lock(job_id, status="completed")
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "completed"
+        assert result["completed_at"] is not None
+        assert result["error_message"] is None
+
+    def test_failed_job_has_both_completed_at_and_error(self, db_session, book, job_lock):
+        """Failed job: both completed_at and error_message set."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+        job_lock.start_job(job_id)
+        job_lock.release_lock(job_id, status="failed", error="Something broke")
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "failed"
+        assert result["completed_at"] is not None
+        assert result["error_message"] == "Something broke"
+
+    def test_pending_job_has_neither(self, db_session, book, job_lock):
+        """Pending job: no completed_at, no error_message."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "pending"
+        assert result["completed_at"] is None
+        assert result["error_message"] is None
+
+    def test_running_job_has_neither(self, db_session, book, job_lock):
+        """Running job: no completed_at, no error_message."""
+        job_id = job_lock.acquire_lock(book.id, "extraction")
+        job_lock.start_job(job_id)
+
+        result = job_lock.get_job(job_id)
+        assert result["status"] == "running"
+        assert result["completed_at"] is None
+        assert result["error_message"] is None

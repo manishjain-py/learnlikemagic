@@ -86,3 +86,10 @@
 - **Test gap: health-check smoke**: 2 tests verifying `/health` and `/` both return 200.
 - **Non-blocking: invariant docs**: Added comprehensive invariant documentation to `job_lock_service.py` module docstring. Added explanatory comment in `background_task_runner.py` for start_job failure flow.
 - Updated test count: 24 (job lock) + 39 (bulk upload/OCR/health) + 13 (frontend polling) = 76 tests
+
+### Session 4 — 2026-02-27 (PR review round 2)
+- **Blocker fix 1 — Stale pending recovery**: Added `_is_pending_stale()` and `_mark_pending_abandoned()` to `job_lock_service.py`. Pending jobs that were never started (stuck past heartbeat threshold) are auto-failed on `acquire_lock` and `get_latest_job`. Background thread failures that leave jobs in pending state are now self-healing.
+- **Blocker fix 2 — Route-level lock conflict test**: Added 2 TestClient-based tests proving `/pages/bulk` returns 409 with zero S3 writes on lock conflict, and 200 with S3 writes when no conflict. Uses `StaticPool` + `check_same_thread=False` to handle async endpoint + SQLite threading.
+- **Blocker fix 3 — API contract invariant tests**: Added 5 `JobStatusResponse` Pydantic contract tests (valid/invalid job_type, valid/invalid status, optional field defaults). Added 4 terminal state invariant tests (completed has completed_at+no error, failed has both, pending/running have neither).
+- **Stale pending tests**: 4 tests — stale detected on get_latest, stale allows new lock, fresh pending not marked stale, stale pending invariants.
+- Updated test count: 32 (job lock) + 46 (bulk upload/OCR/health/route/contract) + 13 (frontend polling) = 91 tests

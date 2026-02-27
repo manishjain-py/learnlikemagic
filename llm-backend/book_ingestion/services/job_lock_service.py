@@ -15,6 +15,8 @@ Invariants:
     after stale detection or external cancellation).
   - Stale detection runs server-side on every get_latest_job call, NOT only in the UI.
   - _mark_stale re-checks under row lock to prevent TOCTOU race with start_job.
+  - Pending jobs that are never started within the threshold are auto-marked failed
+    (catches background thread crash before start_job).
   - Heartbeat staleness threshold: HEARTBEAT_STALE_THRESHOLD (2 min).
 
 Retry/resume contract:
@@ -79,6 +81,8 @@ class JobLockService:
             # Before raising, check if it's stale
             if existing.status == 'running' and self._is_stale(existing):
                 self._mark_stale(existing)
+            elif existing.status == 'pending' and self._is_pending_stale(existing):
+                self._mark_pending_abandoned(existing)
             else:
                 raise JobLockError(
                     f"Job already {existing.status} for book {book_id}: "
@@ -196,6 +200,8 @@ class JobLockService:
         # Server-side stale detection on every read
         if job.status == 'running' and self._is_stale(job):
             self._mark_stale(job)
+        elif job.status == 'pending' and self._is_pending_stale(job):
+            self._mark_pending_abandoned(job)
 
         return self._job_to_dict(job)
 
@@ -204,6 +210,36 @@ class JobLockService:
         if not job.heartbeat_at:
             return (datetime.utcnow() - job.started_at) > HEARTBEAT_STALE_THRESHOLD
         return (datetime.utcnow() - job.heartbeat_at) > HEARTBEAT_STALE_THRESHOLD
+
+    def _is_pending_stale(self, job: BookJob) -> bool:
+        """A pending job is stale if it was created but never started within the threshold.
+
+        This catches the case where acquire_lock succeeds but the background thread
+        crashes before calling start_job (no heartbeat is ever set).
+        """
+        return (datetime.utcnow() - job.started_at) > HEARTBEAT_STALE_THRESHOLD
+
+    def _mark_pending_abandoned(self, job: BookJob):
+        """Transition pending → failed for abandoned jobs.
+
+        A pending job that was never started within HEARTBEAT_STALE_THRESHOLD
+        is assumed to be abandoned (e.g., background thread crashed before start_job).
+        """
+        job = self.db.query(BookJob).filter(
+            BookJob.id == job.id
+        ).with_for_update().first()
+
+        if job.status != 'pending':
+            return  # Another thread already transitioned it
+
+        job.status = 'failed'
+        job.completed_at = datetime.utcnow()
+        job.error_message = (
+            f"Job abandoned (stuck in pending since {job.started_at.isoformat()}). "
+            f"Background thread may have failed to start."
+        )
+        self.db.commit()
+        logger.warning(f"Job {job.id} transitioned pending → failed (abandoned: never started)")
 
     def _mark_stale(self, job: BookJob):
         """

@@ -846,3 +846,229 @@ class TestHealthEndpoint:
         response = client.get("/")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+
+# ===== Route-level tests: /pages/bulk lock conflict =====
+
+
+class TestBulkUploadRouteLockConflict:
+    """Route-level test proving /pages/bulk returns 409 with zero S3 writes
+    when a lock conflict exists.
+
+    Uses TestClient with StaticPool to work around SQLite threading limitations
+    when exercising async FastAPI endpoints.
+    """
+
+    @pytest.fixture
+    def route_test_session(self):
+        """Create a DB session compatible with TestClient async endpoints.
+
+        In-memory SQLite with StaticPool ensures all threads share the same
+        connection, avoiding 'no such table' errors when TestClient runs
+        async endpoints in a different thread.
+        """
+        from sqlalchemy.pool import StaticPool
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from shared.models.entities import Base
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
+        yield session
+        session.close()
+
+    @pytest.fixture
+    def route_book(self, route_test_session):
+        """Create a test book in the route-compatible session."""
+        book = Book(
+            id="test-book-route",
+            title="Route Test Book",
+            country="India",
+            board="CBSE",
+            grade=5,
+            subject="Mathematics",
+            s3_prefix="books/test-book-route/",
+        )
+        route_test_session.add(book)
+        route_test_session.commit()
+        return book
+
+    def test_bulk_upload_returns_409_with_no_s3_writes_on_lock_conflict(
+        self, route_test_session, route_book
+    ):
+        """POST /pages/bulk returns 409 when ocr_batch job is running. No S3 writes."""
+        from fastapi.testclient import TestClient
+        from main import app
+        from database import get_db
+
+        # Create a running job to hold the lock
+        job_lock = JobLockService(route_test_session)
+        existing_job_id = job_lock.acquire_lock(route_book.id, "ocr_batch", total_items=5)
+        job_lock.start_job(existing_job_id)
+
+        # Track S3 writes
+        s3_mock = MagicMock()
+        s3_write_count = [0]
+
+        def track_upload(*args, **kwargs):
+            s3_write_count[0] += 1
+
+        s3_mock.upload_bytes = MagicMock(side_effect=track_upload)
+        s3_mock.update_metadata_json = MagicMock(side_effect=track_upload)
+
+        def override_get_db():
+            yield route_test_session
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        try:
+            with patch("book_ingestion.services.page_service.get_s3_client", return_value=s3_mock), \
+                 patch("book_ingestion.services.book_service.get_s3_client", return_value=s3_mock), \
+                 patch("book_ingestion.services.page_service.get_ocr_service"), \
+                 patch("book_ingestion.services.page_service.LLMConfigService") as mock_config:
+                mock_config.return_value.get_config.return_value = {"model_id": "gpt-4o"}
+
+                client = TestClient(app)
+                png_bytes = _make_png_bytes()
+
+                response = client.post(
+                    f"/admin/books/{route_book.id}/pages/bulk",
+                    files=[("images", ("page1.png", png_bytes, "image/png"))],
+                )
+
+            assert response.status_code == 409, f"Expected 409, got {response.status_code}: {response.text}"
+            # No S3 writes should have occurred — lock check happens before uploads
+            assert s3_write_count[0] == 0
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_bulk_upload_succeeds_with_no_existing_lock(self, route_test_session, route_book):
+        """POST /pages/bulk succeeds (200) when no lock conflict, confirming S3 writes happen."""
+        from fastapi.testclient import TestClient
+        from main import app
+        from database import get_db
+
+        # Set up mock S3 with seeded metadata
+        s3_mock = MagicMock()
+        s3_mock.storage = {}
+        _seed_metadata(s3_mock, route_book.id, [])
+
+        def upload_bytes(data, key, content_type=None):
+            s3_mock.storage[key] = data
+
+        def download_json(key):
+            if key not in s3_mock.storage:
+                raise Exception(f"NoSuchKey: {key}")
+            data = s3_mock.storage[key]
+            if isinstance(data, bytes):
+                return json.loads(data.decode("utf-8"))
+            return json.loads(data)
+
+        def update_metadata_json(book_id, metadata):
+            key = f"books/{book_id}/metadata.json"
+            s3_mock.storage[key] = json.dumps(metadata)
+
+        s3_mock.upload_bytes = MagicMock(side_effect=upload_bytes)
+        s3_mock.download_json = MagicMock(side_effect=download_json)
+        s3_mock.update_metadata_json = MagicMock(side_effect=update_metadata_json)
+        s3_mock.get_presigned_url = MagicMock(return_value="https://mock-url")
+
+        def override_get_db():
+            yield route_test_session
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        try:
+            with patch("book_ingestion.services.page_service.get_s3_client", return_value=s3_mock), \
+                 patch("book_ingestion.services.book_service.get_s3_client", return_value=s3_mock), \
+                 patch("book_ingestion.services.page_service.get_ocr_service") as mock_ocr_fn, \
+                 patch("book_ingestion.services.page_service.LLMConfigService") as mock_config, \
+                 patch("book_ingestion.services.background_task_runner.get_db_manager") as mock_db_mgr:
+                mock_config.return_value.get_config.return_value = {"model_id": "gpt-4o"}
+                # Prevent background thread from actually running
+                mock_bg_session = MagicMock()
+                mock_db_mgr.return_value.SessionLocal.return_value = mock_bg_session
+
+                client = TestClient(app)
+                png_bytes = _make_png_bytes()
+
+                response = client.post(
+                    f"/admin/books/{route_book.id}/pages/bulk",
+                    files=[("images", ("page1.png", png_bytes, "image/png"))],
+                )
+
+            assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+            data = response.json()
+            assert data["status"] == "processing"
+            assert len(data["pages_uploaded"]) == 1
+            # S3 writes DID occur (upload_raw_image writes raw file + metadata)
+            assert s3_mock.upload_bytes.call_count >= 1
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ===== API contract invariant tests =====
+
+
+class TestJobStatusResponseContract:
+    """Verify the JobStatusResponse Pydantic model enforces the contract."""
+
+    def test_valid_job_type_accepted(self):
+        """Valid job_type values pass validation."""
+        from book_ingestion.api.routes import JobStatusResponse
+
+        for jt in ['extraction', 'finalization', 'ocr_batch']:
+            resp = JobStatusResponse(
+                job_id="j1", book_id="b1", job_type=jt, status="pending"
+            )
+            assert resp.job_type == jt
+
+    def test_invalid_job_type_rejected(self):
+        """Invalid job_type raises Pydantic validation error."""
+        from book_ingestion.api.routes import JobStatusResponse
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            JobStatusResponse(
+                job_id="j1", book_id="b1", job_type="invalid_type", status="pending"
+            )
+
+    def test_valid_status_accepted(self):
+        """Valid status values pass validation."""
+        from book_ingestion.api.routes import JobStatusResponse
+
+        for s in ['pending', 'running', 'completed', 'failed']:
+            resp = JobStatusResponse(
+                job_id="j1", book_id="b1", job_type="extraction", status=s
+            )
+            assert resp.status == s
+
+    def test_invalid_status_rejected(self):
+        """Invalid status raises Pydantic validation error."""
+        from book_ingestion.api.routes import JobStatusResponse
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            JobStatusResponse(
+                job_id="j1", book_id="b1", job_type="extraction", status="unknown"
+            )
+
+    def test_defaults_for_optional_fields(self):
+        """Optional fields have correct defaults."""
+        from book_ingestion.api.routes import JobStatusResponse
+
+        resp = JobStatusResponse(
+            job_id="j1", book_id="b1", job_type="extraction", status="pending"
+        )
+        assert resp.completed_items == 0
+        assert resp.failed_items == 0
+        assert resp.total_items is None
+        assert resp.error_message is None
+        assert resp.completed_at is None
+        assert resp.progress_detail is None
