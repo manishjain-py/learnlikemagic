@@ -558,10 +558,7 @@ class TeacherOrchestrator:
             )
         else:
             next_q = session.exam_questions[session.exam_current_question_idx]
-            response = (
-                "Got it — let's continue.\n\n"
-                f"**Question {next_q.question_idx + 1}:** {next_q.question_text}"
-            )
+            response = f"**Question {next_q.question_idx + 1}:** {next_q.question_text}"
 
         session.add_message(create_teacher_message(response))
 

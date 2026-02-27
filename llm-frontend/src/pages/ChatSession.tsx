@@ -24,6 +24,11 @@ interface Message {
   hints?: string[];
 }
 
+interface ExamQuestionDraft {
+  question_idx: number;
+  question_text: string;
+}
+
 export default function ChatSession() {
   const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -58,6 +63,9 @@ export default function ChatSession() {
   const [examProgress, setExamProgress] = useState<{ current: number; total: number; answered: number } | null>(null);
   const [examFeedback, setExamFeedback] = useState<{ score: number; total: number; percentage: number } | null>(null);
   const [examResults, setExamResults] = useState<Array<{ question_idx: number; question_text: string; student_answer?: string | null; result?: 'correct' | 'partial' | 'incorrect' | null }>>([]);
+  const [examQuestions, setExamQuestions] = useState<ExamQuestionDraft[]>([]);
+  const [examDraftAnswers, setExamDraftAnswers] = useState<Record<number, string>>({});
+  const [activeExamQuestionIdx, setActiveExamQuestionIdx] = useState(0);
   const [pauseSummaryData, setPauseSummaryData] = useState<PauseSummary | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -74,6 +82,33 @@ export default function ChatSession() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const hydrateExamState = (state: any) => {
+    if (!state?.exam_questions) return;
+
+    const questions = state.exam_questions.map((q: any) => ({
+      question_idx: q.question_idx,
+      question_text: q.question_text,
+    }));
+    setExamQuestions(questions);
+
+    const existingAnswers: Record<number, string> = {};
+    state.exam_questions.forEach((q: any) => {
+      if (q.student_answer) existingAnswers[q.question_idx] = q.student_answer;
+    });
+    setExamDraftAnswers(existingAnswers);
+
+    const answeredCount = Object.values(existingAnswers).filter((a) => a.trim().length > 0).length;
+    const firstUnansweredIdx = questions.findIndex((q: ExamQuestionDraft) => !(existingAnswers[q.question_idx] || '').trim());
+    const nextIdx = firstUnansweredIdx >= 0 ? firstUnansweredIdx : Math.max(questions.length - 1, 0);
+    setActiveExamQuestionIdx(nextIdx);
+
+    setExamProgress({
+      current: Math.min(nextIdx + 1, questions.length || 1),
+      total: questions.length,
+      answered: answeredCount,
+    });
   };
 
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -105,6 +140,12 @@ export default function ChatSession() {
           answered: locState.firstTurn.exam_progress.answered_questions,
         });
       }
+
+      if (locState.mode === 'exam') {
+        getSessionReplay(sessionId)
+          .then((state) => hydrateExamState(state))
+          .catch((err) => console.error('Failed to hydrate exam state:', err));
+      }
     } else if (locState?.conversationHistory) {
       // Resumed session
       setMessages(
@@ -131,11 +172,7 @@ export default function ChatSession() {
           if (state.mode) setSessionMode(state.mode);
           if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
           if (state.mode === 'exam' && state.exam_questions) {
-            setExamProgress({
-              current: Math.min((state.exam_current_question_idx || 0) + 1, state.exam_questions.length),
-              total: state.exam_questions.length,
-              answered: state.exam_current_question_idx || 0,
-            });
+            hydrateExamState(state);
             if (state.exam_finished) {
               setExamResults(
                 state.exam_questions.map((q: any) => ({
@@ -181,6 +218,28 @@ export default function ChatSession() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !sessionId || loading) return;
+
+    if (sessionMode === 'exam') {
+      const currentQuestion = examQuestions[activeExamQuestionIdx];
+      if (!currentQuestion) return;
+
+      const updatedAnswers = {
+        ...examDraftAnswers,
+        [currentQuestion.question_idx]: input.trim(),
+      };
+      setExamDraftAnswers(updatedAnswers);
+      setInput('');
+
+      const answeredCount = Object.values(updatedAnswers).filter((a) => a.trim().length > 0).length;
+      const nextIdx = Math.min(activeExamQuestionIdx + 1, examQuestions.length - 1);
+      setActiveExamQuestionIdx(nextIdx);
+      setExamProgress({
+        current: Math.min(nextIdx + 1, examQuestions.length),
+        total: examQuestions.length,
+        answered: answeredCount,
+      });
+      return;
+    }
 
     const userMessage = input.trim();
     setInput('');
@@ -237,6 +296,65 @@ export default function ChatSession() {
       }
     } catch (error) {
       console.error('Failed to submit answer:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExamAnswerEdit = (questionIdx: number, value: string) => {
+    setExamDraftAnswers((prev) => {
+      const next = { ...prev, [questionIdx]: value };
+      const answeredCount = Object.values(next).filter((a) => a.trim().length > 0).length;
+      setExamProgress((existing) => existing ? { ...existing, answered: answeredCount } : existing);
+      return next;
+    });
+  };
+
+  const handleSubmitAllExamAnswers = async () => {
+    if (!sessionId || loading) return;
+
+    const missing = examQuestions.filter((q) => !(examDraftAnswers[q.question_idx] || '').trim());
+    if (missing.length > 0) {
+      setActiveExamQuestionIdx(examQuestions.findIndex((q) => q.question_idx === missing[0].question_idx));
+      return;
+    }
+
+    try {
+      setLoading(true);
+      let finalResponse: any = null;
+
+      for (const q of examQuestions) {
+        finalResponse = await submitStep(sessionId, (examDraftAnswers[q.question_idx] || '').trim());
+      }
+
+      if (!finalResponse?.next_turn?.is_complete) return;
+
+      setIsComplete(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'teacher',
+          content: finalResponse.next_turn.message,
+          hints: finalResponse.next_turn.hints,
+        },
+      ]);
+      setExamProgress((prev) => prev ? { ...prev, answered: examQuestions.length, current: examQuestions.length } : prev);
+      if (finalResponse.next_turn.exam_feedback) {
+        setSummary({
+          steps_completed: finalResponse.next_turn.exam_feedback.total,
+          mastery_score: finalResponse.next_turn.exam_feedback.percentage / 100,
+          misconceptions_seen: finalResponse.next_turn.exam_feedback.weak_areas || [],
+          suggestions: finalResponse.next_turn.exam_feedback.next_steps || [],
+        });
+        setExamFeedback({
+          score: finalResponse.next_turn.exam_feedback.score,
+          total: finalResponse.next_turn.exam_feedback.total,
+          percentage: finalResponse.next_turn.exam_feedback.percentage,
+        });
+      }
+      setExamResults(finalResponse.next_turn.exam_results || []);
+    } catch (error) {
+      console.error('Failed to submit full exam:', error);
     } finally {
       setLoading(false);
     }
@@ -506,43 +624,117 @@ export default function ChatSession() {
                   </button>
                 )}
               </div>
-              <form className="input-form" onSubmit={handleSubmit}>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                  disabled={loading || isTranscribing}
-                  className={`input-field${isRecording ? ' recording' : ''}`}
-                  data-testid="chat-input"
-                />
-                <button
-                  type="button"
-                  onClick={toggleRecording}
-                  disabled={loading || isTranscribing}
-                  className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                  data-testid="mic-button"
-                  title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                  aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                >
-                  {isTranscribing ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 6v6l4 2" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                      <line x1="12" y1="19" x2="12" y2="23" />
-                      <line x1="8" y1="23" x2="16" y2="23" />
-                    </svg>
+              {sessionMode === 'exam' ? (
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                  {examQuestions[activeExamQuestionIdx] && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <strong>Question {activeExamQuestionIdx + 1}:</strong> {examQuestions[activeExamQuestionIdx].question_text}
+                    </div>
                   )}
-                </button>
-                <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button">
-                  Send
-                </button>
-              </form>
+                  <form className="input-form" onSubmit={handleSubmit}>
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                      disabled={loading || isTranscribing || examQuestions.length === 0}
+                      className={`input-field${isRecording ? ' recording' : ''}`}
+                      data-testid="chat-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleRecording}
+                      disabled={loading || isTranscribing}
+                      className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                      data-testid="mic-button"
+                      title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                    >
+                      {isTranscribing ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 6v6l4 2" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" y1="19" x2="12" y2="23" />
+                          <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                    <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button">
+                      Save & Next
+                    </button>
+                  </form>
+
+                  {examQuestions.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                      <strong>Review / edit answers before submit:</strong>
+                      {examQuestions.map((q) => (
+                        <div key={q.question_idx} style={{ marginTop: '8px' }}>
+                          <label style={{ display: 'block', fontWeight: 600, marginBottom: '4px' }}>Q{q.question_idx + 1}</label>
+                          <textarea
+                            value={examDraftAnswers[q.question_idx] || ''}
+                            onChange={(e) => handleExamAnswerEdit(q.question_idx, e.target.value)}
+                            onFocus={() => setActiveExamQuestionIdx(examQuestions.findIndex((item) => item.question_idx === q.question_idx))}
+                            rows={2}
+                            style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px' }}
+                          />
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={handleSubmitAllExamAnswers}
+                        disabled={loading || examQuestions.length === 0}
+                        className="send-button"
+                        style={{ marginTop: '12px' }}
+                      >
+                        Submit All Answers
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <form className="input-form" onSubmit={handleSubmit}>
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                    disabled={loading || isTranscribing}
+                    className={`input-field${isRecording ? ' recording' : ''}`}
+                    data-testid="chat-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={toggleRecording}
+                    disabled={loading || isTranscribing}
+                    className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                    data-testid="mic-button"
+                    title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                    aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                  >
+                    {isTranscribing ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
+                      </svg>
+                    )}
+                  </button>
+                  <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button">
+                    Send
+                  </button>
+                </form>
+              )}
             </>
           ) : (
             <div className="summary-card" data-testid="session-summary">
