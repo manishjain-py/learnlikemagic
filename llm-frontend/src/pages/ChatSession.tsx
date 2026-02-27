@@ -821,7 +821,7 @@ export default function ChatSession() {
               )}
             </>
           ) : (
-            <div className="summary-card" data-testid="session-summary">
+            <div className="summary-card" data-testid="session-summary" style={{ flex: 1, overflowY: 'auto' }}>
               {sessionMode === 'clarify_doubts' ? (
                 <>
                   <h2>Doubts Session Complete!</h2>
