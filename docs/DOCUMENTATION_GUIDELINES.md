@@ -59,6 +59,7 @@ docs/
 | `docs/technical/dev-workflow.md` | Local setup, testing, git workflow | Dev environment, testing |
 | `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |
 | `docs/technical/database.md` | DB schema, migrations | Database changes |
+| `docs/technical/ai-agent-files.md` | Agent context file inventory, update policy | Understanding/updating agent files |
 
 ---
 

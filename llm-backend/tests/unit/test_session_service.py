@@ -14,7 +14,7 @@ from shared.models.schemas import (
     SummaryResponse,
 )
 from shared.utils.exceptions import SessionNotFoundException, GuidelineNotFoundException
-from tutor.models.session_state import SessionState, create_session, Misconception
+from tutor.models.session_state import SessionState, ExamQuestion, ExamFeedback, create_session, Misconception
 from tutor.models.study_plan import (
     Topic,
     TopicGuidelines,
@@ -225,6 +225,73 @@ class TestSessionServiceProcessStep:
         assert isinstance(resp, StepResponse)
         assert resp.next_turn["message"] == "Good answer!"
         svc.event_repo.log.assert_called_once()
+
+    @patch("tutor.services.session_service.get_settings")
+    def test_process_step_exam_completion_returns_only_final_feedback(self, mock_settings):
+        mock_settings.return_value = MagicMock(
+            openai_api_key="fake",
+            gemini_api_key=None,
+            anthropic_api_key=None,
+        )
+
+        from tutor.services.session_service import SessionService
+        from tutor.orchestration.orchestrator import TurnResult
+
+        svc = SessionService.__new__(SessionService)
+        svc.db = MagicMock()
+        svc.session_repo = MagicMock()
+        svc.event_repo = MagicMock()
+        svc.guideline_repo = MagicMock()
+        svc.llm_service = MagicMock()
+        svc.orchestrator = MagicMock()
+
+        session_state = _make_session_state()
+        session_state.mode = "exam"
+        session_state.exam_questions = [
+            ExamQuestion(
+                question_idx=0,
+                question_text="Q1?",
+                concept="Basics",
+                difficulty="easy",
+                question_type="conceptual",
+                expected_answer="A1",
+                student_answer="A1",
+                result="correct",
+            )
+        ]
+        session_state.exam_current_question_idx = 1
+        session_state.exam_finished = True
+        session_state.exam_total_correct = 1
+        session_state.exam_feedback = ExamFeedback(
+            score=1,
+            total=1,
+            percentage=100.0,
+            strengths=["Basics"],
+            weak_areas=[],
+            patterns=["Overall strong performance"],
+            next_steps=["Great job! Try a harder topic or retake to aim for a perfect score."],
+        )
+
+        db_row = MagicMock()
+        db_row.state_json = session_state.model_dump_json()
+        svc.session_repo.get_by_id.return_value = db_row
+
+        turn_result = TurnResult(
+            response="✅ Exam complete! Here are your final results.",
+            intent="exam_answer",
+            specialists_called=["master_tutor"],
+            state_changed=True,
+        )
+        svc.orchestrator.agent_logs = MagicMock()
+        svc.orchestrator.agent_logs.get_recent_logs.return_value = []
+
+        with patch("asyncio.run", return_value=turn_result):
+            resp = svc.process_step("test-session-123", StepRequest(student_reply="A1"))
+
+        assert resp.next_turn["is_complete"] is True
+        assert resp.next_turn["exam_feedback"]["percentage"] == 100.0
+        assert len(resp.next_turn["exam_results"]) == 1
+        assert resp.last_grading is None
 
 
 class TestSessionServiceGetSummary:

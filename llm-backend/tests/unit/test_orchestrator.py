@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from tutor.orchestration.orchestrator import TeacherOrchestrator, TurnResult
-from tutor.models.session_state import SessionState, Question, create_session
+from tutor.models.session_state import SessionState, Question, ExamQuestion, create_session
 from tutor.models.study_plan import Topic, TopicGuidelines, StudyPlan, StudyPlanStep
 from tutor.models.messages import StudentContext, Message
 from tutor.agents.safety import SafetyOutput
@@ -534,6 +534,75 @@ class TestQuestionLifecycle:
 # ---------------------------------------------------------------------------
 # _handle_unsafe_message
 # ---------------------------------------------------------------------------
+
+class TestExamTurn:
+    @pytest.mark.asyncio
+    async def test_exam_turn_does_not_reveal_correctness_mid_exam(self):
+        orch = build_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+        orch.master_tutor.execute.return_value = make_tutor_output(
+            response="That's incorrect. The right answer is 42.",
+            answer_correct=False,
+            mastery_signal="needs_remediation",
+            turn_summary="Student got this wrong",
+        )
+
+        session = make_test_session(mode="exam")
+        session.exam_questions = [
+            ExamQuestion(
+                question_idx=0,
+                question_text="Q1?",
+                concept="Basics",
+                difficulty="easy",
+                question_type="conceptual",
+                expected_answer="A1",
+            ),
+            ExamQuestion(
+                question_idx=1,
+                question_text="Q2?",
+                concept="Basics",
+                difficulty="easy",
+                question_type="conceptual",
+                expected_answer="A2",
+            ),
+        ]
+
+        result = await orch.process_turn(session, "my answer")
+
+        assert "incorrect" not in result.response.lower()
+        assert "right answer" not in result.response.lower()
+        assert "Question 2" in result.response
+        assert session.exam_finished is False
+
+    @pytest.mark.asyncio
+    async def test_exam_turn_final_response_shows_completion_only(self):
+        orch = build_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+        orch.master_tutor.execute.return_value = make_tutor_output(
+            response="Correct!",
+            answer_correct=True,
+            turn_summary="Student answered correctly",
+        )
+
+        session = make_test_session(mode="exam")
+        session.exam_questions = [
+            ExamQuestion(
+                question_idx=0,
+                question_text="Q1?",
+                concept="Basics",
+                difficulty="easy",
+                question_type="conceptual",
+                expected_answer="A1",
+            ),
+        ]
+
+        result = await orch.process_turn(session, "A1")
+
+        assert session.exam_finished is True
+        assert "exam complete" in result.response.lower()
+        assert "final score" in result.response.lower()
+        assert "q1: ✅ correct" in result.response.lower()
+
 
 class TestHandleUnsafeMessage:
     def test_returns_guidance(self):

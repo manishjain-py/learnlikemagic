@@ -55,7 +55,9 @@ export default function ChatSession() {
   );
   const [coverage, setCoverage] = useState(0);
   const [conceptsDiscussed, setConceptsDiscussed] = useState<string[]>([]);
-  const [examProgress, setExamProgress] = useState<{ current: number; total: number; correct: number } | null>(null);
+  const [examProgress, setExamProgress] = useState<{ current: number; total: number; answered: number } | null>(null);
+  const [examFeedback, setExamFeedback] = useState<{ score: number; total: number; percentage: number } | null>(null);
+  const [examResults, setExamResults] = useState<Array<{ question_idx: number; question_text: string; student_answer?: string | null; result?: 'correct' | 'partial' | 'incorrect' | null }>>([]);
   const [pauseSummaryData, setPauseSummaryData] = useState<PauseSummary | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -96,6 +98,13 @@ export default function ChatSession() {
       }]);
       setStepIdx(locState.firstTurn.step_idx);
       setMastery(locState.firstTurn.mastery_score);
+      if (locState.mode === 'exam' && locState.firstTurn.exam_progress) {
+        setExamProgress({
+          current: locState.firstTurn.exam_progress.current_question,
+          total: locState.firstTurn.exam_progress.total_questions,
+          answered: locState.firstTurn.exam_progress.answered_questions,
+        });
+      }
     } else if (locState?.conversationHistory) {
       // Resumed session
       setMessages(
@@ -121,6 +130,23 @@ export default function ChatSession() {
           if (state.current_step != null) setStepIdx(state.current_step);
           if (state.mode) setSessionMode(state.mode);
           if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
+          if (state.mode === 'exam' && state.exam_questions) {
+            setExamProgress({
+              current: Math.min((state.exam_current_question_idx || 0) + 1, state.exam_questions.length),
+              total: state.exam_questions.length,
+              answered: state.exam_current_question_idx || 0,
+            });
+            if (state.exam_finished) {
+              setExamResults(
+                state.exam_questions.map((q: any) => ({
+                  question_idx: q.question_idx,
+                  question_text: q.question_text,
+                  student_answer: q.student_answer,
+                  result: q.result,
+                })),
+              );
+            }
+          }
 
           // Hydrate completion for all modes
           const completed = state.clarify_complete
@@ -135,6 +161,11 @@ export default function ChatSession() {
                 mastery_score: state.exam_feedback.percentage / 100,
                 misconceptions_seen: state.exam_feedback.weak_areas || [],
                 suggestions: state.exam_feedback.next_steps || [],
+              });
+              setExamFeedback({
+                score: state.exam_feedback.score,
+                total: state.exam_feedback.total,
+                percentage: state.exam_feedback.percentage,
               });
             }
           }
@@ -174,9 +205,32 @@ export default function ChatSession() {
         setConceptsDiscussed(response.next_turn.concepts_discussed);
       }
 
+      if (response.next_turn.exam_progress) {
+        setExamProgress({
+          current: response.next_turn.exam_progress.current_question,
+          total: response.next_turn.exam_progress.total_questions,
+          answered: response.next_turn.exam_progress.answered_questions,
+        });
+      }
+
       if (response.next_turn.is_complete) {
         setIsComplete(true);
-        if (sessionMode !== 'clarify_doubts') {
+        if (sessionMode === 'exam') {
+          if (response.next_turn.exam_feedback) {
+            setSummary({
+              steps_completed: response.next_turn.exam_feedback.total,
+              mastery_score: response.next_turn.exam_feedback.percentage / 100,
+              misconceptions_seen: response.next_turn.exam_feedback.weak_areas || [],
+              suggestions: response.next_turn.exam_feedback.next_steps || [],
+            });
+            setExamFeedback({
+              score: response.next_turn.exam_feedback.score,
+              total: response.next_turn.exam_feedback.total,
+              percentage: response.next_turn.exam_feedback.percentage,
+            });
+          }
+          setExamResults(response.next_turn.exam_results || []);
+        } else if (sessionMode !== 'clarify_doubts') {
           const summaryData = await getSummary(sessionId);
           setSummary(summaryData);
         }
@@ -379,7 +433,7 @@ export default function ChatSession() {
             {sessionMode === 'exam' && examProgress && (
               <>
                 <span>Question {examProgress.current}/{examProgress.total}</span>
-                <span>{examProgress.correct}/{examProgress.current} correct</span>
+                <span>{examProgress.answered}/{examProgress.total} answered</span>
               </>
             )}
           </div>
@@ -523,10 +577,17 @@ export default function ChatSession() {
                       <p>
                         <strong>Steps Completed:</strong> {summary.steps_completed}
                       </p>
-                      <p>
-                        <strong>Final Mastery:</strong>{' '}
-                        {(summary.mastery_score * 100).toFixed(0)}%
-                      </p>
+                      {sessionMode === 'exam' && examFeedback ? (
+                        <p>
+                          <strong>Final Exam Score:</strong>{' '}
+                          {examFeedback.score}/{examFeedback.total} ({examFeedback.percentage.toFixed(1)}%)
+                        </p>
+                      ) : (
+                        <p>
+                          <strong>Final Mastery:</strong>{' '}
+                          {(summary.mastery_score * 100).toFixed(0)}%
+                        </p>
+                      )}
                       {summary.misconceptions_seen.length > 0 && (
                         <div>
                           <strong>Areas to Review:</strong>
@@ -545,6 +606,18 @@ export default function ChatSession() {
                           ))}
                         </ul>
                       </div>
+                      {sessionMode === 'exam' && examResults.length > 0 && (
+                        <div>
+                          <strong>Question Review:</strong>
+                          <ul>
+                            {examResults.map((r) => (
+                              <li key={r.question_idx}>
+                                Q{r.question_idx + 1}: {r.result === 'correct' ? '✅ Correct' : r.result === 'partial' ? '🟨 Partial' : '❌ Incorrect'}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
                   <button onClick={() => navigate('/learn')} className="restart-button">

@@ -78,6 +78,26 @@ export interface Turn {
   mastery_score: number;
   is_complete?: boolean;
   concepts_discussed?: string[];
+  exam_progress?: {
+    current_question: number;
+    total_questions: number;
+    answered_questions: number;
+  };
+  exam_feedback?: {
+    score: number;
+    total: number;
+    percentage: number;
+    strengths: string[];
+    weak_areas: string[];
+    patterns: string[];
+    next_steps: string[];
+  };
+  exam_results?: Array<{
+    question_idx: number;
+    question_text: string;
+    student_answer?: string | null;
+    result?: 'correct' | 'partial' | 'incorrect' | null;
+  }>;
 }
 
 export interface CreateSessionResponse {

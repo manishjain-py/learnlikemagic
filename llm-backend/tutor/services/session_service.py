@@ -126,6 +126,12 @@ class SessionService:
             "hints": [],
             "step_idx": session.current_step,
         }
+        if mode == "exam":
+            first_turn["exam_progress"] = {
+                "current_question": 1,
+                "total_questions": len(session.exam_questions),
+                "answered_questions": 0,
+            }
 
         # Build response
         response = CreateSessionResponse(session_id=session_id, first_turn=first_turn, mode=mode)
@@ -176,8 +182,26 @@ class SessionService:
             "hints": [],
             "step_idx": session.current_step,
             "mastery_score": session.overall_mastery,
-            "is_complete": session.is_complete,
+            "is_complete": session.exam_finished if session.mode == "exam" else session.is_complete,
         }
+
+        if session.mode == "exam":
+            next_turn["exam_progress"] = {
+                "current_question": min(session.exam_current_question_idx + 1, len(session.exam_questions)),
+                "total_questions": len(session.exam_questions),
+                "answered_questions": session.exam_current_question_idx,
+            }
+            if session.exam_finished and session.exam_feedback:
+                next_turn["exam_feedback"] = session.exam_feedback.model_dump()
+                next_turn["exam_results"] = [
+                    {
+                        "question_idx": q.question_idx,
+                        "question_text": q.question_text,
+                        "student_answer": q.student_answer,
+                        "result": q.result,
+                    }
+                    for q in session.exam_questions
+                ]
 
         # Include clarify_doubts-specific data
         if session.mode == "clarify_doubts":
