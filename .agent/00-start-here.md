@@ -1,7 +1,7 @@
 # Agent Start Here
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-02-27
+Code baseline: `claude/update-ai-agent-files-ulEgH@212063c`
 
 This folder is the internal operator manual for fast, reliable work in this repo.
 

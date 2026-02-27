@@ -1,7 +1,7 @@
 # Frontend Map
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-02-27
+Code baseline: `claude/update-ai-agent-files-ulEgH@212063c`
 
 ## Stack
 - React 18 + TypeScript + Vite
@@ -34,6 +34,7 @@ Code baseline: `main@973d1ea`
 - `/` redirects to `/learn`
 
 ### Admin routes (currently no route-level auth guard)
+- `/admin` redirects to `/admin/books`
 - `/admin/books`
 - `/admin/books/new`
 - `/admin/books/:id`
