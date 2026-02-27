@@ -77,6 +77,7 @@ export default function ChatSession() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
 
   const subject = locState?.subject || '';
@@ -137,6 +138,7 @@ export default function ChatSession() {
   };
 
   useEffect(() => { scrollToBottom(); }, [messages]);
+  useEffect(() => { examEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeExamQuestionIdx, examDraftAnswers]);
 
   useEffect(() => {
     getModelConfig()
@@ -675,7 +677,7 @@ export default function ChatSession() {
               {sessionMode === 'exam' ? (() => {
                 const allAnswered = examQuestions.length > 0 && examQuestions.every((q) => (examDraftAnswers[q.question_idx] || '').trim());
                 return (
-                <div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
                   {examHydrationError && examQuestions.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
                       <p style={{ color: '#e53e3e', marginBottom: '12px' }}>Failed to load exam questions. Please try again.</p>
@@ -773,6 +775,7 @@ export default function ChatSession() {
                         </button>
                       </div>
                     )}
+                    <div ref={examEndRef} />
                   </>
                   )}
                 </div>
