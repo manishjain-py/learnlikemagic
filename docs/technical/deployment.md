@@ -78,7 +78,7 @@ cp terraform.tfvars.example terraform.tfvars
 make init && make plan && make apply
 ```
 
-Creates: ECR, RDS Aurora Serverless v2, Secrets Manager (4 secrets), IAM roles, S3 + CloudFront, GitHub OIDC provider
+Creates: ECR, RDS Aurora Serverless v2, Secrets Manager (3-4 secrets; Anthropic is conditional), IAM roles, S3 + CloudFront, GitHub OIDC provider
 
 ### 3. Initialize Database
 
@@ -123,7 +123,7 @@ Sets (via Terraform outputs): `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REGISTRY`, `ECR
 |----------|------|---------|--------------|
 | Deploy Backend | `deploy-backend.yml` | Push to `main` (changes in `llm-backend/**`, `docs/**`, `e2e/scenarios.json`, or the workflow file); manual | Build AMD64 image --> Push ECR --> Deploy App Runner --> Wait for completion |
 | Deploy Frontend | `deploy-frontend.yml` | Push to `main` (changes in `llm-frontend/**` or the workflow file); manual | Build with Vite --> Sync S3 (with cache headers) --> Invalidate CloudFront |
-| Manual Deploy | `manual-deploy.yml` | Manual only | Deploy frontend, backend, or both (selectable). **Note:** backend build uses native arch (no `--platform linux/amd64`) and does not copy `docs/` or `e2e/` into build context -- prefer the main deploy workflow for production |
+| Manual Deploy | `manual-deploy.yml` | Manual only | Deploy frontend, backend, or both (selectable). **Note:** backend build uses native arch (no `--platform linux/amd64`) and does not copy `docs/` or `e2e/` into build context. Frontend build only passes `VITE_API_URL` (missing Cognito/Google env vars). Prefer the main deploy workflows for production |
 | Daily Coverage | `daily-coverage.yml` | Daily at 6:00 AM UTC; manual | Run pytest coverage --> Generate HTML report (with priority tier breakdown) --> Email report --> Upload artifacts (30-day retention) --> Check 80% threshold |
 
 All workflows use **GitHub OIDC** for AWS authentication (no long-lived credentials).
@@ -172,7 +172,7 @@ infra/terraform/
   outputs.tf           # Outputs (URLs, ARNs, GitHub secrets map)
   Makefile             # Automation targets
   modules/
-    secrets/           # Secrets Manager (OpenAI, Gemini, Anthropic, DB password)
+    secrets/           # Secrets Manager (OpenAI, Gemini, DB password; Anthropic conditional)
     database/          # Aurora Serverless v2 cluster + instance + security group
     ecr/               # ECR repository + lifecycle policy (keep last 10 images)
     app-runner/        # App Runner service + IAM roles (ECR access, Secrets, S3)

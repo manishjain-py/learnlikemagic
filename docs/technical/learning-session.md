@@ -63,7 +63,9 @@ Provider and model are configured via the `llm_config` DB table, read at session
 ```python
 TutorTurnOutput {
     response: str              # Student-facing text
-    intent: str                # answer/answer_change/question/confusion/novel_strategy/off_topic/continuation
+    intent: str                # teach_me: answer/answer_change/question/confusion/novel_strategy/off_topic/continuation
+                               # clarify_doubts: question/followup/done/off_topic
+                               # exam: exam_answer/exam_complete
     answer_correct: bool|None  # true/false/null
     misconceptions_detected: list[str]
     mastery_signal: str|None   # strong/adequate/needs_remediation
@@ -89,11 +91,11 @@ TutorTurnOutput {
 3. **Build AgentContext** — Current state, mastery, study plan
 4. **Safety Agent** — Fast content moderation gate. If unsafe: return guidance + log safety flag
 5. **Mode Router** — Branch based on `session.mode`:
-   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed via `mastery_updates`, no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
-   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question, builds feedback when all questions answered. Partial scoring: `answer_correct == False` with `mastery_signal != "needs_remediation"` → partial.
+   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
+   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question. Mid-exam responses do NOT reveal correctness — the student sees "Got it — let's continue" with the next question. When the last question is answered, builds a full results response with per-question review and final score. Partial scoring: `answer_correct == False` with `mastery_signal != "needs_remediation"` → partial.
    - `teach_me` → continues to step 6
 6. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 10 teaching rules + personalization block) and turn prompt (current state, mastery, pacing directive, student style, history)
-7. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:...")
+7. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
 8. **Apply State Updates**:
    - Update mastery estimates
    - Track misconceptions
@@ -134,7 +136,7 @@ Contains:
 ### Mode-Specific Prompts
 
 **Clarify Doubts** (`clarify_doubts_prompts.py`):
-- System prompt: answers directly (no Socratic method), concise, brief follow-up check. Includes session closure rules: after resolving a doubt, ask one closure question ("any other doubts?"); when student says done, give brief warm goodbye and set `session_complete = true` without further questions
+- System prompt: answers directly (no Socratic method), concise, brief follow-up check. Includes session closure rules: after resolving a doubt, ask one closure question ("any other doubts?"); when student says done, give brief warm goodbye and set `session_complete = true` without further questions. Includes personalization block (student name/age/about_me) when available.
 - Turn prompt: tracks concepts discussed, sets intent to question/followup/done/off_topic
 - `mastery_updates` used to track which study plan concepts were substantively discussed
 - `answer_correct` always null in clarify mode; `advance_to_step` never set

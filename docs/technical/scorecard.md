@@ -32,7 +32,7 @@ Both endpoints are in `tutor/api/sessions.py` and delegate to `ScorecardService`
 
 | Method | Purpose |
 |--------|---------|
-| `_load_user_sessions(user_id)` | Query all sessions for user, ordered `created_at ASC`, `id ASC` |
+| `_load_user_sessions(user_id)` | Query sessions for user (columns: `id`, `state_json`, `subject`, `mastery`, `created_at`), ordered `created_at ASC`, `id ASC` |
 | `_build_guideline_lookup(sessions)` | Batch-query `teaching_guidelines` to build `guideline_id → {topic, subtopic, keys}` map |
 | `_group_sessions(sessions, guideline_lookup)` | Group sessions into subject/topic/subtopic hierarchy; accumulate coverage from teach_me sessions; track latest exam score from exam sessions |
 | `_build_report(grouped)` | Build flat report structure with coverage computation per subtopic |
@@ -92,16 +92,20 @@ The `_group_sessions` method tracks the latest completed exam:
 
 ```python
 if mode == "exam" and state.get("exam_finished", False):
-    exam_score = int(state.get("exam_total_correct", 0))
-    exam_total = len(state.get("exam_questions", []))
+    raw_score = state.get("exam_total_correct", 0)
+    exam_score = int(raw_score) if isinstance(raw_score, (int, float)) else 0
+    raw_questions = state.get("exam_questions", [])
+    exam_total = len(raw_questions) if isinstance(raw_questions, list) else 0
     if exam_total > 0:
         existing_exam_score = exam_score
         existing_exam_total = exam_total
+        existing_last_studied = session_date
 ```
 
 - Only records exams where `exam_finished == True` and `exam_total > 0`
 - Since sessions are processed in chronological order, the latest exam naturally overwrites earlier ones
-- Includes type guards for legacy data (`exam_total_correct` may be float or string)
+- Type guards handle legacy data: `exam_total_correct` may be float or string (cast via `isinstance`); `exam_questions` may be non-list (guarded with `isinstance`)
+- A finished exam also updates `last_studied` for the subtopic
 
 ### Cross-Session Accumulation
 
@@ -233,7 +237,7 @@ The report card is accessible from:
 |------|---------|
 | `tutor/services/scorecard_service.py` | Aggregation logic: coverage computation, exam score tracking, hierarchy grouping |
 | `tutor/api/sessions.py` | `/report-card` and `/subtopic-progress` endpoints |
-| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubtopic`, `SubtopicProgressResponse`) |
+| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardTopic`, `ReportCardSubtopic`, `SubtopicProgressResponse`, `SubtopicProgressEntry`) |
 | `llm-frontend/src/pages/ScorecardPage.tsx` | Report card UI (overview + subject detail) |
 | `llm-frontend/src/api.ts` | Frontend API functions and TypeScript types |
 | `tests/unit/test_scorecard_service.py` | Unit tests for coverage, exam score, hierarchy resolution, and resilience |
