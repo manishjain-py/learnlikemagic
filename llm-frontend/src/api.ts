@@ -98,6 +98,7 @@ export interface Turn {
     student_answer?: string | null;
     result?: 'correct' | 'partial' | 'incorrect' | null;
   }>;
+  exam_questions?: Array<{ question_idx: number; question_text: string }>;
 }
 
 export interface CreateSessionResponse {

@@ -132,6 +132,10 @@ class SessionService:
                 "total_questions": len(session.exam_questions),
                 "answered_questions": 0,
             }
+            first_turn["exam_questions"] = [
+                {"question_idx": q.question_idx, "question_text": q.question_text}
+                for q in session.exam_questions
+            ]
 
         # Build response
         response = CreateSessionResponse(session_id=session_id, first_turn=first_turn, mode=mode)

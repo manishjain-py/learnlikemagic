@@ -38,6 +38,7 @@ class ExamService:
         concepts = session.topic.study_plan.get_concepts()
         if not concepts:
             raise ExamGenerationError("No concepts found in study plan")
+        misconceptions = session.topic.guidelines.common_misconceptions or []
         prompt = EXAM_QUESTION_GENERATION_PROMPT.render(
             grade=session.student_context.grade,
             topic_name=session.topic.topic_name,
@@ -46,9 +47,11 @@ class ExamService:
             ),
             concepts="\n".join(f"- {c}" for c in concepts),
             teaching_approach=session.topic.guidelines.teaching_approach,
+            common_misconceptions="\n".join(f"- {m}" for m in misconceptions) if misconceptions else "(none provided)",
             num_questions=count,
         )
 
+        question_types = ["conceptual", "procedural", "application", "real_world", "error_spotting", "reasoning"]
         schema = {
             "type": "object",
             "properties": {
@@ -61,7 +64,7 @@ class ExamService:
                             "expected_answer": {"type": "string"},
                             "concept": {"type": "string"},
                             "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
-                            "question_type": {"type": "string", "enum": ["conceptual", "procedural", "application"]},
+                            "question_type": {"type": "string", "enum": question_types},
                         },
                         "required": ["question_text", "expected_answer", "concept", "difficulty", "question_type"],
                         "additionalProperties": False,
@@ -75,7 +78,7 @@ class ExamService:
         try:
             result = self.llm.call(
                 prompt=prompt,
-                reasoning_effort="low",
+                reasoning_effort="medium",
                 json_schema=schema,
                 schema_name="ExamQuestions",
             )
@@ -121,6 +124,7 @@ class ExamService:
             f"Generate exactly {count} questions",
         )
 
+        question_types = ["conceptual", "procedural", "application", "real_world", "error_spotting", "reasoning"]
         schema = {
             "type": "object",
             "properties": {
@@ -133,7 +137,7 @@ class ExamService:
                             "expected_answer": {"type": "string"},
                             "concept": {"type": "string"},
                             "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
-                            "question_type": {"type": "string", "enum": ["conceptual", "procedural", "application"]},
+                            "question_type": {"type": "string", "enum": question_types},
                         },
                         "required": ["question_text", "expected_answer", "concept", "difficulty", "question_type"],
                         "additionalProperties": False,
@@ -146,7 +150,7 @@ class ExamService:
 
         result = self.llm.call(
             prompt=prompt,
-            reasoning_effort="low",
+            reasoning_effort="medium",
             json_schema=schema,
             schema_name="ExamQuestions",
         )

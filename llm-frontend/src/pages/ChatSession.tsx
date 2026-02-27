@@ -71,6 +71,8 @@ export default function ChatSession() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
+  const [examHydrationError, setExamHydrationError] = useState(false);
+  const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -107,7 +109,7 @@ export default function ChatSession() {
 
     const answeredCount = Object.values(existingAnswers).filter((a) => a.trim().length > 0).length;
     const firstUnansweredIdx = questions.findIndex((q: ExamQuestionDraft) => !(existingAnswers[q.question_idx] || '').trim());
-    const nextIdx = firstUnansweredIdx >= 0 ? firstUnansweredIdx : Math.max(questions.length - 1, 0);
+    const nextIdx = firstUnansweredIdx >= 0 ? firstUnansweredIdx : questions.length;
     setActiveExamQuestionIdx(nextIdx);
 
     setExamProgress({
@@ -115,6 +117,23 @@ export default function ChatSession() {
       total: questions.length,
       answered: answeredCount,
     });
+  };
+
+  const retryExamHydration = () => {
+    if (!sessionId) return;
+    setExamHydrationError(false);
+    setReplayLoading(true);
+    getSessionReplay(sessionId)
+      .then((state) => {
+        if (state.mode === 'exam' && state.exam_questions) {
+          hydrateExamState(state);
+        }
+      })
+      .catch((err) => {
+        console.error('Retry failed:', err);
+        setExamHydrationError(true);
+      })
+      .finally(() => setReplayLoading(false));
   };
 
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -147,10 +166,8 @@ export default function ChatSession() {
         });
       }
 
-      if (locState.mode === 'exam') {
-        getSessionReplay(sessionId)
-          .then((state) => hydrateExamState(state))
-          .catch((err) => console.error('Failed to hydrate exam state:', err));
+      if (locState.mode === 'exam' && locState.firstTurn.exam_questions) {
+        hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
       }
     } else if (locState?.conversationHistory) {
       // Resumed session
@@ -213,7 +230,12 @@ export default function ChatSession() {
             }
           }
         })
-        .catch((err) => console.error('Failed to load session:', err))
+        .catch((err) => {
+          console.error('Failed to load session:', err);
+          if (sessionMode === 'exam') {
+            setExamHydrationError(true);
+          }
+        })
         .finally(() => setReplayLoading(false));
     }
 
@@ -237,7 +259,18 @@ export default function ChatSession() {
       setInput('');
 
       const answeredCount = Object.values(updatedAnswers).filter((a) => a.trim().length > 0).length;
-      const nextIdx = Math.min(activeExamQuestionIdx + 1, examQuestions.length - 1);
+      // Find next unanswered question (skip already-answered ones)
+      let nextIdx = activeExamQuestionIdx;
+      for (let i = activeExamQuestionIdx + 1; i < examQuestions.length; i++) {
+        if (!(updatedAnswers[examQuestions[i].question_idx] || '').trim()) {
+          nextIdx = i;
+          break;
+        }
+      }
+      // If no unanswered found after current, stay at end (all answered)
+      if (nextIdx === activeExamQuestionIdx) {
+        nextIdx = examQuestions.length; // signals "all done"
+      }
       setActiveExamQuestionIdx(nextIdx);
       setExamProgress({
         current: Math.min(nextIdx + 1, examQuestions.length),
@@ -307,15 +340,6 @@ export default function ChatSession() {
     }
   };
 
-  const handleExamAnswerEdit = (questionIdx: number, value: string) => {
-    setExamDraftAnswers((prev) => {
-      const next = { ...prev, [questionIdx]: value };
-      const answeredCount = Object.values(next).filter((a) => a.trim().length > 0).length;
-      setExamProgress((existing) => existing ? { ...existing, answered: answeredCount } : existing);
-      return next;
-    });
-  };
-
   const handleSubmitAllExamAnswers = async () => {
     if (!sessionId || loading) return;
 
@@ -330,7 +354,9 @@ export default function ChatSession() {
 
     try {
       setLoading(true);
+      setExamSubmitError(null);
       let finalResponse: any = null;
+      let submitFailed = false;
 
       for (const q of toSubmit) {
         try {
@@ -339,12 +365,14 @@ export default function ChatSession() {
           setExamSubmittedIdxs((prev) => new Set(prev).add(q.question_idx));
         } catch (err) {
           console.error(`Failed to submit answer for Q${q.question_idx + 1}:`, err);
+          submitFailed = true;
+          setExamSubmitError(`Failed to submit Q${q.question_idx + 1}. Please retry to submit remaining answers.`);
           // Stop on first failure so the student can retry remaining questions
           break;
         }
       }
 
-      if (!finalResponse?.next_turn?.is_complete) return;
+      if (submitFailed || !finalResponse?.next_turn?.is_complete) return;
 
       setIsComplete(true);
       setMessages((prev) => [
@@ -372,6 +400,7 @@ export default function ChatSession() {
       setExamResults(finalResponse.next_turn.exam_results || []);
     } catch (error) {
       console.error('Failed to submit full exam:', error);
+      setExamSubmitError('Something went wrong submitting the exam. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -585,6 +614,7 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
+          {sessionMode !== 'exam' && (
           <div className="messages">
             {messages.map((msg, idx) => (
               <div key={idx} className={`message ${msg.role}`} {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message' } : {})}>
@@ -621,6 +651,7 @@ export default function ChatSession() {
             )}
             <div ref={messagesEndRef} />
           </div>
+          )}
 
           {!isComplete ? (
             <>
@@ -641,79 +672,112 @@ export default function ChatSession() {
                   </button>
                 )}
               </div>
-              {sessionMode === 'exam' ? (
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
-                  {examQuestions[activeExamQuestionIdx] && (
-                    <div style={{ marginBottom: '10px' }}>
-                      <strong>Question {activeExamQuestionIdx + 1}:</strong> {examQuestions[activeExamQuestionIdx].question_text}
-                    </div>
-                  )}
-                  <form className="input-form" onSubmit={handleSubmit}>
-                    <input
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                      disabled={loading || isTranscribing || examQuestions.length === 0}
-                      className={`input-field${isRecording ? ' recording' : ''}`}
-                      data-testid="chat-input"
-                    />
-                    <button
-                      type="button"
-                      onClick={toggleRecording}
-                      disabled={loading || isTranscribing}
-                      className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                      data-testid="mic-button"
-                      title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                    >
-                      {isTranscribing ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M12 6v6l4 2" />
-                        </svg>
-                      ) : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                          <line x1="12" y1="19" x2="12" y2="23" />
-                          <line x1="8" y1="23" x2="16" y2="23" />
-                        </svg>
-                      )}
-                    </button>
-                    <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button">
-                      Save & Next
-                    </button>
-                  </form>
-
-                  {examQuestions.length > 0 && (
-                    <div style={{ marginTop: '12px' }}>
-                      <strong>Review / edit answers before submit:</strong>
-                      {examQuestions.map((q) => (
-                        <div key={q.question_idx} style={{ marginTop: '8px' }}>
-                          <label style={{ display: 'block', fontWeight: 600, marginBottom: '4px' }}>Q{q.question_idx + 1}</label>
-                          <textarea
-                            value={examDraftAnswers[q.question_idx] || ''}
-                            onChange={(e) => handleExamAnswerEdit(q.question_idx, e.target.value)}
-                            onFocus={() => setActiveExamQuestionIdx(examQuestions.findIndex((item) => item.question_idx === q.question_idx))}
-                            rows={2}
-                            style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e0', borderRadius: '6px' }}
-                          />
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={handleSubmitAllExamAnswers}
-                        disabled={loading || examQuestions.length === 0}
-                        className="send-button"
-                        style={{ marginTop: '12px' }}
-                      >
-                        Submit All Answers
+              {sessionMode === 'exam' ? (() => {
+                const allAnswered = examQuestions.length > 0 && examQuestions.every((q) => (examDraftAnswers[q.question_idx] || '').trim());
+                return (
+                <div>
+                  {examHydrationError && examQuestions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                      <p style={{ color: '#e53e3e', marginBottom: '12px' }}>Failed to load exam questions. Please try again.</p>
+                      <button type="button" onClick={retryExamHydration} disabled={replayLoading} className="send-button">
+                        {replayLoading ? 'Loading...' : 'Retry'}
                       </button>
                     </div>
+                  ) : (
+                  <>
+                    {/* Answered questions list */}
+                    {examQuestions.map((q, i) => {
+                      const answer = (examDraftAnswers[q.question_idx] || '').trim();
+                      const isActive = i === activeExamQuestionIdx && !allAnswered;
+
+                      // Not yet revealed
+                      if (!answer && !isActive) return null;
+
+                      // Completed Q&A pair
+                      if (answer && !isActive) return (
+                        <div key={q.question_idx} style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <span style={{ color: '#4a5568' }}>{answer}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setActiveExamQuestionIdx(i); setInput(answer); }}
+                              style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.8rem', padding: 0, whiteSpace: 'nowrap' }}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      );
+
+                      // Active question with input
+                      return (
+                        <div key={q.question_idx} style={{ background: '#fff', border: '2px solid #667eea', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: '10px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
+                          <form className="input-form" onSubmit={handleSubmit}>
+                            <input
+                              type="text"
+                              value={input}
+                              onChange={(e) => setInput(e.target.value)}
+                              placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                              disabled={loading || isTranscribing}
+                              className={`input-field${isRecording ? ' recording' : ''}`}
+                              data-testid="chat-input"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={toggleRecording}
+                              disabled={loading || isTranscribing}
+                              className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                              data-testid="mic-button"
+                              title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                              aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                            >
+                              {isTranscribing ? (
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <circle cx="12" cy="12" r="10" />
+                                  <path d="M12 6v6l4 2" />
+                                </svg>
+                              ) : (
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                  <line x1="12" y1="19" x2="12" y2="23" />
+                                  <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                              )}
+                            </button>
+                            <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button">
+                              {i < examQuestions.length - 1 ? 'Next' : 'Save'}
+                            </button>
+                          </form>
+                        </div>
+                      );
+                    })}
+
+                    {/* Submit button when all answered */}
+                    {allAnswered && (
+                      <div style={{ marginTop: '4px' }}>
+                        {examSubmitError && (
+                          <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginBottom: '8px' }}>{examSubmitError}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleSubmitAllExamAnswers}
+                          disabled={loading}
+                          className="send-button"
+                          style={{ width: '100%', padding: '12px', fontSize: '1rem' }}
+                        >
+                          {loading ? 'Submitting...' : 'Submit All Answers'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                   )}
                 </div>
-              ) : (
+                );
+              })() : (
                 <form className="input-form" onSubmit={handleSubmit}>
                   <input
                     type="text"

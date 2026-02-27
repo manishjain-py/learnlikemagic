@@ -1,14 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { getResumableSession, ResumableSession, SubtopicInfo } from '../api';
 
+const MODE_LOADING_MESSAGES: Record<string, string> = {
+  teach_me: 'Setting up your lesson...',
+  clarify_doubts: 'Getting ready for your questions...',
+  exam: 'Preparing your question paper...',
+};
+
 interface ModeSelectionProps {
   subtopic: SubtopicInfo;
   onSelectMode: (mode: 'teach_me' | 'clarify_doubts' | 'exam') => void;
   onResume: (sessionId: string) => void;
   onBack: () => void;
+  creatingMode?: 'teach_me' | 'clarify_doubts' | 'exam' | null;
 }
 
-function ModeSelection({ subtopic, onSelectMode, onResume, onBack }: ModeSelectionProps) {
+function ModeSelection({ subtopic, onSelectMode, onResume, onBack, creatingMode }: ModeSelectionProps) {
   const [resumable, setResumable] = useState<ResumableSession | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +52,21 @@ function ModeSelection({ subtopic, onSelectMode, onResume, onBack }: ModeSelecti
         </button>
       )}
 
-      {loading ? (
+      {creatingMode ? (
+        <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+          <div className="typing-indicator" style={{ justifyContent: 'center', marginBottom: '16px' }}>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <p style={{ fontSize: '1.1rem', fontWeight: 500, color: '#4a5568' }}>
+            {MODE_LOADING_MESSAGES[creatingMode]}
+          </p>
+          <p style={{ fontSize: '0.85rem', color: '#999', marginTop: '8px' }}>
+            This may take a moment
+          </p>
+        </div>
+      ) : loading ? (
         <p>Loading...</p>
       ) : (
         <div className="selection-grid" data-testid="mode-selection" style={{ gridTemplateColumns: '1fr' }}>

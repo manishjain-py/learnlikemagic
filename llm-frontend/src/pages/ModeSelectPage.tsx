@@ -20,6 +20,7 @@ export default function ModeSelectPage() {
   );
   const [loading, setLoading] = useState(!guidelineId);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [creatingMode, setCreatingMode] = useState<'teach_me' | 'clarify_doubts' | 'exam' | null>(null);
 
   // For deep links: if no guidelineId in location state, fetch it
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function ModeSelectPage() {
 
   const handleModeSelect = async (mode: 'teach_me' | 'clarify_doubts' | 'exam') => {
     setSessionError(null);
+    setCreatingMode(mode);
     try {
       const response = await createSession({
         student: {
@@ -66,6 +68,7 @@ export default function ModeSelectPage() {
     } catch (error: any) {
       console.error('Failed to start session:', error);
       setSessionError(error?.message || 'Failed to start session. Please try again.');
+      setCreatingMode(null);
     }
   };
 
@@ -112,6 +115,7 @@ export default function ModeSelectPage() {
         onSelectMode={handleModeSelect}
         onResume={handleResume}
         onBack={handleBack}
+        creatingMode={creatingMode}
       />
     </>
   );
