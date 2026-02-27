@@ -60,6 +60,19 @@ class SessionService:
         if not guideline:
             raise GuidelineNotFoundException(request.goal.guideline_id)
 
+        # Guard: prevent duplicate incomplete exams for same user+guideline
+        if mode == "exam" and user_id and request.goal.guideline_id:
+            existing = self._find_incomplete_session(user_id, request.goal.guideline_id, "exam")
+            if existing:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "An incomplete exam already exists for this topic",
+                        "existing_session_id": existing,
+                    },
+                )
+
         # Load study plan from DB if available
         study_plan_record = (
             self.db.query(StudyPlanRecord)
@@ -462,6 +475,16 @@ class SessionService:
             suggestions.append(f"Work on understanding: {', '.join(top)}")
 
         return suggestions
+
+    def _find_incomplete_session(self, user_id: str, guideline_id: str, mode: str) -> Optional[str]:
+        """Find an incomplete session for user+guideline+mode. Returns session_id or None."""
+        sessions = self.session_repo.list_by_guideline(
+            user_id=user_id, guideline_id=guideline_id, mode=mode,
+        )
+        for s in sessions:
+            if not s["is_complete"]:
+                return s["session_id"]
+        return None
 
     def _get_past_discussions(self, user_id: str, guideline_id: str) -> list[dict]:
         """Get past Clarify Doubts sessions for this user + guideline."""

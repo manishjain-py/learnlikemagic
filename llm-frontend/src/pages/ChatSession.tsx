@@ -7,12 +7,8 @@ import {
   getModelConfig,
   getSessionReplay,
   transcribeAudio,
-  pauseSession,
-  endExamEarly,
-  endClarifySession,
   Turn,
   SummaryResponse,
-  PauseSummary,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -31,16 +27,19 @@ interface ExamQuestionDraft {
 
 export default function ChatSession() {
   const navigate = useNavigate();
-  const { sessionId } = useParams<{ sessionId: string }>();
+  const params = useParams<{
+    sessionId: string;
+    subject?: string;
+    topic?: string;
+    subtopic?: string;
+  }>();
+  const sessionId = params.sessionId;
   const location = useLocation();
   const { grade } = useStudentProfile();
 
   const locState = location.state as {
     firstTurn?: Turn;
     mode?: string;
-    subject?: string;
-    topic?: string;
-    subtopic?: string;
     conversationHistory?: Array<{ role: string; content: string }>;
     currentStep?: number;
   } | null;
@@ -67,7 +66,6 @@ export default function ChatSession() {
   const [examDraftAnswers, setExamDraftAnswers] = useState<Record<number, string>>({});
   const [activeExamQuestionIdx, setActiveExamQuestionIdx] = useState(0);
   const [examSubmittedIdxs, setExamSubmittedIdxs] = useState<Set<number>>(new Set());
-  const [pauseSummaryData, setPauseSummaryData] = useState<PauseSummary | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
@@ -80,9 +78,10 @@ export default function ChatSession() {
   const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
 
-  const subject = locState?.subject || '';
-  const topic = locState?.topic || '';
-  const subtopic = locState?.subtopic || '';
+  // URL params from nested learn routes (preferred) — already decoded by React Router
+  const subject = params.subject || '';
+  const topic = params.topic || '';
+  const subtopic = params.subtopic || '';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -246,7 +245,7 @@ export default function ChatSession() {
     }
 
     // Clear location state so refresh doesn't re-trigger
-    navigate(`/session/${sessionId}`, { replace: true, state: null });
+    navigate(location.pathname, { replace: true, state: null });
   }, [sessionId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -416,54 +415,11 @@ export default function ChatSession() {
     setShowHints(showHints === index ? null : index);
   };
 
-  const handlePause = async () => {
-    if (!sessionId) return;
-    try {
-      setLoading(true);
-      const result = await pauseSession(sessionId);
-      setPauseSummaryData(result);
-      setIsComplete(true);
-    } catch (error) {
-      console.error('Failed to pause session:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEndClarify = async () => {
-    if (!sessionId) return;
-    try {
-      setLoading(true);
-      const result = await endClarifySession(sessionId);
-      if (result.concepts_discussed) {
-        setConceptsDiscussed(result.concepts_discussed);
-      }
-      setIsComplete(true);
-    } catch (error) {
-      console.error('Failed to end clarify session:', error);
-      // Fallback: still mark complete locally so user isn't stuck
-      setIsComplete(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEndExam = async () => {
-    if (!sessionId) return;
-    try {
-      setLoading(true);
-      const result = await endExamEarly(sessionId);
-      setIsComplete(true);
-      setSummary({
-        steps_completed: result.total,
-        mastery_score: result.percentage / 100,
-        misconceptions_seen: result.feedback?.weak_areas || [],
-        suggestions: result.feedback?.next_steps || [],
-      });
-    } catch (error) {
-      console.error('Failed to end exam:', error);
-    } finally {
-      setLoading(false);
+  const handleBack = () => {
+    if (subject && topic && subtopic) {
+      navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(topic)}/${encodeURIComponent(subtopic)}`);
+    } else {
+      navigate('/learn');
     }
   };
 
@@ -662,21 +618,9 @@ export default function ChatSession() {
           {!isComplete ? (
             <>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                {sessionMode === 'teach_me' && (
-                  <button onClick={handlePause} className="back-button" data-testid="pause-button" style={{ fontSize: '0.8rem' }}>
-                    Pause Session
-                  </button>
-                )}
-                {sessionMode === 'clarify_doubts' && (
-                  <button onClick={handleEndClarify} className="back-button" style={{ fontSize: '0.8rem' }}>
-                    End Session
-                  </button>
-                )}
-                {sessionMode === 'exam' && (
-                  <button onClick={handleEndExam} className="back-button" style={{ fontSize: '0.8rem' }}>
-                    End Exam Early
-                  </button>
-                )}
+                <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  ← Back
+                </button>
               </div>
               {sessionMode === 'exam' ? (() => {
                 const allAnswered = examQuestions.length > 0 && examQuestions.every((q) => (examDraftAnswers[q.question_idx] || '').trim());
@@ -849,8 +793,8 @@ export default function ChatSession() {
                       </div>
                     </div>
                   )}
-                  <button onClick={() => navigate('/learn')} className="restart-button">
-                    Start New Session
+                  <button onClick={handleBack} className="restart-button">
+                    Back to Topic
                   </button>
                 </>
               ) : (
@@ -940,8 +884,8 @@ export default function ChatSession() {
                       )}
                     </>
                   )}
-                  <button onClick={() => navigate('/learn')} className="restart-button">
-                    Start New Session
+                  <button onClick={handleBack} className="restart-button">
+                    Back to Topic
                   </button>
                   <button
                     onClick={() => navigate('/scorecard')}

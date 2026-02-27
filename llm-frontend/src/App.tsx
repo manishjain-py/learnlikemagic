@@ -45,6 +45,7 @@ import TopicSelect from './pages/TopicSelect';
 import SubtopicSelect from './pages/SubtopicSelect';
 import ModeSelectPage from './pages/ModeSelectPage';
 import ChatSession from './pages/ChatSession';
+import ExamReviewPage from './pages/ExamReviewPage';
 
 // Admin pages
 import BooksDashboard from './features/admin/pages/BooksDashboard';
@@ -92,7 +93,37 @@ function App() {
             <Route path=":subject/:topic/:subtopic" element={<ModeSelectPage />} />
           </Route>
 
-          {/* Chat session (protected, standalone layout) */}
+          {/* Session routes nested under learn context */}
+          <Route path="/learn/:subject/:topic/:subtopic/teach/:sessionId" element={
+            <ProtectedRoute>
+              <OnboardingGuard>
+                <ChatSession />
+              </OnboardingGuard>
+            </ProtectedRoute>
+          } />
+          <Route path="/learn/:subject/:topic/:subtopic/exam/:sessionId" element={
+            <ProtectedRoute>
+              <OnboardingGuard>
+                <ChatSession />
+              </OnboardingGuard>
+            </ProtectedRoute>
+          } />
+          <Route path="/learn/:subject/:topic/:subtopic/clarify/:sessionId" element={
+            <ProtectedRoute>
+              <OnboardingGuard>
+                <ChatSession />
+              </OnboardingGuard>
+            </ProtectedRoute>
+          } />
+          <Route path="/learn/:subject/:topic/:subtopic/exam-review/:sessionId" element={
+            <ProtectedRoute>
+              <OnboardingGuard>
+                <ExamReviewPage />
+              </OnboardingGuard>
+            </ProtectedRoute>
+          } />
+
+          {/* Backward compat: old session URL */}
           <Route path="/session/:sessionId" element={
             <ProtectedRoute>
               <OnboardingGuard>

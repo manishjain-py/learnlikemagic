@@ -19,6 +19,9 @@ from shared.models import (
     PauseSummary,
     EndExamResponse,
     ReportCardResponse,
+    GuidelineSessionsResponse,
+    ExamReviewResponse,
+    ExamReviewQuestion,
 )
 from tutor.services import SessionService, ScorecardService
 from tutor.models.agent_logs import get_agent_log_store
@@ -157,6 +160,72 @@ def get_resumable_session(
     )
 
 
+@router.get("/guideline/{guideline_id}", response_model=GuidelineSessionsResponse)
+def get_guideline_sessions(
+    guideline_id: str,
+    mode: Optional[str] = None,
+    finished_only: bool = False,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """List sessions for a guideline, optionally filtered by mode and completion."""
+    repo = SessionRepository(db)
+    sessions = repo.list_by_guideline(
+        user_id=current_user.id,
+        guideline_id=guideline_id,
+        mode=mode,
+        finished_only=finished_only,
+    )
+    return GuidelineSessionsResponse(sessions=sessions)
+
+
+@router.get("/{session_id}/exam-review", response_model=ExamReviewResponse)
+def get_exam_review(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Get detailed exam review for a completed exam session."""
+    repo = SessionRepository(db)
+    session = repo.get_by_id(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your session")
+
+    state = SessionState.model_validate_json(session.state_json)
+
+    if state.mode != "exam":
+        raise HTTPException(status_code=400, detail="Not an exam session")
+
+    if not state.exam_finished:
+        raise HTTPException(status_code=403, detail="Exam is not yet finished")
+
+    questions = [
+        ExamReviewQuestion(
+            question_idx=q.question_idx,
+            question_text=q.question_text,
+            student_answer=q.student_answer,
+            expected_answer=q.expected_answer,
+            result=q.result,
+            score=q.score,
+            marks_rationale=q.marks_rationale,
+            feedback=q.feedback,
+            concept=q.concept,
+            difficulty=q.difficulty,
+        )
+        for q in state.exam_questions
+    ]
+
+    return ExamReviewResponse(
+        session_id=session.id,
+        created_at=session.created_at.isoformat() if session.created_at else None,
+        exam_feedback=state.exam_feedback.model_dump() if state.exam_feedback else None,
+        questions=questions,
+    )
+
+
 @router.get("/{session_id}/replay")
 def get_session_replay(
     session_id: str,
@@ -185,6 +254,8 @@ def create_session(
     try:
         service = SessionService(db)
         return service.create_new_session(request, user_id=current_user.id if current_user else None)
+    except HTTPException:
+        raise
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:

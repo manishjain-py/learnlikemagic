@@ -4,10 +4,16 @@ import ModeSelection from '../components/ModeSelection';
 import {
   createSession,
   getCurriculum,
-  resumeSession as resumeSessionAPI,
   SubtopicInfo,
+  SessionConflictError,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
+
+const MODE_URL_SEGMENT: Record<string, string> = {
+  teach_me: 'teach',
+  clarify_doubts: 'clarify',
+  exam: 'exam',
+};
 
 export default function ModeSelectPage() {
   const navigate = useNavigate();
@@ -44,6 +50,11 @@ export default function ModeSelectPage() {
 
   const subtopicInfo: SubtopicInfo = { subtopic: subtopic!, guideline_id: guidelineId };
 
+  const buildSessionUrl = (mode: string, sessionId: string) => {
+    const seg = MODE_URL_SEGMENT[mode] || mode;
+    return `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(topic!)}/${encodeURIComponent(subtopic!)}/${seg}/${sessionId}`;
+  };
+
   const handleModeSelect = async (mode: 'teach_me' | 'clarify_doubts' | 'exam') => {
     setSessionError(null);
     setCreatingMode(mode);
@@ -62,34 +73,27 @@ export default function ModeSelectPage() {
         },
         mode,
       });
-      navigate(`/session/${response.session_id}`, {
-        state: { firstTurn: response.first_turn, mode, subject, topic, subtopic },
+      navigate(buildSessionUrl(mode, response.session_id), {
+        state: { firstTurn: response.first_turn, mode },
       });
     } catch (error: any) {
       console.error('Failed to start session:', error);
+      // Handle 409 (duplicate active exam) — redirect to existing session
+      if (error instanceof SessionConflictError) {
+        navigate(buildSessionUrl(mode, error.existing_session_id));
+        return;
+      }
       setSessionError(error?.message || 'Failed to start session. Please try again.');
       setCreatingMode(null);
     }
   };
 
-  const handleResume = async (resumeSessionId: string) => {
-    setSessionError(null);
-    try {
-      const result = await resumeSessionAPI(resumeSessionId);
-      navigate(`/session/${resumeSessionId}`, {
-        state: {
-          conversationHistory: result.conversation_history,
-          currentStep: result.current_step,
-          mode: 'teach_me',
-          subject,
-          topic,
-          subtopic,
-        },
-      });
-    } catch (error: any) {
-      console.error('Failed to resume session:', error);
-      setSessionError(error?.message || 'Failed to resume session. Please try again.');
-    }
+  const handleResume = (sessionId: string, mode: string) => {
+    navigate(buildSessionUrl(mode, sessionId));
+  };
+
+  const handleViewExamReview = (sessionId: string) => {
+    navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(topic!)}/${encodeURIComponent(subtopic!)}/exam-review/${sessionId}`);
   };
 
   const handleBack = () => {
@@ -115,6 +119,7 @@ export default function ModeSelectPage() {
         onSelectMode={handleModeSelect}
         onResume={handleResume}
         onBack={handleBack}
+        onViewExamReview={handleViewExamReview}
         creatingMode={creatingMode}
       />
     </>
