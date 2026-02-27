@@ -1841,7 +1841,7 @@ The sidebar already shows pages — this change adds visual status indicators an
 
 The `generate-guidelines` and `finalize` endpoints change from synchronous to async response. The frontend must be updated simultaneously — there is no backward-compatible way to do this since the response shape changes from final-stats to job-started.
 
-**Deploy strategy:** Backend and frontend deploy together. This is already the pattern for this project.
+**Deploy strategy:** Backend and frontend **must deploy together** in a coordinated deploy window. The `generate-guidelines` and `finalize` response shapes change from synchronous result objects to `{ job_id, status: "started" }` — there is no backward-compatible shim. If the backend deploys first, the old frontend will misinterpret the response. If the frontend deploys first, it will expect fields that don't exist yet. Both artifacts are built and deployed from the same CI pipeline, so this is the existing pattern and requires no special sequencing.
 
 ---
 
@@ -1988,7 +1988,7 @@ All tests below must pass before merge. Tests are organized by category with exp
 | 6.4 | Restart during processing: new `generate-guidelines` while job is `running` | Returns 409 Conflict. The running job is not affected. |
 | 6.5 | Restart after stale: new job after stale job is auto-recovered | First job goes stale (heartbeat expired). New `acquire_lock` call detects stale, marks it `failed`, and creates new job. Both operations succeed atomically. |
 | 6.6 | Duplicate/replayed `update_progress` calls | Call `update_progress(job_id, current_item=5, completed=5, failed=0)` twice with identical arguments. Second call is a no-op. DB state is unchanged after second call. |
-| 6.7 | Out-of-order `update_progress` (lower completed count after higher) | Call with `completed=5`, then `completed=3`. DB shows `completed=3` (latest call wins — caller is authoritative). This is harmless because the caller's state is the source of truth; a lower count would only happen in a retry-after-rollback scenario. |
+| 6.7 | Out-of-order `update_progress` (lower completed count after higher) | Call with `completed=5`, then `completed=3`. DB shows `completed=3` (latest call wins — caller is authoritative). This is acceptable **only** because: (a) the caller holds the single authoritative in-memory count, (b) all progress fields are absolute/idempotent (Section 3f), and (c) a lower count can only occur in a retry-after-DB-rollback scenario where the caller's state is correct and the DB value was never committed. |
 | 6.8 | metadata.json reconciliation after crash | Simulate: process 10 pages, flush metadata at page 5, crash at page 8. Resume: reconciliation marks pages 6-7 as `completed` (DB says so + S3 artifacts exist), page 8 as `pending` (was in-flight). metadata.json matches DB truth. |
 | 6.9 | Error-path state invariants after failure | After any job failure (per-page exception, catastrophic exception, stale detection): verify `status == 'failed'`, `error_message IS NOT NULL`, `last_completed_item` reflects last known good page, `completed_at IS NOT NULL`. |
 | 6.10 | `update_progress` on externally-cancelled job | Job is marked `failed` by stale detection. Background thread (unaware) calls `update_progress`. Call is a silent no-op (returns without error, does not update DB). |
@@ -2066,6 +2066,14 @@ Failed pages: [list from progress_detail with per-page errors]
 ```
 
 ### Observability
+
+**Minimum observability checklist** (must be present before merge):
+
+- [ ] Every log line from background threads includes `job_id` and `book_id`
+- [ ] State transitions are logged: `INFO Job {job_id} transitioned {old_status} → {new_status}`
+- [ ] Stale detection is logged with reason: `WARN Marked job {job_id} stale (no heartbeat since {timestamp})`
+- [ ] Per-page retry count is included in `progress_detail` error entries
+- [ ] Heartbeat lag is queryable: `SELECT NOW() - heartbeat_at FROM book_jobs WHERE status = 'running'`
 
 | Signal | How | Where |
 |--------|-----|-------|
