@@ -10,7 +10,7 @@ This feature lets admins upload textbooks and extract teaching guidelines that p
 Book Pages → OCR Text → Teaching Guidelines → Study Plans
 ```
 
-1. Upload a book's pages as images
+1. Upload a book's pages as images (individually or in bulk)
 2. The system reads each page using AI (OCR)
 3. AI detects topics and subtopics, then extracts teaching guidelines
 4. Admins finalize, review, and approve guidelines
@@ -21,8 +21,12 @@ Book Pages → OCR Text → Teaching Guidelines → Study Plans
 ## Uploading a Book
 
 1. **Create a book** — Enter the book's title, author, edition, edition year, grade, subject, board, and country
-2. **Upload pages** — Drag and drop page images (PNG, JPG, JPEG, TIFF, or WebP, max 20MB each)
+2. **Upload pages** — Two options:
+   - **Single upload** — Drag and drop one page image at a time (PNG, JPG, JPEG, TIFF, or WebP, max 20MB each). OCR runs immediately and returns the extracted text.
+   - **Bulk upload** — Upload up to 200 page images at once. Images are uploaded first, then image conversion and OCR run in the background. Files are sorted by filename to ensure correct page ordering.
 3. Each uploaded page is automatically processed with OCR to extract text (with automatic retry on failure)
+
+Single-page uploads are blocked while a bulk OCR job is in progress to prevent data conflicts.
 
 ---
 
@@ -32,11 +36,30 @@ After uploading, each page shows:
 - The original page image (all formats are converted to PNG for consistency)
 - The extracted text from OCR
 
+For bulk uploads, pages may initially show OCR as "pending" or "processing" while background OCR is running. Pages that fail OCR show an error status and can be retried individually.
+
 Admins can:
 - **Approve** pages where the OCR looks correct
+- **Retry OCR** for individual pages that failed during bulk processing
 - **Delete** pages where the OCR is unusable or the page isn't needed (remaining pages are automatically renumbered)
 
 A pages sidebar lets you navigate between pages and see their status. Clicking an approved page opens a view panel showing the image alongside the OCR text.
+
+---
+
+## Background Jobs & Progress
+
+Extraction, finalization, and bulk OCR are long-running operations that run in the background. When one of these operations starts:
+
+1. The system returns immediately with a job ID
+2. The admin UI polls for progress every 3 seconds, showing:
+   - Current page being processed
+   - Pages completed and pages failed
+   - Error details for individual page failures
+3. Only one operation can run on a book at a time (the system prevents concurrent jobs)
+4. If a background job is interrupted (e.g., server restart), it is automatically detected via heartbeat monitoring and marked as failed
+
+If extraction fails partway through, it can be **resumed** from the last successfully processed page rather than restarting from the beginning.
 
 ---
 
@@ -44,7 +67,7 @@ A pages sidebar lets you navigate between pages and see their status. Clicking a
 
 Once pages are uploaded and reviewed:
 
-1. **Start extraction** — Choose a page range and trigger guideline generation
+1. **Start extraction** — Choose a page range and trigger guideline generation (runs in background)
 2. The system processes each page in sequence:
    - Generates a detailed summary of the page content (5-6 lines)
    - Builds context from the 5 most recent page summaries and all open guidelines
@@ -52,9 +75,9 @@ Once pages are uploaded and reviewed:
    - Extracts teaching guidelines from the page in the same step as boundary detection
    - If continuing an existing subtopic, intelligently merges the new guidelines into the existing ones
    - Generates one-line summaries for each subtopic and topic
-3. **Finalize** — A separate step that refines topic/subtopic names, deduplicates similar content, merges duplicate subtopics, and regenerates all topic summaries
+3. **Finalize** — A separate step that refines topic/subtopic names, deduplicates similar content, merges duplicate subtopics, and regenerates all topic summaries (also runs in background)
 
-Extraction and finalization are separate actions. Only one operation can run on a book at a time (the system prevents concurrent jobs).
+Extraction and finalization are separate actions. Progress can be monitored in real time. If extraction fails on individual pages, those errors are recorded but processing continues for remaining pages.
 
 ### How Topic Detection Works
 
@@ -134,3 +157,5 @@ Admins can delete a book entirely. This removes the book record from the databas
 - Pages are stored in cloud storage; guidelines are stored in both cloud storage (as JSON shards) and the production database
 - Manual editing of guidelines is not supported; to change guidelines, re-run extraction and finalize
 - If the study plan improvement step fails, the original plan is saved anyway
+- Bulk uploads store raw images first, then convert and OCR in the background; individual uploads convert and OCR inline
+- Background jobs use heartbeat monitoring to detect interrupted operations (e.g., server restarts) and automatically mark them as failed

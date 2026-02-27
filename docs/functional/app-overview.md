@@ -23,7 +23,9 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Learning Modes** | Three ways to learn: Teach Me, Clarify Doubts, and Exam |
 | **Voice Input** | Students can speak their answers instead of typing |
 | **Session Pause & Resume** | Pause a teaching session and pick up where you left off later |
+| **Session History** | View past learning sessions with mastery scores and learning stats |
 | **Scorecard** | Progress report showing mastery across subjects, topics, and subtopics |
+| **Profile** | View and edit personal details like name, grade, board, and school |
 | **Book & Guidelines** | Admin tool to upload textbooks and extract teaching guidelines |
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
@@ -58,7 +60,9 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 6. **Choose a mode** — Teach Me, Clarify Doubts, or Exam (or resume a paused session)
 7. **Learn** — Interact with the tutor through text or voice; pause to come back later or end early to see results
 8. **Review progress** — Check your scorecard to see strengths and areas to practice
-9. **Practice again** — Jump back into topics that need more work
+9. **View session history** — Browse past sessions with mastery scores and learning stats
+10. **Manage profile** — Update your name, grade, board, school, and other details
+11. **Practice again** — Jump back into topics that need more work
 
 ### Admins
 

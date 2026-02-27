@@ -49,7 +49,7 @@ A student-led Q&A session where you ask questions and the tutor answers them dir
 - You can end the session at any time using the "End Session" button
 - You can also end the session naturally by saying something like "I'm done", "no more doubts", or "that's all" — the tutor will wrap up warmly without asking further questions
 - After resolving a doubt, the tutor asks if you have more questions or would like to end — it does not keep adding extra teaching questions
-- Past discussions for the same subtopic are available so you can see what you've already asked about
+- Past discussions for the same subtopic are available (up to 5 most recent) so you can see what you've already asked about
 
 ### Exam
 
@@ -57,12 +57,13 @@ A knowledge test with a set of questions (typically 7) covering the subtopic's c
 
 - Questions span three difficulty levels: easy (~30%), medium (~50%), and hard (~20%)
 - Questions cover different types: conceptual, procedural, and application
-- After each answer, the tutor gives brief feedback (1-2 sentences) — it does not teach or remediate
-- Answers are scored as correct, partially correct, or incorrect
-- Your score is tracked as you go: you can see how many questions you've answered and how many are correct
+- After each answer, the tutor acknowledges it and moves to the next question — it does not reveal whether you were correct or teach during the exam
+- Answers are scored behind the scenes as correct, partially correct, or incorrect — you see the full results only at the end
+- A question counter shows how many questions you've answered out of the total
 - You can end the exam early using the "End Exam Early" button and still get your results
 - At the end, you see a results summary with:
   - Score and percentage
+  - Per-question review showing which you got correct, partially correct, or incorrect
   - Strengths (concepts you got right)
   - Weak areas (concepts to review)
   - Patterns (overall performance observations)
@@ -163,7 +164,7 @@ After the session, you see a results summary with your score, strengths, weak ar
 
 ### After Any Session
 
-From the session completion screen, you can start a new session or view your scorecard to see overall progress.
+From the session completion screen, you can start a new session or view your scorecard to see overall progress. If you return to a completed session later (e.g., via a bookmark or page refresh), the full conversation and results are restored.
 
 ---
 

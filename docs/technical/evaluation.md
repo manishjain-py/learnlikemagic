@@ -102,7 +102,7 @@ Each evaluation identifies **top 5 problems**:
 The `_build_user_message()` method assembles the evaluator input:
 - Full transcript formatted as `[Turn N] TUTOR/STUDENT: ...`
 - Persona context: name, ID, description, personality traits, correct answer probability, behavioral tendencies
-- Topic context (when available): topic name, grade level, learning objectives, common misconceptions
+- Topic context (when available): topic name, grade level, and nested `guidelines` containing `learning_objectives` and `common_misconceptions`
 
 ### Evaluator Models
 
@@ -110,6 +110,13 @@ The `_build_user_message()` method assembles the evaluator input:
 |----------|-------|--------|
 | OpenAI | GPT-5.2 | Responses API, reasoning effort: `high`, JSON output mode |
 | Anthropic | Claude Opus 4.6 | Messages API with streaming, extended thinking (20,000 token budget) |
+
+### Simulator Models
+
+| Provider | Default Model | Config |
+|----------|---------------|--------|
+| OpenAI | gpt-4o | Chat Completions API, temperature 0.8, max tokens 150 |
+| Anthropic | Claude Opus 4.6 | Messages API, max tokens 150 |
 
 The evaluator and simulator models are configured independently. When run from the API, models are read from the DB `llm_config` table (`eval_evaluator` and `eval_simulator` keys). When run from the CLI, models fall back to `EVAL_LLM_PROVIDER` env var.
 
@@ -172,7 +179,7 @@ Each persona JSON includes:
 - `correct_answer_probability` -- programmatically enforced per-turn
 - `personality_traits` -- list of character traits for the system prompt
 - `common_mistakes` -- specific errors the persona makes when answering incorrectly
-- `response_style` -- `max_words`, `language`, `examples` for tone calibration
+- `response_style` -- `max_words`, `language`, `uses_emoji`, `examples` for tone calibration (note: `uses_emoji` is defined in persona files but not currently read by the simulator code)
 - `behavioral_notes` -- guidelines for the LLM roleplay
 - `persona_specific_behaviors` (optional) -- probability-based behavioral tendencies (e.g., `boredom_probability: 0.3`, `minimal_response_probability: 0.8`)
 
@@ -190,7 +197,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai`, `anthropic`, `anthropic-haiku`
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `anthropic-haiku` (Claude Haiku 4.5)
 
 ---
 
@@ -321,7 +328,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 
 **Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display (coherence, non_repetition, natural_flow, engagement, responsiveness, pacing, grade_appropriateness, topic_coverage, session_arc, overall_naturalness). The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data -- legacy dimensions without scores simply show 0.
 
-The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels (e.g., `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", `anthropic-haiku` to "Claude Haiku 4.5"). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

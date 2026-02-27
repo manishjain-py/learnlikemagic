@@ -88,7 +88,9 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 
 **pytest.ini defaults:** Coverage is enabled by default (`--cov=.`, `--cov-report=term-missing`, `--cov-report=html`), strict markers, short tracebacks, warnings disabled.
 
-**Coverage omissions:** `tests/`, `__pycache__/`, `venv/`, `migrations/`, `scripts/`, `evaluation/run_evaluation.py`, `book_ingestion/utils/setup_s3.py`, `book_ingestion/utils/create_bucket.py`, `db.py`.
+**Coverage omissions (pytest.ini):** `tests/`, `__pycache__/`, `venv/`, `migrations/`, `scripts/`, `evaluation/run_evaluation.py`, `book_ingestion/utils/setup_s3.py`, `book_ingestion/utils/create_bucket.py`, `db.py`.
+
+**Coverage omissions (.coveragerc):** Same as above plus `database.py`. The `.coveragerc` file is used by the daily coverage CI workflow and adds `database.py` to the omit list.
 
 **Markers:**
 
@@ -111,14 +113,20 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 | `db_session` | In-memory SQLite session, fresh per test function |
 | `client` | FastAPI `TestClient` |
 | `sample_student` | `Student` domain object (grade 3, standard style, English) |
-| `sample_goal` | `Goal` domain object (Fractions, CBSE Grade 3) |
+| `sample_goal` | `Goal` domain object (Fractions, CBSE Grade 3, guideline_id `g1`) |
 | `sample_tutor_state` | `TutorState` with sample student + goal |
 | `sample_grading_result` | `GradingResult` with score 0.85 |
 | `mock_llm_provider` | Mock LLM provider (no real API calls) |
 
 ### Frontend
 
-The frontend does not currently have test, lint, or type-check scripts configured in `package.json`. Available scripts are limited to `dev`, `build`, and `preview`.
+```bash
+cd llm-frontend
+npm run test            # Run all tests once (Vitest)
+npm run test:watch      # Watch mode (re-runs on file change)
+```
+
+**Stack:** Vitest + React Testing Library + jsdom. Tests live alongside components.
 
 ### E2E Tests (Playwright)
 
@@ -136,7 +144,7 @@ npm run test:ui          # Interactive Playwright UI
 npm run report           # View HTML report
 ```
 
-**Configuration:** `e2e/playwright.config.ts` -- baseURL `http://localhost:3000`, Chromium only, sequential execution (workers: 1), 60s timeout.
+**Configuration:** `e2e/playwright.config.ts` -- baseURL `http://localhost:3000`, Chromium only, sequential execution (workers: 1), 60s timeout, 1 retry, screenshots on failure, trace on first retry. Reports output to `reports/e2e-runner/` (HTML + JSON). Git metadata (branch, commit) is embedded in report metadata.
 
 **Auth setup:** Tests use a `setup` project (`auth.setup.ts`) that stores auth state in `e2e/.auth/user.json`, reused by subsequent tests.
 
@@ -222,6 +230,7 @@ aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/s
 | Run backend | `cd llm-backend && make run` |
 | Run frontend | `cd llm-frontend && npm run dev` |
 | Run backend tests | `pytest` |
+| Run frontend tests | `cd llm-frontend && npm run test` |
 | Run E2E tests | `cd e2e && npm test` |
 | Run in Docker locally | `make build-local && make run-docker` |
 | Check architecture | `make check-arch` |
@@ -245,6 +254,7 @@ aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/s
 | `llm-backend/Dockerfile` | Container definition (python:3.11-slim + entrypoint.sh) |
 | `llm-backend/entrypoint.sh` | Container startup: env var checks then uvicorn |
 | `llm-backend/pytest.ini` | Pytest configuration, markers, coverage settings |
+| `llm-backend/.coveragerc` | Coverage configuration used by daily CI workflow (adds `database.py` to omissions) |
 | `llm-backend/tests/conftest.py` | Shared test fixtures |
 | `llm-backend/db.py` | Database migration CLI |
 | `llm-backend/database.py` | DatabaseManager, connection pooling |

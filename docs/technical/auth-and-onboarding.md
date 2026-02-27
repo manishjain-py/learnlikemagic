@@ -183,16 +183,18 @@ Global auth state provider. Exposes:
 | `ProtectedRoute` | Shows loading spinner during auth check, redirects to `/login` if not authenticated (preserves original location in state) |
 | `OnboardingGuard` | Redirects to `/onboarding` if `onboarding_complete === false` |
 
+**Post-login navigation**: All auth flows (`loginWithEmail`, `verifyOTP`, `confirmSignUp`+auto-login, `completeOAuthLogin`) navigate to `/` after success. The root route redirects to `/learn`, where `OnboardingGuard` sends new users to `/onboarding` if they haven't completed it. After onboarding, `handleFinish` also navigates to `/`, completing the cycle.
+
 **Guard usage per route:**
 
 | Route | `ProtectedRoute` | `OnboardingGuard` | Notes |
 |-------|:-:|:-:|-------|
-| `/learn/*` | Yes | Yes | Main learning flow requires completed onboarding |
+| `/learn` (+ nested child routes) | Yes | Yes | Wrapped in `LearnLayout` which provides header with user menu (profile, history, scorecard, logout). Child routes: index (`SubjectSelect`), `:subject`, `:subject/:topic`, `:subject/:topic/:subtopic` |
 | `/session/:sessionId` | Yes | Yes | Chat sessions require completed onboarding |
 | `/onboarding` | Yes | No | Must be authenticated but onboarding is in progress |
 | `/profile` | Yes | No | Accessible before onboarding is complete |
 | `/history` | Yes | No | Session history |
-| `/scorecard`, `/report-card` | Yes | No | Progress reports |
+| `/scorecard`, `/report-card` | Yes | No | Progress reports (both render `ScorecardPage`) |
 | `/login/*`, `/signup/*`, `/forgot-password`, `/auth/callback` | No | No | Public auth routes |
 | `/admin/*` | No | No | Admin routes (no auth required currently) |
 
@@ -204,6 +206,20 @@ Global auth state provider. Exposes:
 - Cleared on logout via `setAccessToken(null)`
 - Cognito tokens stored in localStorage by the SDK for session restore (`CognitoIdentityServiceProvider.<clientId>.*`)
 - **401 auto-redirect**: `apiFetch()` intercepts 401 responses and redirects the browser to `/login`. This covers token expiry without explicit refresh logic. The `transcribeAudio` function handles 401 separately since it uses raw `fetch` (not `apiFetch`) due to `FormData` content type requirements.
+
+### Student Profile Derivation
+
+The `useStudentProfile` hook (`hooks/useStudentProfile.ts`) bridges auth/profile data into the learning flow. It reads from `AuthContext` and provides:
+
+| Field | Source | Default |
+|-------|--------|---------|
+| `country` | Hardcoded | `"India"` |
+| `board` | `user.board` | `"CBSE"` |
+| `grade` | `user.grade` | `3` |
+| `studentId` | `user.id` | `"s1"` |
+| `studentName` | `user.name` | `""` |
+
+Used by `LearnLayout` to display board/grade/country in the header, and by learn pages to filter curriculum.
 
 ### Auth Middleware (Backend)
 
@@ -243,6 +259,8 @@ Global auth state provider. Exposes:
 | `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with logout |
 | `llm-frontend/src/config/auth.ts` | Cognito configuration (env vars) |
 | `llm-frontend/src/api.ts` | API client with access token management |
+| `llm-frontend/src/hooks/useStudentProfile.ts` | Derives student profile (board, grade, country) from AuthContext for learn flow |
+| `llm-frontend/src/pages/LearnLayout.tsx` | Learn flow layout with user menu (profile, history, scorecard, logout) |
 
 ### Backend
 
@@ -254,7 +272,7 @@ Global auth state provider. Exposes:
 | `llm-backend/auth/services/profile_service.py` | Profile updates, auto-completion of onboarding |
 | `llm-backend/auth/repositories/user_repository.py` | User CRUD operations |
 | `llm-backend/auth/middleware/auth_middleware.py` | JWT verification, JWKS caching, `get_current_user`/`get_optional_user` |
-| `llm-backend/auth/models/schemas.py` | Pydantic request/response models (UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest) |
+| `llm-backend/auth/models/schemas.py` | Pydantic request/response models (UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest, ChangePasswordResponse) |
 | `llm-backend/shared/models/entities.py` | User SQLAlchemy model |
 
 ---

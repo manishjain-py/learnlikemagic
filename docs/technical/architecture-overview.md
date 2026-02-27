@@ -11,7 +11,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Frontend (React + TypeScript + Vite)                           │
 │  S3 + CloudFront                                                │
 │  Routes: /learn/*, /session/:id, /login/*, /profile,            │
-│          /scorecard, /admin/*                                   │
+│          /scorecard, /history, /admin/*                         │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST API + WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -21,7 +21,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Modules: tutor, book_ingestion, study_plans, evaluation, auth  │
 │  Root API: api/ (docs, test_scenarios)                          │
 │  Shared: llm_service, llm_config_service, anthropic_adapter,    │
-│          models, utils, repositories, prompts                   │
+│          api, models, utils, repositories, prompts              │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -44,7 +44,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | Uvicorn | ASGI server | Lightweight, high-performance, pairs with FastAPI |
 | Pydantic | Data validation | Type hints for validation, clear errors, schema gen |
 | SQLAlchemy | ORM | Mature, flexible, database-agnostic |
-| OpenAI | LLM provider (GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
+| OpenAI | LLM provider (GPT-5.3, GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 | Google | LLM provider (Gemini) | Additional provider option for flexibility |
 
@@ -79,19 +79,25 @@ llm-backend/
 ├── tutor/                # Runtime tutoring sessions (teach, clarify, exam)
 ├── book_ingestion/       # Book upload & guideline extraction
 ├── study_plans/          # Study plan generation
-├── evaluation/           # Session evaluation pipeline
+├── evaluation/           # Session evaluation pipeline (flat structure)
 ├── auth/                 # Authentication & user profiles
 ├── shared/               # Cross-module utilities
+│   ├── api/              # Health checks, LLM config admin endpoints
+│   ├── services/         # LLM service, Anthropic adapter, LLM config service
+│   ├── repositories/     # Session, event, guideline, LLM config repos
+│   ├── models/           # Domain models, ORM entities, Pydantic schemas
+│   ├── prompts/          # Shared prompt loader
+│   └── utils/            # Constants, exceptions, formatting helpers
 ├── api/                  # Root-level API (docs, test scenarios)
 ├── scripts/              # Utility scripts
 ├── tests/
 ├── main.py               # FastAPI app entrypoint
 ├── config.py             # Pydantic settings
-├── db.py                 # Migration CLI
+├── db.py                 # Migration + seed CLI
 └── database.py           # Connection management
 ```
 
-Each module follows the same internal structure:
+Most modules follow the layered internal structure:
 
 ```
 <module>/
@@ -101,24 +107,27 @@ Each module follows the same internal structure:
 ├── orchestration/    # Agent coordination (AI modules only)
 ├── repositories/     # Database access
 ├── models/           # Pydantic schemas
+├── middleware/       # Request middleware (auth module only)
 └── prompts/          # LLM prompt templates
 ```
+
+**Exception:** The `evaluation/` module uses a flat file layout (`api.py`, `evaluator.py`, `session_runner.py`, etc.) rather than subdirectories.
 
 ### Routers Registered in `main.py`
 
 | Router | Prefix | Purpose |
 |--------|--------|---------|
-| health | `/` | Health checks, root endpoint |
+| health | (none) | Root endpoint, `/health`, `/health/db`, `/config/models` |
 | curriculum | `/curriculum` | Curriculum hierarchy API |
 | sessions | `/sessions` | Session management, scorecard, WebSocket |
 | transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
 | evaluation | `/api/evaluation` | Evaluation pipeline |
 | admin books | `/admin` | Book ingestion admin (`/admin/books/*`) |
-| admin guidelines | `/admin/guidelines` | Guidelines admin |
+| admin guidelines | `/admin/guidelines` | Guidelines admin + study plan generation |
 | auth | `/auth` | Auth sync (Cognito to local DB) |
 | profile | `/profile` | User profile CRUD |
 | docs | `/api/docs` | Documentation API for admin viewer |
-| llm config | `/api/admin/llm-config` | LLM model configuration admin |
+| llm config | `/api/admin` | LLM model configuration (`/api/admin/llm-config/*`) |
 | test scenarios | `/api/test-scenarios` | E2E test scenario results and screenshots |
 
 ---
@@ -153,13 +162,26 @@ llm-frontend/src/
 │   └── ModeSelection.tsx # Learning mode picker (teach/clarify/exam/resume)
 ├── features/
 │   ├── admin/            # Admin pages + components
-│   │   └── pages/
-│   │       ├── BooksDashboard.tsx, CreateBook.tsx, BookDetail.tsx
-│   │       ├── GuidelinesReview.tsx, EvaluationDashboard.tsx
-│   │       ├── DocsViewer.tsx        # In-app documentation browser
-│   │       ├── LLMConfigPage.tsx     # LLM model config admin
-│   │       └── TestScenariosPage.tsx # E2E test results viewer
-│   └── devtools/         # Debug tools (agent logs, guidelines, study plan)
+│   │   ├── pages/
+│   │   │   ├── BooksDashboard.tsx, CreateBook.tsx, BookDetail.tsx
+│   │   │   ├── GuidelinesReview.tsx, EvaluationDashboard.tsx
+│   │   │   ├── DocsViewer.tsx        # In-app documentation browser
+│   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
+│   │   │   └── TestScenariosPage.tsx # E2E test results viewer
+│   │   └── components/
+│   │       ├── BookStatusBadge.tsx    # Book status indicator
+│   │       ├── GuidelinesPanel.tsx    # Guidelines display panel
+│   │       ├── PageUploadPanel.tsx    # Book page upload UI
+│   │       ├── PageViewPanel.tsx      # Book page viewer
+│   │       └── PagesSidebar.tsx       # Book pages navigation sidebar
+│   └── devtools/         # Debug tools (shown in chat session)
+│       ├── api/devToolsApi.ts         # Dev tools API client
+│       ├── components/
+│       │   ├── DevToolsDrawer.tsx     # Expandable debug drawer
+│       │   ├── AgentLogsPanel.tsx     # Agent execution log viewer
+│       │   ├── GuidelinesPanel.tsx    # Active guidelines viewer
+│       │   └── StudyPlanPanel.tsx     # Active study plan viewer
+│       └── types/index.ts            # Dev tools type definitions
 └── config/               # Cognito config, constants
 ```
 
@@ -243,7 +265,7 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 
 | Provider | Config Value | Available Models | Usage |
 |----------|-------------|------------------|-------|
-| OpenAI | `openai` | gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
+| OpenAI | `openai` | gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
 | Anthropic | `anthropic` | claude-opus-4-6, claude-haiku-4-5-20251001 | Tutor, evaluation |
 | Google | `google` | gemini-3-pro-preview | Alternative provider |
 
@@ -271,7 +293,7 @@ Each system component (tutor, book_ingestion, evaluator, etc.) has its own row i
 - **Reasoning levels**: none, low, medium, high, xhigh (mapped to thinking budgets for Claude: 0, 5K, 10K, 20K, 40K tokens)
 - **Retry**: 3 attempts with exponential backoff for rate limits and timeouts
 - **Schema conversion**: `make_schema_strict()` converts Pydantic models to OpenAI strict schema format
-- **OpenAI API selection**: gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
+- **OpenAI API selection**: gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
 - **Gemini**: Google Generative AI client with JSON mode support
 
 ---

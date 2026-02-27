@@ -68,7 +68,7 @@ New email accounts need to verify their email address:
 
 First-time users go through a short onboarding flow before they can start learning:
 
-1. **What's your name?** — Enter your first name
+1. **What's your name?** — Enter your name
 2. **How old are you?** — Enter your age (5-18)
 3. **What grade are you in?** — Tap your grade from a grid of 1-12
 4. **What's your school board?** — Tap your board (CBSE, ICSE, State Board, or Other)
@@ -95,6 +95,8 @@ Editable fields:
 - About me (optional)
 
 The profile page also has a "Log Out" button to sign out of your account. The "Back" button returns you to the home screen.
+
+You can also access your profile, session history, scorecard, and log out from the user menu in the top-right corner of the learning screens.
 
 ---
 

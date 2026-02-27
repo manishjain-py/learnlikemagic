@@ -10,17 +10,19 @@ Pipeline architecture for book ingestion, OCR, guideline extraction, and study p
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Frontend: BooksDashboard → BookDetail → PageUploadPanel            │
 │            → GuidelinesPanel → GuidelinesReview                      │
+│            → useJobPolling (progress polling hook)                    │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ REST API
 ┌───────────────────────────────▼─────────────────────────────────────┐
 │  Backend: BookService, PageService, GuidelineExtractionOrchestrator │
 │           DBSyncService, JobLockService, StudyPlanOrchestrator      │
+│           BackgroundTaskRunner (thread-based async execution)        │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────────┐
 │  PostgreSQL: Book, BookJob, BookGuideline, TeachingGuideline,       │
 │              StudyPlan, LLMConfig                                   │
-│  S3: books/{book_id}/ (pages, OCR text, guideline shards, index)   │
+│  S3: books/{book_id}/ (pages, raw/, OCR text, guideline shards)    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -31,14 +33,48 @@ Pipeline architecture for book ingestion, OCR, guideline extraction, and study p
 | Phase | Action | Endpoint | Key Service |
 |-------|--------|----------|-------------|
 | 1 | Create Book | `POST /admin/books` | BookService |
-| 2 | Upload Pages + OCR | `POST /admin/books/{id}/pages` | PageService + OCRService |
+| 2a | Upload Single Page + OCR | `POST /admin/books/{id}/pages` | PageService |
+| 2b | Bulk Upload Pages + Background OCR | `POST /admin/books/{id}/pages/bulk` | PageService + BackgroundTaskRunner |
+| 2c | Retry Failed OCR | `POST /admin/books/{id}/pages/{num}/retry-ocr` | PageService |
 | 3 | Approve Pages | `PUT /admin/books/{id}/pages/{num}/approve` | PageService |
-| 4 | Generate Guidelines | `POST /admin/books/{id}/generate-guidelines` | GuidelineExtractionOrchestrator |
-| 5 | Finalize | `POST /admin/books/{id}/finalize` | Orchestrator (name refinement + dedup) |
+| 4 | Generate Guidelines (background) | `POST /admin/books/{id}/generate-guidelines` | GuidelineExtractionOrchestrator |
+| 5 | Finalize (background) | `POST /admin/books/{id}/finalize` | Orchestrator (name refinement + dedup) |
 | 6 | Sync to DB | `PUT /admin/books/{id}/guidelines/approve` or `POST /admin/guidelines/books/{id}/sync-to-database` | DBSyncService |
 | 7 | Review Guidelines | `GET /admin/guidelines/review` | TeachingGuideline queries |
 | 8 | Approve Individual | `POST /admin/guidelines/{id}/approve` | TeachingGuideline update |
 | 9 | Generate Study Plans | `POST /admin/guidelines/{id}/generate-study-plan` | StudyPlanOrchestrator |
+
+---
+
+## Background Task Infrastructure
+
+Extraction, finalization, and bulk OCR run as background tasks using Python threads. The `background_task_runner` module manages the lifecycle:
+
+```
+Request → acquire_lock(pending) → return job_id → background thread
+                                                    → start_job(running)
+                                                    → update_progress(heartbeat)
+                                                    → release_lock(completed|failed)
+```
+
+### Job State Machine
+
+```
+pending → running → completed
+                  → failed
+pending → failed (abandoned: never started within heartbeat threshold)
+running → failed (stale: heartbeat expired)
+```
+
+### Key Design Decisions
+
+- **One job per book**: Partial unique index on `(book_id, status)` WHERE status IN ('pending', 'running') enforces at most one active job per book at the database level.
+- **Heartbeat-based stale detection**: Running jobs must update their heartbeat. If no heartbeat for 2 minutes (`HEARTBEAT_STALE_THRESHOLD`), the job is auto-marked failed on the next read.
+- **Pending stale detection**: A pending job that was never started within the threshold is auto-marked failed (catches background thread crashes before `start_job`).
+- **Row-level locking**: `SELECT ... FOR UPDATE` prevents TOCTOU races between stale detection and `start_job`.
+- **Resume support**: `last_completed_item` tracks the last successfully processed page. Callers can resume from this point by passing `resume: true` in the extraction request.
+- **Error classification**: `progress_detail` JSON stores per-page errors with `error_type` ("retryable" for rate limits/timeouts, "terminal" for data problems).
+- **Independent DB sessions**: Background threads create their own DB session via `get_db_manager().session_factory()` to avoid request-scoped session lifecycle issues.
 
 ---
 
@@ -59,14 +95,49 @@ DELETE /admin/books/{id} → BookService.delete_book()
   2. Delete Book row from PostgreSQL (cascades to book_guidelines, book_jobs)
 ```
 
-### Upload Page + OCR
+### Upload Single Page + OCR
 ```
 POST /admin/books/{id}/pages → PageService.upload_page()
+  0. Block if bulk OCR job is running (409 if ocr_batch job is pending/running)
   1. Validate image (png/jpg/jpeg/tiff/webp, max 20MB)
   2. Convert to PNG via PIL, upload to S3 as books/{book_id}/{page_num}.png
   3. OCR via OpenAI Vision (model from DB config, with retry up to 2 attempts)
   4. Save OCR text to S3 as books/{book_id}/{page_num}.txt
-  5. Update metadata.json (add page entry with status "pending_review")
+  5. Update metadata.json (add page entry with status "pending_review", ocr_status "completed")
+```
+
+### Bulk Upload Pages + Background OCR
+```
+POST /admin/books/{id}/pages/bulk → PageService (request path) + run_bulk_ocr_background (background)
+
+Request path (fast):
+  1. Validate all images (metadata only: filename extension + size)
+  2. Acquire job lock (type "ocr_batch", 409 if any job running)
+  3. Sort files by filename for consistent page ordering
+  4. Stream raw files to S3 as books/{book_id}/raw/{page_num}.{ext} (no conversion)
+  5. Update metadata.json per page (ocr_status: "pending")
+  6. Return BulkUploadResponse with job_id and page_numbers
+
+Background thread (run_bulk_ocr_background):
+  For each page:
+    1. Load raw image from S3
+    2. Convert to PNG, upload as books/{book_id}/{page_num}.png
+    3. Run OCR via OpenAI Vision
+    4. Save OCR text to S3 as books/{book_id}/{page_num}.txt
+    5. Update in-memory metadata (ocr_status: "completed" or "failed")
+    6. Update job progress in DB (heartbeat + completed/failed counts)
+    7. Flush metadata.json to S3 every 5 pages (METADATA_FLUSH_INTERVAL)
+  Final: flush metadata, release lock
+```
+
+### Retry Failed OCR
+```
+POST /admin/books/{id}/pages/{num}/retry-ocr → PageService.retry_page_ocr()
+  1. Load image (prefer converted PNG, fall back to raw image)
+  2. If raw image only: convert to PNG and upload
+  3. Run OCR
+  4. Save text, update metadata (ocr_status → completed or failed)
+  Runs synchronously (~10s for single page)
 ```
 
 ### Page Operations
@@ -82,10 +153,15 @@ POST /admin/books/{id}/pages → PageService.upload_page()
 
 ```
 POST /admin/books/{id}/generate-guidelines
-  Body: {start_page, end_page, auto_sync_to_db: false}
+  Body: {start_page, end_page, auto_sync_to_db: false, resume: false}
+  Returns: {job_id, status: "started", start_page, end_page, total_pages, message}
 ```
 
-The orchestrator reads the LLM model from DB config via `LLMConfigService.get_config("book_ingestion")` and initializes all component services with the same model.
+The endpoint acquires a job lock, reads the LLM model from DB config via `LLMConfigService.get_config("book_ingestion")`, and launches a background thread via `run_in_background(run_extraction_background, ...)`.
+
+**Resume mode**: If `resume: true`, the endpoint reads `last_completed_item` from the latest extraction job and sets `start_page` to `last_completed_item + 1`. Returns `status: "already_complete"` if all pages were already processed.
+
+The background thread creates its own orchestrator instance and processes pages sequentially:
 
 For each page:
 
@@ -102,7 +178,7 @@ For each page:
 | 9 | IndexManagementService | Update GuidelinesIndex + PageIndex |
 | 10 | - | Save page guideline (minisummary) to S3 for context building |
 
-After each page, the orchestrator checks for stable subtopics (5-page gap threshold).
+After each page, the orchestrator checks for stable subtopics (5-page gap threshold) and the background runner updates job progress (heartbeat, completed/failed counts, per-page errors).
 
 ### Boundary Detection
 
@@ -138,6 +214,7 @@ A subtopic is marked "stable" after 5 pages without updates (configurable via `S
 ```
 POST /admin/books/{id}/finalize
   Body: {auto_sync_to_db: false}
+  Returns: {job_id, status: "started", message}
 ```
 
 Also available via guidelines admin API:
@@ -145,7 +222,9 @@ Also available via guidelines admin API:
 POST /admin/guidelines/books/{id}/finalize?auto_sync=false
 ```
 
-Finalization acquires a job lock (prevents concurrent operations) and runs:
+The book routes endpoint acquires a job lock and launches `run_finalization_background` in a background thread. The guidelines admin endpoint runs synchronously with its own job lock.
+
+Finalization steps:
 
 1. Mark all open/stable shards as "final" (update timestamps)
 2. **TopicNameRefinementService** — LLM refines topic/subtopic names based on complete guideline content. If names change, shards are saved with new keys and old files are deleted.
@@ -340,6 +419,8 @@ books/{book_id}/
   metadata.json                     # Book metadata + page list
   {page_num}.png                    # Page image (converted to PNG)
   {page_num}.txt                    # OCR text
+  raw/
+    {page_num}.{ext}                # Raw uploaded images (bulk upload, pre-conversion)
   pages/
     {page_num:03d}.ocr.txt          # Alternative OCR text path
     {page_num:03d}.page_guideline.json  # Page minisummary (for context building)
@@ -358,7 +439,7 @@ Core book metadata. Key fields: `id`, `title`, `author`, `edition`, `edition_yea
 AI-generated guideline versions for review tracking. Fields: `id`, `book_id` (FK), `guideline_s3_key`, `status`, `review_status`, `version`. Index on `book_id`.
 
 #### `book_jobs`
-Active job tracking for concurrency control. Fields: `id`, `book_id` (FK), `job_type` (extraction/finalization/sync), `status` (running/completed/failed), `started_at`, `completed_at`, `error_message`. Partial unique index on `(book_id, status)` with `WHERE status = 'running'` ensures only one running job per book at the database level.
+Active job tracking for concurrency control. Fields: `id`, `book_id` (FK), `job_type` (extraction/finalization/sync/ocr_batch), `status` (pending/running/completed/failed), `total_items`, `completed_items`, `failed_items`, `current_item`, `last_completed_item`, `progress_detail` (JSON text), `heartbeat_at`, `started_at`, `completed_at`, `error_message`. Partial unique index on `(book_id, status)` with `WHERE status IN ('pending', 'running')` ensures at most one active job per book at the database level.
 
 #### `teaching_guidelines`
 Production guidelines used by the tutor. Created by DB sync. Key fields: `id`, `book_id`, `country`, `board`, `grade`, `subject`, `topic`, `subtopic`, `guideline` (text), `topic_key`, `subtopic_key`, `topic_title`, `subtopic_title`, `topic_summary`, `subtopic_summary`, `source_page_start`, `source_page_end`, `status`, `version`, `review_status`.
@@ -423,16 +504,20 @@ The study plan generator uses `LLMService` which supports multiple providers (Op
 | `GET` | `/admin/books` | List books with filters (country, board, grade, subject) |
 | `GET` | `/admin/books/{id}` | Get book details with pages |
 | `DELETE` | `/admin/books/{id}` | Delete book + all S3 data |
-| `POST` | `/admin/books/{id}/pages` | Upload page + OCR |
+| `POST` | `/admin/books/{id}/pages` | Upload single page + inline OCR |
+| `POST` | `/admin/books/{id}/pages/bulk` | Bulk upload pages (up to 200) + background OCR |
+| `POST` | `/admin/books/{id}/pages/{num}/retry-ocr` | Retry OCR for a failed page |
 | `GET` | `/admin/books/{id}/pages/{num}` | Get page with presigned URLs + OCR text |
 | `PUT` | `/admin/books/{id}/pages/{num}/approve` | Approve page |
 | `DELETE` | `/admin/books/{id}/pages/{num}` | Delete page + renumber |
-| `POST` | `/admin/books/{id}/generate-guidelines` | Start extraction (with page range) |
+| `POST` | `/admin/books/{id}/generate-guidelines` | Start extraction (background, returns job_id) |
 | `GET` | `/admin/books/{id}/guidelines` | List all generated guidelines |
 | `GET` | `/admin/books/{id}/guidelines/{topic}/{subtopic}` | Get specific guideline |
-| `POST` | `/admin/books/{id}/finalize` | Finalize guidelines |
+| `POST` | `/admin/books/{id}/finalize` | Finalize guidelines (background, returns job_id) |
 | `PUT` | `/admin/books/{id}/guidelines/approve` | Approve all + sync to DB |
 | `DELETE` | `/admin/books/{id}/guidelines` | Reject (delete) all guidelines |
+| `GET` | `/admin/books/{id}/jobs/latest` | Get latest job status (with stale detection) |
+| `GET` | `/admin/books/{id}/jobs/{job_id}` | Get specific job status |
 
 ### Guidelines Management (`/admin/guidelines/*`)
 
@@ -455,9 +540,21 @@ The study plan generator uses `LLMService` which supports multiple providers (Op
 | `GET` | `/{id}/study-plan` | Get study plan |
 | `POST` | `/bulk-generate-study-plans` | Bulk generate (body: `{guideline_ids, force_regenerate}`) |
 
+### Job Polling
+
+The frontend polls `GET /admin/books/{id}/jobs/latest` every 3 seconds (via the `useJobPolling` hook) to track progress of background operations. The endpoint performs server-side stale detection on every read.
+
+Response shape (`JobStatusResponse`):
+- `job_id`, `book_id`, `job_type` (extraction/finalization/ocr_batch)
+- `status` (pending/running/completed/failed)
+- `total_items`, `completed_items`, `failed_items`, `current_item`
+- `last_completed_item` (resume point)
+- `progress_detail` (JSON string: `{page_errors, stats}`)
+- `heartbeat_at`, `started_at`, `completed_at`, `error_message`
+
 ### Job Locking
 
-The extraction and finalization endpoints in the guidelines admin API (`/books/{id}/extract`, `/books/{id}/finalize`) acquire job locks via `JobLockService`. A `409 Conflict` is returned if a job is already running for the book. Locks are released on completion or failure.
+The extraction and finalization endpoints acquire job locks via `JobLockService`. A `409 Conflict` is returned if a job is already running for the book. Locks are released on completion or failure. Single-page uploads also check for active `ocr_batch` jobs and return `409` to prevent metadata.json conflicts during bulk OCR.
 
 ---
 
@@ -482,8 +579,9 @@ The following services exist in the codebase but are NOT used by the current V2 
 
 | File | Purpose |
 |------|---------|
-| `api/adminApi.ts` | API client (books + guidelines + study plans) |
-| `types/index.ts` | TypeScript interfaces |
+| `api/adminApi.ts` | API client (books + guidelines + study plans + job polling) |
+| `types/index.ts` | TypeScript interfaces (Book, PageInfo, JobStatus, BulkUploadResponse, etc.) |
+| `hooks/useJobPolling.ts` | React hook for polling job progress (3s interval, auto-start on mount) |
 | `pages/BooksDashboard.tsx` | Books list with filters |
 | `pages/BookDetail.tsx` | Book management hub |
 | `pages/CreateBook.tsx` | Book creation form |
@@ -500,11 +598,12 @@ The following services exist in the codebase but are NOT used by the current V2 
 | File | Purpose |
 |------|---------|
 | **API** | |
-| `api/routes.py` | FastAPI endpoints for books, pages, guidelines (under `/admin`) |
+| `api/routes.py` | FastAPI endpoints for books, pages, guidelines, job polling (under `/admin`) |
 | **Services (V2 Pipeline — Active)** | |
-| `services/guideline_extraction_orchestrator.py` | Main V2 pipeline coordinator |
+| `services/guideline_extraction_orchestrator.py` | Main V2 pipeline coordinator + `run_extraction_background` / `run_finalization_background` top-level functions |
+| `services/background_task_runner.py` | Thread-based background task runner with job lifecycle management |
 | `services/book_service.py` | Book CRUD + derived status counts (uses BookRepository) |
-| `services/page_service.py` | Page upload, OCR, approval, deletion |
+| `services/page_service.py` | Page upload, OCR, approval, deletion, bulk upload + `run_bulk_ocr_background` top-level function |
 | `services/ocr_service.py` | OpenAI Vision API wrapper (model from DB config, retry support) |
 | `services/boundary_detection_service.py` | Topic detection + guidelines extraction (combined LLM call) |
 | `services/guideline_merge_service.py` | LLM-based intelligent guideline merging |
@@ -515,7 +614,7 @@ The following services exist in the codebase but are NOT used by the current V2 
 | `services/topic_name_refinement_service.py` | LLM-based name polishing during finalization |
 | `services/topic_deduplication_service.py` | LLM-based duplicate subtopic detection |
 | `services/topic_subtopic_summary_service.py` | LLM-generated subtopic/topic summaries |
-| `services/job_lock_service.py` | Job concurrency control (one job per book) |
+| `services/job_lock_service.py` | Job concurrency control (state machine, heartbeat, stale detection) |
 | **Services (V1 — Parked)** | |
 | `services/facts_extraction_service.py` | V1: Extract structured facts from pages |
 | `services/reducer_service.py` | V1: Deterministic shard merge |

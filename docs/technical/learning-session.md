@@ -13,22 +13,25 @@ Student Message
 SAFETY AGENT (fast gate)
     │
     v
-MODE ROUTER (teach_me / clarify_doubts / exam)
-    │
-    v
-MASTER TUTOR (single LLM call handles everything)
-    │
-    v
-SANITIZATION CHECK (detect leaked internal language)
-    │
-    v
-STATE UPDATES (mastery, misconceptions, step advance, exam scoring)
+MODE ROUTER ──────────────────────────────────────┐
+    │                                              │
+    │ teach_me              clarify_doubts / exam  │
+    v                                              v
+MASTER TUTOR                              MASTER TUTOR
+    │                                              │
+    v                                              v
+SANITIZATION CHECK (log-only)        MODE-SPECIFIC STATE
+    │                                (concepts/scoring)
+    v                                              │
+STATE UPDATES                                      v
+(mastery, misconceptions,                   Response
+ step advance, coverage)
     │
     v
 Response to Student
 ```
 
-Two-agent pipeline: a fast safety check followed by a single master tutor call that handles all teaching. The orchestrator routes to mode-specific processing after the safety check.
+Two-agent pipeline: a fast safety check followed by a single master tutor call that handles all teaching. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode.
 
 ---
 
@@ -63,7 +66,9 @@ Provider and model are configured via the `llm_config` DB table, read at session
 ```python
 TutorTurnOutput {
     response: str              # Student-facing text
-    intent: str                # answer/answer_change/question/confusion/novel_strategy/off_topic/continuation
+    intent: str                # teach_me: answer/answer_change/question/confusion/novel_strategy/off_topic/continuation
+                               # clarify_doubts: question/followup/done/off_topic
+                               # exam: exam_answer/exam_complete
     answer_correct: bool|None  # true/false/null
     misconceptions_detected: list[str]
     mastery_signal: str|None   # strong/adequate/needs_remediation
@@ -89,11 +94,11 @@ TutorTurnOutput {
 3. **Build AgentContext** — Current state, mastery, study plan
 4. **Safety Agent** — Fast content moderation gate. If unsafe: return guidance + log safety flag
 5. **Mode Router** — Branch based on `session.mode`:
-   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed via `mastery_updates`, no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
-   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question, builds feedback when all questions answered. Partial scoring: `answer_correct == False` with `mastery_signal != "needs_remediation"` → partial.
+   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
+   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question. Mid-exam responses do NOT reveal correctness — the student sees "Got it — let's continue" with the next question. When the last question is answered, builds a full results response with per-question review and final score. Partial scoring: `answer_correct == False` with `mastery_signal != "needs_remediation"` → partial.
    - `teach_me` → continues to step 6
 6. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 10 teaching rules + personalization block) and turn prompt (current state, mastery, pacing directive, student style, history)
-7. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:...")
+7. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
 8. **Apply State Updates**:
    - Update mastery estimates
    - Track misconceptions
@@ -133,16 +138,16 @@ Contains:
 
 ### Mode-Specific Prompts
 
-**Clarify Doubts** (`clarify_doubts_prompts.py`):
-- System prompt: answers directly (no Socratic method), concise, brief follow-up check. Includes session closure rules: after resolving a doubt, ask one closure question ("any other doubts?"); when student says done, give brief warm goodbye and set `session_complete = true` without further questions
-- Turn prompt: tracks concepts discussed, sets intent to question/followup/done/off_topic
+**Clarify Doubts**:
+- Currently uses the same master tutor prompts (`master_tutor_prompts.py`) — mode-specific behavior is driven by the orchestrator's `_process_clarify_turn()` routing, which does not use step advancement or question lifecycle
+- `clarify_doubts_prompts.py` defines dedicated system/turn prompt templates (direct answers, session closure rules, concept tracking) but these are not yet wired into the pipeline
 - `mastery_updates` used to track which study plan concepts were substantively discussed
 - `answer_correct` always null in clarify mode; `advance_to_step` never set
 
 **Exam** (`exam_prompts.py`):
-- Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard)
-- Evaluation system prompt: brief feedback only (1-2 sentences), no teaching
-- Evaluation turn prompt: evaluates answer, sets answer_correct/mastery_signal
+- Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard) — used by `ExamService.generate_questions()`
+- Evaluation: currently uses the same master tutor prompts — mode-specific behavior driven by `_process_exam_turn()`. The evaluation system/turn prompt templates in `exam_prompts.py` exist but are not yet wired into the pipeline.
+- Evaluation feedback is stored on `ExamQuestion.feedback` but NOT shown to the student mid-exam. The orchestrator constructs its own neutral "Got it" response between questions.
 
 ### Dynamic Signals
 
@@ -153,11 +158,11 @@ Contains:
 | TURN 1 | First turn | Keep opening to 2-3 sentences, ask ONE simple question |
 | ACCELERATE | avg_mastery >= 0.8 & improving (or 60%+ concepts >= 0.7 & improving) | Skip steps aggressively, minimal scaffolding |
 | EXTEND | Aced plan & is_complete | Push to harder territory |
-| SIMPLIFY | avg_mastery < 0.4 or struggling | Shorter sentences, 1-2 ideas per response |
-| CONSOLIDATE | avg_mastery 0.4-0.65 & 2+ wrong & steady | Same-level problem to build confidence |
+| SIMPLIFY | (avg_mastery < 0.4 with real data) or trend == struggling | Shorter sentences, 1-2 ideas per response |
+| CONSOLIDATE | avg_mastery 0.4-0.65 & steady & current question has 2+ wrong attempts | Same-level problem to build confidence |
 | STEADY | Default | One idea at a time |
 
-Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mastery >= 0.7, the system forces the accelerate path when the student is also improving.
+Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mastery >= 0.7 AND avg_mastery >= 0.65 AND trend is improving, the system forces the accelerate path.
 
 **Student Style** (`_compute_student_style`):
 - Analyzes avg words/message, emoji usage, question-asking
@@ -196,7 +201,7 @@ Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mas
 
 Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong to session owner (validated via Cognito). Anonymous sessions allowed without token for backward compatibility.
 
-**Connection flow:** Auth check → accept connection → send initial `state_update` → if first turn (turn_count == 0), generate and send welcome message → enter main message loop.
+**Connection flow:** Auth check → accept connection → send initial `state_update` → if first turn (turn_count == 0), generate welcome via `generate_welcome_message()` (teach_me fallback — sessions created via REST already have the mode-specific welcome in history) → enter main message loop.
 
 **Client sends:** `{"type": "chat", "payload": {"message": "..."}}`
 
@@ -239,7 +244,7 @@ Flow:
 - Generate mode-specific welcome message (each mode has its own welcome generator)
 - For `exam`: append first question to welcome message
 - Persist session to DB (with state_version=1)
-- For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent)
+- For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent, only sessions with at least one concept discussed)
 - Return `{session_id, first_turn, mode}`
 
 Session ownership: user-linked sessions require the caller to be the session owner. Anonymous sessions (user_id=None) allow access for backward compatibility.
@@ -330,11 +335,12 @@ The orchestrator handles five question lifecycle cases:
 
 Master tutor sets `advance_to_step` in output. Applied in `_apply_state_updates()`. When advancing, all intermediate step concepts are added to `concepts_covered_set`.
 
-Session completion logic (`is_complete` property):
-- `clarify_doubts` mode: returns `clarify_complete`
-- `teach_me` / `exam` mode: `current_step > total_steps` → `True`
+Session completion logic:
+- `is_complete` property: `clarify_doubts` → returns `clarify_complete`; `teach_me` → `current_step > total_steps`; `exam` → also `current_step > total_steps` (but see note below)
+- For exam mode, REST responses use `exam_finished` instead of `is_complete` to determine completion, since exams track progress via `exam_current_question_idx` rather than `current_step`
+- The orchestrator's `_process_exam_turn()` checks `exam_finished` and `exam_current_question_idx` directly
 
-Extension: Advanced students can continue up to 10 turns beyond `total_steps * 2`.
+Extension: Advanced students in teach_me mode can continue up to 10 turns beyond `total_steps * 2`.
 
 ### Exam State
 
@@ -389,15 +395,15 @@ If no study plan exists in the DB, a default 4-step plan is generated: explain �
 
 ## LLM Calls
 
-| Call | Model | Purpose | Output |
-|------|-------|---------|--------|
-| Safety | Configurable (DB) | Content moderation | SafetyOutput (strict) |
-| Master Tutor | Configurable (DB) | All teaching (teach_me, clarify_doubts, exam evaluation) | TutorTurnOutput (strict) |
-| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | Plain text |
-| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | Plain text |
-| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | Plain text |
-| Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text |
-| Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) |
+| Call | Model | Purpose | Output | Prompt Source |
+|------|-------|---------|--------|---------------|
+| Safety | Configurable (DB) | Content moderation | SafetyOutput (strict) | `templates.py` SAFETY_TEMPLATE |
+| Master Tutor | Configurable (DB) | All teaching (teach_me, clarify_doubts, exam evaluation) | TutorTurnOutput (strict) | `master_tutor_prompts.py` (shared across all modes) |
+| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | Plain text | `orchestrator_prompts.py` |
+| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | Plain text | Inline in `orchestrator.py` |
+| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | Plain text | Inline in `orchestrator.py` |
+| Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text | Inline in `orchestrator.py` |
+| Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) | `exam_prompts.py` EXAM_QUESTION_GENERATION_PROMPT |
 
 LLM provider/model is resolved at session creation from the `llm_config` DB table via `LLMConfigService.get_config("tutor")`. The Anthropic adapter maps structured output to tool_use, and reasoning effort to thinking budgets.
 
@@ -442,19 +448,19 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 
 | File | Purpose |
 |------|---------|
-| `master_tutor_prompts.py` | System prompt (study plan + guidelines + rules + personalization) and turn prompt |
-| `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode |
-| `exam_prompts.py` | Exam question generation prompt and evaluation prompts |
-| `orchestrator_prompts.py` | Welcome message and session summary prompts |
+| `master_tutor_prompts.py` | System prompt (study plan + guidelines + rules + personalization) and turn prompt. Used for ALL modes. |
+| `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode. **Defined but not yet wired** — clarify mode currently uses master tutor prompts. |
+| `exam_prompts.py` | Exam question generation prompt (actively used by ExamService) and evaluation prompts (**evaluation prompts defined but not yet wired** — exam eval uses master tutor prompts). |
+| `orchestrator_prompts.py` | Welcome message (Teach Me) and session summary prompts |
 | `templates.py` | PromptTemplate class, SAFETY_TEMPLATE, format helpers |
 
 ### Utils (`tutor/utils/`)
 
 | File | Purpose |
 |------|---------|
-| `schema_utils.py` | get_strict_schema(), validate_agent_output(), parse_json_safely() |
+| `schema_utils.py` | get_strict_schema(), validate_agent_output(), parse_json_safely(), extract_json_from_text() |
 | `prompt_utils.py` | format_conversation_history(max_turns default=5, overridden to 10 by master tutor) |
-| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step(), get_mastery_level() |
+| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step(), get_mastery_level(), merge_misconceptions() |
 
 ### Services & API
 
@@ -467,7 +473,7 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 | `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint |
 | `tutor/api/transcription.py` | Audio transcription endpoint (OpenAI Whisper) |
 | `tutor/api/curriculum.py` | Curriculum discovery endpoints |
-| `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError) |
+| `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError, ConfigurationError) |
 | `shared/services/llm_service.py` | LLM wrapper (OpenAI Responses API, Chat Completions, Gemini, Anthropic) |
 | `shared/services/anthropic_adapter.py` | Claude API adapter (tool_use for structured output, thinking budgets) |
 | `shared/services/llm_config_service.py` | DB-backed LLM config: component_key → provider + model_id |
