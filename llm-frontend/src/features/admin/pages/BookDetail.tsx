@@ -222,6 +222,7 @@ const BookDetail: React.FC = () => {
               onClose={handleClosePageView}
               onReplace={handleReplacePage}
               onPageDeleted={handlePageDeleted}
+              onApproved={loadBook}
             />
           ) : (
             // Always show upload panel
@@ -258,14 +259,23 @@ const BookDetail: React.FC = () => {
       </div>
 
       {/* Guideline Section (Phase 6) */}
-      {/* Show guidelines if pages exist */}
-      {book.pages.length > 0 && (
+      {/* Only show guidelines when all pages are approved */}
+      {book.pages.length > 0 && book.pages.every(p => p.status === 'approved') ? (
         <div style={{ marginTop: '30px' }}>
           <GuidelinesPanel
             bookId={book.id}
             totalPages={book.pages.length}
             onProcessedPagesChange={handleProcessedPagesChange}
           />
+        </div>
+      ) : book.pages.length > 0 && (
+        <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#FEF3C7', borderRadius: '8px', border: '1px solid #FDE68A' }}>
+          <div style={{ fontSize: '16px', fontWeight: '600', color: '#92400E', marginBottom: '4px' }}>
+            Teaching Guidelines
+          </div>
+          <div style={{ fontSize: '14px', color: '#92400E' }}>
+            Approve all pages before generating guidelines. {book.pages.filter(p => p.status === 'pending_review').length} page(s) still pending review.
+          </div>
         </div>
       )}
     </div>

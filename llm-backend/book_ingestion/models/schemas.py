@@ -57,10 +57,13 @@ class BookListResponse(BaseModel):
 class PageInfo(BaseModel):
     """Information about a book page."""
     page_num: int
-    image_s3_key: str
-    text_s3_key: str
+    image_s3_key: Optional[str] = None
+    text_s3_key: Optional[str] = None
     status: str  # pending_review, approved
     approved_at: Optional[datetime] = None
+    ocr_status: Optional[str] = None
+    ocr_error: Optional[str] = None
+    raw_image_s3_key: Optional[str] = None
 
 
 class PageUploadResponse(BaseModel):

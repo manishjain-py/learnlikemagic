@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getPage, deletePage } from '../api/adminApi';
+import { getPage, deletePage, approvePage } from '../api/adminApi';
 import { PageDetails } from '../types';
 
 interface PageViewPanelProps {
@@ -12,6 +12,7 @@ interface PageViewPanelProps {
   onClose: () => void;
   onReplace: () => void;
   onPageDeleted: () => void;
+  onApproved?: () => void;
 }
 
 const PageViewPanel: React.FC<PageViewPanelProps> = ({
@@ -20,11 +21,13 @@ const PageViewPanel: React.FC<PageViewPanelProps> = ({
   onClose,
   onReplace,
   onPageDeleted,
+  onApproved,
 }) => {
   const [pageDetails, setPageDetails] = useState<PageDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [approveLoading, setApproveLoading] = useState(false);
 
   useEffect(() => {
     loadPageDetails();
@@ -56,6 +59,19 @@ const PageViewPanel: React.FC<PageViewPanelProps> = ({
       alert(err instanceof Error ? err.message : 'Failed to delete page');
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    try {
+      setApproveLoading(true);
+      await approvePage(bookId, pageNum);
+      await loadPageDetails();
+      onApproved?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to approve page');
+    } finally {
+      setApproveLoading(false);
     }
   };
 
@@ -96,9 +112,15 @@ const PageViewPanel: React.FC<PageViewPanelProps> = ({
           <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>
             Page {pageNum}
           </h3>
-          <div style={{ display: 'inline-block', padding: '4px 12px', backgroundColor: '#D1FAE5', color: '#065F46', borderRadius: '12px', fontSize: '12px', fontWeight: '500' }}>
-            ✓ Approved
-          </div>
+          {pageDetails.status === 'approved' ? (
+            <div style={{ display: 'inline-block', padding: '4px 12px', backgroundColor: '#D1FAE5', color: '#065F46', borderRadius: '12px', fontSize: '12px', fontWeight: '500' }}>
+              ✓ Approved
+            </div>
+          ) : (
+            <div style={{ display: 'inline-block', padding: '4px 12px', backgroundColor: '#FEF3C7', color: '#92400E', borderRadius: '12px', fontSize: '12px', fontWeight: '500' }}>
+              Pending Review
+            </div>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -166,9 +188,9 @@ const PageViewPanel: React.FC<PageViewPanelProps> = ({
           onClick={onReplace}
           style={{
             padding: '10px 20px',
-            backgroundColor: '#3B82F6',
-            color: 'white',
-            border: 'none',
+            backgroundColor: 'white',
+            color: '#374151',
+            border: '1px solid #D1D5DB',
             borderRadius: '6px',
             cursor: 'pointer',
             fontWeight: '500',
@@ -177,6 +199,24 @@ const PageViewPanel: React.FC<PageViewPanelProps> = ({
         >
           Replace Page
         </button>
+        {pageDetails.status === 'pending_review' && (
+          <button
+            onClick={handleApprove}
+            disabled={approveLoading}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: approveLoading ? '#86EFAC' : '#10B981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: approveLoading ? 'not-allowed' : 'pointer',
+              fontWeight: '500',
+              fontSize: '14px',
+            }}
+          >
+            {approveLoading ? 'Approving...' : 'Approve Page'}
+          </button>
+        )}
       </div>
     </div>
   );

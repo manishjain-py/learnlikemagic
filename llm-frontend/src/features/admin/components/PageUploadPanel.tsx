@@ -23,7 +23,7 @@ const PageUploadPanel: React.FC<PageUploadPanelProps> = ({ bookId, onPageProcess
   const [error, setError] = useState<string | null>(null);
 
   // Poll for OCR job progress
-  const { job: ocrJob, isPolling: isOcrRunning, startPolling: startOcrPolling } = useJobPolling(bookId, 'ocr_batch');
+  const { job: ocrJob, isPolling: isOcrRunning, startPolling: startOcrPolling, setJob } = useJobPolling(bookId, 'ocr_batch');
 
   // ===== Bulk Upload Handlers =====
 
@@ -123,6 +123,7 @@ const PageUploadPanel: React.FC<PageUploadPanelProps> = ({ bookId, onPageProcess
   // Reload when OCR completes
   React.useEffect(() => {
     if (ocrJob?.status === 'completed') {
+      setJob(null);
       onPageProcessed();
     }
   }, [ocrJob?.status]);
@@ -186,7 +187,7 @@ const PageUploadPanel: React.FC<PageUploadPanelProps> = ({ bookId, onPageProcess
           </div>
           {ocrJob.current_item && (
             <div style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px' }}>
-              Processing page {ocrJob.current_item}
+              Processing item {(ocrJob.completed_items || 0) + 1} of {ocrJob.total_items}
             </div>
           )}
           {ocrJob.failed_items > 0 && (
@@ -197,6 +198,28 @@ const PageUploadPanel: React.FC<PageUploadPanelProps> = ({ bookId, onPageProcess
           <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '8px', fontStyle: 'italic' }}>
             You can leave this page - OCR continues in the background.
           </div>
+        </div>
+      )}
+
+      {/* OCR Failed */}
+      {ocrJob && ocrJob.status === 'failed' && (
+        <div style={{ padding: '16px', backgroundColor: '#FEF2F2', borderRadius: '8px', border: '1px solid #FECACA', marginBottom: '16px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#991B1B', marginBottom: '4px' }}>
+            OCR Processing Failed
+          </div>
+          <div style={{ fontSize: '13px', color: '#991B1B' }}>
+            {ocrJob.error_message || 'The background OCR job failed. Please try uploading again.'}
+          </div>
+          <button
+            onClick={() => setJob(null)}
+            style={{
+              marginTop: '10px', padding: '6px 14px', fontSize: '13px',
+              backgroundColor: 'white', color: '#991B1B', border: '1px solid #FECACA',
+              borderRadius: '6px', cursor: 'pointer',
+            }}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -220,6 +243,9 @@ const PageUploadPanel: React.FC<PageUploadPanelProps> = ({ bookId, onPageProcess
               </div>
               <div style={{ fontSize: '12px', color: '#9CA3AF' }}>
                 PNG, JPG, TIFF, WebP (max 200 files, 20MB each)
+              </div>
+              <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '8px' }}>
+                Pages are ordered alphabetically by filename. Use zero-padded names (e.g., 001.jpg, 002.jpg) to ensure correct sequence.
               </div>
               <input
                 id="bulk-upload"

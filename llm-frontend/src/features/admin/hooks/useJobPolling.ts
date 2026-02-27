@@ -55,8 +55,6 @@ export function useJobPolling(bookId: string, jobType?: string) {
         if (result && (result.status === 'running' || result.status === 'pending')) {
           setJob(result);
           startPolling(result.job_id);
-        } else {
-          setJob(result);
         }
       } catch {
         // No active job

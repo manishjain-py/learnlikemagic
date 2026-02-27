@@ -422,19 +422,23 @@ def generate_guidelines(
         if not book:
             raise HTTPException(status_code=404, detail=f"Book not found: {book_id}")
 
-        # Load total_pages from S3 metadata
+        # Load approved pages from S3 metadata
         s3_client = S3Client()
         try:
             metadata = s3_client.download_json(f"books/{book_id}/metadata.json")
-            total_pages = metadata.get("total_pages", 0)
+            all_pages = metadata.get("pages", [])
+            approved_page_nums = sorted(
+                p["page_num"] for p in all_pages if p.get("status") == "approved"
+            )
         except Exception:
-            total_pages = 0
+            approved_page_nums = []
 
-        if total_pages == 0:
-            raise HTTPException(status_code=400, detail="No pages uploaded for this book")
+        if not approved_page_nums:
+            raise HTTPException(status_code=400, detail="No approved pages for this book. Approve pages before generating guidelines.")
 
-        start_page = request.start_page or 1
-        end_page = request.end_page or total_pages
+        total_pages = len(approved_page_nums)
+        start_page = request.start_page or approved_page_nums[0]
+        end_page = request.end_page or approved_page_nums[-1]
 
         # Handle resume
         if request.resume:

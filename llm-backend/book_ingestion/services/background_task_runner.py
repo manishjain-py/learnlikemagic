@@ -36,7 +36,7 @@ def run_in_background(target_fn, job_id: str, *args, **kwargs):
     """
     def wrapper():
         db_manager = get_db_manager()
-        session = db_manager.SessionLocal()
+        session = db_manager.session_factory()
         try:
             from book_ingestion.services.job_lock_service import JobLockService
             job_lock = JobLockService(session)

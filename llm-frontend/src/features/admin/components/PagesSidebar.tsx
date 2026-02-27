@@ -56,10 +56,9 @@ const OcrStatusIcon: React.FC<{ status?: string; pageNum: number; bookId?: strin
 };
 
 const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSelectPage, processedPages, bookId, onPageProcessed }) => {
-  // Show all pages (not just approved) if some have pending OCR
-  const hasOcrPages = pages.some(p => p.ocr_status && p.ocr_status !== 'completed');
-  const displayPages = hasOcrPages ? pages : pages.filter((p) => p.status === 'approved');
   const approvedPages = pages.filter((p) => p.status === 'approved');
+  const pendingPages = pages.filter((p) => p.status === 'pending_review');
+  const displayPages = pages;
   const hasGuidelines = processedPages != null && processedPages.size > 0;
   const unprocessedCount = hasGuidelines
     ? approvedPages.filter((p) => !processedPages.has(p.page_num)).length
@@ -68,20 +67,18 @@ const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSele
   return (
     <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
       <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px' }}>
-        Approved Pages ({approvedPages.length})
+        Pages ({pages.length})
       </h3>
-      {hasGuidelines && unprocessedCount > 0 && (
-        <div style={{ fontSize: '13px', color: '#C2410C', marginBottom: '12px' }}>
-          {unprocessedCount} {unprocessedCount === 1 ? 'page' : 'pages'} not in guidelines
-        </div>
-      )}
-      {!(hasGuidelines && unprocessedCount > 0) && (
-        <div style={{ marginBottom: '16px' }} />
-      )}
+      <div style={{ fontSize: '13px', color: '#6B7280', marginBottom: '12px' }}>
+        {approvedPages.length} approved{pendingPages.length > 0 && `, ${pendingPages.length} pending review`}
+        {hasGuidelines && unprocessedCount > 0 && (
+          <span style={{ color: '#C2410C' }}> &middot; {unprocessedCount} not in guidelines</span>
+        )}
+      </div>
 
-      {approvedPages.length === 0 ? (
+      {pages.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '20px', color: '#9CA3AF', fontSize: '14px' }}>
-          No approved pages yet
+          No pages yet
         </div>
       ) : (
         <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
@@ -151,7 +148,11 @@ const PagesSidebar: React.FC<PagesSidebarProps> = ({ pages, selectedPage, onSele
                         onRetry={onPageProcessed}
                       />
                     </div>
-                    {isUnprocessed ? (
+                    {page.status === 'pending_review' ? (
+                      <div style={{ fontSize: '12px', color: '#F59E0B', fontWeight: '500' }}>
+                        Pending review
+                      </div>
+                    ) : isUnprocessed ? (
                       <div style={{ fontSize: '12px', color: '#C2410C', fontWeight: '500' }}>
                         ● New — not in guidelines
                       </div>

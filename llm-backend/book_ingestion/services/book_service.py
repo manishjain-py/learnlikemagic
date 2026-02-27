@@ -269,10 +269,13 @@ class BookService:
             return [
                 PageInfo(
                     page_num=page["page_num"],
-                    image_s3_key=page["image_s3_key"],
-                    text_s3_key=page["text_s3_key"],
+                    image_s3_key=page.get("image_s3_key"),
+                    text_s3_key=page.get("text_s3_key"),
                     status=page["status"],
-                    approved_at=page.get("approved_at")
+                    approved_at=page.get("approved_at"),
+                    ocr_status=page.get("ocr_status"),
+                    ocr_error=page.get("ocr_error"),
+                    raw_image_s3_key=page.get("raw_image_s3_key"),
                 )
                 for page in pages_data
             ]
