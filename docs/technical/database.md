@@ -208,17 +208,26 @@ Centralized model configuration per component. Single source of truth for which 
 
 **Table:** `book_jobs` | **Model:** `BookJob` (`book_ingestion/models/database.py`)
 
+Tracks active jobs per book with progress tracking and stale detection. State machine: `pending` --> `running` --> `completed` | `failed`. Stale detection: running jobs with expired heartbeat are auto-marked failed (see `job_lock_service.py`).
+
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | VARCHAR | Primary key |
 | `book_id` | VARCHAR | FK --> books (CASCADE delete) |
-| `job_type` | VARCHAR | extraction, finalization, sync |
-| `status` | VARCHAR | running, completed, failed (default `running`) |
+| `job_type` | VARCHAR | `extraction`, `finalization`, `sync`, `ocr_batch` |
+| `status` | VARCHAR | `pending`, `running`, `completed`, `failed` (default `pending`) |
+| `total_items` | INT | Total pages to process (nullable) |
+| `completed_items` | INT | Pages completed so far (default 0) |
+| `failed_items` | INT | Pages that errored (default 0) |
+| `current_item` | INT | Page currently being processed (nullable) |
+| `last_completed_item` | INT | Last successfully processed page, for resume (nullable) |
+| `progress_detail` | TEXT | JSON: per-page errors + running stats (nullable) |
+| `heartbeat_at` | DATETIME | Last heartbeat from background thread (updated every 30s, nullable) |
 | `started_at` | DATETIME | Start timestamp |
 | `completed_at` | DATETIME | Completion timestamp |
 | `error_message` | TEXT | Error details on failure |
 
-**Partial index:** `idx_book_running_job` on (book_id, status) WHERE status = 'running' -- ensures only one running job per book.
+**Partial unique index:** `idx_book_running_job` on (book_id) WHERE status IN ('pending', 'running') -- ensures at most one pending/running job per book.
 
 ### Book Guidelines
 
@@ -268,7 +277,8 @@ Custom imperative migration (not Alembic):
 1. `Base.metadata.create_all()` -- Creates new tables (idempotent for existing)
 2. `_apply_session_columns()` -- Adds `user_id` and `subject` columns to sessions if missing
 3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows
-4. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+4. `_apply_book_job_columns()` -- Adds progress tracking columns to book_jobs if they exist (`total_items`, `completed_items`, `failed_items`, `current_item`, `last_completed_item`, `progress_detail`, `heartbeat_at`); backfills legacy running jobs without heartbeat to `failed`; recreates partial unique index to cover both `pending` and `running` statuses
+5. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 
 ```bash
 # Run migrations

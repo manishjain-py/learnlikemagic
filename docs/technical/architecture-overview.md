@@ -11,7 +11,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Frontend (React + TypeScript + Vite)                           │
 │  S3 + CloudFront                                                │
 │  Routes: /learn/*, /session/:id, /login/*, /profile,            │
-│          /scorecard, /admin/*                                   │
+│          /scorecard, /history, /admin/*                         │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST API + WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐

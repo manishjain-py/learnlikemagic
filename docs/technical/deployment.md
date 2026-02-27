@@ -242,9 +242,11 @@ aws logs tail /aws/apprunner/llm-backend-prod/SERVICE_ID/service --follow
 
 ### Health Checks
 ```bash
-curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/
-curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db
+curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/       # Basic health check
+curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connectivity
 ```
+
+**Note:** App Runner's automatic health check is configured to hit `/health` (HTTP, every 10s, 5s timeout).
 
 ---
 
@@ -265,11 +267,11 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db
 
 | Component | Config |
 |-----------|--------|
-| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests |
+| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, health check at `/health` (10s interval, 5s timeout) |
 | Aurora | PostgreSQL 15.10, 0.5-2 ACU, 7-day backup retention |
 | ECR | Keep last 10 images, scan on push, AES256 encryption |
-| CloudFront | HTTPS redirect, gzip+brotli, SPA routing via CloudFront Function, OAI for S3 access |
-| Secrets Manager | 4 secrets (OpenAI, Gemini, Anthropic, DB password), 7-day recovery window |
+| CloudFront | HTTPS redirect, gzip+brotli, SPA routing via CloudFront Function, OAI for S3 access, PriceClass_100 (North America + Europe) |
+| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window |
 
 **Estimated cost (low traffic):** ~$10-30/month
 
@@ -291,4 +293,6 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db
 | `.github/workflows/manual-deploy.yml` | Manual deployment workflow |
 | `.github/workflows/daily-coverage.yml` | Daily test coverage report + email |
 | `llm-backend/scripts/send_coverage_report.py` | SMTP email sender for coverage reports |
+| `llm-frontend/Dockerfile` | Frontend container definition (node:18-alpine, dev server only -- not used in production CI/CD) |
+| `llm-backend/.coveragerc` | Coverage omissions for daily CI workflow |
 | `e2e/scenarios.json` | E2E test scenarios (bundled into backend Docker image during CI/CD) |

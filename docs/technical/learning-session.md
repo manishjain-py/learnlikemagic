@@ -143,8 +143,9 @@ Contains:
 
 **Exam** (`exam_prompts.py`):
 - Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard)
-- Evaluation system prompt: brief feedback only (1-2 sentences), no teaching
+- Evaluation system prompt: brief feedback only (1-2 sentences), no teaching. Includes personalization block when available.
 - Evaluation turn prompt: evaluates answer, sets answer_correct/mastery_signal
+- Note: evaluation feedback is stored on `ExamQuestion.feedback` but NOT shown to the student mid-exam. The orchestrator constructs its own neutral "Got it" response between questions.
 
 ### Dynamic Signals
 
@@ -198,7 +199,7 @@ Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mas
 
 Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong to session owner (validated via Cognito). Anonymous sessions allowed without token for backward compatibility.
 
-**Connection flow:** Auth check → accept connection → send initial `state_update` → if first turn (turn_count == 0), generate and send welcome message → enter main message loop.
+**Connection flow:** Auth check → accept connection → send initial `state_update` → if first turn (turn_count == 0), generate welcome via `generate_welcome_message()` (teach_me fallback — sessions created via REST already have the mode-specific welcome in history) → enter main message loop.
 
 **Client sends:** `{"type": "chat", "payload": {"message": "..."}}`
 
@@ -241,7 +242,7 @@ Flow:
 - Generate mode-specific welcome message (each mode has its own welcome generator)
 - For `exam`: append first question to welcome message
 - Persist session to DB (with state_version=1)
-- For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent)
+- For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent, only sessions with at least one concept discussed)
 - Return `{session_id, first_turn, mode}`
 
 Session ownership: user-linked sessions require the caller to be the session owner. Anonymous sessions (user_id=None) allow access for backward compatibility.
@@ -332,11 +333,12 @@ The orchestrator handles five question lifecycle cases:
 
 Master tutor sets `advance_to_step` in output. Applied in `_apply_state_updates()`. When advancing, all intermediate step concepts are added to `concepts_covered_set`.
 
-Session completion logic (`is_complete` property):
-- `clarify_doubts` mode: returns `clarify_complete`
-- `teach_me` / `exam` mode: `current_step > total_steps` → `True`
+Session completion logic:
+- `is_complete` property: `clarify_doubts` → returns `clarify_complete`; `teach_me` → `current_step > total_steps`; `exam` → also `current_step > total_steps` (but see note below)
+- For exam mode, REST responses use `exam_finished` instead of `is_complete` to determine completion, since exams track progress via `exam_current_question_idx` rather than `current_step`
+- The orchestrator's `_process_exam_turn()` checks `exam_finished` and `exam_current_question_idx` directly
 
-Extension: Advanced students can continue up to 10 turns beyond `total_steps * 2`.
+Extension: Advanced students in teach_me mode can continue up to 10 turns beyond `total_steps * 2`.
 
 ### Exam State
 
@@ -454,9 +456,9 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 
 | File | Purpose |
 |------|---------|
-| `schema_utils.py` | get_strict_schema(), validate_agent_output(), parse_json_safely() |
+| `schema_utils.py` | get_strict_schema(), validate_agent_output(), parse_json_safely(), extract_json_from_text() |
 | `prompt_utils.py` | format_conversation_history(max_turns default=5, overridden to 10 by master tutor) |
-| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step(), get_mastery_level() |
+| `state_utils.py` | update_mastery_estimate(), calculate_overall_mastery(), should_advance_step(), get_mastery_level(), merge_misconceptions() |
 
 ### Services & API
 
@@ -469,7 +471,7 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 | `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint |
 | `tutor/api/transcription.py` | Audio transcription endpoint (OpenAI Whisper) |
 | `tutor/api/curriculum.py` | Curriculum discovery endpoints |
-| `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError) |
+| `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError, ConfigurationError) |
 | `shared/services/llm_service.py` | LLM wrapper (OpenAI Responses API, Chat Completions, Gemini, Anthropic) |
 | `shared/services/anthropic_adapter.py` | Claude API adapter (tool_use for structured output, thinking budgets) |
 | `shared/services/llm_config_service.py` | DB-backed LLM config: component_key → provider + model_id |

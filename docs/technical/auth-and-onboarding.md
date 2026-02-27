@@ -183,6 +183,8 @@ Global auth state provider. Exposes:
 | `ProtectedRoute` | Shows loading spinner during auth check, redirects to `/login` if not authenticated (preserves original location in state) |
 | `OnboardingGuard` | Redirects to `/onboarding` if `onboarding_complete === false` |
 
+**Post-login navigation**: All auth flows (`loginWithEmail`, `verifyOTP`, `confirmSignUp`+auto-login, `completeOAuthLogin`) navigate to `/` after success. The root route redirects to `/learn`, where `OnboardingGuard` sends new users to `/onboarding` if they haven't completed it. After onboarding, `handleFinish` also navigates to `/`, completing the cycle.
+
 **Guard usage per route:**
 
 | Route | `ProtectedRoute` | `OnboardingGuard` | Notes |
@@ -270,7 +272,7 @@ Used by `LearnLayout` to display board/grade/country in the header, and by learn
 | `llm-backend/auth/services/profile_service.py` | Profile updates, auto-completion of onboarding |
 | `llm-backend/auth/repositories/user_repository.py` | User CRUD operations |
 | `llm-backend/auth/middleware/auth_middleware.py` | JWT verification, JWKS caching, `get_current_user`/`get_optional_user` |
-| `llm-backend/auth/models/schemas.py` | Pydantic request/response models (UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest) |
+| `llm-backend/auth/models/schemas.py` | Pydantic request/response models (UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest, ChangePasswordResponse) |
 | `llm-backend/shared/models/entities.py` | User SQLAlchemy model |
 
 ---
