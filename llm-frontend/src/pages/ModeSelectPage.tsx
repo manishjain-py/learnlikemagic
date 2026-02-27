@@ -5,6 +5,7 @@ import {
   createSession,
   getCurriculum,
   SubtopicInfo,
+  SessionConflictError,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 
@@ -78,14 +79,9 @@ export default function ModeSelectPage() {
     } catch (error: any) {
       console.error('Failed to start session:', error);
       // Handle 409 (duplicate active exam) — redirect to existing session
-      if (error?.message?.includes('incomplete exam')) {
-        try {
-          const detail = JSON.parse(error.message);
-          if (detail?.existing_session_id) {
-            navigate(buildSessionUrl(mode, detail.existing_session_id));
-            return;
-          }
-        } catch { /* not JSON, fall through */ }
+      if (error instanceof SessionConflictError) {
+        navigate(buildSessionUrl(mode, error.existing_session_id));
+        return;
       }
       setSessionError(error?.message || 'Failed to start session. Please try again.');
       setCreatingMode(null);

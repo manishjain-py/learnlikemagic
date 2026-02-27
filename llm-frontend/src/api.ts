@@ -169,6 +169,15 @@ export async function getCurriculum(params: {
   return response.json();
 }
 
+export class SessionConflictError extends Error {
+  existing_session_id: string;
+  constructor(message: string, existingSessionId: string) {
+    super(message);
+    this.name = 'SessionConflictError';
+    this.existing_session_id = existingSessionId;
+  }
+}
+
 export async function createSession(
   request: CreateSessionRequest
 ): Promise<CreateSessionResponse> {
@@ -181,8 +190,18 @@ export async function createSession(
     let message = response.statusText;
     try {
       const body = await response.json();
+      // 409 with existing_session_id → throw structured error for resume redirect
+      if (response.status === 409 && body?.detail?.existing_session_id) {
+        throw new SessionConflictError(
+          body.detail.message || 'Session conflict',
+          body.detail.existing_session_id,
+        );
+      }
       message = body?.detail?.message || body?.detail || message;
-    } catch { /* use statusText */ }
+    } catch (e) {
+      if (e instanceof SessionConflictError) throw e;
+      /* use statusText */
+    }
     throw new Error(message);
   }
 

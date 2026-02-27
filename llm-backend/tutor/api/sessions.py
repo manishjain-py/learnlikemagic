@@ -199,6 +199,9 @@ def get_exam_review(
     if state.mode != "exam":
         raise HTTPException(status_code=400, detail="Not an exam session")
 
+    if not state.exam_finished:
+        raise HTTPException(status_code=403, detail="Exam is not yet finished")
+
     questions = [
         ExamReviewQuestion(
             question_idx=q.question_idx,
@@ -251,6 +254,8 @@ def create_session(
     try:
         service = SessionService(db)
         return service.create_new_session(request, user_id=current_user.id if current_user else None)
+    except HTTPException:
+        raise
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
     except Exception as e:
