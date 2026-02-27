@@ -223,9 +223,9 @@ class TestDuplicateExamGuard:
 
         svc.guideline_repo.get_guideline_by_id.return_value = MagicMock(subject="Math")
 
-        # Simulate an incomplete exam already exists
+        # Simulate an incomplete exam with actual progress
         svc.session_repo.list_by_guideline.return_value = [
-            {"session_id": "existing-exam-99", "is_complete": False, "mode": "exam"},
+            {"session_id": "existing-exam-99", "is_complete": False, "mode": "exam", "exam_answered": 3},
         ]
 
         request = CreateSessionRequest(
@@ -244,6 +244,55 @@ class TestDuplicateExamGuard:
 
         assert exc_info.value.status_code == 409
         assert exc_info.value.detail["existing_session_id"] == "existing-exam-99"
+
+    @patch("tutor.services.session_service.get_settings")
+    @patch("tutor.services.session_service.convert_guideline_to_topic")
+    def test_service_guard_skips_zero_progress_orphan(self, mock_convert, mock_settings):
+        """Orphaned exam with 0 answers should NOT block new exam creation."""
+        mock_settings.return_value = MagicMock(
+            openai_api_key="fake", gemini_api_key=None, anthropic_api_key=None,
+        )
+        mock_convert.return_value = _make_topic()
+
+        from tutor.services.session_service import SessionService
+        from shared.models.schemas import CreateSessionRequest
+        from shared.models.domain import Student, Goal
+
+        svc = SessionService.__new__(SessionService)
+        svc.db = MagicMock()
+        svc.session_repo = MagicMock()
+        svc.event_repo = MagicMock()
+        svc.guideline_repo = MagicMock()
+        svc.llm_service = MagicMock()
+        svc.orchestrator = MagicMock()
+
+        svc.guideline_repo.get_guideline_by_id.return_value = MagicMock(subject="Math")
+        svc.db.query.return_value.filter.return_value.first.return_value = None
+
+        # Orphaned incomplete exam with zero progress — should be skipped
+        svc.session_repo.list_by_guideline.return_value = [
+            {"session_id": "orphan-exam", "is_complete": False, "mode": "exam", "exam_answered": 0},
+        ]
+
+        request = CreateSessionRequest(
+            student=Student(id="s1", grade=3),
+            goal=Goal(
+                topic="Fractions",
+                syllabus="CBSE",
+                learning_objectives=["Test"],
+                guideline_id="g1",
+            ),
+            mode="exam",
+        )
+
+        # Should NOT raise 409 — proceeds to create new exam
+        with patch("asyncio.run", return_value="Exam time!"):
+            with patch("tutor.services.exam_service.ExamService") as MockExamSvc:
+                MockExamSvc.return_value.generate_questions.return_value = []
+                response = svc.create_new_session(request, user_id="test-user-1")
+
+        assert response.session_id is not None
+        assert response.mode == "exam"
 
     @patch("tutor.services.session_service.get_settings")
     @patch("tutor.services.session_service.convert_guideline_to_topic")

@@ -28,9 +28,9 @@ function ModeSelection({ subtopic, onSelectMode, onResume, onBack, onViewExamRev
       .finally(() => setLoading(false));
   }, [subtopic.guideline_id]);
 
-  // Find incomplete sessions for resume
-  const incompleteExam = sessions.find((s) => s.mode === 'exam' && !s.is_complete);
-  const incompleteTeachMe = sessions.find((s) => s.mode === 'teach_me' && !s.is_complete);
+  // Find incomplete sessions for resume — only show if there's actual progress
+  const incompleteExam = sessions.find((s) => s.mode === 'exam' && !s.is_complete && (s.exam_answered ?? 0) > 0);
+  const incompleteTeachMe = sessions.find((s) => s.mode === 'teach_me' && !s.is_complete && (s.coverage ?? 0) > 0);
 
   // Completed exams for past exams section
   const completedExams = sessions.filter((s) => s.mode === 'exam' && s.is_complete);
