@@ -230,6 +230,7 @@ aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/s
 | Run backend | `cd llm-backend && make run` |
 | Run frontend | `cd llm-frontend && npm run dev` |
 | Run backend tests | `pytest` |
+| Run frontend tests | `cd llm-frontend && npm run test` |
 | Run E2E tests | `cd e2e && npm test` |
 | Run in Docker locally | `make build-local && make run-docker` |
 | Check architecture | `make check-arch` |
