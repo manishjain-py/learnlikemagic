@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/admin", tags=["llm-config"])
 
 # Available models per provider (for frontend dropdowns)
 AVAILABLE_MODELS = {
-    "openai": ["gpt-5.2", "gpt-5.1", "gpt-4o", "gpt-4o-mini"],
+    "openai": ["gpt-5.3-codex", "gpt-5.2", "gpt-5.1", "gpt-4o", "gpt-4o-mini"],
     "anthropic": ["claude-opus-4-6", "claude-haiku-4-5-20251001"],
     "google": ["gemini-3-pro-preview"],
 }
