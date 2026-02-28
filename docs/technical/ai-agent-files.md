@@ -1,6 +1,6 @@
 # AI Agent Context Files
 
-How the ~31 files that give AI agents project context are organized, what each one does, and when they need updating.
+How the ~31 files that give AI agents project context are organized, what each one does, and when they need updating. (Actual count may vary as files are added/removed.)
 
 ---
 
@@ -39,6 +39,7 @@ Agents follow a **boot order** defined in `AGENTS.md` and `.agent/00-start-here.
 | `.claude.md` | Detailed Claude Code instructions: architecture, deployment, code quality, testing checklist | Manual — update when stack or workflow changes significantly |
 | `AGENTS.md` | Workspace-wide rules: boot order, memory management, safety, external actions, group chat | Manual — update when adding new agent workflows or rules |
 | `GEMINI.md` | Gemini CLI mandates: boot order, research rules, execution validation, git ops | Manual — mirrors AGENTS.md for Gemini; update in parallel |
+| `TOOLS.md` | Local environment-specific notes: device names, SSH hosts, TTS preferences | Static — update when user's local environment changes |
 
 ### Codebase Reference Pack (`.agent/`)
 
@@ -84,7 +85,6 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | File | Purpose | Update Trigger |
 |------|---------|----------------|
 | `.claude/settings.local.json` | Claude Code permission allowlist: 70+ bash commands, read paths, web access | Manual — update when new tools or paths are needed |
-| `infra/.claude/settings.local.json` | Minimal permission allowlist for infra subdir (read + python) | Manual — update when infra tooling changes |
 
 ---
 
@@ -92,7 +92,7 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 
 | Classification | Meaning | Files | How Updated |
 |----------------|---------|-------|-------------|
-| **Static** | Rarely changes; only when philosophy/identity shifts | SOUL.md, IDENTITY.md, USER.md | Human edits directly |
+| **Static** | Rarely changes; only when philosophy/identity shifts | SOUL.md, IDENTITY.md, USER.md, TOOLS.md | Human edits directly |
 | **Manual** | Changes when processes or conventions change | CLAUDE.md, .claude.md, AGENTS.md, GEMINI.md, HEARTBEAT.md, all commands/*.md, settings files | Human edits when making process changes |
 | **Code-coupled** | Contains concrete code references (paths, counts, endpoints) that drift | `.agent/00–07`, MEMORY.md | Automated via `/update-agent-files` |
 | **Automatic** | Created/appended by agent sessions | `memory/YYYY-MM-DD.md` | Created each session; no manual maintenance needed |

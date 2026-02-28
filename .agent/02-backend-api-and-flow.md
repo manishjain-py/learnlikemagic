@@ -1,7 +1,7 @@
 # Backend API And Flow
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-02-27
+Code baseline: `claude/update-ai-agent-files-ulEgH@212063c`
 
 ## Boot Sequence
 1. `main.py` validates required settings (`OPENAI_API_KEY`, `DATABASE_URL`)
@@ -14,6 +14,7 @@ Code baseline: `main@973d1ea`
 
 ### Health + model config snapshot
 - `GET /`
+- `GET /health`
 - `GET /health/db`
 - `GET /config/models`
 
@@ -67,6 +68,10 @@ Code baseline: `main@973d1ea`
 - `GET /admin/books/{book_id}/guidelines/{topic_key}/{subtopic_key}`
 - `PUT /admin/books/{book_id}/guidelines/approve`
 - `DELETE /admin/books/{book_id}/guidelines`
+- `GET /admin/books/{book_id}/jobs/latest`
+- `GET /admin/books/{book_id}/jobs/{job_id}`
+- `POST /admin/books/{book_id}/pages/bulk`
+- `POST /admin/books/{book_id}/pages/{page_num}/retry-ocr`
 
 ### Guideline review + study plans (`/admin/guidelines`)
 - `GET /admin/guidelines/books`

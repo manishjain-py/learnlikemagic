@@ -1,16 +1,18 @@
 # Known Drift And Risks
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-02-27
+Code baseline: `claude/update-ai-agent-files-ulEgH@212063c`
 
 ## Verified Drift
 1. `llm-frontend/README.md` is stale.
 - Describes older architecture and scripts (`npm run lint`, `npm run type-check`) not present in current `llm-frontend/package.json`.
-- Mentions frontend on `localhost:3000` while default Vite dev is `5173` (unless overridden).
+- Architecture tree only shows original files (`App.tsx`, `api.ts`, `main.tsx`); actual src has pages/, features/, contexts/, components/.
+- "Automated Testing (Future)" section is outdated: vitest and @testing-library are installed and `npm run test` works.
+- Port `localhost:3000` is correct (vite.config.ts overrides default 5173).
 
-2. Scorecard docs and API docs are inconsistent with runtime routes.
-- Current backend route in `tutor/api/sessions.py` is `GET /sessions/report-card`.
-- Multiple technical docs still reference `GET /sessions/scorecard` as active endpoint.
+2. ~~Scorecard docs and API docs are inconsistent with runtime routes.~~ **RESOLVED.**
+- Technical docs (`scorecard.md`, `architecture-overview.md`) now consistently use `GET /sessions/report-card`.
+- Only archive/historical docs (`docs/archive/`) still reference old `GET /sessions/scorecard`, which is expected.
 
 3. Legacy model/repository overlap remains.
 - `shared/models/domain.py` has legacy `TutorState` model.
@@ -33,6 +35,6 @@ Code baseline: `main@973d1ea`
 
 ## Cleanup Backlog
 1. Refresh `llm-frontend/README.md` to current architecture/scripts/routes.
-2. Reconcile scorecard/report-card technical docs with actual route set.
+2. ~~Reconcile scorecard/report-card technical docs with actual route set.~~ **Done.**
 3. Decide whether to retire or modernize legacy `TutorState` paths in repository layer.
 4. Finalize teaching guideline schema migration state in code + docs.

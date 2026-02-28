@@ -1,7 +1,7 @@
 # File Indexes
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-02-27
+Code baseline: `claude/update-ai-agent-files-ulEgH@212063c`
 
 ## Backend High-Signal Files
 - App bootstrap: `llm-backend/main.py`
@@ -29,6 +29,7 @@ Code baseline: `main@973d1ea`
 - LLM abstraction: `llm-backend/shared/services/llm_service.py`
 - LLM config service: `llm-backend/shared/services/llm_config_service.py`
 - Health API: `llm-backend/shared/api/health.py`
+- LLM config routes: `llm-backend/shared/api/llm_config_routes.py`
 - Docs API: `llm-backend/api/docs.py`
 - Test-scenarios API: `llm-backend/api/test_scenarios.py`
 
@@ -46,7 +47,6 @@ Code baseline: `main@973d1ea`
 - Playwright config: `e2e/playwright.config.ts`
 - Dynamic test runner: `e2e/tests/scenarios.spec.ts`
 - Scenario definitions: `e2e/scenarios.json`
-- Report builder: `reports/e2e-runner/build_report.py`
 
 ## Infra + CI High-Signal Files
 - Terraform root: `infra/terraform/main.tf`

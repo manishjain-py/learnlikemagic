@@ -1,23 +1,23 @@
 # Repo Map
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-02-27
+Code baseline: `claude/update-ai-agent-files-ulEgH@212063c`
 
 ## Product Summary
 LearnLikeMagic is an AI tutoring platform with:
 - FastAPI backend (`llm-backend`)
 - React + TypeScript frontend (`llm-frontend`)
-- Playwright E2E stack (`e2e` + `reports/e2e-runner`)
+- Playwright E2E stack (`e2e`)
 - Terraform infra (`infra/terraform`)
 - Functional + technical documentation (`docs`)
 
 ## Source Footprint
-- Backend Python files: `203`
-- Backend Python lines: `44,344`
-- Frontend TS/TSX files: `51`
-- Frontend TS/TSX lines: `11,194`
-- Docs markdown files: `28`
-- Backend unit tests: `48`
+- Backend Python files: `202`
+- Backend Python lines: `46,974`
+- Frontend TS/TSX files: `54`
+- Frontend TS/TSX lines: `12,218`
+- Docs markdown files: `32`
+- Backend unit tests: `50`
 - Backend integration tests: `8`
 
 ## Top-Level Ownership
@@ -26,7 +26,6 @@ LearnLikeMagic is an AI tutoring platform with:
 - `e2e/`: scenario definitions + dynamic Playwright runner
 - `infra/terraform/`: AWS infrastructure modules
 - `docs/`: project documentation
-- `reports/`: generated test/QA artifacts
 - `scripts/`: deployment/support scripts
 
 ## Runtime Entrypoints
@@ -49,7 +48,7 @@ LearnLikeMagic is an AI tutoring platform with:
 ## Frontend Domain Map
 - `src/pages/`: auth, onboarding, profile, history, scorecard, learning flow
 - `src/features/admin/`: books, guidelines, evaluation, docs, model config, test scenarios
-- `src/features/devtools/`: session state + agent logs views
+- `src/features/devtools/`: agent logs, guidelines + study plan inspector
 - `src/contexts/AuthContext.tsx`: Cognito + backend profile sync
 
 ## Infra Module Map
