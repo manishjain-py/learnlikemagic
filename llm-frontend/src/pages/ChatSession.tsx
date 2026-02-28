@@ -670,33 +670,94 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {sessionMode !== 'exam' && virtualTeacherOn ? (
+          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? (
             <div className="virtual-teacher-view">
-              <img
-                src={isSpeaking ? '/teacher-avatar.gif' : '/teacher-avatar-still.png'}
-                alt="Virtual Teacher"
-                className={`teacher-gif${isSpeaking ? ' speaking' : ''}`}
-              />
-              {loading ? (
-                <div className="typing-indicator" style={{ marginTop: '16px' }}>
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              ) : (
-                <>
-                  {messages.length > 0 && (
-                    <div className="teacher-caption">
-                      <ReactMarkdown>
-                        {messages.filter((m) => m.role === 'teacher').slice(-1)[0]?.content || ''}
-                      </ReactMarkdown>
+              {/* Close button */}
+              <button
+                className="vt-close-btn"
+                onClick={() => {
+                  setVirtualTeacherOn(false);
+                  stopAudio();
+                }}
+                aria-label="Exit virtual teacher"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              {/* Avatar area */}
+              <div className="vt-avatar-area">
+                <img
+                  src={isSpeaking ? '/teacher-avatar.gif' : '/teacher-avatar-still.gif'}
+                  alt="Virtual Teacher"
+                  className={`teacher-gif${isSpeaking ? ' speaking' : ''}`}
+                />
+                {/* Subtitle overlay */}
+                {messages.length > 0 && (() => {
+                  const lastTeacherMsg = messages.filter((m) => m.role === 'teacher').slice(-1)[0]?.content || '';
+                  return lastTeacherMsg ? (
+                    <div className="teacher-subtitle">
+                      <ReactMarkdown>{lastTeacherMsg}</ReactMarkdown>
                     </div>
-                  )}
-                  {isSpeaking && (
-                    <div className="teacher-speaking-indicator">Speaking...</div>
-                  )}
-                </>
-              )}
+                  ) : null;
+                })()}
+              </div>
+
+              {/* Typing indicator or input area */}
+              {loading ? (
+                <div className="vt-typing-indicator">
+                  <div className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              ) : !isSpeaking ? (
+                <div className="vt-input-area">
+                  <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                      disabled={loading || isTranscribing}
+                      className="input-field"
+                      data-testid="chat-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleRecording}
+                      disabled={loading || isTranscribing}
+                      className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                      data-testid="mic-button"
+                      title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                    >
+                      {isTranscribing ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 6v6l4 2" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" y1="19" x2="12" y2="23" />
+                          <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                    <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label="Send">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="19" x2="12" y2="5" />
+                        <polyline points="5 12 12 5 19 12" />
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              ) : null}
             </div>
           ) : sessionMode !== 'exam' ? (
           <div className="messages">
@@ -757,7 +818,7 @@ export default function ChatSession() {
           </div>
           ) : null}
 
-          {!isComplete ? (
+          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
             <>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
