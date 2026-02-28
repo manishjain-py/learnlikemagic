@@ -137,6 +137,11 @@ class TeachingGuideline(Base):
     topic_summary = Column(Text, nullable=True)      # Topic-level summary (20-40 words)
     subtopic_summary = Column(Text, nullable=True)   # Subtopic-level summary (15-30 words)
 
+    # Pedagogical sequencing fields
+    topic_sequence = Column(Integer, nullable=True)       # Teaching order of topic within book (1-based)
+    subtopic_sequence = Column(Integer, nullable=True)    # Teaching order of subtopic within topic (1-based)
+    topic_storyline = Column(Text, nullable=True)         # Narrative of topic's teaching progression
+
     # V1 structured fields (REMOVE in V2 migration)
     objectives_json = Column(Text, nullable=True)  # JSON array [V1 only]
     examples_json = Column(Text, nullable=True)  # JSON array [V1 only]

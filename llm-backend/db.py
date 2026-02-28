@@ -65,6 +65,7 @@ def migrate():
         _apply_session_columns(db_manager)
         _apply_learning_modes_columns(db_manager)
         _apply_book_job_columns(db_manager)
+        _apply_sequencing_columns(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -191,6 +192,32 @@ def _apply_book_job_columns(db_manager):
 
         conn.commit()
         print("  ✓ book_jobs progress columns applied")
+
+
+def _apply_sequencing_columns(db_manager):
+    """Add pedagogical sequencing columns to teaching_guidelines if they don't exist."""
+    inspector = inspect(db_manager.engine)
+
+    if "teaching_guidelines" not in inspector.get_table_names():
+        return  # Table doesn't exist yet, create_all will handle it
+
+    existing_columns = {col["name"] for col in inspector.get_columns("teaching_guidelines")}
+
+    new_columns = {
+        "topic_sequence": "INTEGER",
+        "subtopic_sequence": "INTEGER",
+        "topic_storyline": "TEXT",
+    }
+
+    with db_manager.engine.connect() as conn:
+        for col_name, col_type in new_columns.items():
+            if col_name not in existing_columns:
+                print(f"  Adding {col_name} column to teaching_guidelines...")
+                conn.execute(text(f"ALTER TABLE teaching_guidelines ADD COLUMN {col_name} {col_type}"))
+                print(f"  ✓ {col_name} column added")
+
+        conn.commit()
+        print("  ✓ sequencing columns applied")
 
 
 def _seed_llm_config(db_manager):

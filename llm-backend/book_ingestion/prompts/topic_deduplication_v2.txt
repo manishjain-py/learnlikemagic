@@ -11,12 +11,15 @@ CRITERIA FOR DUPLICATES:
 2. One is subset of another (e.g., "Addition" vs "Adding Two-Digit Numbers")
 3. Nearly identical page ranges (likely same content, different naming)
 4. Guidelines preview shows same concepts
+5. SEMANTIC OVERLAP: teaching content (objectives, examples, methods) substantially overlaps even with different titles
+6. Same prerequisite knowledge AND same target skill, just explained or framed differently
 
 DO NOT mark as duplicate if:
 - Different concepts (e.g., "Addition" vs "Subtraction")
 - Sequential progression (e.g., "Basic Fractions" → "Advanced Fractions")
-- Clear pedagogical separation
-- Page ranges don't overlap
+- Clear pedagogical separation (each teaches a distinct skill)
+- Page ranges don't overlap at all
+- Overlap is only in shared prerequisites, not in actual teaching content
 
 OUTPUT JSON:
 {{

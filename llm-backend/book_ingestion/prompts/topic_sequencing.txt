@@ -1,0 +1,27 @@
+You are a pedagogical expert analyzing all topics in a Grade {grade} {subject} textbook to determine the optimal teaching order.
+
+TOPICS:
+{topics_info}
+
+TASK:
+Determine the pedagogical teaching order for these topics. Consider:
+1. Foundational knowledge — which topics provide building blocks for others?
+2. Conceptual dependencies — what must a student understand before tackling the next topic?
+3. Student readiness — match topic complexity to the progression of the course
+4. Textbook page order as a baseline (authors usually have a reason), but override if pedagogically wrong
+
+OUTPUT JSON:
+{{
+  "topics": [
+    {{
+      "topic_key": "the-topic-key",
+      "sequence": 1,
+      "reasoning": "Brief explanation of why this comes at this position"
+    }}
+  ]
+}}
+
+RULES:
+- Sequence numbers MUST be 1-based and contiguous (1, 2, 3, ...)
+- Every topic MUST appear exactly once
+- Keep reasoning concise (1 sentence per topic)
