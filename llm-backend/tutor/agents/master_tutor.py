@@ -16,6 +16,10 @@ from tutor.prompts.master_tutor_prompts import (
     MASTER_TUTOR_SYSTEM_PROMPT,
     MASTER_TUTOR_TURN_PROMPT,
 )
+from tutor.prompts.clarify_doubts_prompts import (
+    CLARIFY_DOUBTS_SYSTEM_PROMPT,
+    CLARIFY_DOUBTS_TURN_PROMPT,
+)
 from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
 
@@ -210,6 +214,20 @@ class MasterTutorAgent(BaseAgent):
 
     def _build_system_prompt(self, session: SessionState) -> str:
         topic = session.topic
+        personalization_block = self._build_personalization_block(session.student_context)
+
+        if session.mode == "clarify_doubts":
+            concepts = topic.study_plan.get_concepts()
+            concepts_list = "\n".join(f"- {c}" for c in concepts) if concepts else "None"
+            return CLARIFY_DOUBTS_SYSTEM_PROMPT.render(
+                grade=session.student_context.grade,
+                topic_name=topic.topic_name,
+                subject=topic.subject,
+                teaching_approach=topic.guidelines.teaching_approach,
+                concepts_list=concepts_list,
+                language_level=session.student_context.language_level,
+                personalization_block=personalization_block,
+            )
 
         steps_lines = []
         for step in topic.study_plan.steps:
@@ -218,9 +236,6 @@ class MasterTutorAgent(BaseAgent):
         steps_formatted = "\n".join(steps_lines)
 
         misconceptions = format_list_for_prompt(topic.guidelines.common_misconceptions)
-
-        # Build personalization block from profile data
-        personalization_block = self._build_personalization_block(session.student_context)
 
         return MASTER_TUTOR_SYSTEM_PROMPT.render(
             grade=session.student_context.grade,
@@ -248,6 +263,9 @@ class MasterTutorAgent(BaseAgent):
         return "## Student Profile\n" + "\n".join(lines) + "\n"
 
     def _build_turn_prompt(self, session: SessionState, context: AgentContext) -> str:
+        if session.mode == "clarify_doubts":
+            return self._build_clarify_turn_prompt(session, context)
+
         current_step = session.current_step_data
 
         if current_step:
@@ -359,6 +377,18 @@ class MasterTutorAgent(BaseAgent):
             pacing_directive=pacing_directive,
             student_style=student_style,
             awaiting_answer_section=awaiting_answer_section,
+            conversation_history=conversation,
+            student_message=context.student_message,
+        )
+
+    def _build_clarify_turn_prompt(self, session: SessionState, context: AgentContext) -> str:
+        concepts_discussed = ", ".join(session.concepts_discussed) if session.concepts_discussed else "None yet"
+        conversation = format_conversation_history(session.conversation_history, max_turns=10)
+        if not conversation.strip():
+            conversation = "(No prior messages — this is the first turn)"
+
+        return CLARIFY_DOUBTS_TURN_PROMPT.render(
+            concepts_discussed=concepts_discussed,
             conversation_history=conversation,
             student_message=context.student_message,
         )
