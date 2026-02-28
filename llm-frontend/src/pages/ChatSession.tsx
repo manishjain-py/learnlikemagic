@@ -7,6 +7,7 @@ import {
   getModelConfig,
   getSessionReplay,
   transcribeAudio,
+  synthesizeSpeech,
   Turn,
   SummaryResponse,
 } from '../api';
@@ -71,12 +72,15 @@ export default function ChatSession() {
   const [replayLoading, setReplayLoading] = useState(false);
   const [examHydrationError, setExamHydrationError] = useState(false);
   const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
+  const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // URL params from nested learn routes (preferred) — already decoded by React Router
   const subject = params.subject || '';
@@ -169,6 +173,11 @@ export default function ChatSession() {
 
       if (locState.mode === 'exam' && locState.firstTurn.exam_questions) {
         hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
+      }
+
+      // Auto-play first turn in virtual teacher mode
+      if (virtualTeacherOn && locState.firstTurn.message) {
+        playTeacherAudio(locState.firstTurn.message);
       }
     } else if (locState?.conversationHistory) {
       // Resumed session
@@ -302,6 +311,11 @@ export default function ChatSession() {
       ]);
       setStepIdx(response.next_turn.step_idx);
       setMastery(response.next_turn.mastery_score);
+
+      // Auto-play TTS in virtual teacher mode
+      if (virtualTeacherOn && response.next_turn.message) {
+        playTeacherAudio(response.next_turn.message);
+      }
 
       // Update concepts discussed for clarify_doubts mode
       if (response.next_turn.concepts_discussed) {
@@ -475,6 +489,37 @@ export default function ChatSession() {
     }
   };
 
+  // Create a persistent Audio element once to satisfy browser autoplay policy.
+  // Browsers allow .play() on an element that the user has already interacted with.
+  const getOrCreateAudio = (): HTMLAudioElement => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+    return audioRef.current;
+  };
+
+  const playTeacherAudio = async (text: string) => {
+    try {
+      setIsSpeaking(true);
+      const audio = getOrCreateAudio();
+      // Stop any currently playing audio
+      audio.pause();
+      if (audio.src && audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src);
+      }
+
+      const audioBlob = await synthesizeSpeech(text);
+      const url = URL.createObjectURL(audioBlob);
+      audio.src = url;
+      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
+      audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
+      await audio.play();
+    } catch (err) {
+      console.error('TTS playback failed:', err);
+      setIsSpeaking(false);
+    }
+  };
+
   if (replayLoading) {
     return (
       <div className="app">
@@ -510,6 +555,37 @@ export default function ChatSession() {
               </span>
             )}
           </p>
+          {sessionId && sessionMode !== 'exam' && (
+            <button
+              onClick={() => {
+                const next = !virtualTeacherOn;
+                setVirtualTeacherOn(next);
+                if (next) {
+                  // Warm up audio element during user gesture so browser allows future .play() calls
+                  const audio = getOrCreateAudio();
+                  audio.play().catch(() => {});
+                  audio.pause();
+                  // Auto-play the latest teacher message when toggling on
+                  const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
+                  if (lastTeacher?.content) {
+                    playTeacherAudio(lastTeacher.content);
+                  }
+                } else if (audioRef.current) {
+                  audioRef.current.pause();
+                  audioRef.current = null;
+                  setIsSpeaking(false);
+                }
+              }}
+              className="vt-toggle"
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '90px',
+              }}
+            >
+              {virtualTeacherOn ? 'Text Mode' : 'Virtual Teacher'}
+            </button>
+          )}
           {sessionId && (
             <button
               onClick={() => setDevToolsOpen(true)}
@@ -576,7 +652,35 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {sessionMode !== 'exam' && (
+          {sessionMode !== 'exam' && virtualTeacherOn ? (
+            <div className="virtual-teacher-view">
+              <img
+                src="/teacher-avatar.gif"
+                alt="Virtual Teacher"
+                className={`teacher-gif${isSpeaking ? ' speaking' : ''}`}
+              />
+              {loading ? (
+                <div className="typing-indicator" style={{ marginTop: '16px' }}>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              ) : (
+                <>
+                  {messages.length > 0 && (
+                    <div className="teacher-caption">
+                      <ReactMarkdown>
+                        {messages.filter((m) => m.role === 'teacher').slice(-1)[0]?.content || ''}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                  {isSpeaking && (
+                    <div className="teacher-speaking-indicator">Speaking...</div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : sessionMode !== 'exam' ? (
           <div className="messages">
             {messages.map((msg, idx) => (
               <div key={idx} className={`message ${msg.role}`} {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message' } : {})}>
@@ -613,7 +717,7 @@ export default function ChatSession() {
             )}
             <div ref={messagesEndRef} />
           </div>
-          )}
+          ) : null}
 
           {!isComplete ? (
             <>
