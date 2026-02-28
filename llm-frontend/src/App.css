@@ -275,28 +275,38 @@ body {
 
 .input-form {
   display: flex;
-  gap: 0.5rem;
-  padding: 1rem;
-  border-top: 1px solid #e0e0e0;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.375rem 0.375rem 1rem;
+  margin: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 24px;
   background: white;
+  transition: border-color 0.2s;
+}
+
+.input-form:focus-within {
+  border-color: #667eea;
+}
+
+.input-form.recording {
+  border-color: #e53e3e;
+  box-shadow: 0 0 0 2px rgba(229, 62, 62, 0.15);
 }
 
 .input-field {
   flex: 1;
-  padding: 0.875rem 1rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  min-width: 0;
+  padding: 0.5rem 0;
+  border: none;
+  border-radius: 0;
   font-size: 1rem;
   outline: none;
-  transition: border-color 0.2s;
-}
-
-.input-field:focus {
-  border-color: #667eea;
+  background: transparent;
 }
 
 .input-field:disabled {
-  background: #f5f5f5;
+  background: transparent;
   cursor: not-allowed;
 }
 
@@ -304,12 +314,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   background: #f0f0f0;
   color: #666;
-  border: 1px solid #ddd;
+  border: none;
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s;
@@ -328,20 +338,13 @@ body {
 .mic-button.recording {
   background: #e53e3e;
   color: white;
-  border-color: #e53e3e;
   animation: pulse-recording 1.5s ease-in-out infinite;
 }
 
 .mic-button.transcribing {
   background: #667eea;
   color: white;
-  border-color: #667eea;
   animation: spin-icon 1.2s linear infinite;
-}
-
-.input-field.recording {
-  border-color: #e53e3e;
-  box-shadow: 0 0 0 2px rgba(229, 62, 62, 0.15);
 }
 
 @keyframes pulse-recording {
@@ -359,13 +362,17 @@ body {
 }
 
 .send-button {
-  padding: 0.875rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
+  border-radius: 50%;
   cursor: pointer;
   transition: opacity 0.2s;
 }
@@ -375,6 +382,29 @@ body {
 }
 
 .send-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Full-width variant for exam "Submit All Answers" */
+.send-button-wide {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.send-button-wide:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.send-button-wide:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
