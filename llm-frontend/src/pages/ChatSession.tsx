@@ -655,7 +655,7 @@ export default function ChatSession() {
           {sessionMode !== 'exam' && virtualTeacherOn ? (
             <div className="virtual-teacher-view">
               <img
-                src="/teacher-avatar.gif"
+                src={isSpeaking ? '/teacher-avatar.gif' : '/teacher-avatar-still.png'}
                 alt="Virtual Teacher"
                 className={`teacher-gif${isSpeaking ? ' speaking' : ''}`}
               />
