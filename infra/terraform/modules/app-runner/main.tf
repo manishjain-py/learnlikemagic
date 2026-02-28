@@ -134,8 +134,9 @@ resource "aws_apprunner_service" "backend" {
 
         runtime_environment_secrets = merge(
           {
-            OPENAI_API_KEY = var.openai_secret_arn
-            GEMINI_API_KEY = var.gemini_secret_arn
+            OPENAI_API_KEY         = var.openai_secret_arn
+            GEMINI_API_KEY         = var.gemini_secret_arn
+            GOOGLE_CLOUD_TTS_API_KEY = var.gemini_secret_arn
           },
           var.anthropic_secret_arn != "" ? {
             ANTHROPIC_API_KEY = var.anthropic_secret_arn
