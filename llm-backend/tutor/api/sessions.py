@@ -606,14 +606,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
         # Send welcome if first turn
         if session.turn_count == 0:
-            welcome = await orchestrator.generate_welcome_message(session)
+            welcome, audio_text = await orchestrator.generate_welcome_message(session)
             from tutor.models.messages import create_teacher_message
 
-            session.add_message(create_teacher_message(welcome))
+            session.add_message(create_teacher_message(welcome, audio_text=audio_text))
             ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
             if reloaded:
                 session = reloaded
-            await websocket.send_json(create_assistant_response(welcome).model_dump())
+            await websocket.send_json(create_assistant_response(welcome, audio_text=audio_text).model_dump())
 
         # Main message loop
         while True:
@@ -650,7 +650,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     )
                 else:
                     await websocket.send_json(
-                        create_assistant_response(result.response).model_dump()
+                        create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
                     )
 
                 state_dto = SessionStateDTO(

@@ -78,6 +78,39 @@ class TeacherOrchestrator:
         )
         self.agent_logs.add_log(entry)
 
+    async def _translate_to_english(self, text: str) -> str:
+        """Translate Hinglish/Hindi student input to English.
+
+        Uses a fast LLM call. Returns the original text unchanged if it is
+        already plain English.
+        """
+        prompt = (
+            "You are a translator. The student may write in Hinglish (Hindi-English mix, Roman script) "
+            "or Hindi. Translate the following student message to clean English. "
+            "If the message is already in English, return it unchanged.\n\n"
+            "Return JSON: {\"english\": \"<translated text>\"}\n\n"
+            f"Student message: {text}"
+        )
+
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self.llm.call(
+                prompt=prompt,
+                reasoning_effort="none",
+                json_mode=True,
+            ),
+        )
+
+        import json
+        raw = result.get("output_text", "")
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            return parsed.get("english", text).strip()
+        except (json.JSONDecodeError, AttributeError):
+            return text
+
     async def process_turn(
         self,
         session: SessionState,
@@ -86,10 +119,13 @@ class TeacherOrchestrator:
         """
         Process a single conversation turn.
 
-        Flow: safety check -> master tutor -> state update -> return response.
+        Flow: translate input -> safety check -> master tutor -> state update -> return response.
         """
         start_time = time.time()
         turn_id = session.get_current_turn_id()
+
+        # Translate Hinglish/Hindi input to English
+        student_message = await self._translate_to_english(student_message)
 
         logger.info(f"Turn started: {turn_id} for session {session.session_id}")
 
@@ -631,10 +667,29 @@ class TeacherOrchestrator:
             return output
         return {"value": str(output)}
 
-    async def generate_welcome_message(self, session: SessionState) -> str:
-        """Generate a welcome message for a new session."""
+    def _parse_welcome_result(self, result: dict, fallback: str) -> tuple[str, str | None]:
+        """Parse LLM JSON result into (message, audio_text) tuple."""
+        import json
+        raw = result.get("output_text", "")
+        # Try parsing JSON from the LLM response
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            response = parsed.get("response", fallback).strip()
+            audio_text = parsed.get("audio_text")
+            if audio_text:
+                audio_text = audio_text.strip()
+            return (response, audio_text)
+        except (json.JSONDecodeError, AttributeError):
+            # LLM returned plain text instead of JSON — use as message, no audio_text
+            return (raw.strip() if raw else fallback, None)
+
+    async def generate_welcome_message(self, session: SessionState) -> tuple[str, str | None]:
+        """Generate a welcome message for a new session.
+
+        Returns (message, audio_text) tuple.
+        """
         if not session.topic:
-            return "Welcome! Let's start learning together."
+            return ("Welcome! Let's start learning together.", None)
 
         prompt = WELCOME_MESSAGE_PROMPT.render(
             grade=session.student_context.grade,
@@ -654,16 +709,19 @@ class TeacherOrchestrator:
             lambda: self.llm.call(
                 prompt=prompt,
                 reasoning_effort="none",
-                json_mode=False,
+                json_mode=True,
             ),
         )
 
-        return result.get("output_text", "Welcome! Let's start learning.").strip()
+        return self._parse_welcome_result(result, "Welcome! Let's start learning.")
 
-    async def generate_clarify_welcome(self, session: SessionState) -> str:
-        """Generate a welcome message for Clarify Doubts mode."""
+    async def generate_clarify_welcome(self, session: SessionState) -> tuple[str, str | None]:
+        """Generate a welcome message for Clarify Doubts mode.
+
+        Returns (message, audio_text) tuple.
+        """
         if not session.topic:
-            return "Hi! I'm here to help answer your questions. What would you like to know?"
+            return ("Hi! I'm here to help answer your questions. What would you like to know?", None)
 
         topic_name = session.topic.topic_name
         prompt = (
@@ -674,21 +732,28 @@ class TeacherOrchestrator:
             f"1. Greets the student\n"
             f"2. Says you're here to answer their questions about {topic_name}\n"
             f"3. Invites them to ask whatever they're curious or confused about\n\n"
-            f"Keep it to 1-2 sentences. Use {session.student_context.language_level} language. No emojis."
+            f"Keep it to 1-2 sentences. Use {session.student_context.language_level} language. No emojis.\n\n"
+            f"Return JSON with two fields:\n"
+            f'- "response": The English welcome message.\n'
+            f'- "audio_text": A Hinglish (Hindi-English mix) spoken version. Mix Hindi conversational glue '
+            f'("toh", "dekho", "samjho", "acha") with English technical terms. Roman script only.'
         )
 
         import asyncio
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=False),
+            lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=True),
         )
-        return result.get("output_text", f"Hi! I'm here to help with {topic_name}. What questions do you have?").strip()
+        return self._parse_welcome_result(result, f"Hi! I'm here to help with {topic_name}. What questions do you have?")
 
-    async def generate_exam_welcome(self, session: SessionState) -> str:
-        """Generate a welcome message for Exam mode."""
+    async def generate_exam_welcome(self, session: SessionState) -> tuple[str, str | None]:
+        """Generate a welcome message for Exam mode.
+
+        Returns (message, audio_text) tuple.
+        """
         if not session.topic:
-            return "Let's test your knowledge! I'll ask you some questions. Ready?"
+            return ("Let's test your knowledge! I'll ask you some questions. Ready?", None)
 
         topic_name = session.topic.topic_name
         num_questions = len(session.exam_questions) if session.exam_questions else 7
@@ -701,13 +766,17 @@ class TeacherOrchestrator:
             f"2. Explains this is a {num_questions}-question exam on {topic_name}\n"
             f"3. Encourages them to do their best\n"
             f"4. Asks if they're ready\n\n"
-            f"Keep it to 2-3 sentences. Use {session.student_context.language_level} language. No emojis."
+            f"Keep it to 2-3 sentences. Use {session.student_context.language_level} language. No emojis.\n\n"
+            f"Return JSON with two fields:\n"
+            f'- "response": The English welcome message.\n'
+            f'- "audio_text": A Hinglish (Hindi-English mix) spoken version. Mix Hindi conversational glue '
+            f'("toh", "dekho", "samjho", "acha") with English technical terms. Roman script only.'
         )
 
         import asyncio
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=False),
+            lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=True),
         )
-        return result.get("output_text", f"Let's test your knowledge of {topic_name}! I'll ask you {num_questions} questions. Ready?").strip()
+        return self._parse_welcome_result(result, f"Let's test your knowledge of {topic_name}! I'll ask you {num_questions} questions. Ready?")

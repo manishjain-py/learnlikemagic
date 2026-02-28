@@ -179,6 +179,7 @@ class DetailedSessionStateDTO(BaseModel):
 
 class ServerMessagePayload(BaseModel):
     message: Optional[str] = None
+    audio_text: Optional[str] = None
     state: Optional[SessionStateDTO] = None
     error: Optional[str] = None
 
@@ -198,8 +199,8 @@ def create_student_message(content: str, message_id: Optional[str] = None) -> Me
     return Message(role="student", content=content, message_id=message_id)
 
 
-def create_assistant_response(message: str) -> ServerMessage:
-    return ServerMessage(type="assistant", payload=ServerMessagePayload(message=message))
+def create_assistant_response(message: str, audio_text: str | None = None) -> ServerMessage:
+    return ServerMessage(type="assistant", payload=ServerMessagePayload(message=message, audio_text=audio_text))
 
 
 def create_error_response(error: str) -> ServerMessage:

@@ -26,7 +26,11 @@ Generate a warm, engaging welcome message that:
 4. Asks if they're ready to begin
 
 Keep it concise (2-3 sentences). Use {language_level} language.
-Do not use emojis.""",
+Do not use emojis.
+
+Return JSON with two fields:
+- "response": The English welcome message.
+- "audio_text": A Hinglish (Hindi-English mix) spoken version of the welcome. Write as a friendly Indian tutor speaking aloud — mix Hindi and English naturally. Hindi for conversational glue ("toh", "dekho", "samjho", "acha") and English for technical terms. Roman script only.""",
     name="welcome_message",
 )
 

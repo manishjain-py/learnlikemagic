@@ -3,6 +3,7 @@
  */
 
 import { SessionStateResponse, AgentLogsResponse } from '../types';
+import { getAccessToken } from '../../../api';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
@@ -10,7 +11,13 @@ const API_BASE_URL =
   'http://localhost:8000';
 
 async function apiFetch<T>(endpoint: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`);
+  const headers: Record<string, string> = {};
+  const token = getAccessToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
 
   if (!response.ok) {
     const error = await response

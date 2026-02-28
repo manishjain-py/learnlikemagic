@@ -110,18 +110,18 @@ class SessionService:
 
         # Generate mode-specific welcome
         if mode == "clarify_doubts":
-            welcome = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
+            welcome, audio_text = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
         elif mode == "exam":
-            welcome = asyncio.run(self.orchestrator.generate_exam_welcome(session))
+            welcome, audio_text = asyncio.run(self.orchestrator.generate_exam_welcome(session))
             # Append first question to welcome
             if session.exam_questions:
                 first_q = session.exam_questions[0]
                 welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
         else:
-            welcome = asyncio.run(self.orchestrator.generate_welcome_message(session))
+            welcome, audio_text = asyncio.run(self.orchestrator.generate_welcome_message(session))
 
         # Add welcome message to conversation history
-        session.add_message(create_teacher_message(welcome))
+        session.add_message(create_teacher_message(welcome, audio_text=audio_text))
 
         # Persist to DB
         self._persist_session(session_id, session, request, user_id=user_id, subject=guideline.subject if guideline else None)
@@ -136,6 +136,7 @@ class SessionService:
 
         first_turn = {
             "message": welcome,
+            "audio_text": audio_text,
             "hints": [],
             "step_idx": session.current_step,
         }
