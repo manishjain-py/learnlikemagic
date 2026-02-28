@@ -13,7 +13,7 @@ import logging
 import json
 import time
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Set
 
 from openai import OpenAI
 
@@ -45,6 +45,60 @@ class PedagogicalSequencingService:
             logger.error(f"Prompt template not found: {prompt_path}")
             raise
 
+    def _validate_sequence_pairs(
+        self,
+        pairs: List[Tuple[str, int]],
+        expected_keys: Set[str],
+        context: str
+    ) -> bool:
+        """
+        Validate that LLM sequence output is correct.
+
+        Checks:
+        - All expected keys are present (no missing)
+        - No unknown keys (no hallucinated entries)
+        - No duplicate sequence numbers
+        - Sequences are contiguous 1..N
+
+        Returns True if valid, False otherwise.
+        """
+        if len(pairs) != len(expected_keys):
+            logger.warning(
+                f"{context}: expected {len(expected_keys)} entries, got {len(pairs)}"
+            )
+            return False
+
+        returned_keys = {key for key, _ in pairs}
+        sequences = [seq for _, seq in pairs]
+
+        # Check for unknown keys
+        unknown = returned_keys - expected_keys
+        if unknown:
+            logger.warning(f"{context}: unknown keys in output: {unknown}")
+            return False
+
+        # Check for missing keys
+        missing = expected_keys - returned_keys
+        if missing:
+            logger.warning(f"{context}: missing keys in output: {missing}")
+            return False
+
+        # Check for duplicate sequences
+        if len(set(sequences)) != len(sequences):
+            logger.warning(f"{context}: duplicate sequence numbers: {sequences}")
+            return False
+
+        # Check contiguous 1..N
+        expected_seqs = set(range(1, len(pairs) + 1))
+        if set(sequences) != expected_seqs:
+            logger.warning(
+                f"{context}: non-contiguous sequences: {sorted(sequences)}, "
+                f"expected {sorted(expected_seqs)}"
+            )
+            return False
+
+        return True
+
     def sequence_subtopics(
         self,
         topic_title: str,
@@ -71,6 +125,8 @@ class PedagogicalSequencingService:
 
         if len(subtopics) == 1:
             return [(subtopics[0].subtopic_key, 1)], f"{topic_title} covers {subtopics[0].subtopic_title}."
+
+        expected_keys = {s.subtopic_key for s in subtopics}
 
         # Build subtopics info for prompt
         subtopics_info_lines = []
@@ -128,14 +184,21 @@ class PedagogicalSequencingService:
                 "duration_ms": duration_ms
             }))
 
+            # Validate before returning
+            if not self._validate_sequence_pairs(sequence_pairs, expected_keys, f"subtopic_sequencing({topic_title})"):
+                logger.warning(f"Invalid subtopic sequencing output for {topic_title}, using page-order fallback")
+                return self._fallback_subtopic_order(subtopics), storyline
+
             return sequence_pairs, storyline
 
         except Exception as e:
             logger.error(f"Subtopic sequencing failed for {topic_title}: {e}")
-            # Fallback: sort by source_page_start
-            fallback = sorted(subtopics, key=lambda s: s.source_page_start)
-            pairs = [(s.subtopic_key, i + 1) for i, s in enumerate(fallback)]
-            return pairs, ""
+            return self._fallback_subtopic_order(subtopics), ""
+
+    def _fallback_subtopic_order(self, subtopics: List[SubtopicShard]) -> List[Tuple[str, int]]:
+        """Deterministic fallback: sort by source_page_start."""
+        fallback = sorted(subtopics, key=lambda s: s.source_page_start)
+        return [(s.subtopic_key, i + 1) for i, s in enumerate(fallback)]
 
     def sequence_topics(
         self,
@@ -161,6 +224,8 @@ class PedagogicalSequencingService:
 
         if len(topics_with_info) == 1:
             return [(topics_with_info[0]["topic_key"], 1)]
+
+        expected_keys = {info["topic_key"] for info in topics_with_info}
 
         # Build topics info for prompt
         topics_info_lines = []
@@ -215,9 +280,17 @@ class PedagogicalSequencingService:
                 "duration_ms": duration_ms
             }))
 
+            # Validate before returning
+            if not self._validate_sequence_pairs(pairs, expected_keys, "topic_sequencing"):
+                logger.warning("Invalid topic sequencing output, using page-order fallback")
+                return self._fallback_topic_order(topics_with_info)
+
             return pairs
 
         except Exception as e:
             logger.error(f"Topic sequencing failed: {e}")
-            # Fallback: use provided order (which is typically page order)
-            return [(info["topic_key"], i + 1) for i, info in enumerate(topics_with_info)]
+            return self._fallback_topic_order(topics_with_info)
+
+    def _fallback_topic_order(self, topics_with_info: List[dict]) -> List[Tuple[str, int]]:
+        """Deterministic fallback: preserve input order (typically page order)."""
+        return [(info["topic_key"], i + 1) for i, info in enumerate(topics_with_info)]

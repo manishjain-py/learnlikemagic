@@ -605,14 +605,14 @@ class GuidelineExtractionOrchestrator:
         logger.info(f"Sequencing topics for {book_id}")
         topics_with_info = []
         for topic in index.topics:
-            min_page = min((st.subtopic_sequence for st in topic.subtopics), default=0)
+            min_page = float('inf')
             max_page = 0
             for shard in all_shards:
                 if shard.topic_key == topic.topic_key:
-                    if shard.source_page_start < min_page or min_page == 0:
-                        min_page = shard.source_page_start
-                    if shard.source_page_end > max_page:
-                        max_page = shard.source_page_end
+                    min_page = min(min_page, shard.source_page_start)
+                    max_page = max(max_page, shard.source_page_end)
+            if min_page == float('inf'):
+                min_page = 0
 
             topics_with_info.append({
                 "topic_key": topic.topic_key,

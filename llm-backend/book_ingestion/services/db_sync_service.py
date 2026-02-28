@@ -161,12 +161,14 @@ class DBSyncService:
         topic_summary: str = "",
         topic_sequence: Optional[int] = None,
         subtopic_sequence: Optional[int] = None,
-        topic_storyline: Optional[str] = None
+        topic_storyline: Optional[str] = None,
+        _commit: bool = True
     ) -> str:
         """
         Insert new guideline into database.
 
         Uses simplified schema with single guidelines text field.
+        Set _commit=False when caller manages the transaction (e.g. batch sync).
         """
         import uuid
         guideline_id = str(uuid.uuid4())
@@ -224,7 +226,8 @@ class DBSyncService:
             }
         )
 
-        self.db.commit()
+        if _commit:
+            self.db.commit()
         new_id = result.fetchone()[0]
 
         logger.info(
@@ -453,17 +456,19 @@ class DBSyncService:
                         topic_storyline = topic.topic_storyline if topic.topic_storyline else None
                         break
 
-                # Insert new row
+                # Insert new row (no per-row commit — single transaction)
                 self._insert_guideline(
                     shard, book_id, grade, subject, board, country,
                     review_status="TO_BE_REVIEWED",
                     topic_summary=topic_summary,
                     topic_sequence=topic_sequence,
                     subtopic_sequence=shard.subtopic_sequence if shard.subtopic_sequence else None,
-                    topic_storyline=topic_storyline
+                    topic_storyline=topic_storyline,
+                    _commit=False
                 )
                 created_count += 1
 
+            # Single commit for the entire delete+insert transaction
             self.db.commit()
             
             duration_ms = int((time.time() - start_time) * 1000)
