@@ -651,7 +651,7 @@ export default function ChatSession() {
                             <span style={{ color: '#4a5568' }}>{answer}</span>
                             <button
                               type="button"
-                              onClick={() => { setActiveExamQuestionIdx(i); setInput(answer); }}
+                              onClick={() => { setActiveExamQuestionIdx(i); setInput(answer); setExamDraftAnswers(prev => { const next = {...prev}; delete next[q.question_idx]; return next; }); }}
                               style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.8rem', padding: 0, whiteSpace: 'nowrap' }}
                             >
                               Edit
