@@ -73,6 +73,7 @@ export interface CreateSessionRequest {
 
 export interface Turn {
   message: string;
+  audio_text?: string | null;
   hints: string[];
   step_idx: number;
   mastery_score: number;

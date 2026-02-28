@@ -26,6 +26,7 @@ logger = logging.getLogger("tutor.orchestrator")
 class TurnResult(BaseModel):
     """Result of processing a turn."""
     response: str = Field(description="Teacher response to send")
+    audio_text: Optional[str] = Field(default=None, description="Hinglish spoken version for TTS")
     intent: str = Field(description="Detected intent")
     specialists_called: List[str] = Field(default_factory=list)
     state_changed: bool = Field(default=False)
@@ -205,7 +206,7 @@ class TeacherOrchestrator:
             state_changed = self._apply_state_updates(session, tutor_output)
 
             # Add teacher response to history
-            session.add_message(create_teacher_message(tutor_output.response))
+            session.add_message(create_teacher_message(tutor_output.response, audio_text=tutor_output.audio_text))
 
             # Update session summary
             turn_entry = f"Turn {session.turn_count}: {tutor_output.turn_summary}"
@@ -244,6 +245,7 @@ class TeacherOrchestrator:
 
             return TurnResult(
                 response=tutor_output.response,
+                audio_text=tutor_output.audio_text,
                 intent=tutor_output.intent,
                 specialists_called=["master_tutor"],
                 state_changed=state_changed,
@@ -468,7 +470,7 @@ class TeacherOrchestrator:
             session.clarify_complete = True
             logger.info(f"Clarify Doubts session {session.session_id} marked complete (intent={tutor_output.intent})")
 
-        session.add_message(create_teacher_message(tutor_output.response))
+        session.add_message(create_teacher_message(tutor_output.response, audio_text=tutor_output.audio_text))
 
         duration_ms = int((time.time() - start_time) * 1000)
         self._log_agent_event(
@@ -482,6 +484,7 @@ class TeacherOrchestrator:
 
         return TurnResult(
             response=tutor_output.response,
+            audio_text=tutor_output.audio_text,
             intent=tutor_output.intent,
             specialists_called=["master_tutor"],
             state_changed=True,

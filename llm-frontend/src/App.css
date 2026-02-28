@@ -1344,6 +1344,47 @@ body {
   50% { opacity: 0.5; }
 }
 
+/* ──────────────────────────────────────────────
+   Per-Message Audio Play Button
+   ────────────────────────────────────────────── */
+
+.audio-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.06);
+  border: none;
+  border-radius: 50%;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.audio-play-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #333;
+}
+
+.audio-play-btn.playing {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  animation: audio-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes audio-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(102, 126, 234, 0);
+  }
+}
+
 .vt-toggle {
   padding: 4px 10px;
   background: rgba(255, 255, 255, 0.2);

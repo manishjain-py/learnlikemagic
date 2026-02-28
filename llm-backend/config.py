@@ -53,6 +53,10 @@ class Settings(BaseSettings):
         default="",
         description="Anthropic API key (optional, for Claude models)"
     )
+    google_cloud_tts_api_key: str = Field(
+        default="",
+        description="Google Cloud API key for TTS"
+    )
 
     # Application Settings
     log_level: str = Field(

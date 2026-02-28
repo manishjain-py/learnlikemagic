@@ -18,6 +18,7 @@ import '../App.css';
 interface Message {
   role: 'teacher' | 'student';
   content: string;
+  audioText?: string | null;
   hints?: string[];
 }
 
@@ -73,7 +74,8 @@ export default function ChatSession() {
   const [examHydrationError, setExamHydrationError] = useState(false);
   const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
   const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
+  const isSpeaking = playingMsgIdx !== null;
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -159,6 +161,7 @@ export default function ChatSession() {
       setMessages([{
         role: 'teacher',
         content: locState.firstTurn.message,
+        audioText: locState.firstTurn.audio_text,
         hints: locState.firstTurn.hints,
       }]);
       setStepIdx(locState.firstTurn.step_idx);
@@ -177,14 +180,15 @@ export default function ChatSession() {
 
       // Auto-play first turn in virtual teacher mode
       if (virtualTeacherOn && locState.firstTurn.message) {
-        playTeacherAudio(locState.firstTurn.message);
+        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
       }
     } else if (locState?.conversationHistory) {
       // Resumed session
       setMessages(
-        locState.conversationHistory.map((m) => ({
+        locState.conversationHistory.map((m: any) => ({
           role: m.role === 'student' ? 'student' as const : 'teacher' as const,
           content: m.content,
+          audioText: m.audio_text || null,
         })),
       );
       if (locState.currentStep) setStepIdx(locState.currentStep);
@@ -198,6 +202,7 @@ export default function ChatSession() {
             history.map((m: any) => ({
               role: m.role === 'student' ? 'student' as const : 'teacher' as const,
               content: m.content,
+              audioText: m.audio_text || null,
             })),
           );
           // Hydrate step — backend field is current_step
@@ -306,6 +311,7 @@ export default function ChatSession() {
         {
           role: 'teacher',
           content: response.next_turn.message,
+          audioText: response.next_turn.audio_text,
           hints: response.next_turn.hints,
         },
       ]);
@@ -314,7 +320,7 @@ export default function ChatSession() {
 
       // Auto-play TTS in virtual teacher mode
       if (virtualTeacherOn && response.next_turn.message) {
-        playTeacherAudio(response.next_turn.message);
+        playTeacherAudio(response.next_turn.audio_text || response.next_turn.message);
       }
 
       // Update concepts discussed for clarify_doubts mode
@@ -498,7 +504,7 @@ export default function ChatSession() {
     return audioRef.current;
   };
 
-  const playTeacherAudio = async (text: string) => {
+  const playTeacherAudio = async (text: string, msgIdx?: number) => {
     try {
       const audio = getOrCreateAudio();
       // Stop any currently playing audio
@@ -510,14 +516,26 @@ export default function ChatSession() {
       const audioBlob = await synthesizeSpeech(text);
       const url = URL.createObjectURL(audioBlob);
       audio.src = url;
-      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
-      audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
+      audio.onended = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };
+      audio.onerror = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };
       await audio.play();
-      setIsSpeaking(true);
+      setPlayingMsgIdx(msgIdx ?? -1);
     } catch (err) {
       console.error('TTS playback failed:', err);
-      setIsSpeaking(false);
+      setPlayingMsgIdx(null);
     }
+  };
+
+  const stopAudio = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      if (audio.src && audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src);
+      }
+      audio.src = '';
+    }
+    setPlayingMsgIdx(null);
   };
 
   if (replayLoading) {
@@ -568,12 +586,12 @@ export default function ChatSession() {
                   // Auto-play the latest teacher message when toggling on
                   const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
                   if (lastTeacher?.content) {
-                    playTeacherAudio(lastTeacher.content);
+                    playTeacherAudio(lastTeacher.audioText || lastTeacher.content);
                   }
                 } else if (audioRef.current) {
                   audioRef.current.pause();
                   audioRef.current = null;
-                  setIsSpeaking(false);
+                  setPlayingMsgIdx(null);
                 }
               }}
               className="vt-toggle"
@@ -687,6 +705,26 @@ export default function ChatSession() {
                 <div className="message-content">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
+                {msg.role === 'teacher' && (
+                  <button
+                    className={`audio-play-btn${playingMsgIdx === idx ? ' playing' : ''}`}
+                    onClick={() => {
+                      if (playingMsgIdx === idx) {
+                        stopAudio();
+                      } else {
+                        playTeacherAudio(msg.audioText || msg.content, idx);
+                      }
+                    }}
+                    title={playingMsgIdx === idx ? 'Stop audio' : 'Play audio'}
+                    aria-label={playingMsgIdx === idx ? 'Stop audio' : 'Play audio'}
+                  >
+                    {playingMsgIdx === idx ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
+                    )}
+                  </button>
+                )}
                 {msg.hints && msg.hints.length > 0 && (
                   <div className="hints-container">
                     <button

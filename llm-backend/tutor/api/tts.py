@@ -1,10 +1,12 @@
-"""Text-to-speech endpoint using OpenAI TTS API."""
+"""Text-to-speech endpoint using Google Cloud TTS API (Hindi voice)."""
 
+import io
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from openai import OpenAI
+from google.cloud import texttospeech
+from google.api_core.client_options import ClientOptions
 from pydantic import BaseModel, Field
 
 from auth.middleware.auth_middleware import get_optional_user
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/text-to-speech", tags=["tts"])
 
-MAX_TEXT_LENGTH = 4096  # OpenAI TTS input limit
+MAX_TEXT_LENGTH = 5000  # Google Cloud TTS limit
 
 
 class TTSRequest(BaseModel):
@@ -26,19 +28,39 @@ async def text_to_speech(
     request: TTSRequest,
     current_user=Depends(get_optional_user),
 ):
-    """Convert text to speech using OpenAI TTS API."""
+    """Convert text to speech using Google Cloud TTS API with Hindi voice."""
     settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
+
+    if not settings.google_cloud_tts_api_key:
+        raise HTTPException(status_code=500, detail="Google Cloud TTS API key not configured")
 
     try:
-        response = client.audio.speech.create(
-            model="tts-1",
-            voice="nova",
-            input=request.text,
+        # Use API key auth (simpler than service account for single API)
+        client = texttospeech.TextToSpeechClient(
+            client_options=ClientOptions(api_key=settings.google_cloud_tts_api_key),
         )
 
+        synthesis_input = texttospeech.SynthesisInput(text=request.text)
+
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="hi-IN",
+            name="hi-IN-Wavenet-A",
+        )
+
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+        )
+
+        response = client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config,
+        )
+
+        audio_stream = io.BytesIO(response.audio_content)
+
         return StreamingResponse(
-            response.iter_bytes(),
+            audio_stream,
             media_type="audio/mpeg",
             headers={"Content-Disposition": "inline"},
         )

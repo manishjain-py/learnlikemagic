@@ -196,6 +196,7 @@ class SessionService:
         # Build response (maintain same REST contract)
         next_turn = {
             "message": turn_result.response,
+            "audio_text": turn_result.audio_text,
             "hints": [],
             "step_idx": session.current_step,
             "mastery_score": session.overall_mastery,

@@ -14,6 +14,7 @@ class Message(BaseModel):
 
     role: Literal["student", "teacher"] = Field(description="Role of the message sender")
     content: str = Field(description="Message content text")
+    audio_text: Optional[str] = Field(default=None, description="Hinglish spoken version for TTS (teacher messages only)")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="When the message was created")
     message_id: Optional[str] = Field(default=None, description="Unique message identifier")
 
@@ -189,8 +190,8 @@ class ServerMessage(BaseModel):
 
 # Factory Functions
 
-def create_teacher_message(content: str, message_id: Optional[str] = None) -> Message:
-    return Message(role="teacher", content=content, message_id=message_id)
+def create_teacher_message(content: str, message_id: Optional[str] = None, audio_text: Optional[str] = None) -> Message:
+    return Message(role="teacher", content=content, message_id=message_id, audio_text=audio_text)
 
 
 def create_student_message(content: str, message_id: Optional[str] = None) -> Message:
