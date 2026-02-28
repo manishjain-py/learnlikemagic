@@ -33,7 +33,7 @@ async def text_to_speech(
     try:
         response = client.audio.speech.create(
             model="tts-1",
-            voice="alloy",
+            voice="nova",
             input=request.text,
         )
 
