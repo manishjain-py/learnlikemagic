@@ -500,7 +500,6 @@ export default function ChatSession() {
 
   const playTeacherAudio = async (text: string) => {
     try {
-      setIsSpeaking(true);
       const audio = getOrCreateAudio();
       // Stop any currently playing audio
       audio.pause();
@@ -514,6 +513,7 @@ export default function ChatSession() {
       audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
       audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); };
       await audio.play();
+      setIsSpeaking(true);
     } catch (err) {
       console.error('TTS playback failed:', err);
       setIsSpeaking(false);
