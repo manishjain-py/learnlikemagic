@@ -1276,3 +1276,86 @@ body {
   color: #888;
   background: #f5f5f5;
 }
+
+/* ──────────────────────────────────────────────
+   Virtual Teacher Mode
+   ────────────────────────────────────────────── */
+
+.virtual-teacher-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  overflow-y: auto;
+}
+
+.teacher-gif {
+  width: 280px;
+  max-width: 70%;
+  border-radius: 16px;
+  transition: box-shadow 0.3s ease;
+}
+
+.teacher-gif.speaking {
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.2);
+  animation: teacher-glow 2s ease-in-out infinite;
+}
+
+@keyframes teacher-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.6), 0 0 60px rgba(118, 75, 162, 0.3);
+  }
+}
+
+.teacher-caption {
+  margin-top: 1.5rem;
+  max-width: 500px;
+  text-align: center;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #333;
+  padding: 0 1rem;
+}
+
+.teacher-caption p {
+  margin: 0 0 0.5rem;
+}
+
+.teacher-caption p:last-child {
+  margin-bottom: 0;
+}
+
+.teacher-speaking-indicator {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: #667eea;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.vt-toggle {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.vt-toggle:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
