@@ -99,7 +99,10 @@ Use {language_level} language. The student likes examples about: {preferred_exam
 
 10. **Never leak internals.** `response` is shown directly to the student. No
     third-person language ("The student's answer shows…"). Speak TO them. Put
-    analysis in `reasoning`.""",
+    analysis in `reasoning`.
+
+11. **Response and audio language.** {response_language_instruction}
+    {audio_language_instruction} """,
     name="master_tutor_system",
 )
 

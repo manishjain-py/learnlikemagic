@@ -7,16 +7,19 @@ import {
   getModelConfig,
   getSessionReplay,
   transcribeAudio,
+  synthesizeSpeech,
   Turn,
   SummaryResponse,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
+import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import '../App.css';
 
 interface Message {
   role: 'teacher' | 'student';
   content: string;
+  audioText?: string | null;
   hints?: string[];
 }
 
@@ -36,6 +39,8 @@ export default function ChatSession() {
   const sessionId = params.sessionId;
   const location = useLocation();
   const { grade } = useStudentProfile();
+  const { user } = useAuth();
+  const audioLang = user?.audio_language_preference || 'en';
 
   const locState = location.state as {
     firstTurn?: Turn;
@@ -71,12 +76,16 @@ export default function ChatSession() {
   const [replayLoading, setReplayLoading] = useState(false);
   const [examHydrationError, setExamHydrationError] = useState(false);
   const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
+  const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
+  const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
+  const isSpeaking = playingMsgIdx !== null;
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // URL params from nested learn routes (preferred) — already decoded by React Router
   const subject = params.subject || '';
@@ -155,6 +164,7 @@ export default function ChatSession() {
       setMessages([{
         role: 'teacher',
         content: locState.firstTurn.message,
+        audioText: locState.firstTurn.audio_text,
         hints: locState.firstTurn.hints,
       }]);
       setStepIdx(locState.firstTurn.step_idx);
@@ -170,12 +180,18 @@ export default function ChatSession() {
       if (locState.mode === 'exam' && locState.firstTurn.exam_questions) {
         hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
       }
+
+      // Auto-play first turn in virtual teacher mode
+      if (virtualTeacherOn && locState.firstTurn.message) {
+        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
+      }
     } else if (locState?.conversationHistory) {
       // Resumed session
       setMessages(
-        locState.conversationHistory.map((m) => ({
+        locState.conversationHistory.map((m: any) => ({
           role: m.role === 'student' ? 'student' as const : 'teacher' as const,
           content: m.content,
+          audioText: m.audio_text || null,
         })),
       );
       if (locState.currentStep) setStepIdx(locState.currentStep);
@@ -189,6 +205,7 @@ export default function ChatSession() {
             history.map((m: any) => ({
               role: m.role === 'student' ? 'student' as const : 'teacher' as const,
               content: m.content,
+              audioText: m.audio_text || null,
             })),
           );
           // Hydrate step — backend field is current_step
@@ -297,11 +314,17 @@ export default function ChatSession() {
         {
           role: 'teacher',
           content: response.next_turn.message,
+          audioText: response.next_turn.audio_text,
           hints: response.next_turn.hints,
         },
       ]);
       setStepIdx(response.next_turn.step_idx);
       setMastery(response.next_turn.mastery_score);
+
+      // Auto-play TTS in virtual teacher mode
+      if (virtualTeacherOn && response.next_turn.message) {
+        playTeacherAudio(response.next_turn.audio_text || response.next_turn.message);
+      }
 
       // Update concepts discussed for clarify_doubts mode
       if (response.next_turn.concepts_discussed) {
@@ -475,6 +498,49 @@ export default function ChatSession() {
     }
   };
 
+  // Create a persistent Audio element once to satisfy browser autoplay policy.
+  // Browsers allow .play() on an element that the user has already interacted with.
+  const getOrCreateAudio = (): HTMLAudioElement => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+    return audioRef.current;
+  };
+
+  const playTeacherAudio = async (text: string, msgIdx?: number) => {
+    try {
+      const audio = getOrCreateAudio();
+      // Stop any currently playing audio
+      audio.pause();
+      if (audio.src && audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src);
+      }
+
+      const audioBlob = await synthesizeSpeech(text, audioLang);
+      const url = URL.createObjectURL(audioBlob);
+      audio.src = url;
+      audio.onended = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };
+      audio.onerror = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };
+      await audio.play();
+      setPlayingMsgIdx(msgIdx ?? -1);
+    } catch (err) {
+      console.error('TTS playback failed:', err);
+      setPlayingMsgIdx(null);
+    }
+  };
+
+  const stopAudio = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      if (audio.src && audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src);
+      }
+      audio.src = '';
+    }
+    setPlayingMsgIdx(null);
+  };
+
   if (replayLoading) {
     return (
       <div className="app">
@@ -492,45 +558,57 @@ export default function ChatSession() {
   return (
     <>
       <div className="app">
-        <header className="header" style={{ position: 'relative' }}>
-          <h1>Learn Like Magic</h1>
-          <p className="subtitle">
-            Grade {grade}{subject && ` \u2022 ${subject}`}{topic && ` \u2022 ${topic}`}{subtopic && ` \u2022 ${subtopic}`}
-            {modelLabel && (
-              <span style={{
-                marginLeft: '8px',
-                padding: '2px 8px',
-                background: 'rgba(255,255,255,0.15)',
-                borderRadius: '10px',
-                fontSize: '0.7rem',
-                fontWeight: 500,
-                letterSpacing: '0.02em',
-              }}>
-                ⚡ {modelLabel}
-              </span>
+        <nav className="nav-bar">
+          <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+
+          <span className="nav-center nav-breadcrumb">
+            {subject && <>{subject}</>}
+            {topic && <> &rsaquo; {topic}</>}
+            {subtopic && <> &rsaquo; {subtopic}</>}
+          </span>
+
+          <div className="nav-actions">
+            {sessionId && sessionMode !== 'exam' && (
+              <button
+                onClick={() => {
+                  const next = !virtualTeacherOn;
+                  setVirtualTeacherOn(next);
+                  if (next) {
+                    const audio = getOrCreateAudio();
+                    audio.play().catch(() => {});
+                    audio.pause();
+                    const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
+                    if (lastTeacher?.content) {
+                      playTeacherAudio(lastTeacher.audioText || lastTeacher.content);
+                    }
+                  } else if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current = null;
+                    setPlayingMsgIdx(null);
+                  }
+                }}
+                className="nav-action-btn"
+                title={virtualTeacherOn ? 'Text Mode' : 'Virtual Teacher'}
+              >
+                {virtualTeacherOn ? 'Text' : 'VT'}
+              </button>
             )}
-          </p>
-          {sessionId && (
-            <button
-              onClick={() => setDevToolsOpen(true)}
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                padding: '4px 10px',
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.4)',
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >
-              Dev Tools
-            </button>
-          )}
-        </header>
+            {sessionId && (
+              <button
+                onClick={() => setDevToolsOpen(true)}
+                className="nav-action-btn"
+                title="Dev Tools"
+              >
+                Dev
+              </button>
+            )}
+          </div>
+        </nav>
 
         <div className="progress-bar">
           <div className="progress-info">
@@ -576,13 +654,122 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {sessionMode !== 'exam' && (
+          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? (
+            <div className="virtual-teacher-view">
+              {/* Close button */}
+              <button
+                className="vt-close-btn"
+                onClick={() => {
+                  setVirtualTeacherOn(false);
+                  stopAudio();
+                }}
+                aria-label="Exit virtual teacher"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              {/* Avatar area */}
+              <div className="vt-avatar-area">
+                <img
+                  src={isSpeaking ? '/teacher-avatar.gif' : '/teacher-avatar-still.gif'}
+                  alt="Virtual Teacher"
+                  className={`teacher-gif${isSpeaking ? ' speaking' : ''}`}
+                />
+                {/* Subtitle overlay */}
+                {messages.length > 0 && (() => {
+                  const lastTeacherMsg = messages.filter((m) => m.role === 'teacher').slice(-1)[0]?.content || '';
+                  return lastTeacherMsg ? (
+                    <div className="teacher-subtitle">
+                      <ReactMarkdown>{lastTeacherMsg}</ReactMarkdown>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+
+              {/* Typing indicator or input area */}
+              {loading ? (
+                <div className="vt-typing-indicator">
+                  <div className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              ) : !isSpeaking ? (
+                <div className="vt-input-area">
+                  <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                      disabled={loading || isTranscribing}
+                      className="input-field"
+                      data-testid="chat-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleRecording}
+                      disabled={loading || isTranscribing}
+                      className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                      data-testid="mic-button"
+                      title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                    >
+                      {isTranscribing ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 6v6l4 2" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" y1="19" x2="12" y2="23" />
+                          <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                    <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label="Send">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="19" x2="12" y2="5" />
+                        <polyline points="5 12 12 5 19 12" />
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              ) : null}
+            </div>
+          ) : sessionMode !== 'exam' ? (
           <div className="messages">
             {messages.map((msg, idx) => (
               <div key={idx} className={`message ${msg.role}`} {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message' } : {})}>
                 <div className="message-content">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
+                {msg.role === 'teacher' && (
+                  <button
+                    className={`audio-play-btn${playingMsgIdx === idx ? ' playing' : ''}`}
+                    onClick={() => {
+                      if (playingMsgIdx === idx) {
+                        stopAudio();
+                      } else {
+                        playTeacherAudio(msg.audioText || msg.content, idx);
+                      }
+                    }}
+                    title={playingMsgIdx === idx ? 'Stop audio' : 'Play audio'}
+                    aria-label={playingMsgIdx === idx ? 'Stop audio' : 'Play audio'}
+                  >
+                    {playingMsgIdx === idx ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
+                    )}
+                  </button>
+                )}
                 {msg.hints && msg.hints.length > 0 && (
                   <div className="hints-container">
                     <button
@@ -613,9 +800,9 @@ export default function ChatSession() {
             )}
             <div ref={messagesEndRef} />
           </div>
-          )}
+          ) : null}
 
-          {!isComplete ? (
+          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
             <>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>

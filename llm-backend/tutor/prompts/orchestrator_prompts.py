@@ -26,7 +26,11 @@ Generate a warm, engaging welcome message that:
 4. Asks if they're ready to begin
 
 Keep it concise (2-3 sentences). Use {language_level} language.
-Do not use emojis.""",
+Do not use emojis.
+
+Return JSON with two fields:
+- "response": The welcome message. {response_language_instruction}
+- "audio_text": The spoken version for TTS. {audio_language_instruction}""",
     name="welcome_message",
 )
 

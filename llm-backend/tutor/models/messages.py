@@ -14,6 +14,7 @@ class Message(BaseModel):
 
     role: Literal["student", "teacher"] = Field(description="Role of the message sender")
     content: str = Field(description="Message content text")
+    audio_text: Optional[str] = Field(default=None, description="Hinglish spoken version for TTS (teacher messages only)")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="When the message was created")
     message_id: Optional[str] = Field(default=None, description="Unique message identifier")
 
@@ -34,6 +35,8 @@ class StudentContext(BaseModel):
     student_name: Optional[str] = Field(default=None, description="Student's name")
     student_age: Optional[int] = Field(default=None, description="Student's age")
     about_me: Optional[str] = Field(default=None, description="Student's self-description")
+    text_language_preference: str = Field(default="en", description="Language for text responses: en, hi, hinglish")
+    audio_language_preference: str = Field(default="en", description="Language for audio/TTS: en, hi, hinglish")
 
 
 # WebSocket Protocol
@@ -178,6 +181,7 @@ class DetailedSessionStateDTO(BaseModel):
 
 class ServerMessagePayload(BaseModel):
     message: Optional[str] = None
+    audio_text: Optional[str] = None
     state: Optional[SessionStateDTO] = None
     error: Optional[str] = None
 
@@ -189,16 +193,16 @@ class ServerMessage(BaseModel):
 
 # Factory Functions
 
-def create_teacher_message(content: str, message_id: Optional[str] = None) -> Message:
-    return Message(role="teacher", content=content, message_id=message_id)
+def create_teacher_message(content: str, message_id: Optional[str] = None, audio_text: Optional[str] = None) -> Message:
+    return Message(role="teacher", content=content, message_id=message_id, audio_text=audio_text)
 
 
 def create_student_message(content: str, message_id: Optional[str] = None) -> Message:
     return Message(role="student", content=content, message_id=message_id)
 
 
-def create_assistant_response(message: str) -> ServerMessage:
-    return ServerMessage(type="assistant", payload=ServerMessagePayload(message=message))
+def create_assistant_response(message: str, audio_text: str | None = None) -> ServerMessage:
+    return ServerMessage(type="assistant", payload=ServerMessagePayload(message=message, audio_text=audio_text))
 
 
 def create_error_response(error: str) -> ServerMessage:

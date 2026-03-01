@@ -36,11 +36,14 @@ export interface UserProfile {
   email?: string;
   phone?: string;
   name?: string;
+  preferred_name?: string;
   age?: number;
   grade?: number;
   board?: string;
   school_name?: string;
   about_me?: string;
+  text_language_preference?: string;
+  audio_language_preference?: string;
   onboarding_complete: boolean;
   auth_provider: string;
 }

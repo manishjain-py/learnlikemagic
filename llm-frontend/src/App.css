@@ -23,21 +23,112 @@ body {
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
 }
 
-.header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.5rem;
+/* Slim navigation bar */
+.nav-bar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  background: white;
+  min-height: 44px;
+  gap: 8px;
+}
+
+.nav-home-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #555;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.nav-home-btn:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.nav-center {
+  flex: 1;
   text-align: center;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.header h1 {
-  margin-bottom: 0.5rem;
-  font-size: 1.75rem;
+.nav-breadcrumb {
+  font-size: 0.8rem;
+  color: #666;
 }
 
-.subtitle {
-  opacity: 0.9;
-  font-size: 0.95rem;
+.nav-user-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.nav-user-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-user-btn:hover {
+  background: #f0f0f0;
+  border-color: #ccc;
+  color: #333;
+}
+
+.nav-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 160px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.nav-action-btn {
+  padding: 4px 10px;
+  background: #f5f5f5;
+  color: #555;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-action-btn:hover {
+  background: #eee;
+  border-color: #ccc;
+  color: #333;
 }
 
 .progress-bar {
@@ -1275,4 +1366,207 @@ body {
 .subtopic-status.not_started {
   color: #888;
   background: #f5f5f5;
+}
+
+/* ──────────────────────────────────────────────
+   Virtual Teacher Mode (Full-Screen)
+   ────────────────────────────────────────────── */
+
+.virtual-teacher-view {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a2e;
+  overflow: hidden;
+}
+
+.vt-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vt-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.vt-avatar-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  padding: 1rem;
+}
+
+.teacher-gif {
+  width: 350px;
+  max-width: 85%;
+  border-radius: 16px;
+  transition: box-shadow 0.3s ease;
+}
+
+.teacher-gif.speaking {
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.2);
+  animation: teacher-glow 2s ease-in-out infinite;
+}
+
+@keyframes teacher-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.4), 0 0 40px rgba(118, 75, 162, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.6), 0 0 60px rgba(118, 75, 162, 0.3);
+  }
+}
+
+.teacher-subtitle {
+  margin-top: 1rem;
+  max-width: 90%;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 8px;
+  color: white;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.teacher-subtitle p {
+  margin: 0 0 0.4rem;
+}
+
+.teacher-subtitle p:last-child {
+  margin-bottom: 0;
+}
+
+.vt-typing-indicator {
+  padding: 16px 0 24px;
+}
+
+.vt-typing-indicator .typing-indicator span {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.vt-input-area {
+  width: 100%;
+  padding: 0 0.75rem 0.75rem;
+  animation: vt-fade-in 0.4s ease;
+}
+
+.vt-input-area .input-form {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.vt-input-area .input-form:focus-within {
+  border-color: rgba(102, 126, 234, 0.6);
+}
+
+.vt-input-area .input-field {
+  color: white;
+}
+
+.vt-input-area .input-field::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.vt-input-area .mic-button {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.vt-input-area .mic-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ──────────────────────────────────────────────
+   Per-Message Audio Play Button
+   ────────────────────────────────────────────── */
+
+.audio-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.06);
+  border: none;
+  border-radius: 50%;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.audio-play-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #333;
+}
+
+.audio-play-btn.playing {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  animation: audio-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes audio-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(102, 126, 234, 0);
+  }
+}
+
+.vt-toggle {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.vt-toggle:hover {
+  background: rgba(255, 255, 255, 0.35);
 }

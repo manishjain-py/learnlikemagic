@@ -110,18 +110,18 @@ class SessionService:
 
         # Generate mode-specific welcome
         if mode == "clarify_doubts":
-            welcome = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
+            welcome, audio_text = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
         elif mode == "exam":
-            welcome = asyncio.run(self.orchestrator.generate_exam_welcome(session))
+            welcome, audio_text = asyncio.run(self.orchestrator.generate_exam_welcome(session))
             # Append first question to welcome
             if session.exam_questions:
                 first_q = session.exam_questions[0]
                 welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
         else:
-            welcome = asyncio.run(self.orchestrator.generate_welcome_message(session))
+            welcome, audio_text = asyncio.run(self.orchestrator.generate_welcome_message(session))
 
         # Add welcome message to conversation history
-        session.add_message(create_teacher_message(welcome))
+        session.add_message(create_teacher_message(welcome, audio_text=audio_text))
 
         # Persist to DB
         self._persist_session(session_id, session, request, user_id=user_id, subject=guideline.subject if guideline else None)
@@ -136,6 +136,7 @@ class SessionService:
 
         first_turn = {
             "message": welcome,
+            "audio_text": audio_text,
             "hints": [],
             "step_idx": session.current_step,
         }
@@ -196,6 +197,7 @@ class SessionService:
         # Build response (maintain same REST contract)
         next_turn = {
             "message": turn_result.response,
+            "audio_text": turn_result.audio_text,
             "hints": [],
             "step_idx": session.current_step,
             "mastery_score": session.overall_mastery,
@@ -311,9 +313,11 @@ class SessionService:
                 grade=user.grade,
                 board=user.board,
                 language_level="simple" if (user.age and user.age <= 10) else "standard",
-                student_name=user.name,
+                student_name=user.preferred_name or user.name,
                 student_age=user.age,
                 about_me=user.about_me,
+                text_language_preference=user.text_language_preference or 'en',
+                audio_language_preference=user.audio_language_preference or 'en',
             )
         # Fallback to request data if profile is incomplete
         return StudentContext(

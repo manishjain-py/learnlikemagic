@@ -15,11 +15,14 @@ export default function ProfilePage() {
   const { user, token, logout, refreshProfile } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
+  const [preferredName, setPreferredName] = useState(user?.preferred_name || '');
   const [age, setAge] = useState(user?.age?.toString() || '');
   const [grade, setGrade] = useState(user?.grade?.toString() || '');
   const [board, setBoard] = useState(user?.board || '');
   const [schoolName, setSchoolName] = useState(user?.school_name || '');
   const [aboutMe, setAboutMe] = useState(user?.about_me || '');
+  const [textLang, setTextLang] = useState(user?.text_language_preference || 'en');
+  const [audioLang, setAudioLang] = useState(user?.audio_language_preference || 'en');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,11 +43,14 @@ export default function ProfilePage() {
         },
         body: JSON.stringify({
           name: name.trim() || undefined,
+          preferred_name: preferredName.trim() || undefined,
           age: age ? parseInt(age) : undefined,
           grade: grade ? parseInt(grade) : undefined,
           board: board || undefined,
           school_name: schoolName.trim() || undefined,
           about_me: aboutMe.trim() || undefined,
+          text_language_preference: textLang,
+          audio_language_preference: audioLang,
         }),
       });
 
@@ -72,7 +78,7 @@ export default function ProfilePage() {
           <button className="auth-back-btn" onClick={() => navigate('/')}>
             ← Back
           </button>
-          <h2 className="auth-title">Your Profile</h2>
+          <h2 className="auth-title">Profile & Settings</h2>
         </div>
 
         {error && <div className="auth-error">{error}</div>}
@@ -85,6 +91,17 @@ export default function ProfilePage() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={!editing}
+            />
+          </div>
+
+          <div className="auth-field">
+            <label>Preferred name</label>
+            <input
+              type="text"
+              value={preferredName}
+              onChange={(e) => setPreferredName(e.target.value)}
+              placeholder="What should we call you?"
               disabled={!editing}
             />
           </div>
@@ -149,6 +166,34 @@ export default function ProfilePage() {
               rows={3}
               disabled={!editing}
             />
+          </div>
+
+          <div className="profile-section">
+            <h3>Language Preferences</h3>
+            <div className="auth-field">
+              <label>Text language</label>
+              <select
+                value={textLang}
+                onChange={(e) => setTextLang(e.target.value)}
+                disabled={!editing}
+              >
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+                <option value="hinglish">Hinglish (Hindi + English)</option>
+              </select>
+            </div>
+            <div className="auth-field">
+              <label>Audio language</label>
+              <select
+                value={audioLang}
+                onChange={(e) => setAudioLang(e.target.value)}
+                disabled={!editing}
+              >
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+                <option value="hinglish">Hinglish (Hindi + English)</option>
+              </select>
+            </div>
           </div>
 
           {editing ? (

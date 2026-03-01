@@ -73,6 +73,7 @@ export interface CreateSessionRequest {
 
 export interface Turn {
   message: string;
+  audio_text?: string | null;
   hints: string[];
   step_idx: number;
   mastery_score: number;
@@ -459,4 +460,33 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
 
   const data = await response.json();
   return data.text;
+}
+
+// ──────────────────────────────────────────────
+// Text-to-speech
+// ──────────────────────────────────────────────
+
+export async function synthesizeSpeech(text: string, language: string = 'en'): Promise<Blob> {
+  // Can't use apiFetch — it parses JSON, but we need a raw audio blob.
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (_accessToken) {
+    headers['Authorization'] = `Bearer ${_accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text, language }),
+  });
+
+  if (response.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Authentication required');
+  }
+
+  if (!response.ok) {
+    throw new Error(`TTS failed: ${response.statusText}`);
+  }
+
+  return response.blob();
 }

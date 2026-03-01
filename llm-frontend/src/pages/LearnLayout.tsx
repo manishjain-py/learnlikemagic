@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useStudentProfile } from '../hooks/useStudentProfile';
 import { getModelConfig } from '../api';
 import '../App.css';
 
@@ -20,15 +19,27 @@ const menuItemStyle: React.CSSProperties = {
 export default function LearnLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { board, grade, country } = useStudentProfile();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getModelConfig()
       .then((config) => setModelLabel(config.tutor?.description || config.tutor?.model_id || ''))
       .catch(() => setModelLabel(''));
   }, []);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showUserMenu]);
 
   const handleLogout = () => {
     logout();
@@ -37,39 +48,29 @@ export default function LearnLayout() {
 
   return (
     <div className="app">
-      <header className="header" style={{ position: 'relative' }}>
-        <h1>{user?.name ? `Hi, ${user.name}!` : 'Learn Like Magic'}</h1>
-        <p className="subtitle">
-          {board} &bull; Grade {grade} &bull; {country}
-        </p>
-        <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+      <nav className="nav-bar">
+        <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </button>
+
+        <span className="nav-center">Subjects</span>
+
+        <div className="nav-user-menu" ref={menuRef}>
           <button
+            className="nav-user-btn"
             onClick={() => setShowUserMenu(!showUserMenu)}
-            style={{
-              padding: '6px 12px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.4)',
-              borderRadius: '20px',
-              fontSize: '0.8rem',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
+            aria-label="User menu"
           >
-            {user?.name || 'Menu'}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
           </button>
           {showUserMenu && (
-            <div style={{
-              position: 'absolute',
-              top: '40px',
-              right: 0,
-              background: 'white',
-              borderRadius: '8px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              minWidth: '160px',
-              zIndex: 100,
-              overflow: 'hidden',
-            }}>
+            <div className="nav-dropdown">
               <button onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
                 style={menuItemStyle}>Profile</button>
               <button onClick={() => { setShowUserMenu(false); navigate('/history'); }}
@@ -81,7 +82,7 @@ export default function LearnLayout() {
             </div>
           )}
         </div>
-      </header>
+      </nav>
 
       <div className="selection-container">
         <Outlet context={{ modelLabel }} />
