@@ -23,6 +23,7 @@ def _user_to_response(user) -> UserProfileResponse:
         email=user.email,
         phone=user.phone,
         name=user.name,
+        preferred_name=user.preferred_name,
         age=user.age,
         grade=user.grade,
         board=user.board,
@@ -52,6 +53,7 @@ async def update_profile(
     user = service.update_profile(
         user_id=current_user.id,
         name=request.name,
+        preferred_name=request.preferred_name,
         age=request.age,
         grade=request.grade,
         board=request.board,

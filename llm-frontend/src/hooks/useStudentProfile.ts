@@ -15,6 +15,6 @@ export function useStudentProfile(): StudentProfile {
     board: user?.board || 'CBSE',
     grade: user?.grade || 3,
     studentId: user?.id || 's1',
-    studentName: user?.name || '',
+    studentName: user?.preferred_name || user?.name || '',
   };
 }

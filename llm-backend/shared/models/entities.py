@@ -17,6 +17,7 @@ class User(Base):
     phone = Column(String, unique=True, nullable=True)
     auth_provider = Column(String, nullable=False)  # 'email', 'phone', 'google'
     name = Column(String, nullable=True)
+    preferred_name = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
     grade = Column(Integer, nullable=True)
     board = Column(String, nullable=True)

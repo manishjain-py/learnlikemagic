@@ -36,6 +36,7 @@ export interface UserProfile {
   email?: string;
   phone?: string;
   name?: string;
+  preferred_name?: string;
   age?: number;
   grade?: number;
   board?: string;

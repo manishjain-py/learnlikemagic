@@ -16,6 +16,7 @@ class ProfileService:
         return self.user_repo.get_by_id(user_id)
 
     def update_profile(self, user_id: str, name: Optional[str] = None,
+                       preferred_name: Optional[str] = None,
                        age: Optional[int] = None, grade: Optional[int] = None,
                        board: Optional[str] = None, school_name: Optional[str] = None,
                        about_me: Optional[str] = None,
@@ -24,6 +25,8 @@ class ProfileService:
         fields = {}
         if name is not None:
             fields["name"] = name
+        if preferred_name is not None:
+            fields["preferred_name"] = preferred_name
         if age is not None:
             fields["age"] = age
         if grade is not None:

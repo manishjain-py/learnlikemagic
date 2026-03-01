@@ -10,6 +10,7 @@ class UserProfileResponse(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     name: Optional[str] = None
+    preferred_name: Optional[str] = None
     age: Optional[int] = None
     grade: Optional[int] = None
     board: Optional[str] = None
@@ -24,6 +25,7 @@ class UserProfileResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     """Request model for updating profile fields."""
     name: Optional[str] = None
+    preferred_name: Optional[str] = None
     age: Optional[int] = None
     grade: Optional[int] = None
     board: Optional[str] = None

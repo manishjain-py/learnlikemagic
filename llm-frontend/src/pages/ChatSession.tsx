@@ -558,76 +558,57 @@ export default function ChatSession() {
   return (
     <>
       <div className="app">
-        <header className="header" style={{ position: 'relative' }}>
-          <h1>Learn Like Magic</h1>
-          <p className="subtitle">
-            Grade {grade}{subject && ` \u2022 ${subject}`}{topic && ` \u2022 ${topic}`}{subtopic && ` \u2022 ${subtopic}`}
-            {modelLabel && (
-              <span style={{
-                marginLeft: '8px',
-                padding: '2px 8px',
-                background: 'rgba(255,255,255,0.15)',
-                borderRadius: '10px',
-                fontSize: '0.7rem',
-                fontWeight: 500,
-                letterSpacing: '0.02em',
-              }}>
-                ⚡ {modelLabel}
-              </span>
-            )}
-          </p>
-          {sessionId && sessionMode !== 'exam' && (
-            <button
-              onClick={() => {
-                const next = !virtualTeacherOn;
-                setVirtualTeacherOn(next);
-                if (next) {
-                  // Warm up audio element during user gesture so browser allows future .play() calls
-                  const audio = getOrCreateAudio();
-                  audio.play().catch(() => {});
-                  audio.pause();
-                  // Auto-play the latest teacher message when toggling on
-                  const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
-                  if (lastTeacher?.content) {
-                    playTeacherAudio(lastTeacher.audioText || lastTeacher.content);
+        <nav className="nav-bar">
+          <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+
+          <span className="nav-center nav-breadcrumb">
+            {subject && <>{subject}</>}
+            {topic && <> &rsaquo; {topic}</>}
+            {subtopic && <> &rsaquo; {subtopic}</>}
+          </span>
+
+          <div className="nav-actions">
+            {sessionId && sessionMode !== 'exam' && (
+              <button
+                onClick={() => {
+                  const next = !virtualTeacherOn;
+                  setVirtualTeacherOn(next);
+                  if (next) {
+                    const audio = getOrCreateAudio();
+                    audio.play().catch(() => {});
+                    audio.pause();
+                    const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
+                    if (lastTeacher?.content) {
+                      playTeacherAudio(lastTeacher.audioText || lastTeacher.content);
+                    }
+                  } else if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current = null;
+                    setPlayingMsgIdx(null);
                   }
-                } else if (audioRef.current) {
-                  audioRef.current.pause();
-                  audioRef.current = null;
-                  setPlayingMsgIdx(null);
-                }
-              }}
-              className="vt-toggle"
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '90px',
-              }}
-            >
-              {virtualTeacherOn ? 'Text Mode' : 'Virtual Teacher'}
-            </button>
-          )}
-          {sessionId && (
-            <button
-              onClick={() => setDevToolsOpen(true)}
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                padding: '4px 10px',
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.4)',
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >
-              Dev Tools
-            </button>
-          )}
-        </header>
+                }}
+                className="nav-action-btn"
+                title={virtualTeacherOn ? 'Text Mode' : 'Virtual Teacher'}
+              >
+                {virtualTeacherOn ? 'Text' : 'VT'}
+              </button>
+            )}
+            {sessionId && (
+              <button
+                onClick={() => setDevToolsOpen(true)}
+                className="nav-action-btn"
+                title="Dev Tools"
+              >
+                Dev
+              </button>
+            )}
+          </div>
+        </nav>
 
         <div className="progress-bar">
           <div className="progress-info">

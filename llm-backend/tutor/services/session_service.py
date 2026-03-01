@@ -313,7 +313,7 @@ class SessionService:
                 grade=user.grade,
                 board=user.board,
                 language_level="simple" if (user.age and user.age <= 10) else "standard",
-                student_name=user.name,
+                student_name=user.preferred_name or user.name,
                 student_age=user.age,
                 about_me=user.about_me,
                 text_language_preference=user.text_language_preference or 'en',

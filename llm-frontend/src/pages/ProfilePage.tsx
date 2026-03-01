@@ -15,6 +15,7 @@ export default function ProfilePage() {
   const { user, token, logout, refreshProfile } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
+  const [preferredName, setPreferredName] = useState(user?.preferred_name || '');
   const [age, setAge] = useState(user?.age?.toString() || '');
   const [grade, setGrade] = useState(user?.grade?.toString() || '');
   const [board, setBoard] = useState(user?.board || '');
@@ -42,6 +43,7 @@ export default function ProfilePage() {
         },
         body: JSON.stringify({
           name: name.trim() || undefined,
+          preferred_name: preferredName.trim() || undefined,
           age: age ? parseInt(age) : undefined,
           grade: grade ? parseInt(grade) : undefined,
           board: board || undefined,
@@ -89,6 +91,17 @@ export default function ProfilePage() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={!editing}
+            />
+          </div>
+
+          <div className="auth-field">
+            <label>Preferred name</label>
+            <input
+              type="text"
+              value={preferredName}
+              onChange={(e) => setPreferredName(e.target.value)}
+              placeholder="What should we call you?"
               disabled={!editing}
             />
           </div>

@@ -66,6 +66,7 @@ def migrate():
         _apply_learning_modes_columns(db_manager)
         _apply_book_job_columns(db_manager)
         _apply_user_language_columns(db_manager)
+        _apply_user_preferred_name_column(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -209,6 +210,20 @@ def _apply_user_language_columns(db_manager):
             print("  Adding audio_language_preference column to users...")
             conn.execute(text("ALTER TABLE users ADD COLUMN audio_language_preference VARCHAR"))
             print("  ✓ audio_language_preference column added")
+
+        conn.commit()
+
+
+def _apply_user_preferred_name_column(db_manager):
+    """Add preferred_name column to users table if it doesn't exist."""
+    inspector = inspect(db_manager.engine)
+    existing_columns = {col["name"] for col in inspector.get_columns("users")}
+
+    with db_manager.engine.connect() as conn:
+        if "preferred_name" not in existing_columns:
+            print("  Adding preferred_name column to users...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN preferred_name VARCHAR"))
+            print("  ✓ preferred_name column added")
 
         conn.commit()
 

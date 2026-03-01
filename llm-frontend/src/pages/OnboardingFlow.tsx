@@ -11,7 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-type Step = 'name' | 'age' | 'grade' | 'board' | 'about' | 'done';
+type Step = 'name' | 'preferred_name' | 'age' | 'grade' | 'board' | 'about' | 'done';
 
 const BOARDS = ['CBSE', 'ICSE', 'State Board', 'Other'];
 
@@ -20,6 +20,7 @@ export default function OnboardingFlow() {
   const { user, token, refreshProfile } = useAuth();
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState(user?.name || '');
+  const [preferredName, setPreferredName] = useState(user?.preferred_name || '');
   const [age, setAge] = useState(user?.age?.toString() || '');
   const [grade, setGrade] = useState(user?.grade?.toString() || '');
   const [board, setBoard] = useState(user?.board || '');
@@ -54,6 +55,19 @@ export default function OnboardingFlow() {
     e.preventDefault();
     if (!name.trim()) return;
     const ok = await updateProfile({ name: name.trim() });
+    if (ok) {
+      // Pre-fill preferred name with first word of their name
+      if (!preferredName) {
+        setPreferredName(name.trim().split(/\s+/)[0]);
+      }
+      setStep('preferred_name');
+    }
+  };
+
+  const handlePreferredNameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!preferredName.trim()) return;
+    const ok = await updateProfile({ preferred_name: preferredName.trim() });
     if (ok) setStep('age');
   };
 
@@ -105,11 +119,11 @@ export default function OnboardingFlow() {
       <div className="auth-container onboarding">
         {/* Progress dots */}
         <div className="onboarding-progress">
-          {['name', 'age', 'grade', 'board', 'about'].map((s, i) => (
+          {['name', 'preferred_name', 'age', 'grade', 'board', 'about'].map((s, i) => (
             <div
               key={s}
               className={`onboarding-dot ${
-                s === step ? 'active' : ['name', 'age', 'grade', 'board', 'about'].indexOf(step) > i ? 'completed' : ''
+                s === step ? 'active' : ['name', 'preferred_name', 'age', 'grade', 'board', 'about'].indexOf(step) > i ? 'completed' : ''
               }`}
             />
           ))}
@@ -132,6 +146,27 @@ export default function OnboardingFlow() {
               />
             </div>
             <button type="submit" className="auth-btn auth-btn-primary" disabled={loading || !name.trim()}>
+              {loading ? 'Saving...' : 'Next'}
+            </button>
+          </form>
+        )}
+
+        {step === 'preferred_name' && (
+          <form onSubmit={handlePreferredNameSubmit} className="onboarding-step">
+            <h2 className="auth-title">What should we call you?</h2>
+            <p className="auth-subtitle">This is how your tutor will greet you.</p>
+            <div className="auth-field">
+              <input
+                type="text"
+                value={preferredName}
+                onChange={(e) => setPreferredName(e.target.value)}
+                placeholder="Your preferred name"
+                required
+                autoFocus
+                className="onboarding-input"
+              />
+            </div>
+            <button type="submit" className="auth-btn auth-btn-primary" disabled={loading || !preferredName.trim()}>
               {loading ? 'Saving...' : 'Next'}
             </button>
           </form>
@@ -222,7 +257,7 @@ export default function OnboardingFlow() {
 
         {step === 'done' && (
           <div className="onboarding-step done-step">
-            <h2 className="auth-title">You're all set{name ? `, ${name}` : ''}!</h2>
+            <h2 className="auth-title">You're all set{preferredName || name ? `, ${preferredName || name}` : ''}!</h2>
             <p className="auth-subtitle">Let's start learning.</p>
             <button className="auth-btn auth-btn-primary" onClick={handleFinish}>
               Start Learning
