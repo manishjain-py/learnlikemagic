@@ -218,8 +218,17 @@ class MasterTutorAgent(BaseAgent):
         return f"{system_prompt}\n\n---\n\n{turn_prompt}"
 
     def _build_system_prompt(self, session: SessionState) -> str:
+        from tutor.prompts.language_utils import get_response_language_instruction, get_audio_language_instruction
+
         topic = session.topic
         personalization_block = self._build_personalization_block(session.student_context)
+
+        response_language_instruction = get_response_language_instruction(
+            session.student_context.text_language_preference
+        )
+        audio_language_instruction = get_audio_language_instruction(
+            session.student_context.audio_language_preference
+        )
 
         if session.mode == "clarify_doubts":
             concepts = topic.study_plan.get_concepts()
@@ -232,6 +241,8 @@ class MasterTutorAgent(BaseAgent):
                 concepts_list=concepts_list,
                 language_level=session.student_context.language_level,
                 personalization_block=personalization_block,
+                response_language_instruction=response_language_instruction,
+                audio_language_instruction=audio_language_instruction,
             )
 
         steps_lines = []
@@ -251,6 +262,8 @@ class MasterTutorAgent(BaseAgent):
             teaching_approach=topic.guidelines.teaching_approach,
             steps_formatted=steps_formatted,
             common_misconceptions=misconceptions,
+            response_language_instruction=response_language_instruction,
+            audio_language_instruction=audio_language_instruction,
         )
 
     @staticmethod

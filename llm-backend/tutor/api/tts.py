@@ -21,6 +21,7 @@ MAX_TEXT_LENGTH = 5000  # Google Cloud TTS limit
 
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
+    language: str = Field(default='hinglish', pattern=r'^(en|hi|hinglish)$')
 
 
 @router.post("")
@@ -42,9 +43,17 @@ async def text_to_speech(
 
         synthesis_input = texttospeech.SynthesisInput(text=request.text)
 
+        # Dynamic voice selection based on language preference
+        if request.language == "en":
+            voice_name = "en-IN-Neural2-A"
+            language_code = "en-IN"
+        else:  # hi or hinglish
+            voice_name = "hi-IN-Neural2-D"
+            language_code = "hi-IN"
+
         voice = texttospeech.VoiceSelectionParams(
-            language_code="hi-IN",
-            name="hi-IN-Neural2-D",
+            language_code=language_code,
+            name=voice_name,
         )
 
         audio_config = texttospeech.AudioConfig(

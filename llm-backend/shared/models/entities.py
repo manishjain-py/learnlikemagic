@@ -22,6 +22,8 @@ class User(Base):
     board = Column(String, nullable=True)
     school_name = Column(String, nullable=True)
     about_me = Column(Text, nullable=True)
+    text_language_preference = Column(String, nullable=True)
+    audio_language_preference = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_complete = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -466,7 +466,7 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
 // Text-to-speech
 // ──────────────────────────────────────────────
 
-export async function synthesizeSpeech(text: string): Promise<Blob> {
+export async function synthesizeSpeech(text: string, language: string = 'en'): Promise<Blob> {
   // Can't use apiFetch — it parses JSON, but we need a raw audio blob.
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (_accessToken) {
@@ -476,7 +476,7 @@ export async function synthesizeSpeech(text: string): Promise<Blob> {
   const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, language }),
   });
 
   if (response.status === 401) {

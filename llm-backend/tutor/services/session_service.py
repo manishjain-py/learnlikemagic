@@ -316,6 +316,8 @@ class SessionService:
                 student_name=user.name,
                 student_age=user.age,
                 about_me=user.about_me,
+                text_language_preference=user.text_language_preference or 'en',
+                audio_language_preference=user.audio_language_preference or 'en',
             )
         # Fallback to request data if profile is incomplete
         return StudentContext(

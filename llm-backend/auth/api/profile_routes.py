@@ -28,6 +28,8 @@ def _user_to_response(user) -> UserProfileResponse:
         board=user.board,
         school_name=user.school_name,
         about_me=user.about_me,
+        text_language_preference=user.text_language_preference or 'en',
+        audio_language_preference=user.audio_language_preference or 'en',
         onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )
@@ -55,6 +57,8 @@ async def update_profile(
         board=request.board,
         school_name=request.school_name,
         about_me=request.about_me,
+        text_language_preference=request.text_language_preference,
+        audio_language_preference=request.audio_language_preference,
     )
     return _user_to_response(user)
 

@@ -691,6 +691,8 @@ class TeacherOrchestrator:
         if not session.topic:
             return ("Welcome! Let's start learning together.", None)
 
+        from tutor.prompts.language_utils import get_response_language_instruction, get_audio_language_instruction
+
         prompt = WELCOME_MESSAGE_PROMPT.render(
             grade=session.student_context.grade,
             topic_name=session.topic.topic_name,
@@ -700,6 +702,12 @@ class TeacherOrchestrator:
             ),
             language_level=session.student_context.language_level,
             preferred_examples=", ".join(session.student_context.preferred_examples),
+            response_language_instruction=get_response_language_instruction(
+                session.student_context.text_language_preference
+            ),
+            audio_language_instruction=get_audio_language_instruction(
+                session.student_context.audio_language_preference
+            ),
         )
 
         import asyncio
@@ -723,7 +731,11 @@ class TeacherOrchestrator:
         if not session.topic:
             return ("Hi! I'm here to help answer your questions. What would you like to know?", None)
 
+        from tutor.prompts.language_utils import get_response_language_instruction, get_audio_language_instruction
+
         topic_name = session.topic.topic_name
+        response_lang_instr = get_response_language_instruction(session.student_context.text_language_preference)
+        audio_lang_instr = get_audio_language_instruction(session.student_context.audio_language_preference)
         prompt = (
             f"You are a friendly tutor starting a Clarify Doubts session with a Grade {session.student_context.grade} student.\n\n"
             f"Topic: {topic_name}\n"
@@ -734,9 +746,8 @@ class TeacherOrchestrator:
             f"3. Invites them to ask whatever they're curious or confused about\n\n"
             f"Keep it to 1-2 sentences. Use {session.student_context.language_level} language. No emojis.\n\n"
             f"Return JSON with two fields:\n"
-            f'- "response": The English welcome message.\n'
-            f'- "audio_text": A Hinglish (Hindi-English mix) spoken version. Mix Hindi conversational glue '
-            f'("toh", "dekho", "samjho", "acha") with English technical terms. Roman script only.'
+            f'- "response": The welcome message. {response_lang_instr}\n'
+            f'- "audio_text": The spoken version for TTS. {audio_lang_instr}'
         )
 
         import asyncio
@@ -755,8 +766,12 @@ class TeacherOrchestrator:
         if not session.topic:
             return ("Let's test your knowledge! I'll ask you some questions. Ready?", None)
 
+        from tutor.prompts.language_utils import get_response_language_instruction, get_audio_language_instruction
+
         topic_name = session.topic.topic_name
         num_questions = len(session.exam_questions) if session.exam_questions else 7
+        response_lang_instr = get_response_language_instruction(session.student_context.text_language_preference)
+        audio_lang_instr = get_audio_language_instruction(session.student_context.audio_language_preference)
         prompt = (
             f"You are a friendly tutor starting an exam session with a Grade {session.student_context.grade} student.\n\n"
             f"Topic: {topic_name}\n"
@@ -768,9 +783,8 @@ class TeacherOrchestrator:
             f"4. Asks if they're ready\n\n"
             f"Keep it to 2-3 sentences. Use {session.student_context.language_level} language. No emojis.\n\n"
             f"Return JSON with two fields:\n"
-            f'- "response": The English welcome message.\n'
-            f'- "audio_text": A Hinglish (Hindi-English mix) spoken version. Mix Hindi conversational glue '
-            f'("toh", "dekho", "samjho", "acha") with English technical terms. Roman script only.'
+            f'- "response": The welcome message. {response_lang_instr}\n'
+            f'- "audio_text": The spoken version for TTS. {audio_lang_instr}'
         )
 
         import asyncio

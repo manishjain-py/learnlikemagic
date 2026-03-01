@@ -12,6 +12,7 @@ import {
   SummaryResponse,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
+import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import '../App.css';
 
@@ -38,6 +39,8 @@ export default function ChatSession() {
   const sessionId = params.sessionId;
   const location = useLocation();
   const { grade } = useStudentProfile();
+  const { user } = useAuth();
+  const audioLang = user?.audio_language_preference || 'en';
 
   const locState = location.state as {
     firstTurn?: Turn;
@@ -513,7 +516,7 @@ export default function ChatSession() {
         URL.revokeObjectURL(audio.src);
       }
 
-      const audioBlob = await synthesizeSpeech(text);
+      const audioBlob = await synthesizeSpeech(text, audioLang);
       const url = URL.createObjectURL(audioBlob);
       audio.src = url;
       audio.onended = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };

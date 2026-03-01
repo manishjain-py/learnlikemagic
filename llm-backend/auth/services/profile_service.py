@@ -18,7 +18,9 @@ class ProfileService:
     def update_profile(self, user_id: str, name: Optional[str] = None,
                        age: Optional[int] = None, grade: Optional[int] = None,
                        board: Optional[str] = None, school_name: Optional[str] = None,
-                       about_me: Optional[str] = None):
+                       about_me: Optional[str] = None,
+                       text_language_preference: Optional[str] = None,
+                       audio_language_preference: Optional[str] = None):
         fields = {}
         if name is not None:
             fields["name"] = name
@@ -32,6 +34,10 @@ class ProfileService:
             fields["school_name"] = school_name
         if about_me is not None:
             fields["about_me"] = about_me
+        if text_language_preference is not None:
+            fields["text_language_preference"] = text_language_preference
+        if audio_language_preference is not None:
+            fields["audio_language_preference"] = audio_language_preference
 
         user = self.user_repo.update_profile(user_id, **fields)
 

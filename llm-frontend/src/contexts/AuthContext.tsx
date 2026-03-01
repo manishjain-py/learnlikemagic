@@ -41,6 +41,8 @@ export interface UserProfile {
   board?: string;
   school_name?: string;
   about_me?: string;
+  text_language_preference?: string;
+  audio_language_preference?: string;
   onboarding_complete: boolean;
   auth_provider: string;
 }

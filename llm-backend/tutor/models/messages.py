@@ -35,6 +35,8 @@ class StudentContext(BaseModel):
     student_name: Optional[str] = Field(default=None, description="Student's name")
     student_age: Optional[int] = Field(default=None, description="Student's age")
     about_me: Optional[str] = Field(default=None, description="Student's self-description")
+    text_language_preference: str = Field(default="en", description="Language for text responses: en, hi, hinglish")
+    audio_language_preference: str = Field(default="en", description="Language for audio/TTS: en, hi, hinglish")
 
 
 # WebSocket Protocol

@@ -101,11 +101,8 @@ Use {language_level} language. The student likes examples about: {preferred_exam
     third-person language ("The student's answer shows…"). Speak TO them. Put
     analysis in `reasoning`.
 
-11. **Hinglish audio translation.** The `audio_text` field is a spoken Hinglish
-    version of your `response`. Write as a friendly Indian tutor speaking aloud —
-    mix Hindi and English naturally. Hindi for conversational glue ("toh", "dekho",
-    "samjho", "acha") and English for technical terms. Roman script only.
-    Example: "Bahut accha! Toh 5 plus 3 ka answer kya hoga? Sochke batao." """,
+11. **Response and audio language.** {response_language_instruction}
+    {audio_language_instruction} """,
     name="master_tutor_system",
 )
 
