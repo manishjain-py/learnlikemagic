@@ -55,7 +55,10 @@ class DBSyncService:
         subject: str,
         board: str,
         country: str = "India",
-        topic_summary: str = ""
+        topic_summary: str = "",
+        topic_sequence: Optional[int] = None,
+        subtopic_sequence: Optional[int] = None,
+        topic_storyline: Optional[str] = None
     ) -> str:
         """
         Sync a subtopic shard to the database.
@@ -71,6 +74,9 @@ class DBSyncService:
             board: Board (CBSE, ICSE, etc.)
             country: Country (default: India)
             topic_summary: Topic summary
+            topic_sequence: Teaching order of topic within book
+            subtopic_sequence: Teaching order of subtopic within topic
+            topic_storyline: Narrative of topic's teaching progression
 
         Returns:
             Database row ID (guideline_id)
@@ -87,13 +93,21 @@ class DBSyncService:
                 f"Updating existing guideline (id={existing_id}): "
                 f"{shard.topic_key}/{shard.subtopic_key}"
             )
-            self._update_guideline(existing_id, shard, grade, subject, board, country, topic_summary)
+            self._update_guideline(
+                existing_id, shard, grade, subject, board, country, topic_summary,
+                topic_sequence=topic_sequence, subtopic_sequence=subtopic_sequence,
+                topic_storyline=topic_storyline
+            )
             return existing_id
         else:
             logger.info(
                 f"Inserting new guideline: {shard.topic_key}/{shard.subtopic_key}"
             )
-            new_id = self._insert_guideline(shard, book_id, grade, subject, board, country, topic_summary=topic_summary)
+            new_id = self._insert_guideline(
+                shard, book_id, grade, subject, board, country, topic_summary=topic_summary,
+                topic_sequence=topic_sequence, subtopic_sequence=subtopic_sequence,
+                topic_storyline=topic_storyline
+            )
             return new_id
 
     def _find_existing_guideline(
@@ -144,12 +158,17 @@ class DBSyncService:
         board: str,
         country: str,
         review_status: str = "TO_BE_REVIEWED",
-        topic_summary: str = ""
+        topic_summary: str = "",
+        topic_sequence: Optional[int] = None,
+        subtopic_sequence: Optional[int] = None,
+        topic_storyline: Optional[str] = None,
+        _commit: bool = True
     ) -> str:
         """
         Insert new guideline into database.
 
         Uses simplified schema with single guidelines text field.
+        Set _commit=False when caller manages the transaction (e.g. batch sync).
         """
         import uuid
         guideline_id = str(uuid.uuid4())
@@ -160,6 +179,7 @@ class DBSyncService:
                 topic, subtopic, guideline,
                 topic_key, subtopic_key, topic_title, subtopic_title,
                 topic_summary, subtopic_summary,
+                topic_sequence, subtopic_sequence, topic_storyline,
                 source_page_start, source_page_end,
                 status, version, review_status,
                 created_at
@@ -169,6 +189,7 @@ class DBSyncService:
                 :topic, :subtopic, :guideline,
                 :topic_key, :subtopic_key, :topic_title, :subtopic_title,
                 :topic_summary, :subtopic_summary,
+                :topic_sequence, :subtopic_sequence, :topic_storyline,
                 :source_page_start, :source_page_end,
                 :status, :version, :review_status,
                 NOW()
@@ -194,6 +215,9 @@ class DBSyncService:
                 "subtopic_title": shard.subtopic_title,
                 "topic_summary": topic_summary,
                 "subtopic_summary": shard.subtopic_summary,
+                "topic_sequence": topic_sequence,
+                "subtopic_sequence": shard.subtopic_sequence if shard.subtopic_sequence else subtopic_sequence,
+                "topic_storyline": topic_storyline,
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
                 "status": "synced", # Default status as shard.status is removed
@@ -202,7 +226,8 @@ class DBSyncService:
             }
         )
 
-        self.db.commit()
+        if _commit:
+            self.db.commit()
         new_id = result.fetchone()[0]
 
         logger.info(
@@ -219,7 +244,10 @@ class DBSyncService:
         subject: str,
         board: str,
         country: str,
-        topic_summary: str = ""
+        topic_summary: str = "",
+        topic_sequence: Optional[int] = None,
+        subtopic_sequence: Optional[int] = None,
+        topic_storyline: Optional[str] = None
     ) -> None:
         """
         Update existing guideline.
@@ -240,6 +268,9 @@ class DBSyncService:
                 subtopic_title = :subtopic_title,
                 topic_summary = :topic_summary,
                 subtopic_summary = :subtopic_summary,
+                topic_sequence = :topic_sequence,
+                subtopic_sequence = :subtopic_sequence,
+                topic_storyline = :topic_storyline,
                 source_page_start = :source_page_start,
                 source_page_end = :source_page_end,
                 status = :status,
@@ -263,6 +294,9 @@ class DBSyncService:
                 "subtopic_title": shard.subtopic_title,
                 "topic_summary": topic_summary,
                 "subtopic_summary": shard.subtopic_summary,
+                "topic_sequence": topic_sequence,
+                "subtopic_sequence": shard.subtopic_sequence if shard.subtopic_sequence else subtopic_sequence,
+                "topic_storyline": topic_storyline,
                 "source_page_start": shard.source_page_start,
                 "source_page_end": shard.source_page_end,
                 "status": "synced", # Default status
@@ -396,32 +430,45 @@ class DBSyncService:
                 "input": {"shards_count": len(shards_to_sync)}
             }))
 
-            # 1. Delete all existing guidelines for this book
+            # 1. Cascade-delete study plans for guidelines being replaced
+            study_plans_delete = text(
+                "DELETE FROM study_plans WHERE guideline_id IN "
+                "(SELECT id FROM teaching_guidelines WHERE book_id = :book_id)"
+            )
+            self.db.execute(study_plans_delete, {"book_id": book_id})
+
+            # 2. Delete all existing guidelines for this book
             delete_query = text("DELETE FROM teaching_guidelines WHERE book_id = :book_id")
             self.db.execute(delete_query, {"book_id": book_id})
             
-            # 2. Insert all shards as new rows with TO_BE_REVIEWED status
+            # 3. Insert all shards as new rows with TO_BE_REVIEWED status
             created_count = 0
             
             for shard in shards_to_sync:
-                # Force status reset (Requirement 6.2)
-                # shard.status = "final"  # REMOVED: S3 status no longer exists
-                
-                # Get topic summary from index
+                # Get topic-level fields from index
                 topic_summary = ""
+                topic_sequence = None
+                topic_storyline = None
                 for topic in index.topics:
                     if topic.topic_key == shard.topic_key:
                         topic_summary = topic.topic_summary
+                        topic_sequence = topic.topic_sequence if topic.topic_sequence else None
+                        topic_storyline = topic.topic_storyline if topic.topic_storyline else None
                         break
 
-                # Insert new row
+                # Insert new row (no per-row commit — single transaction)
                 self._insert_guideline(
-                    shard, book_id, grade, subject, board, country, 
+                    shard, book_id, grade, subject, board, country,
                     review_status="TO_BE_REVIEWED",
-                    topic_summary=topic_summary
+                    topic_summary=topic_summary,
+                    topic_sequence=topic_sequence,
+                    subtopic_sequence=shard.subtopic_sequence if shard.subtopic_sequence else None,
+                    topic_storyline=topic_storyline,
+                    _commit=False
                 )
                 created_count += 1
 
+            # Single commit for the entire delete+insert transaction
             self.db.commit()
             
             duration_ms = int((time.time() - start_time) * 1000)

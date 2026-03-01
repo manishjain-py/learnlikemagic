@@ -54,6 +54,7 @@ from .context_pack_service import ContextPackService
 from .boundary_detection_service import BoundaryDetectionService
 from .guideline_merge_service import GuidelineMergeService
 from .topic_deduplication_service import TopicDeduplicationService
+from .pedagogical_sequencing_service import PedagogicalSequencingService
 from .topic_name_refinement_service import TopicNameRefinementService
 from .index_management_service import IndexManagementService
 from .db_sync_service import DBSyncService
@@ -109,6 +110,7 @@ class GuidelineExtractionOrchestrator:
         self.index_manager = IndexManagementService(self.s3)
         self.db_sync = DBSyncService(self.db_session) if self.db_session else None
         self.summary_service = TopicSubtopicSummaryService(self.openai_client, model=model)
+        self.sequencing_service = PedagogicalSequencingService(self.openai_client, model=model)
 
         logger.info(f"Initialized GuidelineExtractionOrchestrator with model={model}")
 
@@ -560,6 +562,81 @@ class GuidelineExtractionOrchestrator:
 
         logger.info(f"Book finalized: {merged_count} duplicate pairs merged")
 
+        # Step 4a: Sequence subtopics within each topic + generate storylines
+        logger.info(f"Sequencing subtopics for {book_id}")
+        index = self._load_index(book_id)
+        all_shards = self._load_all_shards_v2(book_id)
+        subtopics_sequenced = 0
+
+        for topic in index.topics:
+            # Collect shards for this topic
+            topic_shards = [s for s in all_shards if s.topic_key == topic.topic_key]
+            if not topic_shards:
+                continue
+
+            sequence_pairs, storyline = self.sequencing_service.sequence_subtopics(
+                topic_title=topic.topic_title,
+                subtopics=topic_shards,
+                grade=book_metadata.get("grade", 3),
+                subject=book_metadata.get("subject", "Math")
+            )
+
+            # Apply sequence numbers to shards and save
+            seq_map = {key: seq for key, seq in sequence_pairs}
+            for shard in topic_shards:
+                if shard.subtopic_key in seq_map:
+                    shard.subtopic_sequence = seq_map[shard.subtopic_key]
+                    shard.updated_at = datetime.utcnow().isoformat()
+                    self._save_shard_v2(book_id, shard)
+                    subtopics_sequenced += 1
+
+            # Apply to index entries
+            for st in topic.subtopics:
+                if st.subtopic_key in seq_map:
+                    st.subtopic_sequence = seq_map[st.subtopic_key]
+
+            # Set topic storyline
+            topic.topic_storyline = storyline
+
+        self.index_manager.save_index(index)
+        logger.info(f"Sequenced {subtopics_sequenced} subtopics")
+
+        # Step 5: Sequence topics within the book
+        logger.info(f"Sequencing topics for {book_id}")
+        topics_with_info = []
+        for topic in index.topics:
+            min_page = float('inf')
+            max_page = 0
+            for shard in all_shards:
+                if shard.topic_key == topic.topic_key:
+                    min_page = min(min_page, shard.source_page_start)
+                    max_page = max(max_page, shard.source_page_end)
+            if min_page == float('inf'):
+                min_page = 0
+
+            topics_with_info.append({
+                "topic_key": topic.topic_key,
+                "topic_title": topic.topic_title,
+                "topic_summary": topic.topic_summary,
+                "subtopic_count": len(topic.subtopics),
+                "page_range": f"{min_page}-{max_page}",
+                "topic_storyline": topic.topic_storyline
+            })
+
+        topic_sequence_pairs = self.sequencing_service.sequence_topics(
+            topics_with_info=topics_with_info,
+            grade=book_metadata.get("grade", 3),
+            subject=book_metadata.get("subject", "Math")
+        )
+
+        topic_seq_map = {key: seq for key, seq in topic_sequence_pairs}
+        for topic in index.topics:
+            if topic.topic_key in topic_seq_map:
+                topic.topic_sequence = topic_seq_map[topic.topic_key]
+
+        self.index_manager.save_index(index)
+        logger.info(f"Sequenced {len(topic_sequence_pairs)} topics")
+
         # Regenerate topic summaries for all topics (content may have changed)
         index = self._load_index(book_id)
         for topic in index.topics:
@@ -593,6 +670,8 @@ class GuidelineExtractionOrchestrator:
             "subtopics_finalized": finalized_count,
             "subtopics_renamed": refined_count,
             "duplicates_merged": merged_count,
+            "subtopics_sequenced": subtopics_sequenced,
+            "topics_sequenced": len(topic_sequence_pairs),
             "total_topics": len(index.topics)
         }
 

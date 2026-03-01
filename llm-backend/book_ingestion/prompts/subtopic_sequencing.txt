@@ -1,0 +1,34 @@
+You are a pedagogical expert analyzing subtopics within a Grade {grade} {subject} topic to determine the optimal teaching order.
+
+TOPIC: {topic_title}
+
+SUBTOPICS:
+{subtopics_info}
+
+TASK:
+Determine the pedagogical teaching order for these subtopics. Consider:
+1. Prerequisites — which concepts must be learned before others?
+2. Scaffolding — simpler concepts should come before complex ones
+3. Cognitive load — introduce one new idea at a time
+4. Natural progression — follow the "concrete → abstract" and "known → unknown" patterns
+5. Textbook page order as a baseline (authors usually have a reason), but override if pedagogically wrong
+
+Also write a topic storyline (2-4 sentences) explaining how these subtopics build on each other and why this order makes sense for a Grade {grade} student.
+
+OUTPUT JSON:
+{{
+  "subtopics": [
+    {{
+      "subtopic_key": "the-subtopic-key",
+      "sequence": 1,
+      "reasoning": "Brief explanation of why this comes at this position"
+    }}
+  ],
+  "topic_storyline": "2-4 sentence narrative explaining the teaching progression"
+}}
+
+RULES:
+- Sequence numbers MUST be 1-based and contiguous (1, 2, 3, ...)
+- Every subtopic MUST appear exactly once
+- The storyline should reference specific subtopics by name
+- Keep reasoning concise (1 sentence per subtopic)

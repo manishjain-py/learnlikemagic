@@ -162,11 +162,12 @@ class TopicDeduplicationService:
         summary_lines = []
 
         for shard in shards:
-            guidelines_preview = shard.guidelines[:200] + "..." if len(shard.guidelines) > 200 else shard.guidelines
+            guidelines_preview = shard.guidelines[:500] + "..." if len(shard.guidelines) > 500 else shard.guidelines
 
             summary_lines.append(
                 f"\nTopic: {shard.topic_title} ({shard.topic_key})\n"
                 f"Subtopic: {shard.subtopic_title} ({shard.subtopic_key})\n"
+                f"Summary: {shard.subtopic_summary}\n"
                 f"Pages: {shard.source_page_start}-{shard.source_page_end}\n"
                 f"Guidelines Preview: {guidelines_preview}\n"
             )
