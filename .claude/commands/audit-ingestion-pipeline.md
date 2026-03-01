@@ -322,7 +322,9 @@ print(f'Unassigned pages: {len(unassigned) if \"unassigned\" in dir() else \"unk
 
 ## Step 9: Compile Audit Report
 
-Create a comprehensive markdown report at `$REPORT_FILE` with this structure:
+**Keep the report compact, clear, and to the point.** No filler text, no verbose explanations. Use tables for findings. Use short, direct sentences. Every word must earn its place.
+
+Create the report at `$REPORT_FILE` with this structure:
 
 ```markdown
 # Book Ingestion Pipeline Audit Report
@@ -370,15 +372,26 @@ Create a comprehensive markdown report at `$REPORT_FILE` with this structure:
 
 ## Priority Fix List
 
-Ordered by impact on study plan quality:
+Table format, ordered by impact on study plan quality:
 
-1. **[CRITICAL]** Description — Estimated effort: S/M/L
-2. **[HIGH]** Description — Estimated effort: S/M/L
-3. ...
+| # | Severity | Fix | Effort | Confidence | Rationale |
+|---|----------|-----|--------|------------|-----------|
+| 1 | CRITICAL | Description | S/M/L | **X%** | Why this fix works, what assumptions it makes, risks |
+
+**Confidence scoring guide:**
+- **95%** = Pure code fix, deterministic, no behavioral unknowns
+- **85-90%** = Code fix with minor tuning needed (thresholds, limits)
+- **70-80%** = Depends on LLM behavior or needs real-data calibration
+- **<70%** = Architectural change, needs testing/iteration
+
+For each fix, the Rationale column MUST explain:
+1. Why the fix addresses the root cause (not just the symptom)
+2. What assumptions or dependencies exist
+3. What could go wrong or need tuning
 
 ## Architecture Recommendations
 
-Long-term suggestions for pipeline resilience:
+Long-term suggestions for pipeline resilience (compact, 1-2 lines each):
 1. ...
 2. ...
 ```
