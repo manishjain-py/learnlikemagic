@@ -44,11 +44,13 @@ async def text_to_speech(
 
         voice = texttospeech.VoiceSelectionParams(
             language_code="hi-IN",
-            name="hi-IN-Wavenet-A",
+            name="hi-IN-Neural2-D",
         )
 
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=1.1,
+            pitch=3.0,
         )
 
         response = client.synthesize_speech(
