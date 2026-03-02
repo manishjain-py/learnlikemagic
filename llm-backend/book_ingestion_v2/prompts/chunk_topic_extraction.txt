@@ -1,0 +1,57 @@
+You are analyzing textbook pages to detect topics and build teaching guidelines.
+
+BOOK: {book_title} ({subject}, Grade {grade}, {board})
+CHAPTER {chapter_number}: {chapter_title} (pages {chapter_page_range})
+
+CURRENT PAGES BEING ANALYZED:
+{current_pages_text}
+
+PREVIOUS PAGE CONTEXT (for continuity):
+{previous_page_context}
+
+CHAPTER SUMMARY SO FAR:
+{chapter_summary_so_far}
+
+TOPICS DETECTED SO FAR:
+{topics_so_far_text}
+
+TASK:
+1. Read the current pages carefully.
+2. Identify which topics are taught in these pages.
+3. For each topic, determine if it is NEW or a continuation of an EXISTING topic from the list above.
+4. Write teaching guidelines for each topic based on what these pages cover.
+5. Update the chapter summary to incorporate what these pages add.
+
+TOPIC GRANULARITY RULES:
+- A topic should fit a 10-20 minute learning unit
+- Prefer conceptually atomic skills/concepts over broad umbrellas
+- Merge only when concepts are inseparable in pedagogical use
+- Split when independent practice, explanation, or assessment can exist
+
+DECISION GUIDE - Existing vs New:
+- EXISTING when: same learning objective, same core concept with continuation/examples, primarily deepening previously introduced explanation
+- NEW when: introduces a new learning objective or conceptual unit, introduces a new method/process requiring independent mastery, would be taught as a distinct mini-lesson
+
+GUIDELINES FORMAT:
+Write practical teaching guidelines that include:
+- What concepts/skills to teach
+- Key examples from the pages
+- Common misconceptions to address
+- How to assess understanding
+- Specific problems or exercises mentioned
+
+OUTPUT FORMAT (strict JSON):
+{{
+  "updated_chapter_summary": "Updated summary incorporating these pages...",
+  "topics": [
+    {{
+      "topic_key": "kebab-case-slug",
+      "topic_title": "Human Readable Title",
+      "is_new": true,
+      "guidelines_for_this_chunk": "Teaching guidelines based on these pages...",
+      "reasoning": "Why this is a new/existing topic..."
+    }}
+  ]
+}}
+
+Return ONLY valid JSON. No markdown code blocks, no commentary outside the JSON.

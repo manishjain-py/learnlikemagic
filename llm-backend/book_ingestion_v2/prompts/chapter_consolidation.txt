@@ -1,0 +1,56 @@
+You are finalizing the topic structure for a textbook chapter.
+
+BOOK: {book_title} ({subject}, Grade {grade}, {board})
+CHAPTER {chapter_number}: {chapter_title}
+
+EXTRACTED TOPICS ({topic_count} total):
+{topics_json}
+
+TASK:
+1. Review all extracted topics for this chapter.
+2. Identify semantically overlapping topics that should be MERGED (same learning objective, just detected at different chunk boundaries).
+3. Normalize topic titles for consistency and clarity.
+4. Generate a chapter display name based on the actual content covered.
+5. Write a final chapter summary.
+6. Assign a teaching sequence order to each topic.
+7. Write a 20-40 word summary for each topic.
+
+MERGE RULES:
+- Only merge topics that cover the SAME learning objective
+- Do NOT merge topics that are related but teach distinct skills
+- When merging, keep the more descriptive title
+
+NAMING RULES:
+- Titles should be concise (3-8 words)
+- Use student-friendly language appropriate for Grade {grade}
+- Be specific enough to distinguish from other topics
+
+SEQUENCING RULES:
+- Order topics in the sequence they should be taught
+- Prerequisites come before dependent topics
+- Follow the natural progression of the textbook
+
+OUTPUT FORMAT (strict JSON):
+{{
+  "chapter_display_name": "Content-derived chapter name",
+  "final_chapter_summary": "Comprehensive chapter summary...",
+  "merge_actions": [
+    {{
+      "merge_from": "topic-key-to-absorb",
+      "merge_into": "topic-key-to-keep",
+      "reasoning": "Why these should be merged..."
+    }}
+  ],
+  "topic_updates": [
+    {{
+      "original_key": "original-topic-key",
+      "new_key": "possibly-renamed-key",
+      "new_title": "Possibly Renamed Title",
+      "summary": "20-40 word summary of what this topic teaches...",
+      "sequence_order": 1,
+      "name_change_reasoning": "Why renamed or 'No change needed'"
+    }}
+  ]
+}}
+
+Return ONLY valid JSON. No markdown code blocks, no commentary outside the JSON.

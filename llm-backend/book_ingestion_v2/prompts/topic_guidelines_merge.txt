@@ -1,0 +1,23 @@
+You are merging teaching guidelines for a textbook topic.
+
+BOOK: {book_title} ({subject}, Grade {grade})
+CHAPTER: {chapter_title}
+TOPIC: {topic_title}
+
+ACCUMULATED GUIDELINES (from multiple page chunks):
+{existing_guidelines}
+
+TASK:
+Merge the accumulated guidelines into a single comprehensive, well-organized text.
+
+REQUIREMENTS:
+1. Combine information without duplication
+2. Maintain natural language flow
+3. Keep all unique objectives, examples, misconceptions, and assessments
+4. Organize logically: objectives → teaching strategies → examples → misconceptions → assessments
+5. If information overlaps, keep the more detailed version
+6. Preserve specific details (page numbers, problem numbers, exact examples)
+7. The final text should read as a single cohesive teaching guide
+
+OUTPUT:
+Return ONLY the merged guidelines text. No extra commentary, no JSON wrapping, no markdown code blocks.

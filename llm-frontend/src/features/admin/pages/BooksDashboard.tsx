@@ -138,6 +138,20 @@ const BooksDashboard: React.FC = () => {
         >
           Docs
         </button>
+        <button
+          onClick={() => navigate('/admin/books-v2')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#DBEAFE',
+            color: '#1D4ED8',
+            border: '1px solid #93C5FD',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: '600',
+          }}
+        >
+          V2 Pipeline
+        </button>
       </div>
 
       {/* Loading State */}

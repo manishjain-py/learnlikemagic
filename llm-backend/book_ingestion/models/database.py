@@ -19,6 +19,7 @@ class Book(Base):
     board = Column(String, nullable=False)  # e.g., "CBSE"
     grade = Column(Integer, nullable=False)
     subject = Column(String, nullable=False)  # e.g., "Mathematics"
+    pipeline_version = Column(Integer, default=1)  # 1=V1, 2=V2
 
     # S3 storage
     cover_image_s3_key = Column(String, nullable=True)
