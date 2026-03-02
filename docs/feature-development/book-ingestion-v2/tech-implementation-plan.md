@@ -59,7 +59,7 @@ Book Ingestion V2 replaces AI-inferred book structure with explicit admin-author
 │    book_routes.py, chapter_routes.py, page_routes.py, processing_routes.py  │
 │                                                                             │
 │  Service Layer:                                                             │
-│    BookV2Service, TOCService, ChapterPageService, ChapterOCRService         │
+│    BookV2Service, TOCService, ChapterPageService                            │
 │    ChunkProcessorService, TopicExtractionOrchestrator                       │
 │    ChapterFinalizationService, TopicSyncService                             │
 │                                                                             │
@@ -107,16 +107,15 @@ CREATE TABLE book_chapters (
     display_name    VARCHAR,                        -- Content-derived chapter name
     summary         TEXT,                           -- Final chapter summary
 
-    -- Status tracking
+    -- Status tracking (see ChapterStatus enum in Appendix B)
     status          VARCHAR NOT NULL DEFAULT 'toc_defined',
     -- Values: toc_defined | upload_in_progress | upload_complete |
-    --         ocr_processing | topic_extraction | chapter_finalizing |
+    --         topic_extraction | chapter_finalizing |
     --         chapter_completed | failed
 
-    -- Denormalized counts for fast UI display
+    -- Denormalized count for fast UI display
     total_pages         INTEGER NOT NULL,           -- end_page - start_page + 1
     uploaded_page_count INTEGER NOT NULL DEFAULT 0,
-    approved_page_count INTEGER NOT NULL DEFAULT 0,
 
     -- Error state
     error_message   TEXT,
@@ -145,31 +144,29 @@ CREATE TABLE chapter_pages (
     page_number         INTEGER NOT NULL,           -- Absolute page number
 
     -- S3 references
-    image_s3_key        VARCHAR,                    -- books/{book_id}/chapters/{ch}/pages/{pg}.png
-    text_s3_key         VARCHAR,                    -- books/{book_id}/chapters/{ch}/pages/{pg}.txt
-    raw_image_s3_key    VARCHAR,                    -- books/{book_id}/chapters/{ch}/pages/raw/{pg}.{ext}
+    raw_image_s3_key    VARCHAR,                    -- Original upload (jpg/tiff/webp before conversion)
+    image_s3_key        VARCHAR,                    -- Converted PNG used for OCR and display
+    text_s3_key         VARCHAR,                    -- OCR extracted text file
 
     -- OCR tracking
     ocr_status          VARCHAR DEFAULT 'pending',  -- pending | processing | completed | failed
     ocr_error           TEXT,
     ocr_model           VARCHAR,                    -- Model used for OCR (audit)
 
-    -- Page status
-    status              VARCHAR DEFAULT 'pending_review',  -- pending_review | approved
-
     -- Timestamps
     uploaded_at         TIMESTAMP,
     ocr_completed_at    TIMESTAMP,
-    approved_at         TIMESTAMP,
     created_at          TIMESTAMP DEFAULT NOW(),
     updated_at          TIMESTAMP DEFAULT NOW(),
 
+    -- Defense-in-depth: TOC validation already prevents range overlaps, but this
+    -- constraint catches any bugs that would assign the same page to two chapters.
     CONSTRAINT uq_book_page UNIQUE (book_id, page_number),
     CONSTRAINT uq_chapter_page UNIQUE (chapter_id, page_number)
 );
 
 CREATE INDEX idx_chapter_pages_chapter ON chapter_pages(chapter_id);
-CREATE INDEX idx_chapter_pages_status ON chapter_pages(chapter_id, status);
+CREATE INDEX idx_chapter_pages_ocr ON chapter_pages(chapter_id, ocr_status);
 ```
 
 #### `chapter_processing_jobs` — Background job tracking per chapter
@@ -180,9 +177,9 @@ CREATE TABLE chapter_processing_jobs (
     book_id             VARCHAR NOT NULL REFERENCES books(id) ON DELETE CASCADE,
     chapter_id          VARCHAR NOT NULL REFERENCES book_chapters(id) ON DELETE CASCADE,
 
-    -- Job definition
-    job_type            VARCHAR NOT NULL,            -- ocr_batch | topic_extraction | finalization
-    status              VARCHAR DEFAULT 'pending',   -- pending | running | completed | failed
+    -- Job definition (see V2JobType and V2JobStatus enums in Appendix B)
+    job_type            VARCHAR NOT NULL,            -- v2_topic_extraction | v2_refinalization
+    status              VARCHAR DEFAULT 'pending',   -- pending | running | completed | completed_with_errors | failed
 
     -- Progress
     total_items         INTEGER,
@@ -375,6 +372,7 @@ books/{book_id}/
 
 **Key design properties:**
 - **Run isolation:** Each processing run (`runs/{job_id}/`) is self-contained. Comparing runs, debugging, or replaying is trivial.
+- **Run retention:** Old processing runs are **retained indefinitely** for audit. Reprocessing a chapter creates a new run directory; previous runs remain in S3 and their `chapter_processing_jobs`/`chapter_chunks` DB records are preserved. The `output/` directory is overwritten to always reflect the latest finalized result.
 - **Chunk-level traceability:** Every chunk's input, output, and resulting state are captured.
 - **Output stability:** `output/` always contains the latest finalized result, independent of processing history.
 - **No metadata.json for page inventory:** V2 tracks pages in the DB (`chapter_pages` table), not in S3 metadata. S3 is just storage.
@@ -398,11 +396,10 @@ llm-backend/book_ingestion_v2/
 │   ├── __init__.py
 │   ├── book_v2_service.py          # Book CRUD with pipeline_version=2
 │   ├── toc_service.py              # TOC validation, chapter creation
-│   ├── chapter_page_service.py     # Page upload, conversion, status
-│   ├── chapter_ocr_service.py      # Bulk OCR orchestration per chapter
+│   ├── chapter_page_service.py     # Page upload, inline OCR, conversion, status
 │   ├── chunk_processor_service.py  # Single chunk processing (LLM call)
-│   ├── topic_extraction_orchestrator.py  # Full chapter extraction pipeline
-│   ├── chapter_finalization_service.py   # Consolidation, dedup, sequencing
+│   ├── topic_extraction_orchestrator.py  # Full chapter extraction + auto-finalization
+│   ├── chapter_finalization_service.py   # Consolidation, dedup, LLM merge, sequencing
 │   ├── topic_sync_service.py       # Sync chapter_topics → teaching_guidelines
 │   └── chapter_job_service.py      # Job lock + progress (adapts V1 pattern)
 │
@@ -436,11 +433,10 @@ llm-backend/book_ingestion_v2/
 |---------|---------------|---------------|
 | `BookV2Service` | Book CRUD with `pipeline_version=2`, list V2 books | Adapts `BookService` |
 | `TOCService` | Validate TOC entries, create `book_chapters` rows, check range overlaps | New |
-| `ChapterPageService` | Upload pages within chapter context, validate against TOC range, track completeness | Adapts `PageService` |
-| `ChapterOCRService` | Bulk OCR for chapter pages, background job | Reuses `OCRService`, adapts `run_bulk_ocr_background` |
-| `ChunkProcessorService` | Process single 3-page chunk: build prompt, call LLM, parse response, update accumulator | New (core V2 logic) |
-| `TopicExtractionOrchestrator` | Orchestrate chunk-by-chunk processing for a chapter, manage running state, persist chunks | New (replaces `GuidelineExtractionOrchestrator`) |
-| `ChapterFinalizationService` | Consolidation: dedup topics, normalize names, generate summaries, assign sequence | Adapts from V1 finalization services |
+| `ChapterPageService` | Upload pages within chapter context, validate against TOC range, inline OCR on upload, track completeness | Adapts `PageService`, reuses `OCRService` |
+| `ChunkProcessorService` | Process single 3-page chunk: build prompt, call LLM, parse response, return structured output | New (core V2 logic) |
+| `TopicExtractionOrchestrator` | Orchestrate chunk-by-chunk processing for a chapter, manage accumulator state, persist chunks, auto-trigger finalization | New (replaces `GuidelineExtractionOrchestrator`) |
+| `ChapterFinalizationService` | Consolidation: LLM-merge accumulated guidelines per topic, dedup topics, normalize names, generate summaries, assign sequence | Adapts from V1 finalization services |
 | `TopicSyncService` | Sync `chapter_topics` → `teaching_guidelines` table with V2→V1 field mapping | Adapts `DBSyncService` |
 | `ChapterJobService` | Job lock, progress tracking, stale detection per chapter | Adapts `JobLockService` |
 
@@ -496,28 +492,30 @@ llm-backend/book_ingestion_v2/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages` | Upload single page to chapter (with page_number) |
-| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages/bulk` | Bulk upload pages |
+| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages` | Upload single page (with page_number). Inline OCR. |
+| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages/bulk` | Bulk upload pages. Inline OCR per page. |
 | `GET` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages` | List pages for chapter |
 | `GET` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}` | Get page detail + presigned URLs |
-| `PUT` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}/approve` | Approve page |
 | `DELETE` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}` | Delete page |
 | `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}/retry-ocr` | Retry failed OCR |
 
 **Upload single page request:** `multipart/form-data` with `image` file and `page_number` field.
 
+**OCR strategy:** OCR runs **inline on every upload** (single or bulk). No separate batch OCR phase. This eliminates the ambiguous `ocr_processing` state from V1 and guarantees that when `uploaded_page_count == total_pages`, all pages have been OCR'd. Failed OCR pages can be retried via the retry endpoint.
+
 **Validation rules:**
 - `page_number` must be within chapter's `[start_page, end_page]` range
 - Reject duplicate page_number within chapter (409 unless explicit replace)
 - Chapter status transitions: `toc_defined → upload_in_progress` on first upload
-- Chapter status transitions: `upload_in_progress → upload_complete` when all pages present
+- Chapter status transitions: `upload_in_progress → upload_complete` when all pages present and all OCR complete
 
 ### 7.4 Processing
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/process` | Start topic extraction (requires upload_complete) |
-| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/finalize` | Start finalization (requires topic_extraction complete) |
+| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/process` | Start extraction + auto-finalization (requires upload_complete) |
+| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/refinalize` | Re-run finalization only (e.g., after prompt changes) |
+| `POST` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/reprocess` | Wipe topics and reprocess from scratch |
 | `GET` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/jobs/latest` | Get latest job status |
 | `GET` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/jobs/{job_id}` | Get specific job status |
 | `GET` | `/admin/v2/books/{book_id}/chapters/{chapter_id}/topics` | Get extracted topics |
@@ -526,19 +524,30 @@ llm-backend/book_ingestion_v2/
 **Process request:**
 ```json
 {
-  "resume": false
+  "resume": false,
+  "auto_sync_to_db": false
 }
 ```
+- Runs extraction (all chunks) then **auto-triggers finalization** in the same background job. No manual gate between extraction and finalization.
 - Returns `409` if chapter is not in `upload_complete` status (or later if resuming)
 - Returns `409` if a job is already running for this chapter
-- Sets chapter status to `topic_extraction`
+- `resume: true` picks up from `last_completed_chunk + 1`
 
-**Finalize request:**
+**Reprocess request:**
 ```json
 {
   "auto_sync_to_db": false
 }
 ```
+- Resets chapter to `upload_complete`, creates new `chapter_topics` rows (old topics soft-deleted via version increment). Old processing runs and chunks in DB/S3 are retained for audit.
+
+**Refinalize request:**
+```json
+{
+  "auto_sync_to_db": false
+}
+```
+- Re-runs only the finalization step (consolidation, dedup, naming, sequencing) on existing draft topics. Useful after prompt improvements without re-extracting.
 
 ### 7.5 Sync & Review
 
@@ -556,33 +565,28 @@ llm-backend/book_ingestion_v2/
 
 ```
 toc_defined
-    │ (first page uploaded)
+    │ (first page uploaded + OCR'd inline)
     ▼
 upload_in_progress
-    │ (all pages in range uploaded)
+    │ (all pages in range uploaded, all OCR complete)
     ▼
 upload_complete
-    │ (OCR job started — if bulk upload without inline OCR)
+    │ (POST .../process)
     ▼
-ocr_processing ─────────────┐
-    │ (all OCR complete)     │ (OCR failure)
-    ▼                        ▼
-upload_complete ◄─────── failed (retryable)
-    │ (extraction started)
-    ▼
-topic_extraction
-    │ (all chunks processed)
-    ▼
-chapter_finalizing
-    │ (consolidation complete)
-    ▼
-chapter_completed
+topic_extraction ──────────────┐
+    │ (all chunks processed)   │ (chunk failure after retries)
+    ▼                          ▼
+chapter_finalizing          failed (retryable)
+    │ (consolidation done)     │
+    ▼                          │ (POST .../process with resume:true)
+chapter_completed              └──► topic_extraction
 ```
 
 Notes:
-- OCR can be inline (single page upload) or batch (bulk upload). If inline, status stays at `upload_in_progress`/`upload_complete` without passing through `ocr_processing`.
-- `failed` status can be retried, returning to the previous valid state.
-- Resume from `topic_extraction`: re-process from `last_completed_chunk + 1`.
+- **No `ocr_processing` state.** OCR is always inline on upload. A page with `ocr_status=failed` can be retried, but doesn't block the chapter state — only `uploaded_page_count == total_pages` AND `all ocr_status == completed` triggers the transition to `upload_complete`.
+- **Auto-finalization.** The `/process` endpoint runs extraction and finalization as a single background job. No manual gate between them.
+- **`failed` with retry.** A failed chapter can be resumed (`resume: true`) or fully reprocessed (`/reprocess`).
+- **Reprocessing.** The `/reprocess` endpoint resets status to `upload_complete`, creates a fresh processing run, and retains old runs for audit.
 
 ### 8.2 Topic Extraction Pipeline (per chapter)
 
@@ -605,6 +609,10 @@ TopicExtractionOrchestrator.extract(chapter_id)
 │   ├── e. Call LLM (ChunkProcessorService)
 │   ├── f. Parse structured JSON response
 │   ├── g. Validate response schema
+│   │      On failure: retry up to 3 times with exponential backoff.
+│   │      If all retries fail: mark chunk as failed, log error,
+│   │      skip to next chunk. Accumulator state is unchanged.
+│   │      Job continues with failed_items count incremented.
 │   ├── h. Update accumulator:
 │   │   ├── chapter_summary_so_far = response.updated_chapter_summary
 │   │   └── For each topic in response.topics:
@@ -616,9 +624,14 @@ TopicExtractionOrchestrator.extract(chapter_id)
 │
 ├── 6. Save pre-consolidation topic map → S3
 ├── 7. Persist draft topics to chapter_topics table
-├── 8. Release job lock (completed)
-└── 9. Update chapter status → chapter_finalizing (or auto-finalize)
+├── 8. If failed_chunks > 0: mark job as partial_failure, set chapter to failed
+│      (admin can resume with resume:true to retry failed chunks)
+├── 9. If all chunks succeeded: auto-trigger finalization (Section 8.5)
+├── 10. On finalization complete: release job lock, set chapter → chapter_completed
+└── 11. If auto_sync_to_db: trigger TopicSyncService
 ```
+
+**Chunk failure policy:** Each chunk gets **3 retries** with exponential backoff (1s, 2s, 4s). On 3 consecutive failures, the chunk is marked `failed` in `chapter_chunks` with the error message, and the orchestrator continues to the next chunk. The accumulator state is unchanged for failed chunks (the topic map proceeds as if those pages don't exist). After all chunks, if `failed_items > 0`, the job is marked `completed_with_errors` and the admin can either resume (retries only the failed chunks) or reprocess the entire chapter.
 
 ### 8.3 Chunk Processing Detail
 
@@ -680,36 +693,48 @@ TopicExtractionOrchestrator.extract(chapter_id)
 
 ### 8.4 Guideline Merging Strategy
 
-When a topic is marked `is_new: false`, the `guidelines_for_this_chunk` must be merged into the existing topic's guidelines. Two strategies, tried in order:
+**During extraction (per-chunk):** Guidelines are **appended** with a page-range header, not LLM-merged. This is fast (no extra LLM call per topic per chunk) and preserves the raw per-chunk contributions for audit.
 
-1. **LLM merge** (preferred): Call the merge prompt with existing guidelines + new chunk guidelines. The LLM produces a unified, non-redundant guideline text. Reuse `guideline_merge_v2.txt` prompt pattern from V1.
+```
+## Pages 50-52
+Teaching guidelines from this chunk...
 
-2. **Append fallback**: If LLM merge fails, append new guidelines as a new section with a page reference header.
+## Pages 53-55
+Additional teaching points from this chunk...
+```
+
+**During finalization:** The `ChapterFinalizationService` performs a **single LLM merge per topic** on the accumulated append-style guidelines. The merge prompt consolidates all chunk contributions into a unified, non-redundant guideline text. This means a chapter with 10 chunks and 5 topics produces at most 5 merge calls during finalization, not 50 during extraction.
+
+**Cost analysis:** For a 30-page chapter (10 chunks, ~5 topics): extraction = 10 LLM calls (one per chunk). Finalization = 1 consolidation call + 5 merge calls + any dedup merges. Total ≈ 16-18 calls vs the alternative of 10 + 50 = 60 calls with inline merging.
 
 ### 8.5 Chapter Finalization Pipeline
 
 ```
 ChapterFinalizationService.finalize(chapter_id)
 │
-├── 1. Load all draft topics from chapter_topics
+├── 1. Load all draft topics from chapter_topics (with appended guidelines)
 ├── 2. Save pre-consolidation snapshot → S3
-├── 3. Call consolidation LLM:
-│   ├── Input: all topics with full guidelines
+├── 3. LLM-merge each topic's guidelines:
+│      For each topic: call merge prompt to consolidate the appended
+│      per-chunk guidelines into a single unified guideline text.
+│      (One LLM call per topic — see Section 8.4 for cost analysis)
+├── 4. Call consolidation LLM:
+│   ├── Input: all topics with merged guidelines
 │   ├── Output:
 │   │   ├── chapter_display_name (AI-generated chapter title)
 │   │   ├── final_chapter_summary
 │   │   ├── merge_actions: [{merge_from, merge_into, reasoning}]
 │   │   ├── topic_updates: [{key, new_title, summary, sequence, reasoning}]
 │   └── Validate output schema
-├── 4. Execute merge actions:
+├── 5. Execute dedup merge actions:
 │   ├── For each merge: LLM-merge guidelines of two topics
 │   ├── Delete merged-from topic
 │   └── Update merged-into topic
-├── 5. Apply topic updates (rename, resequence, add summaries)
-├── 6. Update chapter: display_name, summary
-├── 7. Mark all topics as 'final'
-├── 8. Save final output → S3 (chapter_result.json + topics/*.json)
-└── 9. Update chapter status → chapter_completed
+├── 6. Apply topic updates (rename, resequence, add summaries)
+├── 7. Update chapter: display_name, summary
+├── 8. Mark all topics as 'final'
+├── 9. Save final output → S3 (chapter_result.json + topics/*.json)
+└── 10. Update chapter status → chapter_completed
 ```
 
 ---
@@ -725,6 +750,8 @@ Add a new component key to `llm_config`:
 | `book_ingestion_v2` | openai | gpt-5.2 | All V2 pipeline LLM calls |
 
 This keeps V1 and V2 model configuration independent.
+
+**Concurrency note:** Multiple chapters can be processed simultaneously (each has its own job lock). The `BackgroundTaskRunner` spawns one thread per chapter. LLM rate limits are handled by the existing retry-with-backoff logic in `LLMService` (3 retries, exponential backoff). For very large books (20+ chapters), consider processing in batches of 3-5 chapters to avoid rate limit saturation. This can be enforced at the API level or left as an admin best practice for MVP.
 
 ### 9.2 Chunk Topic Extraction Prompt
 
@@ -930,8 +957,8 @@ syncBook(bookId: string): Promise<SyncResponse>
 |-------------|---------------|-------------|
 | `JobLockService` | `ChapterJobService` | Scope changes from book-level to chapter-level. Same state machine, heartbeat, stale detection. |
 | `BookService` | `BookV2Service` | Adds `pipeline_version=2` on creation. Filters by version. |
-| `PageService` | `ChapterPageService` | Pages scoped to chapter. Validates against TOC range. No global page numbering. |
-| `GuidelineMergeService` | Reuse directly | Same merge prompt pattern. Input changes slightly. |
+| `PageService` | `ChapterPageService` | Pages scoped to chapter. Validates against TOC range. Inline OCR (no batch). |
+| `GuidelineMergeService` | Reuse in `ChapterFinalizationService` | Same merge prompt pattern. Called once per topic during finalization, not per-chunk. |
 | `DBSyncService` | `TopicSyncService` | Maps chapter→topic, topic→subtopic when writing to teaching_guidelines. |
 | `PageUploadPanel` | Adapt for V2 | Add page number assignment within chapter range. |
 
@@ -1057,40 +1084,34 @@ Add to `_seed_llm_config()`:
 - [ ] Register routes in `main.py`
 
 ### Phase 3: Chapter Page Management
-**Estimated scope: ~5 files**
+**Estimated scope: ~4 files**
 
-- [ ] `ChapterPageService` — upload, approve, delete pages within chapter context
-- [ ] `ChapterOCRService` — bulk OCR with background job
+- [ ] `ChapterPageService` — upload with inline OCR, delete, retry-ocr, completeness tracking
 - [ ] `page_routes.py` — page management endpoints
 - [ ] `ChapterJobService` — job lock + progress (adapt V1 pattern)
 - [ ] Unit tests for page service
 
-### Phase 4: Topic Extraction Pipeline (Core V2)
-**Estimated scope: ~6 files**
+### Phase 4: Topic Extraction + Finalization Pipeline (Core V2)
+**Estimated scope: ~8 files**
 
 - [ ] `chunk_builder.py` — build 3-page windows from page list
-- [ ] `chunk_topic_extraction.txt` — LLM prompt
-- [ ] `topic_guidelines_merge.txt` — merge prompt (adapt from V1)
-- [ ] `ChunkProcessorService` — single chunk processing
-- [ ] `TopicExtractionOrchestrator` — full chapter pipeline
-- [ ] `processing_routes.py` — process trigger + status endpoints
+- [ ] `chunk_topic_extraction.txt` — LLM prompt for per-chunk topic detection
+- [ ] `topic_guidelines_merge.txt` — merge prompt (adapt from V1, used in finalization)
+- [ ] `chapter_consolidation.txt` — consolidation prompt (dedup, naming, sequencing)
+- [ ] `ChunkProcessorService` — single chunk processing with retry logic
+- [ ] `TopicExtractionOrchestrator` — full chapter pipeline (extraction + auto-finalization)
+- [ ] `ChapterFinalizationService` — LLM merge per topic, dedup, rename, sequence, summarize
+- [ ] `processing_routes.py` — process/reprocess/refinalize trigger + status endpoints
 - [ ] Unit + integration tests
 
-### Phase 5: Chapter Finalization
-**Estimated scope: ~3 files**
-
-- [ ] `chapter_consolidation.txt` — consolidation prompt
-- [ ] `ChapterFinalizationService` — dedup, rename, sequence, summarize
-- [ ] Integration tests for finalization
-
-### Phase 6: DB Sync
+### Phase 5: DB Sync
 **Estimated scope: ~2 files**
 
 - [ ] `TopicSyncService` — sync chapter_topics → teaching_guidelines
 - [ ] Sync endpoint + integration test
 - [ ] Verify tutor can use V2-synced guidelines
 
-### Phase 7: Frontend — TOC + Book Creation
+### Phase 6: Frontend — TOC + Book Creation
 **Estimated scope: ~6 files**
 
 - [ ] `adminApiV2.ts` — V2 API client
@@ -1099,7 +1120,7 @@ Add to `_seed_llm_config()`:
 - [ ] `CreateBookV2` page (book metadata + TOC authoring)
 - [ ] Register routes in `App.tsx`
 
-### Phase 8: Frontend — Chapter Upload + Processing
+### Phase 7: Frontend — Chapter Upload + Processing
 **Estimated scope: ~5 files**
 
 - [ ] `BookV2Detail` page with chapter cards
@@ -1107,7 +1128,7 @@ Add to `_seed_llm_config()`:
 - [ ] Processing progress UI (reuse useJobPolling)
 - [ ] Results/topics viewer
 
-### Phase 9: Polish + Testing
+### Phase 8: Polish + Testing
 **Estimated scope: ~varies**
 
 - [ ] E2E test: full pipeline
@@ -1217,7 +1238,6 @@ class ChapterResponse(BaseModel):
     status: str
     total_pages: int
     uploaded_page_count: int
-    approved_page_count: int
 
 class BookV2DetailResponse(BaseModel):
     id: str
@@ -1259,28 +1279,45 @@ class ProcessingJobResponse(BaseModel):
 
 ```python
 # book_ingestion_v2/constants.py
+from enum import Enum
 
 CHUNK_SIZE = 3                    # Pages per chunk
 CHUNK_STRIDE = 3                  # Non-overlapping (stride == size)
+CHUNK_MAX_RETRIES = 3             # Retries per chunk on LLM failure
 HEARTBEAT_STALE_THRESHOLD = 120   # Seconds (2 minutes)
 PENDING_STALE_THRESHOLD = 120     # Seconds
 
-# Chapter statuses
-class ChapterStatus:
+class ChapterStatus(str, Enum):
     TOC_DEFINED = "toc_defined"
     UPLOAD_IN_PROGRESS = "upload_in_progress"
     UPLOAD_COMPLETE = "upload_complete"
-    OCR_PROCESSING = "ocr_processing"
     TOPIC_EXTRACTION = "topic_extraction"
     CHAPTER_FINALIZING = "chapter_finalizing"
     CHAPTER_COMPLETED = "chapter_completed"
     FAILED = "failed"
 
-# Processing job types
-class V2JobType:
-    OCR_BATCH = "v2_ocr_batch"
-    TOPIC_EXTRACTION = "v2_topic_extraction"
-    FINALIZATION = "v2_finalization"
+class V2JobType(str, Enum):
+    TOPIC_EXTRACTION = "v2_topic_extraction"       # Extraction + auto-finalization
+    REFINALIZATION = "v2_refinalization"            # Re-run finalization only
+
+class V2JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    COMPLETED_WITH_ERRORS = "completed_with_errors"  # Some chunks failed
+    FAILED = "failed"
+
+class OCRStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class TopicStatus(str, Enum):
+    DRAFT = "draft"
+    CONSOLIDATED = "consolidated"
+    FINAL = "final"
+    APPROVED = "approved"
 
 # LLM config component key
 LLM_CONFIG_KEY = "book_ingestion_v2"
