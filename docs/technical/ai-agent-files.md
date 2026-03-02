@@ -70,6 +70,7 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | `e2e-updater.md` | Generate/update `e2e/scenarios.json` from functional docs and codebase | Manual — update when E2E scenario format changes |
 | `unit-test-runner.md` | Run pytest with coverage, build HTML report, email | Manual — update when test infrastructure changes |
 | `unit-test-updater.md` | Generate/clean unit tests by priority tier to reach 80% coverage | Manual — update when test strategy changes |
+| `audit-ingestion-pipeline.md` | Deep code audit of book ingestion pipeline (OCR → guidelines → study plans) for content loss, accuracy, and integrity | Manual — update when pipeline architecture changes |
 
 ### Memory
 
