@@ -20,6 +20,11 @@ from auth.api.auth_routes import router as auth_router
 from auth.api.profile_routes import router as profile_router
 from api.docs import router as docs_router
 from api.test_scenarios import router as test_scenarios_router
+from book_ingestion_v2.api import book_routes as v2_book_routes
+from book_ingestion_v2.api import toc_routes as v2_toc_routes
+from book_ingestion_v2.api import page_routes as v2_page_routes
+from book_ingestion_v2.api import processing_routes as v2_processing_routes
+from book_ingestion_v2.api import sync_routes as v2_sync_routes
 
 # Validate configuration on startup
 validate_required_settings()
@@ -106,6 +111,11 @@ app.include_router(profile_router)           # Profile: GET/PUT /profile
 app.include_router(docs_router)              # Docs: GET /api/docs
 app.include_router(llm_config_routes.router) # LLM config: GET/PUT /api/admin/llm-config
 app.include_router(test_scenarios_router)    # Test scenarios: GET /api/test-scenarios
+app.include_router(v2_book_routes.router)   # Book Ingestion V2: /admin/v2/books
+app.include_router(v2_toc_routes.router)    # Book Ingestion V2: /admin/v2/books/{id}/toc
+app.include_router(v2_page_routes.router)   # Book Ingestion V2: /admin/v2/books/{id}/chapters/{id}/pages
+app.include_router(v2_processing_routes.router)  # Book Ingestion V2: processing, topics, jobs
+app.include_router(v2_sync_routes.router)        # Book Ingestion V2: sync + results
 
 
 @app.on_event("startup")

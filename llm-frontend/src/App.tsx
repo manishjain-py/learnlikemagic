@@ -57,6 +57,11 @@ import DocsViewer from './features/admin/pages/DocsViewer';
 import LLMConfigPage from './features/admin/pages/LLMConfigPage';
 import TestScenariosPage from './features/admin/pages/TestScenariosPage';
 
+// Admin V2 pages
+import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
+import CreateBookV2 from './features/admin/pages/CreateBookV2';
+import BookV2Detail from './features/admin/pages/BookV2Detail';
+
 function App() {
   return (
     <AuthProvider>
@@ -169,6 +174,11 @@ function App() {
           <Route path="/admin/docs" element={<DocsViewer />} />
           <Route path="/admin/llm-config" element={<LLMConfigPage />} />
           <Route path="/admin/test-scenarios" element={<TestScenariosPage />} />
+
+          {/* Admin V2 routes */}
+          <Route path="/admin/books-v2" element={<BookV2Dashboard />} />
+          <Route path="/admin/books-v2/new" element={<CreateBookV2 />} />
+          <Route path="/admin/books-v2/:id" element={<BookV2Detail />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

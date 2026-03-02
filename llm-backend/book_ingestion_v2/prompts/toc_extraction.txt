@@ -1,0 +1,36 @@
+You are extracting a structured Table of Contents from OCR text of a textbook's TOC pages.
+
+BOOK TITLE: {book_title}
+
+OCR TEXT FROM TOC PAGES:
+{ocr_text}
+
+TASK:
+Extract every chapter listed in the Table of Contents. For each chapter, identify:
+1. The chapter title (clean up OCR artifacts)
+2. The starting page number
+3. The ending page number (if not listed, infer from the next chapter's start page minus 1)
+4. Any supplementary information listed under the chapter (themes, subtopics, activity types, worksheet pages, etc.)
+
+RULES:
+- Only extract actual chapters. Skip front matter (Preface, Foreword, Acknowledgements), back matter (Index, Appendix, Glossary, Bibliography, Answer Key, Data Bank), and section dividers.
+- Chapter numbers should be sequential starting from 1, regardless of how the book numbers them.
+- Fix common OCR errors: "l" misread as "1", "O" misread as "0", "S" misread as "5", etc. Use context to determine the correct reading.
+- If the TOC only lists starting pages (no ending pages), compute end_page as the next chapter's start_page minus 1.
+- For the LAST chapter, if no end page is available, estimate end_page as start_page + 20 (the admin will correct this).
+- Remove any leading/trailing whitespace and numbering prefixes from chapter titles (e.g., "Chapter 1: " or "1. " should be stripped, keeping just the title text).
+- Page numbers must be positive integers.
+- The "notes" field should capture ALL supplementary information listed under a chapter in the TOC — this includes themes (e.g., "Theme: Going Green"), subtopics, activity types (e.g., "Worksheet/STEAM Connect/Mental Maths"), or any other descriptive text that is NOT the chapter title itself. Combine multiple pieces into a single string, separated by semicolons. If there is no supplementary info, set notes to null.
+
+OUTPUT FORMAT:
+Return a JSON object with a single key "chapters" containing an array of objects.
+Each object must have exactly these fields:
+- "chapter_title": string (clean title without chapter number prefix)
+- "start_page": integer
+- "end_page": integer
+- "notes": string or null (supplementary info: themes, subtopics, activities, etc.)
+
+Example:
+{{"chapters": [{{"chapter_title": "Place Value", "start_page": 7, "end_page": 29, "notes": "Theme: Going Green; Worksheet/STEAM Connect/Mental Maths"}}, {{"chapter_title": "Addition", "start_page": 30, "end_page": 48, "notes": "Theme: Collections; Worksheet/Maths Lab Activity/Mental Maths/Critical Thinking Skills"}}]}}
+
+Return ONLY the JSON object, no other text.
