@@ -11,7 +11,7 @@ import pytest
 from shared.repositories.guideline_repository import TeachingGuidelineRepository
 from shared.models.entities import TeachingGuideline
 from shared.models.domain import GuidelineMetadata
-from shared.models.schemas import GuidelineResponse, TopicInfo
+from shared.models.schemas import GuidelineResponse, TopicInfo, ChapterInfo
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +263,7 @@ class TestGetSubjects:
 # ===========================================================================
 
 class TestGetChapters:
-    def test_returns_distinct_chapters(self, db_session):
+    def test_returns_chapter_info_objects(self, db_session):
         _seed(
             db_session,
             _make_guideline(id="g1", chapter="Fractions", topic="Comparing"),
@@ -273,7 +273,29 @@ class TestGetChapters:
         repo = TeachingGuidelineRepository(db_session)
 
         chapters = repo.get_chapters("India", "CBSE", 3, "Mathematics")
-        assert sorted(chapters) == ["Fractions", "Geometry"]
+        assert len(chapters) == 2
+        assert all(isinstance(c, ChapterInfo) for c in chapters)
+
+        chapter_names = sorted(c.chapter for c in chapters)
+        assert chapter_names == ["Fractions", "Geometry"]
+
+    def test_includes_topic_count_and_guideline_ids(self, db_session):
+        _seed(
+            db_session,
+            _make_guideline(id="g1", chapter="Fractions", topic="Comparing"),
+            _make_guideline(id="g2", chapter="Fractions", topic="Adding"),
+            _make_guideline(id="g3", chapter="Geometry", topic="Shapes"),
+        )
+        repo = TeachingGuidelineRepository(db_session)
+
+        chapters = repo.get_chapters("India", "CBSE", 3, "Mathematics")
+        fractions = next(c for c in chapters if c.chapter == "Fractions")
+        geometry = next(c for c in chapters if c.chapter == "Geometry")
+
+        assert fractions.topic_count == 2
+        assert sorted(fractions.guideline_ids) == ["g1", "g2"]
+        assert geometry.topic_count == 1
+        assert geometry.guideline_ids == ["g3"]
 
     def test_returns_empty_when_no_match(self, db_session):
         repo = TeachingGuidelineRepository(db_session)
@@ -289,7 +311,8 @@ class TestGetChapters:
         repo = TeachingGuidelineRepository(db_session)
 
         chapters = repo.get_chapters("India", "CBSE", 3, "Mathematics")
-        assert chapters == ["Fractions"]
+        assert len(chapters) == 1
+        assert chapters[0].chapter == "Fractions"
 
 
 # ===========================================================================
@@ -341,15 +364,39 @@ class TestGetTopics:
         assert len(topics) == 1
         assert topics[0].topic == "Comparing"
 
-    def test_topics_ordered_alphabetically(self, db_session):
-        _seed(
-            db_session,
-            _make_guideline(id="g1", topic="Zebra"),
-            _make_guideline(id="g2", topic="Apple"),
-            _make_guideline(id="g3", topic="Mango"),
-        )
+    def test_topics_ordered_by_sequence_then_alphabetically(self, db_session):
+        g1 = _make_guideline(id="g1", topic="Zebra")
+        g1.topic_sequence = 1
+        g2 = _make_guideline(id="g2", topic="Apple")
+        g2.topic_sequence = 3
+        g3 = _make_guideline(id="g3", topic="Mango")
+        g3.topic_sequence = 2
+        _seed(db_session, g1, g2, g3)
         repo = TeachingGuidelineRepository(db_session)
 
         topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
-        names = [s.topic for s in topics]
-        assert names == ["Apple", "Mango", "Zebra"]
+        names = [t.topic for t in topics]
+        assert names == ["Zebra", "Mango", "Apple"]
+
+    def test_null_sequence_sorted_last(self, db_session):
+        g1 = _make_guideline(id="g1", topic="Sequenced")
+        g1.topic_sequence = 1
+        g2 = _make_guideline(id="g2", topic="NoSequence")
+        # topic_sequence defaults to None
+        _seed(db_session, g1, g2)
+        repo = TeachingGuidelineRepository(db_session)
+
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
+        names = [t.topic for t in topics]
+        assert names == ["Sequenced", "NoSequence"]
+
+    def test_topics_include_summary_and_sequence(self, db_session):
+        g = _make_guideline(id="g1", topic="Comparing")
+        g.topic_summary = "Learn to compare fractions"
+        g.topic_sequence = 2
+        _seed(db_session, g)
+        repo = TeachingGuidelineRepository(db_session)
+
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
+        assert topics[0].topic_summary == "Learn to compare fractions"
+        assert topics[0].topic_sequence == 2

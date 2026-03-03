@@ -131,14 +131,24 @@ export interface SummaryResponse {
   suggestions: string[];
 }
 
+export interface ChapterInfo {
+  chapter: string;
+  chapter_summary: string | null;
+  chapter_sequence: number | null;
+  topic_count: number;
+  guideline_ids: string[];
+}
+
 export interface TopicInfo {
   topic: string;
   guideline_id: string;
+  topic_summary: string | null;
+  topic_sequence: number | null;
 }
 
 export interface CurriculumResponse {
   subjects?: string[];
-  chapters?: string[];
+  chapters?: ChapterInfo[];
   topics?: TopicInfo[];
 }
 

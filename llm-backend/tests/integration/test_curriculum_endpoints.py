@@ -80,14 +80,11 @@ def test_get_chapters_for_subject(client, db_session, cleanup_tracker):
     assert response.status_code == 200
     data = response.json()
 
-    # Verify response structure - should have chapters
-    assert "chapters" in data or isinstance(data, list)
-
-    if isinstance(data, list):
-        chapter_names = [t["name"] if isinstance(t, dict) else t for t in data]
-        assert "Algebra" in chapter_names or any("Algebra" in str(t) for t in chapter_names)
-    else:
-        assert "Algebra" in data["chapters"] or len(data["chapters"]) > 0
+    # Verify response structure - chapters is now a list of ChapterInfo objects
+    assert "chapters" in data
+    assert len(data["chapters"]) > 0
+    chapter_names = [c["chapter"] if isinstance(c, dict) else c for c in data["chapters"]]
+    assert "Algebra" in chapter_names
 
 
 @pytest.mark.integration

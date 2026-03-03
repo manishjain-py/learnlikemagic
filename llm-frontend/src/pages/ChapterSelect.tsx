@@ -1,43 +1,88 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getCurriculum } from '../api';
+import { getCurriculum, getTopicProgress, ChapterInfo, TopicProgress } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
+
+type ProgressStatus = 'completed' | 'in_progress' | 'not_started';
 
 export default function ChapterSelect() {
   const navigate = useNavigate();
   const { subject } = useParams<{ subject: string }>();
   const { country, board, grade } = useStudentProfile();
-  const [chapters, setChapters] = useState<string[]>([]);
+  const [chapters, setChapters] = useState<ChapterInfo[]>([]);
+  const [progress, setProgress] = useState<Record<string, TopicProgress>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!subject) return;
-    getCurriculum({ country, board, grade, subject })
-      .then((res) => setChapters(res.chapters || []))
+    Promise.all([
+      getCurriculum({ country, board, grade, subject }),
+      getTopicProgress().catch(() => ({})),
+    ])
+      .then(([currRes, prog]) => {
+        setChapters(currRes.chapters || []);
+        setProgress(prog as Record<string, TopicProgress>);
+      })
       .catch((err) => console.error('Failed to fetch chapters:', err))
       .finally(() => setLoading(false));
   }, [country, board, grade, subject]);
 
+  const getChapterStatus = (ch: ChapterInfo): ProgressStatus => {
+    if (ch.guideline_ids.length === 0) return 'not_started';
+    const coverages = ch.guideline_ids.map((id) => progress[id]?.coverage ?? 0);
+    const avg = coverages.reduce((a, b) => a + b, 0) / coverages.length;
+    if (avg >= 80) return 'completed';
+    if (avg > 0) return 'in_progress';
+    return 'not_started';
+  };
+
   return (
     <div className="selection-step">
-      <button className="back-button" onClick={() => navigate('/learn')}>
-        &larr; Back
-      </button>
-      <h2>{subject} - Select a Chapter</h2>
+      <div className="breadcrumb">
+        <button className="breadcrumb-link" onClick={() => navigate('/learn')}>
+          Subjects
+        </button>
+        <span className="breadcrumb-sep">&rsaquo;</span>
+        <span className="breadcrumb-current">{subject}</span>
+      </div>
+
+      <h2>Chapters</h2>
+
       {loading ? (
         <p>Loading chapters...</p>
       ) : (
-        <div className="selection-grid" data-testid="chapter-list">
-          {chapters.map((chapter) => (
-            <button
-              key={chapter}
-              className="selection-card"
-              data-testid="chapter-item"
-              onClick={() => navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter)}`)}
-            >
-              {chapter}
-            </button>
-          ))}
+        <div className="learning-path" data-testid="chapter-list">
+          {chapters.map((ch, idx) => {
+            const status = getChapterStatus(ch);
+            return (
+              <button
+                key={ch.chapter}
+                className={`learning-path-item learning-path-item--${status}`}
+                data-testid="chapter-item"
+                onClick={() =>
+                  navigate(
+                    `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(ch.chapter)}`,
+                  )
+                }
+              >
+                <div className="learning-path-number">
+                  <span className={`step-circle step-circle--${status}`}>
+                    {status === 'completed' ? '\u2713' : idx + 1}
+                  </span>
+                </div>
+                <div className="learning-path-content">
+                  <div className="learning-path-title">{ch.chapter}</div>
+                  {ch.chapter_summary && (
+                    <div className="learning-path-summary">{ch.chapter_summary}</div>
+                  )}
+                  <div className="learning-path-meta">
+                    {ch.topic_count} topic{ch.topic_count !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                <div className="learning-path-arrow">&rsaquo;</div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

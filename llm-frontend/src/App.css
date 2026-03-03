@@ -612,6 +612,171 @@ body {
 }
 
 /* ──────────────────────────────────────────────
+   Breadcrumb Navigation
+   ────────────────────────────────────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.breadcrumb-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 2px 0;
+  font-family: inherit;
+}
+
+.breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.breadcrumb-current {
+  color: #333;
+  font-weight: 600;
+}
+
+/* ──────────────────────────────────────────────
+   Learning Path (vertical step list)
+   ────────────────────────────────────────────── */
+
+.learning-path {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.learning-path-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 14px;
+  background: white;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.learning-path-item:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.learning-path-item:last-child {
+  border-radius: 0 0 12px 12px;
+  border-bottom: none;
+}
+
+.learning-path-item:only-child {
+  border-radius: 12px;
+}
+
+.learning-path-item:hover {
+  background: #f8f9ff;
+}
+
+/* Left column: step number in circle */
+.learning-path-number {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.step-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 2px solid #e0e0e0;
+  background: white;
+  color: #999;
+}
+
+/* Progress color variants */
+.step-circle--completed {
+  background: #38a169;
+  border-color: #38a169;
+  color: white;
+}
+
+.step-circle--in_progress {
+  background: #f6e05e;
+  border-color: #ecc94b;
+  color: #744210;
+}
+
+.step-circle--not_started {
+  background: white;
+  border-color: #e0e0e0;
+  color: #999;
+}
+
+/* Row-level left-border accent for progress */
+.learning-path-item--completed {
+  border-left: 3px solid #38a169;
+}
+
+.learning-path-item--in_progress {
+  border-left: 3px solid #ecc94b;
+}
+
+.learning-path-item--not_started {
+  border-left: 3px solid transparent;
+}
+
+/* Middle column: title + summary */
+.learning-path-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.learning-path-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.3;
+}
+
+.learning-path-summary {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.learning-path-meta {
+  font-size: 0.75rem;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* Right column: chevron arrow */
+.learning-path-arrow {
+  flex-shrink: 0;
+  font-size: 1.4rem;
+  color: #ccc;
+  padding-top: 4px;
+}
+
+/* ──────────────────────────────────────────────
    Auth & Profile Pages
    ────────────────────────────────────────────── */
 

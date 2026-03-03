@@ -7,7 +7,7 @@ import json
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import distinct
-from shared.models import TeachingGuideline, GuidelineMetadata, GuidelineResponse, TopicInfo
+from shared.models import TeachingGuideline, GuidelineMetadata, GuidelineResponse, TopicInfo, ChapterInfo
 
 
 class TeachingGuidelineRepository:
@@ -148,9 +148,9 @@ class TeachingGuidelineRepository:
         board: str,
         grade: int,
         subject: str
-    ) -> List[str]:
+    ) -> List[ChapterInfo]:
         """
-        Get all available chapters for a given subject.
+        Get all available chapters for a given subject, with summaries and sequencing.
 
         Args:
             country: Country name
@@ -159,17 +159,47 @@ class TeachingGuidelineRepository:
             subject: Subject name
 
         Returns:
-            List of chapter names
+            List of ChapterInfo objects sorted by chapter_sequence
         """
-        chapters = self.db.query(distinct(TeachingGuideline.chapter)).filter(
+        guidelines = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.country == country,
             TeachingGuideline.board == board,
             TeachingGuideline.grade == grade,
             TeachingGuideline.subject == subject,
             TeachingGuideline.review_status == "APPROVED"
-        ).order_by(TeachingGuideline.chapter).all()
+        ).all()
 
-        return [c[0] for c in chapters]
+        # Group by chapter
+        chapter_map: Dict[str, dict] = {}
+        for g in guidelines:
+            ch = g.chapter
+            if ch not in chapter_map:
+                chapter_map[ch] = {
+                    "chapter": ch,
+                    "chapter_summary": g.chapter_summary,
+                    "chapter_sequence": g.chapter_sequence,
+                    "guideline_ids": [],
+                }
+            chapter_map[ch]["guideline_ids"].append(g.id)
+
+        chapters = [
+            ChapterInfo(
+                chapter=data["chapter"],
+                chapter_summary=data["chapter_summary"],
+                chapter_sequence=data["chapter_sequence"],
+                topic_count=len(data["guideline_ids"]),
+                guideline_ids=data["guideline_ids"],
+            )
+            for data in chapter_map.values()
+        ]
+
+        # Sort by sequence (nulls last), then alphabetically
+        chapters.sort(key=lambda c: (
+            c.chapter_sequence if c.chapter_sequence is not None else 999999,
+            c.chapter,
+        ))
+
+        return chapters
 
     def get_topics(
         self,
@@ -180,7 +210,7 @@ class TeachingGuidelineRepository:
         chapter: str
     ) -> List[TopicInfo]:
         """
-        Get all available topics for a given chapter.
+        Get all available topics for a given chapter, with summaries and sequencing.
 
         Args:
             country: Country name
@@ -190,7 +220,7 @@ class TeachingGuidelineRepository:
             chapter: Chapter name
 
         Returns:
-            List of TopicInfo objects
+            List of TopicInfo objects sorted by topic_sequence
         """
         guidelines = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.country == country,
@@ -199,15 +229,25 @@ class TeachingGuidelineRepository:
             TeachingGuideline.subject == subject,
             TeachingGuideline.chapter == chapter,
             TeachingGuideline.review_status == "APPROVED"
-        ).order_by(TeachingGuideline.topic).all()
+        ).all()
 
-        return [
+        topics = [
             TopicInfo(
                 topic=g.topic,
-                guideline_id=g.id
+                guideline_id=g.id,
+                topic_summary=g.topic_summary,
+                topic_sequence=g.topic_sequence,
             )
             for g in guidelines
         ]
+
+        # Sort by sequence (nulls last), then alphabetically
+        topics.sort(key=lambda t: (
+            t.topic_sequence if t.topic_sequence is not None else 999999,
+            t.topic,
+        ))
+
+        return topics
 
 
 # Factory function for dependency injection

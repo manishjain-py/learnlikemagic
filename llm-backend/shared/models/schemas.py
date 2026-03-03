@@ -53,16 +53,27 @@ class GuidelineResponse(BaseModel):
     metadata: Optional["GuidelineMetadata"] = None  # Forward reference
 
 
+class ChapterInfo(BaseModel):
+    """Chapter with summary, sequencing, and topic guideline IDs for progress."""
+    chapter: str
+    chapter_summary: Optional[str] = None
+    chapter_sequence: Optional[int] = None
+    topic_count: int = 0
+    guideline_ids: List[str] = []
+
+
 class TopicInfo(BaseModel):
-    """Topic information with guideline ID."""
+    """Topic information with guideline ID, summary, and sequencing."""
     topic: str
     guideline_id: str
+    topic_summary: Optional[str] = None
+    topic_sequence: Optional[int] = None
 
 
 class CurriculumResponse(BaseModel):
     """Curriculum discovery response - one of subjects, chapters, or topics."""
     subjects: Optional[List[str]] = None
-    chapters: Optional[List[str]] = None
+    chapters: Optional[List[ChapterInfo]] = None
     topics: Optional[List[TopicInfo]] = None
 
 
