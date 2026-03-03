@@ -73,7 +73,7 @@ export async function getAllGuidelinesForReview(filters?: {
   }
   const query = params.toString();
   return apiFetch<GuidelineReview[]>(
-    `/admin/guidelines/review${query ? `?${query}` : ''}`
+    `/api/evaluation/guidelines${query ? `?${query}` : ''}`
   );
 }
 

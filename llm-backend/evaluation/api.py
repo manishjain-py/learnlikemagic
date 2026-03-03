@@ -6,8 +6,10 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session as DBSession
 
+from database import get_db
 from evaluation.config import RUNS_DIR
 
 logger = logging.getLogger("evaluation.api")
@@ -321,6 +323,49 @@ def _retry_evaluation(run_dir: Path):
 # ──────────────────────────────────────────────
 # Endpoints
 # ──────────────────────────────────────────────
+
+
+@router.get("/guidelines")
+async def list_approved_guidelines(
+    country: str = None,
+    board: str = None,
+    grade: int = None,
+    subject: str = None,
+    status: str = None,
+    db: DBSession = Depends(get_db),
+):
+    """List teaching guidelines, optionally filtered. Used by simulated evaluation mode."""
+    from shared.models.entities import TeachingGuideline
+
+    query = db.query(TeachingGuideline)
+    if country:
+        query = query.filter(TeachingGuideline.country == country)
+    if board:
+        query = query.filter(TeachingGuideline.board == board)
+    if grade is not None:
+        query = query.filter(TeachingGuideline.grade == grade)
+    if subject:
+        query = query.filter(TeachingGuideline.subject == subject)
+    if status:
+        query = query.filter(TeachingGuideline.review_status == status)
+
+    guidelines = query.order_by(TeachingGuideline.subject, TeachingGuideline.topic, TeachingGuideline.subtopic).all()
+
+    return [
+        {
+            "id": g.id,
+            "country": g.country,
+            "board": g.board,
+            "grade": g.grade,
+            "subject": g.subject,
+            "topic": g.topic,
+            "subtopic": g.subtopic,
+            "guideline": g.guideline,
+            "review_status": g.review_status,
+            "updated_at": g.updated_at.isoformat() if g.updated_at else None,
+        }
+        for g in guidelines
+    ]
 
 
 @router.post("/evaluate-session")
