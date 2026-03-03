@@ -1872,6 +1872,17 @@ body {
   line-height: 1.4;
 }
 
+.enrichment-section-save {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.enrichment-save-btn {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.9rem;
+}
+
 /* Chip selectors */
 .enrichment-chips {
   display: flex;

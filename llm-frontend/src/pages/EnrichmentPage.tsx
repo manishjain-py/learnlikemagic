@@ -338,6 +338,8 @@ export default function EnrichmentPage() {
             isFilled={isSectionFilled(index)}
             isOpen={openSection === index}
             onToggle={() => handleSectionToggle(index)}
+            onSave={() => saveSectionData(index)}
+            saving={saving}
           >
             {index === 0 && (
               <ChipSelector options={INTEREST_OPTIONS} selected={interests} onChange={setInterests} allowCustom />
