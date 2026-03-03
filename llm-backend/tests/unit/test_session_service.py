@@ -61,10 +61,10 @@ def _make_guideline_response():
     """Return a mock that looks like a DB guideline row."""
     g = MagicMock()
     g.id = "guideline-1"
-    g.topic = "Fractions"
-    g.topic_title = "Fractions"
-    g.subtopic = "Basics"
-    g.subtopic_title = "Basics"
+    g.chapter = "Fractions"
+    g.chapter_title = "Fractions"
+    g.topic = "Basics"
+    g.topic_title = "Basics"
     g.subject = "Mathematics"
     g.grade = 3
     g.guideline = "Teach fractions using pizza examples."
@@ -80,7 +80,7 @@ def _create_request() -> CreateSessionRequest:
     return CreateSessionRequest(
         student=Student(id="student-1", grade=3),
         goal=Goal(
-            topic="Fractions",
+            chapter="Fractions",
             syllabus="CBSE Grade 3 Math",
             learning_objectives=["Understand fractions"],
             guideline_id="guideline-1",

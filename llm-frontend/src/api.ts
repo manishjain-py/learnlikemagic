@@ -59,7 +59,7 @@ export interface Student {
 }
 
 export interface Goal {
-  topic: string;
+  chapter: string;
   syllabus: string;
   learning_objectives: string[];
   guideline_id: string;
@@ -131,15 +131,15 @@ export interface SummaryResponse {
   suggestions: string[];
 }
 
-export interface SubtopicInfo {
-  subtopic: string;
+export interface TopicInfo {
+  topic: string;
   guideline_id: string;
 }
 
 export interface CurriculumResponse {
   subjects?: string[];
-  topics?: string[];
-  subtopics?: SubtopicInfo[];
+  chapters?: string[];
+  topics?: TopicInfo[];
 }
 
 // ──────────────────────────────────────────────
@@ -151,14 +151,14 @@ export async function getCurriculum(params: {
   board: string;
   grade: number;
   subject?: string;
-  topic?: string;
+  chapter?: string;
 }): Promise<CurriculumResponse> {
   const queryParams = new URLSearchParams({
     country: params.country,
     board: params.board,
     grade: params.grade.toString(),
     ...(params.subject && { subject: params.subject }),
-    ...(params.topic && { topic: params.topic }),
+    ...(params.chapter && { chapter: params.chapter }),
   });
 
   const response = await apiFetch(`/curriculum?${queryParams}`);
@@ -255,9 +255,9 @@ export async function getSummary(sessionId: string): Promise<SummaryResponse> {
 // Report Card types & API
 // ──────────────────────────────────────────────
 
-export interface ReportCardSubtopic {
-  subtopic: string;
-  subtopic_key: string;
+export interface ReportCardTopic {
+  topic: string;
+  topic_key: string;
   guideline_id: string | null;
   coverage: number;
   latest_exam_score: number | null;
@@ -265,24 +265,24 @@ export interface ReportCardSubtopic {
   last_studied: string | null;
 }
 
-export interface ReportCardTopic {
-  topic: string;
-  topic_key: string;
-  subtopics: ReportCardSubtopic[];
+export interface ReportCardChapter {
+  chapter: string;
+  chapter_key: string;
+  topics: ReportCardTopic[];
 }
 
 export interface ReportCardSubject {
   subject: string;
-  topics: ReportCardTopic[];
+  chapters: ReportCardChapter[];
 }
 
 export interface ReportCardResponse {
   total_sessions: number;
-  total_topics_studied: number;
+  total_chapters_studied: number;
   subjects: ReportCardSubject[];
 }
 
-export interface SubtopicProgress {
+export interface TopicProgress {
   coverage: number;
   session_count: number;
   status: 'studied' | 'not_started';
@@ -320,8 +320,8 @@ export async function getReportCard(): Promise<ReportCardResponse> {
   return response.json();
 }
 
-export async function getSubtopicProgress(): Promise<Record<string, SubtopicProgress>> {
-  const response = await apiFetch('/sessions/subtopic-progress');
+export async function getTopicProgress(): Promise<Record<string, TopicProgress>> {
+  const response = await apiFetch('/sessions/topic-progress');
   if (!response.ok) throw new Error(`Failed to fetch progress: ${response.statusText}`);
   const data = await response.json();
   return data.user_progress;

@@ -4,7 +4,7 @@ import ModeSelection from '../components/ModeSelection';
 import {
   createSession,
   getCurriculum,
-  SubtopicInfo,
+  TopicInfo,
   SessionConflictError,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
@@ -18,7 +18,7 @@ const MODE_URL_SEGMENT: Record<string, string> = {
 export default function ModeSelectPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { subject, topic, subtopic } = useParams<{ subject: string; topic: string; subtopic: string }>();
+  const { subject, chapter, topic } = useParams<{ subject: string; chapter: string; topic: string }>();
   const { country, board, grade, studentId } = useStudentProfile();
 
   const [guidelineId, setGuidelineId] = useState<string | null>(
@@ -30,15 +30,15 @@ export default function ModeSelectPage() {
 
   // For deep links: if no guidelineId in location state, fetch it
   useEffect(() => {
-    if (guidelineId || !subject || !topic) return;
-    getCurriculum({ country, board, grade, subject, topic })
+    if (guidelineId || !subject || !chapter) return;
+    getCurriculum({ country, board, grade, subject, chapter })
       .then((res) => {
-        const match = (res.subtopics || []).find((st) => st.subtopic === subtopic);
+        const match = (res.topics || []).find((st) => st.topic === topic);
         if (match) setGuidelineId(match.guideline_id);
       })
       .catch((err) => console.error('Failed to resolve guideline:', err))
       .finally(() => setLoading(false));
-  }, [guidelineId, country, board, grade, subject, topic, subtopic]);
+  }, [guidelineId, country, board, grade, subject, chapter, topic]);
 
   if (loading || !guidelineId) {
     return (
@@ -48,11 +48,11 @@ export default function ModeSelectPage() {
     );
   }
 
-  const subtopicInfo: SubtopicInfo = { subtopic: subtopic!, guideline_id: guidelineId };
+  const topicInfo: TopicInfo = { topic: topic!, guideline_id: guidelineId };
 
   const buildSessionUrl = (mode: string, sessionId: string) => {
     const seg = MODE_URL_SEGMENT[mode] || mode;
-    return `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(topic!)}/${encodeURIComponent(subtopic!)}/${seg}/${sessionId}`;
+    return `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter!)}/${encodeURIComponent(topic!)}/${seg}/${sessionId}`;
   };
 
   const handleModeSelect = async (mode: 'teach_me' | 'clarify_doubts' | 'exam') => {
@@ -66,9 +66,9 @@ export default function ModeSelectPage() {
           prefs: { style: 'standard', lang: 'en' },
         },
         goal: {
-          topic: topic!,
+          chapter: chapter!,
           syllabus: `${board}-G${grade}`,
-          learning_objectives: [`Learn ${subtopic}`],
+          learning_objectives: [`Learn ${topic}`],
           guideline_id: guidelineId,
         },
         mode,
@@ -93,11 +93,11 @@ export default function ModeSelectPage() {
   };
 
   const handleViewExamReview = (sessionId: string) => {
-    navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(topic!)}/${encodeURIComponent(subtopic!)}/exam-review/${sessionId}`);
+    navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter!)}/${encodeURIComponent(topic!)}/exam-review/${sessionId}`);
   };
 
   const handleBack = () => {
-    navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(topic!)}`);
+    navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter!)}`);
   };
 
   return (
@@ -115,7 +115,7 @@ export default function ModeSelectPage() {
         </div>
       )}
       <ModeSelection
-        subtopic={subtopicInfo}
+        topic={topicInfo}
         onSelectMode={handleModeSelect}
         onResume={handleResume}
         onBack={handleBack}

@@ -1250,8 +1250,8 @@ body {
   margin-bottom: 1rem;
 }
 
-/* Topic section */
-.scorecard-topic-section {
+/* Chapter section */
+.scorecard-chapter-section {
   background: white;
   border: 1px solid #eee;
   border-radius: 10px;
@@ -1259,33 +1259,33 @@ body {
   margin-bottom: 10px;
 }
 
-.scorecard-topic-header {
+.scorecard-chapter-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
 }
 
-.scorecard-topic-name {
+.scorecard-chapter-name {
   font-weight: 600;
   font-size: 0.95rem;
   color: #333;
 }
 
-/* Subtopic rows */
-.scorecard-subtopic-list {
+/* Topic rows */
+.scorecard-topic-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.scorecard-subtopic-row {
+.scorecard-topic-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.scorecard-subtopic-toggle {
+.scorecard-topic-toggle {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1297,27 +1297,27 @@ body {
   text-align: left;
 }
 
-.scorecard-subtopic-name {
+.scorecard-topic-name {
   font-size: 0.9rem;
   color: #333;
   font-weight: 500;
 }
 
-.scorecard-subtopic-right {
+.scorecard-topic-right {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* Subtopic detail */
-.scorecard-subtopic-detail {
+/* Topic detail */
+.scorecard-topic-detail {
   padding: 6px 0 4px;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.scorecard-subtopic-meta {
+.scorecard-topic-meta {
   font-size: 0.8rem;
   color: #888;
   margin: 8px 0;
@@ -1346,8 +1346,8 @@ body {
   cursor: not-allowed;
 }
 
-/* Subtopic status indicators (topic selection) */
-.subtopic-status {
+/* Topic status indicators (topic selection) */
+.topic-status {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1358,12 +1358,12 @@ body {
   margin-left: 8px;
 }
 
-.subtopic-status.studied {
+.topic-status.studied {
   color: #38a169;
   background: #f0fff4;
 }
 
-.subtopic-status.not_started {
+.topic-status.not_started {
   color: #888;
   background: #f5f5f5;
 }

@@ -152,7 +152,7 @@ class TestCreateSession:
         payload = {
             "student": {"id": "s1", "grade": 3},
             "goal": {
-                "topic": "Fractions",
+                "chapter": "Fractions",
                 "syllabus": "CBSE Grade 3 Math",
                 "learning_objectives": ["Compare fractions"],
             },
@@ -175,7 +175,7 @@ class TestCreateSession:
         payload = {
             "student": {"id": "s1", "grade": 3},
             "goal": {
-                "topic": "Fractions",
+                "chapter": "Fractions",
                 "syllabus": "CBSE Grade 3 Math",
                 "learning_objectives": ["Compare fractions"],
             },
@@ -194,7 +194,7 @@ class TestCreateSession:
         payload = {
             "student": {"id": "s1", "grade": 3},
             "goal": {
-                "topic": "Fractions",
+                "chapter": "Fractions",
                 "syllabus": "CBSE Grade 3 Math",
                 "learning_objectives": ["Compare fractions"],
             },

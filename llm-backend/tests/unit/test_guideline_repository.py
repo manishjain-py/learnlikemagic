@@ -11,7 +11,7 @@ import pytest
 from shared.repositories.guideline_repository import TeachingGuidelineRepository
 from shared.models.entities import TeachingGuideline
 from shared.models.domain import GuidelineMetadata
-from shared.models.schemas import GuidelineResponse, SubtopicInfo
+from shared.models.schemas import GuidelineResponse, TopicInfo
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +35,8 @@ def _make_guideline(
     board: str = "CBSE",
     grade: int = 3,
     subject: str = "Mathematics",
-    topic: str = "Fractions",
-    subtopic: str = "Comparing",
+    chapter: str = "Fractions",
+    topic: str = "Comparing",
     guideline_text: str = "Teach fractions comparison...",
     review_status: str = "APPROVED",
     metadata_json: str | None = _SENTINEL,
@@ -50,8 +50,8 @@ def _make_guideline(
         board=board,
         grade=grade,
         subject=subject,
+        chapter=chapter,
         topic=topic,
-        subtopic=subtopic,
         guideline=guideline_text,
         review_status=review_status,
         metadata_json=metadata_json,
@@ -128,8 +128,8 @@ class TestGetGuideline:
         assert result.board == "CBSE"
         assert result.grade == 3
         assert result.subject == "Mathematics"
-        assert result.topic == "Fractions"
-        assert result.subtopic == "Comparing"
+        assert result.chapter == "Fractions"
+        assert result.topic == "Comparing"
         assert result.guideline == "Teach fractions comparison..."
 
     def test_returns_none_for_nonexistent(self, db_session):
@@ -221,9 +221,9 @@ class TestGetSubjects:
     def test_returns_distinct_subjects(self, db_session):
         _seed(
             db_session,
-            _make_guideline(id="g1", subject="Mathematics", topic="Fractions", subtopic="Comparing"),
-            _make_guideline(id="g2", subject="Mathematics", topic="Fractions", subtopic="Adding"),
-            _make_guideline(id="g3", subject="Science", topic="Plants", subtopic="Parts"),
+            _make_guideline(id="g1", subject="Mathematics", chapter="Fractions", topic="Comparing"),
+            _make_guideline(id="g2", subject="Mathematics", chapter="Fractions", topic="Adding"),
+            _make_guideline(id="g3", subject="Science", chapter="Plants", topic="Parts"),
         )
         repo = TeachingGuidelineRepository(db_session)
 
@@ -259,97 +259,97 @@ class TestGetSubjects:
 
 
 # ===========================================================================
+# get_chapters
+# ===========================================================================
+
+class TestGetChapters:
+    def test_returns_distinct_chapters(self, db_session):
+        _seed(
+            db_session,
+            _make_guideline(id="g1", chapter="Fractions", topic="Comparing"),
+            _make_guideline(id="g2", chapter="Fractions", topic="Adding"),
+            _make_guideline(id="g3", chapter="Geometry", topic="Shapes"),
+        )
+        repo = TeachingGuidelineRepository(db_session)
+
+        chapters = repo.get_chapters("India", "CBSE", 3, "Mathematics")
+        assert sorted(chapters) == ["Fractions", "Geometry"]
+
+    def test_returns_empty_when_no_match(self, db_session):
+        repo = TeachingGuidelineRepository(db_session)
+        chapters = repo.get_chapters("India", "CBSE", 3, "History")
+        assert chapters == []
+
+    def test_excludes_non_approved(self, db_session):
+        _seed(
+            db_session,
+            _make_guideline(id="g1", chapter="Fractions", review_status="APPROVED"),
+            _make_guideline(id="g2", chapter="Geometry", review_status="TO_BE_REVIEWED"),
+        )
+        repo = TeachingGuidelineRepository(db_session)
+
+        chapters = repo.get_chapters("India", "CBSE", 3, "Mathematics")
+        assert chapters == ["Fractions"]
+
+
+# ===========================================================================
 # get_topics
 # ===========================================================================
 
 class TestGetTopics:
-    def test_returns_distinct_topics(self, db_session):
+    def test_returns_topic_info_list(self, db_session):
         _seed(
             db_session,
-            _make_guideline(id="g1", topic="Fractions", subtopic="Comparing"),
-            _make_guideline(id="g2", topic="Fractions", subtopic="Adding"),
-            _make_guideline(id="g3", topic="Geometry", subtopic="Shapes"),
+            _make_guideline(id="g1", topic="Comparing"),
+            _make_guideline(id="g2", topic="Adding"),
         )
         repo = TeachingGuidelineRepository(db_session)
 
-        topics = repo.get_topics("India", "CBSE", 3, "Mathematics")
-        assert sorted(topics) == ["Fractions", "Geometry"]
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
+
+        assert len(topics) == 2
+        assert all(isinstance(s, TopicInfo) for s in topics)
+
+        topic_names = [s.topic for s in topics]
+        assert "Comparing" in topic_names
+        assert "Adding" in topic_names
+
+    def test_topics_have_guideline_ids(self, db_session):
+        _seed(
+            db_session,
+            _make_guideline(id="g10", topic="Comparing"),
+        )
+        repo = TeachingGuidelineRepository(db_session)
+
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
+        assert topics[0].guideline_id == "g10"
 
     def test_returns_empty_when_no_match(self, db_session):
         repo = TeachingGuidelineRepository(db_session)
-        topics = repo.get_topics("India", "CBSE", 3, "History")
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "NoSuchChapter")
         assert topics == []
 
     def test_excludes_non_approved(self, db_session):
         _seed(
             db_session,
-            _make_guideline(id="g1", topic="Fractions", review_status="APPROVED"),
-            _make_guideline(id="g2", topic="Geometry", review_status="TO_BE_REVIEWED"),
+            _make_guideline(id="g1", topic="Comparing", review_status="APPROVED"),
+            _make_guideline(id="g2", topic="Adding", review_status="TO_BE_REVIEWED"),
         )
         repo = TeachingGuidelineRepository(db_session)
 
-        topics = repo.get_topics("India", "CBSE", 3, "Mathematics")
-        assert topics == ["Fractions"]
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
+        assert len(topics) == 1
+        assert topics[0].topic == "Comparing"
 
-
-# ===========================================================================
-# get_subtopics
-# ===========================================================================
-
-class TestGetSubtopics:
-    def test_returns_subtopic_info_list(self, db_session):
+    def test_topics_ordered_alphabetically(self, db_session):
         _seed(
             db_session,
-            _make_guideline(id="g1", subtopic="Comparing"),
-            _make_guideline(id="g2", subtopic="Adding"),
+            _make_guideline(id="g1", topic="Zebra"),
+            _make_guideline(id="g2", topic="Apple"),
+            _make_guideline(id="g3", topic="Mango"),
         )
         repo = TeachingGuidelineRepository(db_session)
 
-        subtopics = repo.get_subtopics("India", "CBSE", 3, "Mathematics", "Fractions")
-
-        assert len(subtopics) == 2
-        assert all(isinstance(s, SubtopicInfo) for s in subtopics)
-
-        subtopic_names = [s.subtopic for s in subtopics]
-        assert "Comparing" in subtopic_names
-        assert "Adding" in subtopic_names
-
-    def test_subtopics_have_guideline_ids(self, db_session):
-        _seed(
-            db_session,
-            _make_guideline(id="g10", subtopic="Comparing"),
-        )
-        repo = TeachingGuidelineRepository(db_session)
-
-        subtopics = repo.get_subtopics("India", "CBSE", 3, "Mathematics", "Fractions")
-        assert subtopics[0].guideline_id == "g10"
-
-    def test_returns_empty_when_no_match(self, db_session):
-        repo = TeachingGuidelineRepository(db_session)
-        subtopics = repo.get_subtopics("India", "CBSE", 3, "Mathematics", "NoSuchTopic")
-        assert subtopics == []
-
-    def test_excludes_non_approved(self, db_session):
-        _seed(
-            db_session,
-            _make_guideline(id="g1", subtopic="Comparing", review_status="APPROVED"),
-            _make_guideline(id="g2", subtopic="Adding", review_status="TO_BE_REVIEWED"),
-        )
-        repo = TeachingGuidelineRepository(db_session)
-
-        subtopics = repo.get_subtopics("India", "CBSE", 3, "Mathematics", "Fractions")
-        assert len(subtopics) == 1
-        assert subtopics[0].subtopic == "Comparing"
-
-    def test_subtopics_ordered_alphabetically(self, db_session):
-        _seed(
-            db_session,
-            _make_guideline(id="g1", subtopic="Zebra"),
-            _make_guideline(id="g2", subtopic="Apple"),
-            _make_guideline(id="g3", subtopic="Mango"),
-        )
-        repo = TeachingGuidelineRepository(db_session)
-
-        subtopics = repo.get_subtopics("India", "CBSE", 3, "Mathematics", "Fractions")
-        names = [s.subtopic for s in subtopics]
+        topics = repo.get_topics("India", "CBSE", 3, "Mathematics", "Fractions")
+        names = [s.topic for s in topics]
         assert names == ["Apple", "Mango", "Zebra"]

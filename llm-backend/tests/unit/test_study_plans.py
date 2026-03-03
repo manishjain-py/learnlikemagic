@@ -18,10 +18,10 @@ def _make_guideline():
     """Create a mock TeachingGuideline DB row."""
     g = MagicMock()
     g.id = "g-123"
-    g.topic = "Fractions"
-    g.topic_title = "Fractions"
-    g.subtopic = "Basics"
-    g.subtopic_title = "Basics"
+    g.chapter = "Fractions"
+    g.chapter_title = "Fractions"
+    g.topic = "Basics"
+    g.topic_title = "Basics"
     g.grade = 3
     g.guideline = "Teach fractions with pizza examples."
     g.description = "Teach fractions"
@@ -67,7 +67,7 @@ class TestStudyPlanGeneratorService:
         llm = MagicMock()
         llm.model_id = "gpt-5.2"
         loader = MagicMock()
-        loader.load.return_value = "Generate a plan for {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}"
+        loader.load.return_value = "Generate a plan for {chapter} {topic} grade {grade}. Guidelines: {guideline_text}"
 
         plan_dict = _valid_plan_dict()
         llm.call.return_value = {
@@ -93,7 +93,7 @@ class TestStudyPlanGeneratorService:
         llm = MagicMock()
         llm.model_id = "gpt-5.2"
         loader = MagicMock()
-        loader.load.return_value = "Generate a plan for {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}"
+        loader.load.return_value = "Generate a plan for {chapter} {topic} grade {grade}. Guidelines: {guideline_text}"
         llm.make_schema_strict = MagicMock(return_value={})
         llm.call.side_effect = RuntimeError("API error")
 
@@ -171,7 +171,7 @@ class TestStudyPlanReviewerService:
         llm = MagicMock()
         llm.model_id = "gpt-4o"
         loader = MagicMock()
-        loader.load.return_value = "Review {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
+        loader.load.return_value = "Review {chapter} {topic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
 
         review_result = {
             "approved": True,
@@ -195,7 +195,7 @@ class TestStudyPlanReviewerService:
     def test_review_plan_rejected(self):
         llm = MagicMock()
         loader = MagicMock()
-        loader.load.return_value = "Review {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
+        loader.load.return_value = "Review {chapter} {topic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
 
         review_result = {
             "approved": False,
@@ -217,7 +217,7 @@ class TestStudyPlanReviewerService:
     def test_review_plan_raises_on_error(self):
         llm = MagicMock()
         loader = MagicMock()
-        loader.load.return_value = "Review {topic} {subtopic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
+        loader.load.return_value = "Review {chapter} {topic} grade {grade}. Guidelines: {guideline_text}. Plan: {plan_json}"
         llm.call.side_effect = RuntimeError("Review failed")
 
         svc = StudyPlanReviewerService(llm, loader)

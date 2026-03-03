@@ -30,7 +30,7 @@ def _make_state(
             prefs=StudentPrefs(style="standard", lang="en"),
         ),
         goal=Goal(
-            topic="Fractions",
+            chapter="Fractions",
             syllabus="CBSE",
             learning_objectives=["obj1"],
             guideline_id="g1",
@@ -85,7 +85,7 @@ class TestCreateAndRetrieve:
 
         row = db_session.query(SessionModel).filter_by(id="sess-1").first()
         goal = json.loads(row.goal_json)
-        assert goal["topic"] == "Fractions"
+        assert goal["chapter"] == "Fractions"
         assert goal["syllabus"] == "CBSE"
 
     def test_create_sets_mastery_and_step_idx(self, db_session):

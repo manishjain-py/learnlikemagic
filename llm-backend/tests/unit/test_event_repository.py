@@ -21,7 +21,7 @@ def _seed_session(db_session, session_id: str = "sess-1") -> None:
     state = TutorState(
         session_id=session_id,
         student=Student(id="s1", grade=3, prefs=StudentPrefs(style="standard", lang="en")),
-        goal=Goal(topic="Fractions", syllabus="CBSE", learning_objectives=["obj1"], guideline_id="g1"),
+        goal=Goal(chapter="Fractions", syllabus="CBSE", learning_objectives=["obj1"], guideline_id="g1"),
         step_idx=0,
         history=[],
         evidence=[],

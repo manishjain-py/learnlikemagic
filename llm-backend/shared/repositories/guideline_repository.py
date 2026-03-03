@@ -7,7 +7,7 @@ import json
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import distinct
-from shared.models import TeachingGuideline, GuidelineMetadata, GuidelineResponse, SubtopicInfo
+from shared.models import TeachingGuideline, GuidelineMetadata, GuidelineResponse, TopicInfo
 
 
 class TeachingGuidelineRepository:
@@ -44,8 +44,8 @@ class TeachingGuidelineRepository:
         board: str,
         grade: int,
         subject: str,
-        topic: str,
-        subtopic: str
+        chapter: str,
+        topic: str
     ) -> Optional[GuidelineResponse]:
         """
         Fetch a specific teaching guideline.
@@ -55,8 +55,8 @@ class TeachingGuidelineRepository:
             board: Education board (e.g., "CBSE")
             grade: Grade level (e.g., 3)
             subject: Subject name (e.g., "Mathematics")
-            topic: Topic name (e.g., "Fractions")
-            subtopic: Subtopic name (e.g., "Comparing Like Denominators")
+            chapter: Chapter name (e.g., "Fractions")
+            topic: Topic name (e.g., "Comparing Like Denominators")
 
         Returns:
             GuidelineResponse or None if not found
@@ -66,15 +66,14 @@ class TeachingGuidelineRepository:
             TeachingGuideline.board == board,
             TeachingGuideline.grade == grade,
             TeachingGuideline.subject == subject,
+            TeachingGuideline.chapter == chapter,
             TeachingGuideline.topic == topic,
-            TeachingGuideline.subtopic == subtopic,
-            TeachingGuideline.review_status == "APPROVED"  # Requirement: Tutor only sees approved
+            TeachingGuideline.review_status == "APPROVED"
         ).first()
 
         if not guideline:
             return None
 
-        # Parse metadata using helper
         metadata = self._parse_metadata(guideline.metadata_json)
 
         return GuidelineResponse(
@@ -83,8 +82,8 @@ class TeachingGuidelineRepository:
             board=guideline.board,
             grade=guideline.grade,
             subject=guideline.subject,
+            chapter=guideline.chapter,
             topic=guideline.topic,
-            subtopic=guideline.subtopic,
             guideline=guideline.guideline,
             metadata=metadata
         )
@@ -116,8 +115,8 @@ class TeachingGuidelineRepository:
             board=guideline.board,
             grade=guideline.grade,
             subject=guideline.subject,
+            chapter=guideline.chapter,
             topic=guideline.topic,
-            subtopic=guideline.subtopic,
             guideline=guideline.guideline,
             metadata=metadata
         )
@@ -143,7 +142,7 @@ class TeachingGuidelineRepository:
 
         return [s[0] for s in subjects]
 
-    def get_topics(
+    def get_chapters(
         self,
         country: str,
         board: str,
@@ -151,7 +150,7 @@ class TeachingGuidelineRepository:
         subject: str
     ) -> List[str]:
         """
-        Get all available topics for a given subject.
+        Get all available chapters for a given subject.
 
         Args:
             country: Country name
@@ -160,51 +159,51 @@ class TeachingGuidelineRepository:
             subject: Subject name
 
         Returns:
-            List of topic names
+            List of chapter names
         """
-        topics = self.db.query(distinct(TeachingGuideline.topic)).filter(
+        chapters = self.db.query(distinct(TeachingGuideline.chapter)).filter(
             TeachingGuideline.country == country,
             TeachingGuideline.board == board,
             TeachingGuideline.grade == grade,
             TeachingGuideline.subject == subject,
             TeachingGuideline.review_status == "APPROVED"
-        ).order_by(TeachingGuideline.topic).all()
+        ).order_by(TeachingGuideline.chapter).all()
 
-        return [t[0] for t in topics]
+        return [c[0] for c in chapters]
 
-    def get_subtopics(
+    def get_topics(
         self,
         country: str,
         board: str,
         grade: int,
         subject: str,
-        topic: str
-    ) -> List[SubtopicInfo]:
+        chapter: str
+    ) -> List[TopicInfo]:
         """
-        Get all available subtopics for a given topic.
+        Get all available topics for a given chapter.
 
         Args:
             country: Country name
             board: Education board
             grade: Grade level
             subject: Subject name
-            topic: Topic name
+            chapter: Chapter name
 
         Returns:
-            List of SubtopicInfo objects
+            List of TopicInfo objects
         """
         guidelines = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.country == country,
             TeachingGuideline.board == board,
             TeachingGuideline.grade == grade,
             TeachingGuideline.subject == subject,
-            TeachingGuideline.topic == topic,
+            TeachingGuideline.chapter == chapter,
             TeachingGuideline.review_status == "APPROVED"
-        ).order_by(TeachingGuideline.subtopic).all()
+        ).order_by(TeachingGuideline.topic).all()
 
         return [
-            SubtopicInfo(
-                subtopic=g.subtopic,
+            TopicInfo(
+                topic=g.topic,
                 guideline_id=g.id
             )
             for g in guidelines

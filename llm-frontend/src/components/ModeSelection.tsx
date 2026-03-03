@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getGuidelineSessions, GuidelineSessionEntry, SubtopicInfo } from '../api';
+import { getGuidelineSessions, GuidelineSessionEntry, TopicInfo } from '../api';
 
 const MODE_LOADING_MESSAGES: Record<string, string> = {
   teach_me: 'Setting up your lesson...',
@@ -8,7 +8,7 @@ const MODE_LOADING_MESSAGES: Record<string, string> = {
 };
 
 interface ModeSelectionProps {
-  subtopic: SubtopicInfo;
+  topic: TopicInfo;
   onSelectMode: (mode: 'teach_me' | 'clarify_doubts' | 'exam') => void;
   onResume: (sessionId: string, mode: string) => void;
   onBack: () => void;
@@ -16,17 +16,17 @@ interface ModeSelectionProps {
   creatingMode?: 'teach_me' | 'clarify_doubts' | 'exam' | null;
 }
 
-function ModeSelection({ subtopic, onSelectMode, onResume, onBack, onViewExamReview, creatingMode }: ModeSelectionProps) {
+function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview, creatingMode }: ModeSelectionProps) {
   const [sessions, setSessions] = useState<GuidelineSessionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPastExams, setShowPastExams] = useState(false);
 
   useEffect(() => {
-    getGuidelineSessions(subtopic.guideline_id)
+    getGuidelineSessions(topic.guideline_id)
       .then(setSessions)
       .catch(() => setSessions([]))
       .finally(() => setLoading(false));
-  }, [subtopic.guideline_id]);
+  }, [topic.guideline_id]);
 
   // Find incomplete sessions for resume — only show if there's actual progress
   const incompleteExam = sessions.find((s) => s.mode === 'exam' && !s.is_complete && (s.exam_answered ?? 0) > 0);
@@ -40,7 +40,7 @@ function ModeSelection({ subtopic, onSelectMode, onResume, onBack, onViewExamRev
       <button className="back-button" onClick={onBack}>
         ← Back
       </button>
-      <h2>{subtopic.subtopic}</h2>
+      <h2>{topic.topic}</h2>
       <p style={{ color: '#666', marginBottom: '20px' }}>What would you like to do?</p>
 
       {creatingMode ? (

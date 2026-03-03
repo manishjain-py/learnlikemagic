@@ -39,13 +39,13 @@ class StudyPlanReviewerService:
             prompt_template = self.prompt_loader.load("study_plan_reviewer")
 
             # 2. Format prompt
+            chapter = guideline.chapter_title or guideline.chapter
             topic = guideline.topic_title or guideline.topic
-            subtopic = guideline.subtopic_title or guideline.subtopic
             guideline_text = guideline.guideline or guideline.description or ""
 
             prompt = prompt_template.format(
+                chapter=chapter,
                 topic=topic,
-                subtopic=subtopic,
                 grade=guideline.grade,
                 guideline_text=guideline_text,
                 plan_json=json.dumps(plan_json, indent=2)

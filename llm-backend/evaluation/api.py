@@ -349,7 +349,7 @@ async def list_approved_guidelines(
     if status:
         query = query.filter(TeachingGuideline.review_status == status)
 
-    guidelines = query.order_by(TeachingGuideline.subject, TeachingGuideline.topic, TeachingGuideline.subtopic).all()
+    guidelines = query.order_by(TeachingGuideline.subject, TeachingGuideline.chapter, TeachingGuideline.topic).all()
 
     return [
         {
@@ -358,8 +358,8 @@ async def list_approved_guidelines(
             "board": g.board,
             "grade": g.grade,
             "subject": g.subject,
+            "chapter": g.chapter,
             "topic": g.topic,
-            "subtopic": g.subtopic,
             "guideline": g.guideline,
             "review_status": g.review_status,
             "updated_at": g.updated_at.isoformat() if g.updated_at else None,

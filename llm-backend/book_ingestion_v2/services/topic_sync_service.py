@@ -1,9 +1,9 @@
 """
 Topic sync service — syncs chapter_topics → teaching_guidelines table.
 
-Maps V2 hierarchy (chapter→topic) to V1 table structure (topic→subtopic):
-  V2 chapter → teaching_guidelines "topic" (top-level navigation)
-  V2 topic   → teaching_guidelines "subtopic" (actual learning unit)
+Maps V2 hierarchy (chapter→topic) directly:
+  V2 chapter → teaching_guidelines "chapter"
+  V2 topic   → teaching_guidelines "topic"
 """
 import uuid
 import logging
@@ -107,9 +107,8 @@ class TopicSyncService:
         self, book, chapter: BookChapter, topic: ChapterTopic
     ):
         """Create a teaching_guidelines row from a V2 topic."""
-        # V2 mapping: chapter = "topic" level, topic = "subtopic" level
-        topic_key = f"chapter-{chapter.chapter_number}"
-        topic_title = chapter.display_name or chapter.chapter_title
+        chapter_key = f"chapter-{chapter.chapter_number}"
+        chapter_title = chapter.display_name or chapter.chapter_title
 
         # Build a short teaching description from guidelines (first ~500 chars)
         teaching_desc = topic.guidelines[:500] if topic.guidelines else topic.topic_title
@@ -121,19 +120,19 @@ class TopicSyncService:
             board=book.board,
             grade=book.grade,
             subject=book.subject,
-            topic=topic_title,
-            subtopic=topic.topic_title,
+            chapter=chapter_title,
+            topic=topic.topic_title,
             guideline=topic.guidelines,
             teaching_description=teaching_desc,
             description=description,
-            topic_key=topic_key,
-            topic_title=topic_title,
-            topic_summary=chapter.summary,
-            subtopic_key=topic.topic_key,
-            subtopic_title=topic.topic_title,
-            subtopic_summary=topic.summary,
-            topic_sequence=chapter.chapter_number,
-            subtopic_sequence=topic.sequence_order,
+            chapter_key=chapter_key,
+            chapter_title=chapter_title,
+            chapter_summary=chapter.summary,
+            topic_key=topic.topic_key,
+            topic_title=topic.topic_title,
+            topic_summary=topic.summary,
+            chapter_sequence=chapter.chapter_number,
+            topic_sequence=topic.sequence_order,
             book_id=book.id,
             source_page_start=topic.source_page_start,
             source_page_end=topic.source_page_end,
@@ -148,9 +147,9 @@ class TopicSyncService:
 
     def _delete_chapter_guidelines(self, book_id: str, chapter: BookChapter):
         """Delete existing teaching_guidelines for this chapter."""
-        topic_key = f"chapter-{chapter.chapter_number}"
+        chapter_key = f"chapter-{chapter.chapter_number}"
         self.db.query(TeachingGuideline).filter(
             TeachingGuideline.book_id == book_id,
-            TeachingGuideline.topic_key == topic_key,
+            TeachingGuideline.chapter_key == chapter_key,
         ).delete()
         self.db.commit()

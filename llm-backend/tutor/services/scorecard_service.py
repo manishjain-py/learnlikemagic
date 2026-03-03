@@ -42,15 +42,15 @@ class ScorecardService:
         subjects_data = self._build_report(grouped)
 
         total_sessions = len(sessions)
-        total_topics = sum(len(s["topics"]) for s in subjects_data)
+        total_chapters = sum(len(s["chapters"]) for s in subjects_data)
 
         return {
             "total_sessions": total_sessions,
-            "total_topics_studied": total_topics,
+            "total_chapters_studied": total_chapters,
             "subjects": subjects_data,
         }
 
-    def get_subtopic_progress(self, user_id: str) -> dict:
+    def get_topic_progress(self, user_id: str) -> dict:
         """
         Returns {guideline_id: {coverage, session_count, status}} for the
         curriculum picker coverage indicators.
@@ -157,12 +157,12 @@ class ScorecardService:
         guidelines = (
             self.db.query(
                 TeachingGuideline.id,
+                TeachingGuideline.chapter,
                 TeachingGuideline.topic,
-                TeachingGuideline.subtopic,
+                TeachingGuideline.chapter_title,
                 TeachingGuideline.topic_title,
-                TeachingGuideline.subtopic_title,
+                TeachingGuideline.chapter_key,
                 TeachingGuideline.topic_key,
-                TeachingGuideline.subtopic_key,
             )
             .filter(TeachingGuideline.id.in_(guideline_ids))
             .all()
@@ -170,10 +170,10 @@ class ScorecardService:
 
         return {
             g.id: {
+                "chapter": g.chapter_title or g.chapter,
                 "topic": g.topic_title or g.topic,
-                "subtopic": g.subtopic_title or g.subtopic,
+                "chapter_key": g.chapter_key or (g.chapter_title or g.chapter).lower().replace(" ", "-"),
                 "topic_key": g.topic_key or (g.topic_title or g.topic).lower().replace(" ", "-"),
-                "subtopic_key": g.subtopic_key or (g.subtopic_title or g.subtopic).lower().replace(" ", "-"),
             }
             for g in guidelines
         }
@@ -184,7 +184,7 @@ class ScorecardService:
         Only accumulates coverage from teach_me sessions.
         Tracks latest exam score from exam sessions.
         """
-        grouped = defaultdict(lambda: defaultdict(lambda: {"topic_name": "", "subtopics": {}}))
+        grouped = defaultdict(lambda: defaultdict(lambda: {"chapter_name": "", "topics": {}}))
 
         for session_row in sessions:
             try:
@@ -209,26 +209,26 @@ class ScorecardService:
             # Resolve hierarchy
             if topic_id and topic_id in guideline_lookup:
                 gl = guideline_lookup[topic_id]
+                chapter_name = gl["chapter"]
                 topic_name = gl["topic"]
-                subtopic_name = gl["subtopic"]
+                chapter_key = gl["chapter_key"]
                 topic_key = gl["topic_key"]
-                subtopic_key = gl["subtopic_key"]
             elif " - " in topic_name_raw:
                 parts = topic_name_raw.split(" - ", 1)
-                topic_name = parts[0].strip()
-                subtopic_name = parts[1].strip()
+                chapter_name = parts[0].strip()
+                topic_name = parts[1].strip()
+                chapter_key = chapter_name.lower().replace(" ", "-")
                 topic_key = topic_name.lower().replace(" ", "-")
-                subtopic_key = subtopic_name.lower().replace(" ", "-")
             else:
+                chapter_name = topic_name_raw or "Unknown"
                 topic_name = topic_name_raw or "Unknown"
-                subtopic_name = topic_name_raw or "Unknown"
+                chapter_key = chapter_name.lower().replace(" ", "-")
                 topic_key = topic_name.lower().replace(" ", "-")
-                subtopic_key = subtopic_name.lower().replace(" ", "-")
 
             session_date = session_row.created_at.isoformat() if session_row.created_at else None
 
-            # Get or initialize subtopic accumulator
-            existing = grouped[subject][topic_key]["subtopics"].get(subtopic_key, {})
+            # Get or initialize topic accumulator
+            existing = grouped[subject][chapter_key]["topics"].get(topic_key, {})
             existing_covered = set(existing.get("concepts_covered", []))
             existing_plan = set(existing.get("plan_concepts", []))
             existing_last_studied = existing.get("last_studied")
@@ -259,9 +259,9 @@ class ScorecardService:
                     existing_exam_total = exam_total
                     existing_last_studied = session_date
 
-            grouped[subject][topic_key]["topic_name"] = topic_name
-            grouped[subject][topic_key]["subtopics"][subtopic_key] = {
-                "subtopic_name": subtopic_name,
+            grouped[subject][chapter_key]["chapter_name"] = chapter_name
+            grouped[subject][chapter_key]["topics"][topic_key] = {
+                "topic_name": topic_name,
                 "guideline_id": topic_id,
                 "concepts_covered": list(existing_covered),
                 "plan_concepts": list(existing_plan),
@@ -275,36 +275,36 @@ class ScorecardService:
     def _build_report(self, grouped) -> list:
         """Build flat report from grouped data. No aggregate scores."""
         subjects_data = []
-        for subject, topics in sorted(grouped.items()):
-            topics_data = []
-            for topic_key, topic_info in sorted(topics.items()):
-                subtopics_data = []
-                for subtopic_key, sub_info in sorted(topic_info["subtopics"].items()):
-                    plan_concepts = set(sub_info.get("plan_concepts", []))
-                    covered = set(sub_info.get("concepts_covered", []))
+        for subject, chapters in sorted(grouped.items()):
+            chapters_data = []
+            for chapter_key, chapter_info in sorted(chapters.items()):
+                topics_data = []
+                for topic_key, topic_info in sorted(chapter_info["topics"].items()):
+                    plan_concepts = set(topic_info.get("plan_concepts", []))
+                    covered = set(topic_info.get("concepts_covered", []))
                     coverage = 0.0
                     if plan_concepts:
                         coverage = round(len(covered & plan_concepts) / len(plan_concepts) * 100, 1)
 
-                    subtopics_data.append({
-                        "subtopic": sub_info["subtopic_name"],
-                        "subtopic_key": subtopic_key,
-                        "guideline_id": sub_info.get("guideline_id"),
+                    topics_data.append({
+                        "topic": topic_info["topic_name"],
+                        "topic_key": topic_key,
+                        "guideline_id": topic_info.get("guideline_id"),
                         "coverage": coverage,
-                        "latest_exam_score": sub_info.get("latest_exam_score"),
-                        "latest_exam_total": sub_info.get("latest_exam_total"),
-                        "last_studied": sub_info.get("last_studied"),
+                        "latest_exam_score": topic_info.get("latest_exam_score"),
+                        "latest_exam_total": topic_info.get("latest_exam_total"),
+                        "last_studied": topic_info.get("last_studied"),
                     })
 
-                topics_data.append({
-                    "topic": topic_info["topic_name"],
-                    "topic_key": topic_key,
-                    "subtopics": subtopics_data,
+                chapters_data.append({
+                    "chapter": chapter_info["chapter_name"],
+                    "chapter_key": chapter_key,
+                    "topics": topics_data,
                 })
 
             subjects_data.append({
                 "subject": subject,
-                "topics": topics_data,
+                "chapters": chapters_data,
             })
 
         return subjects_data
@@ -313,6 +313,6 @@ class ScorecardService:
         """Return empty report card for users with no sessions."""
         return {
             "total_sessions": 0,
-            "total_topics_studied": 0,
+            "total_chapters_studied": 0,
             "subjects": [],
         }

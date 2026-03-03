@@ -774,7 +774,7 @@ const EvalFormPanel: React.FC<{
                   <option value="">Choose a guideline...</option>
                   {guidelines.map((g) => (
                     <option key={g.id} value={g.id}>
-                      {g.subject} - {g.topic} / {g.subtopic} (Grade {g.grade})
+                      {g.subject} - {g.chapter} / {g.topic} (Grade {g.grade})
                     </option>
                   ))}
                 </select>

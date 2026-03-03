@@ -47,31 +47,31 @@ class GuidelineResponse(BaseModel):
     board: str
     grade: int
     subject: str
+    chapter: str
     topic: str
-    subtopic: str
     guideline: str
     metadata: Optional["GuidelineMetadata"] = None  # Forward reference
 
 
-class SubtopicInfo(BaseModel):
-    """Subtopic information with guideline ID."""
-    subtopic: str
+class TopicInfo(BaseModel):
+    """Topic information with guideline ID."""
+    topic: str
     guideline_id: str
 
 
 class CurriculumResponse(BaseModel):
-    """Curriculum discovery response - one of subjects, topics, or subtopics."""
+    """Curriculum discovery response - one of subjects, chapters, or topics."""
     subjects: Optional[List[str]] = None
-    topics: Optional[List[str]] = None
-    subtopics: Optional[List[SubtopicInfo]] = None
+    chapters: Optional[List[str]] = None
+    topics: Optional[List[TopicInfo]] = None
 
 
 # ── Report Card schemas ──
 
-class ReportCardSubtopic(BaseModel):
-    """Subtopic-level data for report card."""
-    subtopic: str
-    subtopic_key: str
+class ReportCardTopic(BaseModel):
+    """Topic-level data for report card."""
+    topic: str
+    topic_key: str
     guideline_id: Optional[str] = None
     coverage: float                          # 0-100%, teach_me sessions only
     latest_exam_score: Optional[int] = None  # X in X/Y
@@ -79,23 +79,23 @@ class ReportCardSubtopic(BaseModel):
     last_studied: Optional[str] = None
 
 
-class ReportCardTopic(BaseModel):
-    """Topic-level data for report card."""
-    topic: str
-    topic_key: str
-    subtopics: list[ReportCardSubtopic]
+class ReportCardChapter(BaseModel):
+    """Chapter-level data for report card."""
+    chapter: str
+    chapter_key: str
+    topics: list[ReportCardTopic]
 
 
 class ReportCardSubject(BaseModel):
     """Subject-level data for report card."""
     subject: str
-    topics: list[ReportCardTopic]
+    chapters: list[ReportCardChapter]
 
 
 class ReportCardResponse(BaseModel):
     """Complete student report card response."""
     total_sessions: int
-    total_topics_studied: int
+    total_chapters_studied: int
     subjects: list[ReportCardSubject]
 
 
@@ -123,16 +123,16 @@ class EndExamResponse(BaseModel):
     feedback: Optional[dict] = None
 
 
-class SubtopicProgressEntry(BaseModel):
-    """Progress for a single subtopic (used in topic selection indicators)."""
+class TopicProgressEntry(BaseModel):
+    """Progress for a single topic (used in topic selection indicators)."""
     coverage: float
     session_count: int
     status: str  # "studied" | "not_started"
 
 
-class SubtopicProgressResponse(BaseModel):
-    """Lightweight subtopic progress lookup for curriculum picker."""
-    user_progress: Dict[str, SubtopicProgressEntry]
+class TopicProgressResponse(BaseModel):
+    """Lightweight topic progress lookup for curriculum picker."""
+    user_progress: Dict[str, TopicProgressEntry]
 
 
 class GuidelineSessionEntry(BaseModel):

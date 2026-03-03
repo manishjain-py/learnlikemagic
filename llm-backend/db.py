@@ -68,6 +68,7 @@ def migrate():
         _apply_user_preferred_name_column(db_manager)
         _apply_sequencing_columns(db_manager)
         _apply_v2_tables(db_manager)
+        _rename_topic_subtopic_columns(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -194,9 +195,9 @@ def _apply_sequencing_columns(db_manager):
     existing_columns = {col["name"] for col in inspector.get_columns("teaching_guidelines")}
 
     new_columns = {
+        "chapter_sequence": "INTEGER",
         "topic_sequence": "INTEGER",
-        "subtopic_sequence": "INTEGER",
-        "topic_storyline": "TEXT",
+        "chapter_storyline": "TEXT",
     }
 
     with db_manager.engine.connect() as conn:
@@ -278,6 +279,55 @@ def _apply_v2_tables(db_manager):
             ))
             print("  ✓ Seeded book_ingestion_v2 llm_config")
         conn.commit()
+
+
+def _rename_topic_subtopic_columns(db_manager):
+    """Rename topic/subtopic columns to chapter/topic in teaching_guidelines.
+
+    Aligns V1 naming (topic→subtopic) with V2 hierarchy (chapter→topic).
+    Each rename is idempotent: skipped if the old column no longer exists.
+    Order matters — rename topic_* first to free the name, then subtopic_*.
+    """
+    inspector = inspect(db_manager.engine)
+
+    if "teaching_guidelines" not in inspector.get_table_names():
+        return
+
+    existing = {col["name"] for col in inspector.get_columns("teaching_guidelines")}
+
+    renames = [
+        # Step 1-6: topic_* → chapter_*
+        ("topic", "chapter"),
+        ("topic_key", "chapter_key"),
+        ("topic_title", "chapter_title"),
+        ("topic_summary", "chapter_summary"),
+        ("topic_sequence", "chapter_sequence"),
+        ("topic_storyline", "chapter_storyline"),
+        # Step 7-11: subtopic_* → topic_*
+        ("subtopic", "topic"),
+        ("subtopic_key", "topic_key"),
+        ("subtopic_title", "topic_title"),
+        ("subtopic_summary", "topic_summary"),
+        ("subtopic_sequence", "topic_sequence"),
+    ]
+
+    with db_manager.engine.connect() as conn:
+        applied = 0
+        for old_col, new_col in renames:
+            if old_col in existing and new_col not in existing:
+                print(f"  Renaming teaching_guidelines.{old_col} → {new_col}...")
+                conn.execute(text(
+                    f"ALTER TABLE teaching_guidelines RENAME COLUMN {old_col} TO {new_col}"
+                ))
+                existing.discard(old_col)
+                existing.add(new_col)
+                applied += 1
+        conn.commit()
+
+    if applied:
+        print(f"  ✓ Renamed {applied} columns in teaching_guidelines")
+    else:
+        print("  ✓ teaching_guidelines columns already renamed")
 
 
 def _seed_llm_config(db_manager):

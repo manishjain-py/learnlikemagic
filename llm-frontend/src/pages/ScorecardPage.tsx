@@ -11,8 +11,8 @@ import {
   createSession,
   ReportCardResponse,
   ReportCardSubject,
+  ReportCardChapter,
   ReportCardTopic,
-  ReportCardSubtopic,
 } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -40,7 +40,7 @@ function SubjectCards({
               <span className="scorecard-subject-name">{subject.subject}</span>
             </div>
             <span className="scorecard-subject-meta">
-              {subject.topics.length} topic{subject.topics.length !== 1 ? 's' : ''}
+              {subject.chapters.length} chapter{subject.chapters.length !== 1 ? 's' : ''}
             </span>
           </button>
         ))}
@@ -49,28 +49,28 @@ function SubjectCards({
   );
 }
 
-function TopicSection({
-  topic,
+function ChapterSection({
+  chapter,
   subject,
   onPractice,
   practicing,
 }: {
-  topic: ReportCardTopic;
+  chapter: ReportCardChapter;
   subject: string;
-  onPractice: (subtopic: ReportCardSubtopic, subject: string) => void;
+  onPractice: (topic: ReportCardTopic, subject: string) => void;
   practicing: boolean;
 }) {
   return (
-    <div className="scorecard-topic-section">
-      <div className="scorecard-topic-header">
-        <span className="scorecard-topic-name">{topic.topic}</span>
+    <div className="scorecard-chapter-section">
+      <div className="scorecard-chapter-header">
+        <span className="scorecard-chapter-name">{chapter.chapter}</span>
       </div>
-      <div className="scorecard-subtopic-list">
-        {topic.subtopics.map((st) => (
-          <div key={st.subtopic_key} className="scorecard-subtopic-row">
-            <div className="scorecard-subtopic-toggle">
-              <span className="scorecard-subtopic-name">{st.subtopic}</span>
-              <span className="scorecard-subtopic-right">
+      <div className="scorecard-topic-list">
+        {chapter.topics.map((st) => (
+          <div key={st.topic_key} className="scorecard-topic-row">
+            <div className="scorecard-topic-toggle">
+              <span className="scorecard-topic-name">{st.topic}</span>
+              <span className="scorecard-topic-right">
                 <span className="scorecard-coverage">
                   {(st.coverage ?? 0).toFixed(0)}% covered
                 </span>
@@ -87,9 +87,9 @@ function TopicSection({
                 style={{ width: `${Math.min(st.coverage ?? 0, 100)}%` }}
               />
             </div>
-            <div className="scorecard-subtopic-detail">
+            <div className="scorecard-topic-detail">
               {st.last_studied && (
-                <span className="scorecard-subtopic-meta">
+                <span className="scorecard-topic-meta">
                   Last studied: {new Date(st.last_studied).toLocaleDateString('en-IN', {
                     month: 'short', day: 'numeric', year: 'numeric',
                   })}
@@ -120,7 +120,7 @@ function SubjectDetailView({
 }: {
   subject: ReportCardSubject;
   onBack: () => void;
-  onPractice: (subtopic: ReportCardSubtopic, subjectName: string) => void;
+  onPractice: (topic: ReportCardTopic, subjectName: string) => void;
   practicing: boolean;
 }) {
   return (
@@ -133,11 +133,11 @@ function SubjectDetailView({
       </div>
 
       <div className="scorecard-section">
-        <h3 className="scorecard-section-title">Topics</h3>
-        {subject.topics.map((topic) => (
-          <TopicSection
-            key={topic.topic_key}
-            topic={topic}
+        <h3 className="scorecard-section-title">Chapters</h3>
+        {subject.chapters.map((chapter) => (
+          <ChapterSection
+            key={chapter.chapter_key}
+            chapter={chapter}
             subject={subject.subject}
             onPractice={onPractice}
             practicing={practicing}
@@ -177,8 +177,8 @@ export default function ScorecardPage() {
     }
   };
 
-  const handlePracticeAgain = async (subtopic: ReportCardSubtopic, subject: string) => {
-    if (!user || !subtopic.guideline_id) return;
+  const handlePracticeAgain = async (topic: ReportCardTopic, subject: string) => {
+    if (!user || !topic.guideline_id) return;
     setPracticing(true);
     try {
       const response = await createSession({
@@ -188,10 +188,10 @@ export default function ScorecardPage() {
           prefs: { style: 'standard', lang: 'en' },
         },
         goal: {
-          topic: subtopic.subtopic,
+          chapter: topic.topic,
           syllabus: `${user.board || 'CBSE'}-G${user.grade || 3}`,
           learning_objectives: [],
-          guideline_id: subtopic.guideline_id,
+          guideline_id: topic.guideline_id,
         },
       });
       navigate(`/session/${response.session_id}`, {
@@ -293,7 +293,7 @@ export default function ScorecardPage() {
         <p className="scorecard-stats-line">
           {data.total_sessions} session{data.total_sessions !== 1 ? 's' : ''}
           {' \u00B7 '}
-          {data.total_topics_studied} topic{data.total_topics_studied !== 1 ? 's' : ''} studied
+          {data.total_chapters_studied} chapter{data.total_chapters_studied !== 1 ? 's' : ''} studied
         </p>
 
         <SubjectCards subjects={data.subjects} onSelect={setSelectedSubject} />

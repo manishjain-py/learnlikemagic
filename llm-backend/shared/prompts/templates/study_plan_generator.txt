@@ -3,8 +3,8 @@ You are an expert curriculum designer and AI tutor specializing in creating enga
 Your task is to generate a short, high-quality study plan for a student based on a specific teaching guideline.
 
 ## Input Context
+Chapter: {chapter}
 Topic: {topic}
-Subtopic: {subtopic}
 Grade Level: {grade}
 Guideline Content:
 {guideline_text}

@@ -6,9 +6,9 @@
  * /login/* - Auth flow pages
  * /onboarding - Post-signup profile wizard
  * /learn - Subject selection (protected)
- * /learn/:subject - Topic selection
- * /learn/:subject/:topic - Subtopic selection
- * /learn/:subject/:topic/:subtopic - Mode selection
+ * /learn/:subject - Chapter selection
+ * /learn/:subject/:chapter - Topic selection
+ * /learn/:subject/:chapter/:topic - Mode selection
  * /session/:sessionId - Chat session (protected)
  * / - Redirect to /learn
  * /profile - User profile settings (protected)
@@ -41,8 +41,8 @@ import ScorecardPage from './pages/ScorecardPage';
 // Learn pages
 import LearnLayout from './pages/LearnLayout';
 import SubjectSelect from './pages/SubjectSelect';
+import ChapterSelect from './pages/ChapterSelect';
 import TopicSelect from './pages/TopicSelect';
-import SubtopicSelect from './pages/SubtopicSelect';
 import ModeSelectPage from './pages/ModeSelectPage';
 import ChatSession from './pages/ChatSession';
 import ExamReviewPage from './pages/ExamReviewPage';
@@ -87,34 +87,34 @@ function App() {
             </ProtectedRoute>
           }>
             <Route index element={<SubjectSelect />} />
-            <Route path=":subject" element={<TopicSelect />} />
-            <Route path=":subject/:topic" element={<SubtopicSelect />} />
-            <Route path=":subject/:topic/:subtopic" element={<ModeSelectPage />} />
+            <Route path=":subject" element={<ChapterSelect />} />
+            <Route path=":subject/:chapter" element={<TopicSelect />} />
+            <Route path=":subject/:chapter/:topic" element={<ModeSelectPage />} />
           </Route>
 
           {/* Session routes nested under learn context */}
-          <Route path="/learn/:subject/:topic/:subtopic/teach/:sessionId" element={
+          <Route path="/learn/:subject/:chapter/:topic/teach/:sessionId" element={
             <ProtectedRoute>
               <OnboardingGuard>
                 <ChatSession />
               </OnboardingGuard>
             </ProtectedRoute>
           } />
-          <Route path="/learn/:subject/:topic/:subtopic/exam/:sessionId" element={
+          <Route path="/learn/:subject/:chapter/:topic/exam/:sessionId" element={
             <ProtectedRoute>
               <OnboardingGuard>
                 <ChatSession />
               </OnboardingGuard>
             </ProtectedRoute>
           } />
-          <Route path="/learn/:subject/:topic/:subtopic/clarify/:sessionId" element={
+          <Route path="/learn/:subject/:chapter/:topic/clarify/:sessionId" element={
             <ProtectedRoute>
               <OnboardingGuard>
                 <ChatSession />
               </OnboardingGuard>
             </ProtectedRoute>
           } />
-          <Route path="/learn/:subject/:topic/:subtopic/exam-review/:sessionId" element={
+          <Route path="/learn/:subject/:chapter/:topic/exam-review/:sessionId" element={
             <ProtectedRoute>
               <OnboardingGuard>
                 <ExamReviewPage />

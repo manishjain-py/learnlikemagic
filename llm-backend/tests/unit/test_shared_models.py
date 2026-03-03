@@ -11,7 +11,7 @@ from shared.models.schemas import (
     StepResponse,
     SummaryResponse,
     GuidelineResponse,
-    SubtopicInfo,
+    TopicInfo,
     CurriculumResponse,
 )
 from shared.models.entities import (
@@ -33,7 +33,7 @@ class TestCreateSessionRequest:
         req = CreateSessionRequest(
             student=Student(id="s1", grade=3),
             goal=Goal(
-                topic="Fractions",
+                chapter="Fractions",
                 syllabus="CBSE Grade 3",
                 learning_objectives=["Learn fractions"],
                 guideline_id="g-1",
@@ -46,7 +46,7 @@ class TestCreateSessionRequest:
         with pytest.raises(ValidationError):
             CreateSessionRequest(
                 goal=Goal(
-                    topic="Fractions",
+                    chapter="Fractions",
                     syllabus="CBSE",
                     learning_objectives=["test"],
                 ),
@@ -62,14 +62,14 @@ class TestCreateSessionRequest:
         req = CreateSessionRequest(
             student=Student(id="s1", grade=5),
             goal=Goal(
-                topic="Algebra",
+                chapter="Algebra",
                 syllabus="CBSE Grade 5",
                 learning_objectives=["Solve equations"],
             ),
         )
         data = req.model_dump()
         assert data["student"]["id"] == "s1"
-        assert data["goal"]["topic"] == "Algebra"
+        assert data["goal"]["chapter"] == "Algebra"
 
 
 class TestCreateSessionResponse:
@@ -145,8 +145,8 @@ class TestGuidelineResponse:
             board="CBSE",
             grade=3,
             subject="Mathematics",
-            topic="Fractions",
-            subtopic="Basics",
+            chapter="Fractions",
+            topic="Basics",
             guideline="Teach fractions with visuals.",
         )
         assert resp.id == "g-1"
@@ -163,38 +163,38 @@ class TestGuidelineResponse:
             board="CBSE",
             grade=3,
             subject="Math",
-            topic="Fractions",
-            subtopic="Comparison",
+            chapter="Fractions",
+            topic="Comparison",
             guideline="Teach comparing fractions.",
             metadata=meta,
         )
         assert resp.metadata.depth_level == "basic"
 
 
-class TestSubtopicInfo:
+class TestTopicInfo:
     def test_valid(self):
-        info = SubtopicInfo(subtopic="Basics", guideline_id="g-1")
-        assert info.subtopic == "Basics"
+        info = TopicInfo(topic="Basics", guideline_id="g-1")
+        assert info.topic == "Basics"
 
 
 class TestCurriculumResponse:
     def test_subjects_response(self):
         resp = CurriculumResponse(subjects=["Mathematics", "Science"])
         assert resp.subjects == ["Mathematics", "Science"]
-        assert resp.topics is None
+        assert resp.chapters is None
+
+    def test_chapters_response(self):
+        resp = CurriculumResponse(chapters=["Fractions", "Decimals"])
+        assert resp.chapters == ["Fractions", "Decimals"]
 
     def test_topics_response(self):
-        resp = CurriculumResponse(topics=["Fractions", "Decimals"])
-        assert resp.topics == ["Fractions", "Decimals"]
-
-    def test_subtopics_response(self):
         resp = CurriculumResponse(
-            subtopics=[
-                SubtopicInfo(subtopic="Basics", guideline_id="g-1"),
-                SubtopicInfo(subtopic="Comparison", guideline_id="g-2"),
+            topics=[
+                TopicInfo(topic="Basics", guideline_id="g-1"),
+                TopicInfo(topic="Comparison", guideline_id="g-2"),
             ]
         )
-        assert len(resp.subtopics) == 2
+        assert len(resp.topics) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -259,11 +259,11 @@ class TestTeachingGuidelineEntity:
         assert "board" in cols
         assert "grade" in cols
         assert "subject" in cols
+        assert "chapter" in cols
         assert "topic" in cols
-        assert "subtopic" in cols
         assert "guideline" in cols
+        assert "chapter_title" in cols
         assert "topic_title" in cols
-        assert "subtopic_title" in cols
         assert "status" in cols
         assert "version" in cols
 

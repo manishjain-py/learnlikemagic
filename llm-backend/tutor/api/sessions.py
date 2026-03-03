@@ -14,7 +14,7 @@ from shared.models import (
     StepRequest,
     StepResponse,
     SummaryResponse,
-    SubtopicProgressResponse,
+    TopicProgressResponse,
     ResumableSessionResponse,
     PauseSummary,
     EndExamResponse,
@@ -114,14 +114,14 @@ def get_report_card(
     return service.get_scorecard(current_user.id)
 
 
-@router.get("/subtopic-progress", response_model=SubtopicProgressResponse)
-def get_subtopic_progress(
+@router.get("/topic-progress", response_model=TopicProgressResponse)
+def get_topic_progress(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Get lightweight subtopic progress for topic selection indicators."""
+    """Get lightweight topic progress for topic selection indicators."""
     service = ScorecardService(db)
-    return service.get_subtopic_progress(current_user.id)
+    return service.get_topic_progress(current_user.id)
 
 
 @router.get("/resumable", response_model=ResumableSessionResponse)
@@ -130,7 +130,7 @@ def get_resumable_session(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Find a paused Teach Me session for the given subtopic."""
+    """Find a paused Teach Me session for the given topic."""
     from shared.models.entities import Session as SessionModel
 
     session = (

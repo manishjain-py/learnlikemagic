@@ -49,8 +49,8 @@ def guideline_with_metadata():
         board="CBSE",
         grade=3,
         subject="Mathematics",
-        topic="Fractions",
-        subtopic="Comparing",
+        chapter="Fractions",
+        topic="Comparing",
         guideline="Teaching text about comparing fractions.",
         metadata=GuidelineMetadata(
             learning_objectives=["obj1", "obj2"],
@@ -71,8 +71,8 @@ def guideline_without_metadata():
         board="CBSE",
         grade=3,
         subject="Mathematics",
-        topic="Fractions",
-        subtopic="Adding",
+        chapter="Fractions",
+        topic="Adding",
         guideline="Full guideline text about adding fractions that is quite long.",
         metadata=None,
     )
@@ -126,7 +126,7 @@ class TestConvertGuidelineToTopicWithMetadata:
         assert topic.topic_id == "g1"
 
     def test_topic_name_format(self, guideline_with_metadata):
-        """topic_name is 'topic - subtopic'."""
+        """topic_name is 'chapter - topic'."""
         topic = convert_guideline_to_topic(guideline_with_metadata)
         assert topic.topic_name == "Fractions - Comparing"
 
@@ -172,7 +172,7 @@ class TestConvertGuidelineToTopicWithoutMetadata:
     """Tests for convert_guideline_to_topic when metadata is None."""
 
     def test_fallback_learning_objectives(self, guideline_without_metadata):
-        """Without metadata, a default objective is generated from subtopic."""
+        """Without metadata, a default objective is generated from topic."""
         topic = convert_guideline_to_topic(guideline_without_metadata)
         assert len(topic.guidelines.learning_objectives) == 1
         assert "Adding" in topic.guidelines.learning_objectives[0]
@@ -395,8 +395,8 @@ class TestGenerateDefaultPlan:
         ids = [s.step_id for s in plan.steps]
         assert ids == [1, 2, 3, 4]
 
-    def test_concepts_use_subtopic(self, guideline_with_metadata):
-        """All step concepts use the guideline subtopic."""
+    def test_concepts_use_topic(self, guideline_with_metadata):
+        """All step concepts use the guideline topic."""
         plan = _generate_default_plan(guideline_with_metadata)
         for step in plan.steps:
             assert step.concept == "Comparing"

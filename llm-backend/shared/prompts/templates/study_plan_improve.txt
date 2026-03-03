@@ -1,8 +1,8 @@
 You are an expert curriculum designer. Your previous study plan was reviewed and needs improvement.
 
 ## Input Context
+Chapter: {chapter}
 Topic: {topic}
-Subtopic: {subtopic}
 Grade: {grade}
 Guideline Context:
 {guideline_text}

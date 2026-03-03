@@ -76,15 +76,13 @@ class StudyPlanGeneratorService:
             prompt_template = self.prompt_loader.load("study_plan_generator")
             
             # 2. Format prompt
-            # Handle V2/V1 schema differences gracefully
+            chapter = guideline.chapter_title or guideline.chapter
             topic = guideline.topic_title or guideline.topic
-            subtopic = guideline.subtopic_title or guideline.subtopic
-            # Use the new comprehensive 'guideline' field if available, otherwise fallback
             guideline_text = guideline.guideline or guideline.description or ""
 
             prompt = prompt_template.format(
+                chapter=chapter,
                 topic=topic,
-                subtopic=subtopic,
                 grade=guideline.grade,
                 guideline_text=guideline_text
             )

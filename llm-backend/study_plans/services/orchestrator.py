@@ -45,7 +45,7 @@ class StudyPlanOrchestrator:
         if not guideline:
             raise ValueError(f"Guideline {guideline_id} not found")
 
-        logger.info(f"Starting generic study plan generation for {guideline.topic}/{guideline.subtopic}")
+        logger.info(f"Starting generic study plan generation for {guideline.chapter}/{guideline.topic}")
 
         # 3. Generate Initial Plan
         gen_result = self.generator.generate_plan(guideline)
@@ -111,13 +111,13 @@ class StudyPlanOrchestrator:
         """Helper to call LLM for plan improvement."""
         prompt_template = self.prompt_loader.load("study_plan_improve")
 
+        chapter = guideline.chapter_title or guideline.chapter
         topic = guideline.topic_title or guideline.topic
-        subtopic = guideline.subtopic_title or guideline.subtopic
         guideline_text = guideline.guideline or guideline.description or ""
 
         prompt = prompt_template.format(
+            chapter=chapter,
             topic=topic,
-            subtopic=subtopic,
             grade=guideline.grade,
             guideline_text=guideline_text,
             current_plan_json=json.dumps(current_plan, indent=2),

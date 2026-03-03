@@ -18,7 +18,7 @@ class Student(BaseModel):
 
 class Goal(BaseModel):
     """Learning goal for a session."""
-    topic: str
+    chapter: str
     syllabus: str  # e.g., "CBSE Grade 3 Math"
     learning_objectives: List[str]
     guideline_id: Optional[str] = None  # Reference to TeachingGuideline

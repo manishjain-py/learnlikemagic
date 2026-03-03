@@ -16,7 +16,7 @@ def get_curriculum(
     board: str = Query(..., description="Board name (e.g., CBSE, ICSE)"),
     grade: int = Query(..., description="Grade level"),
     subject: Optional[str] = Query(None, description="Subject filter"),
-    topic: Optional[str] = Query(None, description="Topic filter"),
+    chapter: Optional[str] = Query(None, description="Chapter filter"),
     db: DBSession = Depends(get_db)
 ):
     """
@@ -26,26 +26,26 @@ def get_curriculum(
     - country: Country name (e.g., "India")
     - board: Education board (e.g., "CBSE")
     - grade: Grade level (e.g., 3)
-    - subject (optional): Filter by subject (returns topics)
-    - topic (optional): Filter by topic (returns subtopics, requires subject)
+    - subject (optional): Filter by subject (returns chapters)
+    - chapter (optional): Filter by chapter (returns topics, requires subject)
 
     Returns:
     - If only country/board/grade provided: list of subjects
-    - If subject provided: list of topics
-    - If subject + topic provided: list of subtopics with guideline IDs
+    - If subject provided: list of chapters
+    - If subject + chapter provided: list of topics with guideline IDs
     """
     try:
         repo = TeachingGuidelineRepository(db)
 
-        # Case 1: Get subtopics (subject + topic provided)
-        if subject and topic:
-            subtopics = repo.get_subtopics(country, board, grade, subject, topic)
-            return CurriculumResponse(subtopics=subtopics)
-
-        # Case 2: Get topics (only subject provided)
-        elif subject:
-            topics = repo.get_topics(country, board, grade, subject)
+        # Case 1: Get topics (subject + chapter provided)
+        if subject and chapter:
+            topics = repo.get_topics(country, board, grade, subject, chapter)
             return CurriculumResponse(topics=topics)
+
+        # Case 2: Get chapters (only subject provided)
+        elif subject:
+            chapters = repo.get_chapters(country, board, grade, subject)
+            return CurriculumResponse(chapters=chapters)
 
         # Case 3: Get subjects (only country/board/grade provided)
         else:

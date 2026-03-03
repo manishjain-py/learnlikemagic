@@ -62,7 +62,7 @@ def sample_goal():
     from shared.models.domain import Goal
 
     return Goal(
-        topic="Fractions",
+        chapter="Fractions",
         syllabus="CBSE Grade 3 Mathematics",
         learning_objectives=[
             "Compare fractions with like denominators",

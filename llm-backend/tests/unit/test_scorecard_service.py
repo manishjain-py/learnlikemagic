@@ -37,12 +37,12 @@ def _create_guideline(
     db,
     guideline_id="g1",
     subject="Mathematics",
-    topic="Fractions",
-    subtopic="Comparing Fractions",
+    chapter="Fractions",
+    topic="Comparing Fractions",
+    chapter_key=None,
     topic_key=None,
-    subtopic_key=None,
+    chapter_title=None,
     topic_title=None,
-    subtopic_title=None,
 ):
     """Create a teaching guideline record."""
     g = TeachingGuideline(
@@ -51,13 +51,13 @@ def _create_guideline(
         board="CBSE",
         grade=3,
         subject=subject,
+        chapter=chapter,
         topic=topic,
-        subtopic=subtopic,
         guideline="Test guideline content",
+        chapter_key=chapter_key,
         topic_key=topic_key,
-        subtopic_key=subtopic_key,
+        chapter_title=chapter_title,
         topic_title=topic_title,
-        subtopic_title=subtopic_title,
     )
     db.add(g)
     db.commit()
@@ -109,7 +109,7 @@ def _create_session(
     }
 
     student_json = json.dumps({"id": user_id, "grade": 3})
-    goal_json = json.dumps({"topic": topic_name, "guideline_id": guideline_id})
+    goal_json = json.dumps({"chapter": topic_name, "guideline_id": guideline_id})
 
     session = SessionModel(
         id=session_id,
@@ -140,7 +140,7 @@ class TestScorecardEmpty:
         result = service.get_scorecard(USER_ID)
 
         assert result["total_sessions"] == 0
-        assert result["total_topics_studied"] == 0
+        assert result["total_chapters_studied"] == 0
         assert result["subjects"] == []
         assert "overall_score" not in result
         assert "strengths" not in result
@@ -151,7 +151,7 @@ class TestScorecardEmpty:
         result = service.get_scorecard("nonexistent-user")
 
         assert result["total_sessions"] == 0
-        assert result["total_topics_studied"] == 0
+        assert result["total_chapters_studied"] == 0
 
 
 # ===========================================================================
@@ -183,10 +183,10 @@ class TestScorecardSingleSession:
 
         subject = result["subjects"][0]
         assert "score" not in subject
-        topic = subject["topics"][0]
-        assert "score" not in topic
+        chapter = subject["chapters"][0]
+        assert "score" not in chapter
 
-    def test_single_session_subtopic_has_coverage(self, db_session):
+    def test_single_session_topic_has_coverage(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(
@@ -198,8 +198,8 @@ class TestScorecardSingleSession:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["coverage"] == 50.0  # 1 of 2 concepts covered
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["coverage"] == 50.0  # 1 of 2 concepts covered
 
 
 # ===========================================================================
@@ -222,8 +222,8 @@ class TestScorecardCoverage:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["coverage"] == pytest.approx(66.7, abs=0.1)  # 2/3
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["coverage"] == pytest.approx(66.7, abs=0.1)  # 2/3
 
     def test_clarify_doubts_excluded_from_coverage(self, db_session):
         """clarify_doubts sessions should not contribute to coverage."""
@@ -240,8 +240,8 @@ class TestScorecardCoverage:
         result = service.get_scorecard(USER_ID)
 
         # clarify_doubts session creates a subject entry but coverage stays 0
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["coverage"] == 0.0
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["coverage"] == 0.0
 
     def test_coverage_accumulates_across_sessions(self, db_session):
         """Coverage from multiple teach_me sessions should accumulate."""
@@ -267,8 +267,8 @@ class TestScorecardCoverage:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["coverage"] == 75.0  # 3 of 4 concepts
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["coverage"] == 75.0  # 3 of 4 concepts
 
     def test_latest_plan_used_not_union(self, db_session):
         """Coverage denominator should use the latest session's plan, not union of all."""
@@ -296,9 +296,9 @@ class TestScorecardCoverage:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
         # covered = {c1, c2}, plan = {c1, c2, c3} (latest), coverage = 2/3 ≈ 66.7%
-        assert subtopic["coverage"] == pytest.approx(66.7, abs=0.1)
+        assert topic["coverage"] == pytest.approx(66.7, abs=0.1)
 
     def test_zero_plan_concepts_gives_zero_coverage(self, db_session):
         """If no plan concepts (empty mastery_estimates), coverage is 0."""
@@ -314,8 +314,8 @@ class TestScorecardCoverage:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["coverage"] == 0.0
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["coverage"] == 0.0
 
 
 # ===========================================================================
@@ -353,9 +353,9 @@ class TestScorecardExamScore:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["latest_exam_score"] == 7
-        assert subtopic["latest_exam_total"] == 10
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] == 7
+        assert topic["latest_exam_total"] == 10
 
     def test_no_exam_returns_none(self, db_session):
         _create_user(db_session)
@@ -370,9 +370,9 @@ class TestScorecardExamScore:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["latest_exam_score"] is None
-        assert subtopic["latest_exam_total"] is None
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] is None
+        assert topic["latest_exam_total"] is None
 
     def test_exam_updates_last_studied(self, db_session):
         """Exam sessions should also update last_studied."""
@@ -400,8 +400,8 @@ class TestScorecardExamScore:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["last_studied"] == now.isoformat()
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["last_studied"] == now.isoformat()
 
     def test_latest_exam_wins(self, db_session):
         """When multiple exams exist, the latest one should be shown."""
@@ -431,9 +431,9 @@ class TestScorecardExamScore:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["latest_exam_score"] == 8
-        assert subtopic["latest_exam_total"] == 10
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] == 8
+        assert topic["latest_exam_total"] == 10
 
 
 # ===========================================================================
@@ -464,12 +464,12 @@ class TestScorecardNoAggregateScores:
         assert "strengths" not in result
         assert "needs_practice" not in result
 
-    def test_no_score_on_subject_or_topic(self, db_session):
+    def test_no_score_on_subject_or_chapter(self, db_session):
         _create_user(db_session)
-        _create_guideline(db_session, guideline_id="g1", subtopic="A",
-                          subtopic_key="a", topic_key="t")
-        _create_guideline(db_session, guideline_id="g2", subtopic="B",
-                          subtopic_key="b", topic_key="t")
+        _create_guideline(db_session, guideline_id="g1", topic="A",
+                          topic_key="a", chapter_key="t")
+        _create_guideline(db_session, guideline_id="g2", topic="B",
+                          topic_key="b", chapter_key="t")
 
         _create_session(db_session, guideline_id="g1",
                         topic_name="Fractions - A")
@@ -481,8 +481,8 @@ class TestScorecardNoAggregateScores:
 
         subject = result["subjects"][0]
         assert "score" not in subject
-        topic = subject["topics"][0]
-        assert "score" not in topic
+        chapter = subject["chapters"][0]
+        assert "score" not in chapter
 
     def test_no_trend_data(self, db_session):
         _create_user(db_session)
@@ -501,14 +501,14 @@ class TestScorecardNoAggregateScores:
 # ===========================================================================
 
 class TestScorecardGuidelineLookup:
-    """Test topic hierarchy resolution."""
+    """Test chapter/topic hierarchy resolution."""
 
     def test_hierarchy_from_guideline_table(self, db_session):
         _create_user(db_session)
         _create_guideline(
             db_session, guideline_id="g1",
-            topic="Fractions", subtopic="Comparing Fractions",
-            topic_key="fractions", subtopic_key="comparing-fractions",
+            chapter="Fractions", topic="Comparing Fractions",
+            chapter_key="fractions", topic_key="comparing-fractions",
         )
         _create_session(db_session, guideline_id="g1",
                         topic_name="Fractions - Comparing Fractions")
@@ -516,10 +516,10 @@ class TestScorecardGuidelineLookup:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        topic = result["subjects"][0]["topics"][0]
-        assert topic["topic_key"] == "fractions"
-        subtopic = topic["subtopics"][0]
-        assert subtopic["subtopic_key"] == "comparing-fractions"
+        chapter = result["subjects"][0]["chapters"][0]
+        assert chapter["chapter_key"] == "fractions"
+        topic = chapter["topics"][0]
+        assert topic["topic_key"] == "comparing-fractions"
 
     def test_fallback_to_topic_name_split(self, db_session):
         """If guideline_id is not found, fall back to splitting topic_name."""
@@ -530,19 +530,19 @@ class TestScorecardGuidelineLookup:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        topic = result["subjects"][0]["topics"][0]
-        assert topic["topic"] == "Geometry"
-        subtopic = topic["subtopics"][0]
-        assert subtopic["subtopic"] == "Shapes"
+        chapter = result["subjects"][0]["chapters"][0]
+        assert chapter["chapter"] == "Geometry"
+        topic = chapter["topics"][0]
+        assert topic["topic"] == "Shapes"
 
     def test_v2_fields_preferred_over_v1(self, db_session):
-        """Verify topic_title/subtopic_title used when available."""
+        """Verify chapter_title/topic_title used when available."""
         _create_user(db_session)
         _create_guideline(
             db_session, guideline_id="g1",
-            topic="old_topic", subtopic="old_subtopic",
-            topic_title="New Topic Title", subtopic_title="New Subtopic Title",
-            topic_key="new-topic", subtopic_key="new-subtopic",
+            chapter="old_chapter", topic="old_topic",
+            chapter_title="New Chapter Title", topic_title="New Topic Title",
+            chapter_key="new-chapter", topic_key="new-topic",
         )
         _create_session(db_session, guideline_id="g1",
                         topic_name="old - names")
@@ -550,10 +550,10 @@ class TestScorecardGuidelineLookup:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        topic = result["subjects"][0]["topics"][0]
+        chapter = result["subjects"][0]["chapters"][0]
+        assert chapter["chapter"] == "New Chapter Title"
+        topic = chapter["topics"][0]
         assert topic["topic"] == "New Topic Title"
-        subtopic = topic["subtopics"][0]
-        assert subtopic["subtopic"] == "New Subtopic Title"
 
 
 # ===========================================================================
@@ -657,8 +657,8 @@ class TestScorecardResilience:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["coverage"] == 0.0  # no plan concepts → 0%
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["coverage"] == 0.0  # no plan concepts → 0%
 
     def test_non_list_exam_questions_handled(self, db_session):
         """exam_questions as a non-list should not crash."""
@@ -685,8 +685,8 @@ class TestScorecardResilience:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["latest_exam_score"] is None  # exam_total=0, so not recorded
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] is None  # exam_total=0, so not recorded
 
     def test_non_int_exam_total_correct_handled(self, db_session):
         """exam_total_correct as a string should be handled gracefully."""
@@ -713,8 +713,8 @@ class TestScorecardResilience:
         service = ScorecardService(db_session)
         result = service.get_scorecard(USER_ID)
 
-        subtopic = result["subjects"][0]["topics"][0]["subtopics"][0]
-        assert subtopic["latest_exam_score"] == 0  # defaults to 0
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] == 0  # defaults to 0
 
     def test_topic_as_non_dict_skipped(self, db_session):
         """topic as a string instead of dict should be skipped."""
@@ -763,11 +763,11 @@ class TestScorecardResilience:
     def test_multiple_subjects_grouped_correctly(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session, guideline_id="g1", subject="Mathematics",
-                          topic="Numbers", subtopic="Addition",
-                          topic_key="numbers", subtopic_key="addition")
+                          chapter="Numbers", topic="Addition",
+                          chapter_key="numbers", topic_key="addition")
         _create_guideline(db_session, guideline_id="g2", subject="Science",
-                          topic="Plants", subtopic="Parts",
-                          topic_key="plants", subtopic_key="parts")
+                          chapter="Plants", topic="Parts",
+                          chapter_key="plants", topic_key="parts")
 
         _create_session(db_session, guideline_id="g1", subject="Mathematics",
                         topic_name="Numbers - Addition")
@@ -783,16 +783,16 @@ class TestScorecardResilience:
 
 
 # ===========================================================================
-# Subtopic Progress
+# Topic Progress
 # ===========================================================================
 
-class TestSubtopicProgress:
-    """Test the lightweight subtopic progress endpoint."""
+class TestTopicProgress:
+    """Test the lightweight topic progress endpoint."""
 
     def test_empty_user_returns_empty(self, db_session):
         _create_user(db_session)
         service = ScorecardService(db_session)
-        result = service.get_subtopic_progress(USER_ID)
+        result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"] == {}
 
@@ -807,13 +807,13 @@ class TestSubtopicProgress:
         )
 
         service = ScorecardService(db_session)
-        result = service.get_subtopic_progress(USER_ID)
+        result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["status"] == "studied"
         assert result["user_progress"]["g1"]["coverage"] == 50.0
 
     def test_clarify_doubts_excluded(self, db_session):
-        """clarify_doubts sessions should not appear in subtopic progress."""
+        """clarify_doubts sessions should not appear in topic progress."""
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(
@@ -824,7 +824,7 @@ class TestSubtopicProgress:
         )
 
         service = ScorecardService(db_session)
-        result = service.get_subtopic_progress(USER_ID)
+        result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"] == {}
 
@@ -846,7 +846,7 @@ class TestSubtopicProgress:
         )
 
         service = ScorecardService(db_session)
-        result = service.get_subtopic_progress(USER_ID)
+        result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["session_count"] == 2
 
@@ -868,6 +868,6 @@ class TestSubtopicProgress:
         )
 
         service = ScorecardService(db_session)
-        result = service.get_subtopic_progress(USER_ID)
+        result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["coverage"] == 100.0

@@ -162,7 +162,7 @@ class TestDuplicateExamGuard:
         payload = {
             "student": {"id": "s1", "grade": 3},
             "goal": {
-                "topic": "Fractions",
+                "chapter": "Fractions",
                 "syllabus": "CBSE Grade 3 Math",
                 "learning_objectives": ["Test fractions"],
                 "guideline_id": "g1",
@@ -190,7 +190,7 @@ class TestDuplicateExamGuard:
         payload = {
             "student": {"id": "s1", "grade": 3},
             "goal": {
-                "topic": "Fractions",
+                "chapter": "Fractions",
                 "syllabus": "CBSE Grade 3 Math",
                 "learning_objectives": ["Test"],
                 "guideline_id": "g1",
@@ -231,7 +231,7 @@ class TestDuplicateExamGuard:
         request = CreateSessionRequest(
             student=Student(id="s1", grade=3),
             goal=Goal(
-                topic="Fractions",
+                chapter="Fractions",
                 syllabus="CBSE",
                 learning_objectives=["Test"],
                 guideline_id="g1",
@@ -277,7 +277,7 @@ class TestDuplicateExamGuard:
         request = CreateSessionRequest(
             student=Student(id="s1", grade=3),
             goal=Goal(
-                topic="Fractions",
+                chapter="Fractions",
                 syllabus="CBSE",
                 learning_objectives=["Test"],
                 guideline_id="g1",
@@ -326,7 +326,7 @@ class TestDuplicateExamGuard:
         request = CreateSessionRequest(
             student=Student(id="s1", grade=3),
             goal=Goal(
-                topic="Fractions",
+                chapter="Fractions",
                 syllabus="CBSE",
                 learning_objectives=["Test"],
                 guideline_id="g1",

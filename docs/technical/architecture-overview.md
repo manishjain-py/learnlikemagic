@@ -146,9 +146,9 @@ llm-frontend/src/
 │   ├── OnboardingFlow.tsx
 │   ├── LearnLayout.tsx       # Shared layout for /learn/* (header, nav menu)
 │   ├── SubjectSelect.tsx     # Subject picker (/learn)
-│   ├── TopicSelect.tsx       # Topic picker (/learn/:subject)
-│   ├── SubtopicSelect.tsx    # Subtopic picker (/learn/:subject/:topic)
-│   ├── ModeSelectPage.tsx    # Mode picker (/learn/:subject/:topic/:subtopic)
+│   ├── ChapterSelect.tsx     # Chapter picker (/learn/:subject)
+│   ├── TopicSelect.tsx       # Topic picker (/learn/:subject/:chapter)
+│   ├── ModeSelectPage.tsx    # Mode picker (/learn/:subject/:chapter/:topic)
 │   ├── ChatSession.tsx       # Chat UI (/session/:sessionId)
 │   ├── ProfilePage.tsx
 │   ├── SessionHistoryPage.tsx
@@ -195,9 +195,9 @@ llm-frontend/src/
 | `/auth/callback` | OAuthCallbackPage | Public | Google OAuth callback |
 | `/` | (redirect) | — | Redirects to `/learn` |
 | `/learn` | LearnLayout > SubjectSelect | Protected + Onboarding | Subject picker |
-| `/learn/:subject` | LearnLayout > TopicSelect | Protected + Onboarding | Topic picker |
-| `/learn/:subject/:topic` | LearnLayout > SubtopicSelect | Protected + Onboarding | Subtopic picker |
-| `/learn/:subject/:topic/:subtopic` | LearnLayout > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/exam/resume) |
+| `/learn/:subject` | LearnLayout > ChapterSelect | Protected + Onboarding | Chapter picker |
+| `/learn/:subject/:chapter` | LearnLayout > TopicSelect | Protected + Onboarding | Topic picker |
+| `/learn/:subject/:chapter/:topic` | LearnLayout > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/exam/resume) |
 | `/session/:sessionId` | ChatSession | Protected + Onboarding | Chat session UI |
 | `/profile` | ProfilePage | Protected | Profile management |
 | `/history` | SessionHistoryPage | Protected | Past sessions |

@@ -47,7 +47,7 @@ def convert_guideline_to_topic(
 
     # If no metadata, extract from guideline text
     if not learning_objectives:
-        learning_objectives = [f"Learn about {guideline.subtopic}"]
+        learning_objectives = [f"Learn about {guideline.topic}"]
 
     if not teaching_approach:
         # Use the full guideline text as teaching approach
@@ -64,11 +64,11 @@ def convert_guideline_to_topic(
     # Build StudyPlan from plan_json
     study_plan = _convert_study_plan(study_plan_record, guideline)
 
-    topic_id = f"{guideline.subject}_{guideline.topic}_{guideline.subtopic}".lower().replace(" ", "_")
+    topic_id = f"{guideline.subject}_{guideline.chapter}_{guideline.topic}".lower().replace(" ", "_")
 
     return Topic(
         topic_id=guideline.id or topic_id,
-        topic_name=f"{guideline.topic} - {guideline.subtopic}",
+        topic_name=f"{guideline.chapter} - {guideline.topic}",
         subject=guideline.subject,
         grade_level=guideline.grade,
         guidelines=topic_guidelines,
@@ -140,30 +140,30 @@ def _infer_step_type(item: dict, index: int, total: int) -> str:
 
 def _generate_default_plan(guideline: GuidelineResponse) -> StudyPlan:
     """Generate a simple default study plan when no plan exists."""
-    subtopic = guideline.subtopic
+    topic_name = guideline.topic
     return StudyPlan(steps=[
         StudyPlanStep(
             step_id=1,
             type="explain",
-            concept=subtopic,
-            content_hint=f"Introduce {subtopic} with a concrete example",
+            concept=topic_name,
+            content_hint=f"Introduce {topic_name} with a concrete example",
         ),
         StudyPlanStep(
             step_id=2,
             type="check",
-            concept=subtopic,
+            concept=topic_name,
             question_type="conceptual",
         ),
         StudyPlanStep(
             step_id=3,
             type="explain",
-            concept=subtopic,
-            content_hint=f"Deepen understanding of {subtopic}",
+            concept=topic_name,
+            content_hint=f"Deepen understanding of {topic_name}",
         ),
         StudyPlanStep(
             step_id=4,
             type="practice",
-            concept=subtopic,
+            concept=topic_name,
             question_count=2,
         ),
     ])

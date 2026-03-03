@@ -49,8 +49,8 @@ export interface GuidelineReview {
   board: string;
   grade: number;
   subject: string;
+  chapter: string;
   topic: string;
-  subtopic: string;
   guideline: string;
   review_status: 'TO_BE_REVIEWED' | 'APPROVED';
   updated_at: string;

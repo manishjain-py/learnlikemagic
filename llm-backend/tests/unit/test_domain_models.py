@@ -61,17 +61,17 @@ class TestStudent:
 class TestGoal:
     def test_basic_goal(self):
         goal = Goal(
-            topic="Fractions",
+            chapter="Fractions",
             syllabus="CBSE Grade 3 Math",
             learning_objectives=["Understand what a fraction is"],
         )
-        assert goal.topic == "Fractions"
+        assert goal.chapter == "Fractions"
         assert len(goal.learning_objectives) == 1
         assert goal.guideline_id is None
 
     def test_goal_with_guideline(self):
         goal = Goal(
-            topic="Fractions",
+            chapter="Fractions",
             syllabus="CBSE Grade 3",
             learning_objectives=["Learn fractions"],
             guideline_id="g-123",
@@ -80,7 +80,7 @@ class TestGoal:
 
     def test_goal_requires_fields(self):
         with pytest.raises(ValidationError):
-            Goal(topic="Fractions")  # missing syllabus, learning_objectives
+            Goal(chapter="Fractions")  # missing syllabus, learning_objectives
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ class TestTutorState:
             session_id="sess-1",
             student=Student(id="s1", grade=3),
             goal=Goal(
-                topic="Fractions",
+                chapter="Fractions",
                 syllabus="CBSE Grade 3",
                 learning_objectives=["Learn fractions"],
             ),

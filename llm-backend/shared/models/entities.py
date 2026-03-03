@@ -106,17 +106,9 @@ class TeachingGuideline(Base):
     """
     Teaching guidelines table - stores pedagogical instructions for teaching topics.
 
-    V2 SCHEMA CHANGES (Breaking):
-    - KEEP: id, country, board, grade, subject, book_id, created_at, updated_at
-    - KEEP: topic_key, topic_title, subtopic_key, subtopic_title
-    - KEEP: source_page_start, source_page_end, status, version
-    - REMOVE: objectives_json, examples_json, misconceptions_json, assessments_json
-    - REMOVE: teaching_description, description, evidence_summary, confidence
-    - REMOVE: topic (redundant with topic_title), subtopic (redundant with subtopic_title)
-    - REMOVE: metadata_json, source_pages
-    - CHANGE: guideline → guidelines (single comprehensive text field)
-
-    Migration: DROP all existing rows, recreate table with V2 schema
+    Hierarchy: Book → Chapter → Topic
+    - chapter = chapter-level grouping (e.g., "Fractions")
+    - topic = learning unit (e.g., "Comparing Like Denominators")
     """
     __tablename__ = "teaching_guidelines"
 
@@ -125,50 +117,50 @@ class TeachingGuideline(Base):
     board = Column(String, nullable=False)    # e.g., "CBSE", "ICSE"
     grade = Column(Integer, nullable=False)   # e.g., 3
     subject = Column(String, nullable=False)  # e.g., "Mathematics"
-    topic = Column(String, nullable=False)    # e.g., "Fractions" [DEPRECATED in V2, use topic_title]
-    subtopic = Column(String, nullable=False) # e.g., "Comparing Like Denominators" [DEPRECATED in V2, use subtopic_title]
-    guideline = Column(Text, nullable=False)  # Detailed teaching instructions [RENAME to guidelines in V2]
-    metadata_json = Column(Text, nullable=True)  # JSON: objectives, depth, misconceptions, etc. [REMOVE in V2]
+    chapter = Column(String, nullable=False)  # e.g., "Fractions"
+    topic = Column(String, nullable=False)    # e.g., "Comparing Like Denominators"
+    guideline = Column(Text, nullable=False)  # Detailed teaching instructions
+    metadata_json = Column(Text, nullable=True)  # JSON: objectives, depth, misconceptions, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # Added for V2
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Phase 6 columns (kept in V2)
-    topic_key = Column(String, nullable=True)  # Slugified topic
-    subtopic_key = Column(String, nullable=True)  # Slugified subtopic
-    topic_title = Column(String, nullable=True)  # Human-readable topic
-    subtopic_title = Column(String, nullable=True)  # Human-readable subtopic
-    topic_summary = Column(Text, nullable=True)      # Topic-level summary (20-40 words)
-    subtopic_summary = Column(Text, nullable=True)   # Subtopic-level summary (15-30 words)
+    # Hierarchy keys and titles
+    chapter_key = Column(String, nullable=True)   # Slugified chapter
+    topic_key = Column(String, nullable=True)      # Slugified topic
+    chapter_title = Column(String, nullable=True)  # Human-readable chapter
+    topic_title = Column(String, nullable=True)    # Human-readable topic
+    chapter_summary = Column(Text, nullable=True)  # Chapter-level summary (20-40 words)
+    topic_summary = Column(Text, nullable=True)    # Topic-level summary (15-30 words)
 
     # Pedagogical sequencing fields
-    topic_sequence = Column(Integer, nullable=True)       # Teaching order of topic within book (1-based)
-    subtopic_sequence = Column(Integer, nullable=True)    # Teaching order of subtopic within topic (1-based)
-    topic_storyline = Column(Text, nullable=True)         # Narrative of topic's teaching progression
+    chapter_sequence = Column(Integer, nullable=True)     # Teaching order of chapter within book (1-based)
+    topic_sequence = Column(Integer, nullable=True)       # Teaching order of topic within chapter (1-based)
+    chapter_storyline = Column(Text, nullable=True)       # Narrative of chapter's teaching progression
 
-    # V1 structured fields (REMOVE in V2 migration)
-    objectives_json = Column(Text, nullable=True)  # JSON array [V1 only]
-    examples_json = Column(Text, nullable=True)  # JSON array [V1 only]
-    misconceptions_json = Column(Text, nullable=True)  # JSON array [V1 only]
-    assessments_json = Column(Text, nullable=True)  # JSON array [V1 only]
-    teaching_description = Column(Text, nullable=True)  # 3-6 line teaching instructions [V1 only]
-    description = Column(Text, nullable=True)  # Comprehensive 200-300 word description [V1 only]
-    evidence_summary = Column(Text, nullable=True)  # [V1 only]
-    confidence = Column(Float, nullable=True)  # [V1 only]
+    # V1 structured fields (legacy)
+    objectives_json = Column(Text, nullable=True)
+    examples_json = Column(Text, nullable=True)
+    misconceptions_json = Column(Text, nullable=True)
+    assessments_json = Column(Text, nullable=True)
+    teaching_description = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    evidence_summary = Column(Text, nullable=True)
+    confidence = Column(Float, nullable=True)
 
     # Metadata
     book_id = Column(String, nullable=True)  # Reference to books table
     source_page_start = Column(Integer, nullable=True)
     source_page_end = Column(Integer, nullable=True)
-    source_pages = Column(String, nullable=True)  # JSON array as string [REMOVE in V2]
-    status = Column(String, nullable=False, default='draft')  # draft, pending_review, approved, rejected
-    review_status = Column(String, default='TO_BE_REVIEWED')  # TO_BE_REVIEWED, APPROVED
+    source_pages = Column(String, nullable=True)
+    status = Column(String, nullable=False, default='draft')
+    review_status = Column(String, default='TO_BE_REVIEWED')
     generated_at = Column(DateTime, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String, nullable=True)
     version = Column(Integer, default=1)
 
     __table_args__ = (
-        Index("idx_curriculum", "country", "board", "grade", "subject", "topic"),
+        Index("idx_curriculum", "country", "board", "grade", "subject", "chapter"),
     )
 
 

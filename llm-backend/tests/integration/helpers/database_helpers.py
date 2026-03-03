@@ -140,12 +140,12 @@ def seed_test_guideline(db_session, guideline_data):
     from shared.models.entities import TeachingGuideline
     import re
 
-    # Generate topic_key and subtopic_key if not provided
+    # Generate chapter_key and topic_key if not provided
+    if "chapter_key" not in guideline_data and "chapter" in guideline_data:
+        guideline_data["chapter_key"] = re.sub(r'[^a-z0-9]+', '_', guideline_data["chapter"].lower()).strip('_')
+
     if "topic_key" not in guideline_data and "topic" in guideline_data:
         guideline_data["topic_key"] = re.sub(r'[^a-z0-9]+', '_', guideline_data["topic"].lower()).strip('_')
-
-    if "subtopic_key" not in guideline_data and "subtopic" in guideline_data:
-        guideline_data["subtopic_key"] = re.sub(r'[^a-z0-9]+', '_', guideline_data["subtopic"].lower()).strip('_')
 
     # Add teaching_description if not provided (required in production DB)
     if "teaching_description" not in guideline_data:

@@ -109,17 +109,17 @@ Schema, tables, migrations, and connection management.
 | `board` | VARCHAR | Education board |
 | `grade` | INT | Grade level |
 | `subject` | VARCHAR | Subject name |
-| `topic` | VARCHAR | Topic name |
-| `subtopic` | VARCHAR | Subtopic name |
+| `chapter` | VARCHAR | Chapter name (e.g., "Fractions") |
+| `topic` | VARCHAR | Topic / learning unit name (e.g., "Comparing Like Denominators") |
+| `chapter_key` | VARCHAR | Slugified chapter identifier |
 | `topic_key` | VARCHAR | Slugified topic identifier |
-| `subtopic_key` | VARCHAR | Slugified subtopic identifier |
+| `chapter_title` | VARCHAR | Human-readable chapter name |
 | `topic_title` | VARCHAR | Human-readable topic name |
-| `subtopic_title` | VARCHAR | Human-readable subtopic name |
-| `topic_summary` | TEXT | Topic summary (20-40 words) |
-| `subtopic_summary` | TEXT | Subtopic summary (15-30 words) |
+| `chapter_summary` | TEXT | Chapter summary (20-40 words) |
+| `topic_summary` | TEXT | Topic summary (15-30 words) |
 | `guideline` | TEXT | Complete teaching guidelines |
-| `topic_sequence` | INT | Teaching order of topic within book (1-based) |
-| `subtopic_sequence` | INT | Teaching order of subtopic within topic (1-based) |
+| `chapter_sequence` | INT | Teaching order of chapter within book (1-based) |
+| `topic_sequence` | INT | Teaching order of topic within chapter (1-based) |
 | `source_page_start` | INT | First source page |
 | `source_page_end` | INT | Last source page |
 | `status` | VARCHAR | `draft`, `pending_review`, `approved`, `rejected` (default `draft`) |
@@ -131,7 +131,7 @@ Schema, tables, migrations, and connection management.
 | `created_at` | DATETIME | Timestamp |
 | `updated_at` | DATETIME | Timestamp |
 
-**Indexes:** `idx_curriculum` (country, board, grade, subject, topic)
+**Indexes:** `idx_curriculum` (country, board, grade, subject, chapter)
 
 ### Study Plans
 
@@ -242,7 +242,8 @@ Custom imperative migration (not Alembic):
 2. `_apply_session_columns()` -- Adds `user_id` and `subject` columns to sessions if missing
 3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows
 4. `_apply_v2_tables()` -- Creates V2 pipeline tables and unique constraints
-5. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+5. `_rename_topic_subtopic_columns()` -- Renames topic/subtopic columns to chapter/topic in teaching_guidelines (idempotent)
+6. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 
 ```bash
 # Run migrations

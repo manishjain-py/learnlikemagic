@@ -93,11 +93,11 @@ def generate_sample_guidelines_data():
         Dictionary with guideline structure
     """
     return {
-        "subtopic_shard": {
-            "subtopic_key": "linear_equations_basics",
-            "subtopic_name": "Linear Equations Basics",
-            "topic_key": "algebra",
-            "topic_name": "Algebra"
+        "topic_shard": {
+            "topic_key": "linear_equations_basics",
+            "topic_name": "Linear Equations Basics",
+            "chapter_key": "algebra",
+            "chapter_name": "Algebra"
         },
         "teaching_description": "Teach students how to solve basic linear equations by isolating the variable.",
         "sorted_facts": [
@@ -123,10 +123,10 @@ def generate_sample_curriculum_data():
         "subjects": [
             {
                 "name": "Mathematics",
-                "topics": [
+                "chapters": [
                     {
                         "name": "Algebra",
-                        "subtopics": [
+                        "topics": [
                             "Linear Equations",
                             "Quadratic Equations",
                             "Polynomials"
@@ -134,7 +134,7 @@ def generate_sample_curriculum_data():
                     },
                     {
                         "name": "Geometry",
-                        "subtopics": [
+                        "topics": [
                             "Triangles",
                             "Circles",
                             "Quadrilaterals"

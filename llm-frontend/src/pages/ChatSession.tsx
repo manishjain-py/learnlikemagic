@@ -33,8 +33,8 @@ export default function ChatSession() {
   const params = useParams<{
     sessionId: string;
     subject?: string;
+    chapter?: string;
     topic?: string;
-    subtopic?: string;
   }>();
   const sessionId = params.sessionId;
   const location = useLocation();
@@ -89,8 +89,8 @@ export default function ChatSession() {
 
   // URL params from nested learn routes (preferred) — already decoded by React Router
   const subject = params.subject || '';
+  const chapter = params.chapter || '';
   const topic = params.topic || '';
-  const subtopic = params.subtopic || '';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -439,8 +439,8 @@ export default function ChatSession() {
   };
 
   const handleBack = () => {
-    if (subject && topic && subtopic) {
-      navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(topic)}/${encodeURIComponent(subtopic)}`);
+    if (subject && chapter && topic) {
+      navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
     } else {
       navigate('/learn');
     }
@@ -568,8 +568,8 @@ export default function ChatSession() {
 
           <span className="nav-center nav-breadcrumb">
             {subject && <>{subject}</>}
+            {chapter && <> &rsaquo; {chapter}</>}
             {topic && <> &rsaquo; {topic}</>}
-            {subtopic && <> &rsaquo; {subtopic}</>}
           </span>
 
           <div className="nav-actions">

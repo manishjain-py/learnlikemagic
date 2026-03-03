@@ -14,8 +14,8 @@ def test_get_subjects_for_curriculum(client, db_session, cleanup_tracker):
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra",
-        "subtopic": "Linear Equations",
+        "chapter": "Algebra",
+        "topic": "Linear Equations",
         "guideline": "Test content for linear equations"
     })
     guideline2 = seed_test_guideline(db_session, {
@@ -24,8 +24,8 @@ def test_get_subjects_for_curriculum(client, db_session, cleanup_tracker):
         "board": "CBSE",
         "grade": 8,
         "subject": "Science",
-        "topic": "Physics",
-        "subtopic": "Motion",
+        "chapter": "Physics",
+        "topic": "Motion",
         "guideline": "Test content for motion"
     })
 
@@ -55,8 +55,8 @@ def test_get_subjects_for_curriculum(client, db_session, cleanup_tracker):
 
 @pytest.mark.integration
 @pytest.mark.db
-def test_get_topics_for_subject(client, db_session, cleanup_tracker):
-    """Test fetching topics for a given subject."""
+def test_get_chapters_for_subject(client, db_session, cleanup_tracker):
+    """Test fetching chapters for a given subject."""
     # Seed test guideline
     guideline = seed_test_guideline(db_session, {
         "id": "test_guideline_3",
@@ -64,8 +64,8 @@ def test_get_topics_for_subject(client, db_session, cleanup_tracker):
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra",
-        "subtopic": "Linear Equations",
+        "chapter": "Algebra",
+        "topic": "Linear Equations",
         "guideline": "Test content"
     })
     cleanup_tracker["guideline_ids"] = [guideline.id]
@@ -80,29 +80,29 @@ def test_get_topics_for_subject(client, db_session, cleanup_tracker):
     assert response.status_code == 200
     data = response.json()
 
-    # Verify response structure - should have topics
-    assert "topics" in data or isinstance(data, list)
+    # Verify response structure - should have chapters
+    assert "chapters" in data or isinstance(data, list)
 
     if isinstance(data, list):
-        topic_names = [t["name"] if isinstance(t, dict) else t for t in data]
-        assert "Algebra" in topic_names or any("Algebra" in str(t) for t in topic_names)
+        chapter_names = [t["name"] if isinstance(t, dict) else t for t in data]
+        assert "Algebra" in chapter_names or any("Algebra" in str(t) for t in chapter_names)
     else:
-        assert "Algebra" in data["topics"] or len(data["topics"]) > 0
+        assert "Algebra" in data["chapters"] or len(data["chapters"]) > 0
 
 
 @pytest.mark.integration
 @pytest.mark.db
-def test_get_subtopics_for_topic(client, db_session, cleanup_tracker):
-    """Test fetching subtopics for a given topic."""
-    # Seed test guidelines with multiple subtopics
+def test_get_topics_for_chapter(client, db_session, cleanup_tracker):
+    """Test fetching topics for a given chapter."""
+    # Seed test guidelines with multiple topics
     guideline1 = seed_test_guideline(db_session, {
         "id": "test_guideline_4",
         "country": "India",
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra",
-        "subtopic": "Linear Equations",
+        "chapter": "Algebra",
+        "topic": "Linear Equations",
         "guideline": "Test content for linear equations"
     })
     guideline2 = seed_test_guideline(db_session, {
@@ -111,8 +111,8 @@ def test_get_subtopics_for_topic(client, db_session, cleanup_tracker):
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra",
-        "subtopic": "Quadratic Equations",
+        "chapter": "Algebra",
+        "topic": "Quadratic Equations",
         "guideline": "Test content for quadratic equations"
     })
     cleanup_tracker["guideline_ids"] = [guideline1.id, guideline2.id]
@@ -122,26 +122,26 @@ def test_get_subtopics_for_topic(client, db_session, cleanup_tracker):
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra"
+        "chapter": "Algebra"
     })
 
     assert response.status_code == 200
     data = response.json()
 
-    # Verify response structure - should have subtopics
-    assert "subtopics" in data or isinstance(data, list)
+    # Verify response structure - should have topics
+    assert "topics" in data or isinstance(data, list)
 
     if isinstance(data, list):
-        # List of subtopics
+        # List of topics
         assert len(data) > 0
-        # Check if our subtopic is present
-        subtopic_names = [s.get("subtopic", s.get("name", str(s))) if isinstance(s, dict) else str(s) for s in data]
-        assert any("Linear Equations" in name for name in subtopic_names)
+        # Check if our topic is present
+        topic_names = [s.get("topic", s.get("name", str(s))) if isinstance(s, dict) else str(s) for s in data]
+        assert any("Linear Equations" in name for name in topic_names)
     else:
-        # Dict with subtopics key
-        assert len(data["subtopics"]) > 0
-        subtopic_names = [s.get("subtopic", s.get("name", str(s))) if isinstance(s, dict) else str(s) for s in data["subtopics"]]
-        assert any("Linear" in name or "Quadratic" in name for name in subtopic_names)
+        # Dict with topics key
+        assert len(data["topics"]) > 0
+        topic_names = [s.get("topic", s.get("name", str(s))) if isinstance(s, dict) else str(s) for s in data["topics"]]
+        assert any("Linear" in name or "Quadratic" in name for name in topic_names)
 
 
 @pytest.mark.integration
@@ -162,8 +162,8 @@ def test_curriculum_with_nonexistent_data(client):
     if isinstance(data, list):
         assert len(data) == 0 or data == []
     elif isinstance(data, dict):
-        # Check for empty subjects/topics/subtopics
-        for key in ["subjects", "topics", "subtopics"]:
+        # Check for empty subjects/chapters/topics
+        for key in ["subjects", "chapters", "topics"]:
             if key in data and data[key] is not None:
                 assert len(data[key]) == 0 or data[key] == []
 
@@ -190,8 +190,8 @@ def test_curriculum_response_structure(client, db_session, cleanup_tracker):
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra",
-        "subtopic": "Linear Equations",
+        "chapter": "Algebra",
+        "topic": "Linear Equations",
         "guideline": "Test content"
     })
     cleanup_tracker["guideline_ids"] = [guideline.id]
@@ -205,7 +205,7 @@ def test_curriculum_response_structure(client, db_session, cleanup_tracker):
     assert response.status_code == 200
     assert isinstance(response.json(), (list, dict))
 
-    # Test topic level
+    # Test chapter level
     response = client.get("/curriculum", params={
         "country": "India",
         "board": "CBSE",
@@ -215,21 +215,21 @@ def test_curriculum_response_structure(client, db_session, cleanup_tracker):
     assert response.status_code == 200
     assert isinstance(response.json(), (list, dict))
 
-    # Test subtopic level
+    # Test topic level
     response = client.get("/curriculum", params={
         "country": "India",
         "board": "CBSE",
         "grade": 8,
         "subject": "Mathematics",
-        "topic": "Algebra"
+        "chapter": "Algebra"
     })
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, (list, dict))
 
-    # If dict, should have subtopics or be a list of subtopics
+    # If dict, should have topics or be a list of topics
     if isinstance(data, dict):
-        assert "subtopics" in data or len(data) > 0
+        assert "topics" in data or len(data) > 0
 
 
 @pytest.fixture(autouse=True)
