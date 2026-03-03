@@ -77,7 +77,8 @@ class OCRService:
     def extract_text_from_image(
         self,
         image_path: Optional[str] = None,
-        image_bytes: Optional[bytes] = None
+        image_bytes: Optional[bytes] = None,
+        prompt: Optional[str] = None,
     ) -> str:
         """
         Extract complete text from textbook page image using OpenAI Vision API.
@@ -88,6 +89,7 @@ class OCRService:
         Args:
             image_path: Path to image file (provide either this or image_bytes)
             image_bytes: Image data as bytes (provide either this or image_path)
+            prompt: Custom prompt for OCR extraction (uses default if None)
 
         Returns:
             Complete interpretation of the book page as text
@@ -116,8 +118,12 @@ class OCRService:
                 "input": {"model": self.model, "image_b64_size": len(base64_image)}
             }))
 
-            # Detailed interpretation prompt
-            prompt_text = """I have a book page image that I need you to interpret completely.
+            # Use custom prompt or default
+            if prompt:
+                prompt_text = prompt
+            else:
+                # Detailed interpretation prompt (default — used by V1)
+                prompt_text = """I have a book page image that I need you to interpret completely.
 
 Please read this image and give me each and everything that's present in this book page image.
 Give the complete interpretation in form of text - even the drawings and any images in this book page.

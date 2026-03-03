@@ -394,13 +394,16 @@ def _run_refinalization(db: Session, job_id: str, chapter_id: str, book_id: str)
     chapter_repo.update(chapter)
 
     try:
-        service = ChapterFinalizationService(db, llm_service, book_metadata)
+        job_service = ChapterJobService(db)
+        service = ChapterFinalizationService(
+            db, llm_service, book_metadata,
+            job_service=job_service, job_id=job_id,
+        )
         service.finalize(chapter, job_id)
 
         chapter.status = ChapterStatus.CHAPTER_COMPLETED.value
         chapter_repo.update(chapter)
 
-        job_service = ChapterJobService(db)
         job_service.release_lock(job_id, status="completed")
     except Exception as e:
         chapter.status = ChapterStatus.FAILED.value

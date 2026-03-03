@@ -28,13 +28,15 @@ _MERGE_TEMPLATE = _MERGE_PROMPT_PATH.read_text()
 class ChapterFinalizationService:
     """Handles chapter-level consolidation after extraction."""
 
-    def __init__(self, db, llm_service: LLMService, book_metadata: dict):
+    def __init__(self, db, llm_service: LLMService, book_metadata: dict, job_service=None, job_id: str = None):
         self.db = db
         self.llm_service = llm_service
         self.book_metadata = book_metadata
         self.topic_repo = TopicRepository(db)
         self.chapter_repo = ChapterRepository(db)
         self.s3_client = get_s3_client()
+        self.job_service = job_service
+        self.job_id = job_id
 
     def finalize(self, chapter: BookChapter, job_id: str) -> ConsolidationOutput:
         """
@@ -66,26 +68,30 @@ class ChapterFinalizationService:
             for t in draft_topics
         ]
         self.s3_client.upload_bytes(
-            f"{s3_run_base}/pre_consolidation.json",
             json.dumps(pre_snapshot, indent=2).encode("utf-8"),
+            f"{s3_run_base}/pre_consolidation.json",
         )
 
         # 3. LLM-merge each topic's appended guidelines
+        merge_count = sum(1 for t in draft_topics if "## Pages" in t.guidelines)
+        merged_so_far = 0
         for topic in draft_topics:
             if "## Pages" in topic.guidelines:
-                # Multi-chunk appended guidelines — merge them
+                merged_so_far += 1
+                self._heartbeat(f"Merging guidelines: {merged_so_far}/{merge_count} topics")
                 merged = self._merge_topic_guidelines(chapter, topic)
                 topic.guidelines = merged
                 topic.status = TopicStatus.CONSOLIDATED.value
                 self.topic_repo.update(topic)
 
         # 4. Call consolidation LLM
+        self._heartbeat("Running consolidation...")
         consolidation_output = self._run_consolidation(chapter, draft_topics)
 
         # Save consolidation output
         self.s3_client.upload_bytes(
-            f"{s3_run_base}/consolidation_output.json",
             json.dumps(consolidation_output.model_dump(), indent=2).encode("utf-8"),
+            f"{s3_run_base}/consolidation_output.json",
         )
 
         # 5. Execute merge actions
@@ -121,6 +127,14 @@ class ChapterFinalizationService:
         )
 
         return consolidation_output
+
+    def _heartbeat(self, detail: str = None):
+        """Update job heartbeat to prevent stale detection."""
+        if self.job_service and self.job_id:
+            try:
+                self.job_service.update_progress(self.job_id, current_item=detail)
+            except Exception:
+                pass
 
     def _merge_topic_guidelines(self, chapter: BookChapter, topic: ChapterTopic) -> str:
         """LLM-merge appended per-chunk guidelines into unified text."""
@@ -223,8 +237,8 @@ class ChapterFinalizationService:
             "job_id": job_id,
         }
         self.s3_client.upload_bytes(
-            f"{output_base}/chapter_result.json",
             json.dumps(chapter_result, indent=2).encode("utf-8"),
+            f"{output_base}/chapter_result.json",
         )
 
         # Individual topics
@@ -239,6 +253,6 @@ class ChapterFinalizationService:
                 "sequence_order": topic.sequence_order,
             }
             self.s3_client.upload_bytes(
-                f"{output_base}/topics/{topic.topic_key}.json",
                 json.dumps(topic_data, indent=2).encode("utf-8"),
+                f"{output_base}/topics/{topic.topic_key}.json",
             )
