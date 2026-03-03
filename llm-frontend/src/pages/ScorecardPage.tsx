@@ -1,7 +1,7 @@
 /**
  * ScorecardPage — Deterministic student report card.
  *
- * Shows coverage % and exam scores per subtopic. No AI-interpreted metrics.
+ * Shows coverage % and exam scores per topic. No AI-interpreted metrics.
  */
 
 import React, { useState, useEffect } from 'react';

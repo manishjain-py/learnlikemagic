@@ -6,10 +6,10 @@ import '../App.css';
 
 export default function ExamReviewPage() {
   const navigate = useNavigate();
-  const { subject, topic, subtopic, sessionId } = useParams<{
+  const { subject, chapter, topic, sessionId } = useParams<{
     subject: string;
+    chapter: string;
     topic: string;
-    subtopic: string;
     sessionId: string;
   }>();
   const { grade } = useStudentProfile();
@@ -27,8 +27,8 @@ export default function ExamReviewPage() {
   }, [sessionId]);
 
   const handleBack = () => {
-    if (subject && topic && subtopic) {
-      navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(topic)}/${encodeURIComponent(subtopic)}`);
+    if (subject && chapter && topic) {
+      navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
     } else {
       navigate('/learn');
     }
@@ -72,7 +72,7 @@ export default function ExamReviewPage() {
       <header className="header">
         <h1>Learn Like Magic</h1>
         <p className="subtitle">
-          Grade {grade}{subject && ` \u2022 ${subject}`}{topic && ` \u2022 ${topic}`}{subtopic && ` \u2022 ${subtopic}`}
+          Grade {grade}{subject && ` \u2022 ${subject}`}{chapter && ` \u2022 ${chapter}`}{topic && ` \u2022 ${topic}`}
         </p>
       </header>
 

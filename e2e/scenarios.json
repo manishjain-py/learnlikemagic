@@ -169,11 +169,27 @@
         },
         {
           "id": "tutor-002",
-          "name": "Subject → topic list",
+          "name": "Subject → chapter list",
           "steps": [
             { "action": "navigate", "url": "/" },
             { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-list']", "timeout": 15000 },
+            { "action": "screenshot", "label": "chapter-selection" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "[data-testid='chapter-list']" }
+          ]
+        },
+        {
+          "id": "tutor-003",
+          "name": "Chapter → topic list",
+          "steps": [
+            { "action": "navigate", "url": "/" },
+            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='chapter-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='topic-list']", "timeout": 15000 },
             { "action": "screenshot", "label": "topic-selection" }
           ],
@@ -182,32 +198,16 @@
           ]
         },
         {
-          "id": "tutor-003",
-          "name": "Topic → subtopic list",
-          "steps": [
-            { "action": "navigate", "url": "/" },
-            { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='subtopic-list']", "timeout": 15000 },
-            { "action": "screenshot", "label": "subtopic-selection" }
-          ],
-          "assertions": [
-            { "type": "visible", "selector": "[data-testid='subtopic-list']" }
-          ]
-        },
-        {
           "id": "tutor-mode-001",
-          "name": "Subtopic → mode selection with Teach Me, Clarify Doubts, Exam",
+          "name": "Topic → mode selection with Teach Me, Clarify Doubts, Exam",
           "steps": [
             { "action": "navigate", "url": "/" },
             { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='chapter-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='mode-selection']", "timeout": 15000 },
             { "action": "screenshot", "label": "mode-selection" }
           ],
@@ -224,10 +224,10 @@
             { "action": "navigate", "url": "/" },
             { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='chapter-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='mode-teach-me']" },
             { "action": "waitForSelector", "selector": "[data-testid='chat-container']", "timeout": 30000 },
@@ -245,10 +245,10 @@
             { "action": "navigate", "url": "/" },
             { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='chapter-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='mode-teach-me']" },
             { "action": "waitForSelector", "selector": "[data-testid='chat-input']", "timeout": 30000 },
@@ -268,10 +268,10 @@
             { "action": "navigate", "url": "/" },
             { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='chapter-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='mode-teach-me']" },
             { "action": "waitForSelector", "selector": "[data-testid='mic-button']", "timeout": 30000 },
@@ -288,10 +288,10 @@
             { "action": "navigate", "url": "/" },
             { "action": "waitForSelector", "selector": "[data-testid='subject-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='subject-item']:first-child" },
+            { "action": "waitForSelector", "selector": "[data-testid='chapter-item']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='chapter-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='topic-item']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='topic-item']:first-child" },
-            { "action": "waitForSelector", "selector": "[data-testid='subtopic-item']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='subtopic-item']:first-child" },
             { "action": "waitForSelector", "selector": "[data-testid='mode-teach-me']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='mode-teach-me']" },
             { "action": "waitForSelector", "selector": "[data-testid='pause-button']", "timeout": 30000 },
@@ -321,16 +321,16 @@
         },
         {
           "id": "scorecard-detail-001",
-          "name": "Click subject card to see topic/subtopic detail",
+          "name": "Click subject card to see chapter/topic detail",
           "steps": [
             { "action": "navigate", "url": "/scorecard" },
             { "action": "waitForSelector", "selector": "[data-testid='scorecard-subject-card']", "timeout": 15000 },
             { "action": "click", "selector": "[data-testid='scorecard-subject-card']:first-child" },
-            { "action": "waitForSelector", "selector": ".scorecard-topic-section", "timeout": 10000 },
+            { "action": "waitForSelector", "selector": ".scorecard-chapter-section", "timeout": 10000 },
             { "action": "screenshot", "label": "scorecard-subject-detail" }
           ],
           "assertions": [
-            { "type": "visible", "selector": ".scorecard-topic-section" }
+            { "type": "visible", "selector": ".scorecard-chapter-section" }
           ]
         }
       ]

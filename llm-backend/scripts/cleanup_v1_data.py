@@ -22,9 +22,8 @@ Usage:
 """
 
 import argparse
-import sys
 
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from database import get_db_manager
 
 
@@ -39,18 +38,23 @@ def cleanup_v1_data(dry_run: bool = True):
         # 1. Remove V1 LLM config entry
         print("--- V1 LLM Config ---")
         v1_config = conn.execute(
-            text("SELECT component_key, provider, model_id FROM llm_config WHERE component_key = 'book_ingestion'")
+            text("SELECT component_key, provider, model_id FROM llm_config WHERE component_key = :key"),
+            {"key": "book_ingestion"},
         ).fetchone()
         if v1_config:
             print(f"  {action} llm_config entry: book_ingestion ({v1_config[1]}/{v1_config[2]})")
             if not dry_run:
-                conn.execute(text("DELETE FROM llm_config WHERE component_key = 'book_ingestion'"))
+                conn.execute(
+                    text("DELETE FROM llm_config WHERE component_key = :key"),
+                    {"key": "book_ingestion"},
+                )
         else:
             print("  No V1 'book_ingestion' config found (already clean)")
 
         # Verify V2 config is untouched
         v2_config = conn.execute(
-            text("SELECT component_key, provider, model_id FROM llm_config WHERE component_key = 'book_ingestion_v2'")
+            text("SELECT component_key, provider, model_id FROM llm_config WHERE component_key = :key"),
+            {"key": "book_ingestion_v2"},
         ).fetchone()
         if v2_config:
             print(f"  V2 config preserved: book_ingestion_v2 ({v2_config[1]}/{v2_config[2]})")
@@ -72,40 +76,49 @@ def cleanup_v1_data(dry_run: bool = True):
                 print(f"  {action}: book '{b[1]}' (id={b[0]}, {b[2]} grade {b[3]})")
 
             # 3. Delete study plans for guidelines linked to V1 books
-            print(f"\n--- Study Plans (linked to V1 book guidelines) ---")
-            if v1_book_ids:
-                placeholders = ", ".join(f"'{bid}'" for bid in v1_book_ids)
-                v1_study_plans = conn.execute(text(
-                    f"SELECT sp.id FROM study_plans sp "
-                    f"JOIN teaching_guidelines tg ON sp.guideline_id = tg.id "
-                    f"WHERE tg.book_id IN ({placeholders})"
-                )).fetchall()
-                print(f"  {action} {len(v1_study_plans)} study plans linked to V1 guidelines")
-                if not dry_run and v1_study_plans:
-                    conn.execute(text(
-                        f"DELETE FROM study_plans WHERE guideline_id IN ("
-                        f"  SELECT id FROM teaching_guidelines WHERE book_id IN ({placeholders})"
-                        f")"
-                    ))
+            print("\n--- Study Plans (linked to V1 book guidelines) ---")
+            v1_study_plans = conn.execute(
+                text(
+                    "SELECT sp.id FROM study_plans sp "
+                    "JOIN teaching_guidelines tg ON sp.guideline_id = tg.id "
+                    "WHERE tg.book_id IN :book_ids"
+                ).bindparams(bindparam("book_ids", expanding=True)),
+                {"book_ids": v1_book_ids},
+            ).fetchall()
+            print(f"  {action} {len(v1_study_plans)} study plans linked to V1 guidelines")
+            if not dry_run and v1_study_plans:
+                conn.execute(
+                    text(
+                        "DELETE FROM study_plans WHERE guideline_id IN ("
+                        "  SELECT id FROM teaching_guidelines WHERE book_id IN :book_ids"
+                        ")"
+                    ).bindparams(bindparam("book_ids", expanding=True)),
+                    {"book_ids": v1_book_ids},
+                )
 
             # 4. Delete teaching guidelines linked to V1 books
-            print(f"\n--- Teaching Guidelines (linked to V1 books) ---")
-            if v1_book_ids:
-                v1_guidelines = conn.execute(text(
-                    f"SELECT id, chapter, topic FROM teaching_guidelines WHERE book_id IN ({placeholders})"
-                )).fetchall()
-                print(f"  {action} {len(v1_guidelines)} guidelines linked to V1 books")
-                for g in v1_guidelines[:5]:  # Show first 5
-                    print(f"    - {g[1]} / {g[2]} (id={g[0]})")
-                if len(v1_guidelines) > 5:
-                    print(f"    ... and {len(v1_guidelines) - 5} more")
-                if not dry_run and v1_guidelines:
-                    conn.execute(text(
-                        f"DELETE FROM teaching_guidelines WHERE book_id IN ({placeholders})"
-                    ))
+            print("\n--- Teaching Guidelines (linked to V1 books) ---")
+            v1_guidelines = conn.execute(
+                text(
+                    "SELECT id, chapter, topic FROM teaching_guidelines WHERE book_id IN :book_ids"
+                ).bindparams(bindparam("book_ids", expanding=True)),
+                {"book_ids": v1_book_ids},
+            ).fetchall()
+            print(f"  {action} {len(v1_guidelines)} guidelines linked to V1 books")
+            for g in v1_guidelines[:5]:
+                print(f"    - {g[1]} / {g[2]} (id={g[0]})")
+            if len(v1_guidelines) > 5:
+                print(f"    ... and {len(v1_guidelines) - 5} more")
+            if not dry_run and v1_guidelines:
+                conn.execute(
+                    text(
+                        "DELETE FROM teaching_guidelines WHERE book_id IN :book_ids"
+                    ).bindparams(bindparam("book_ids", expanding=True)),
+                    {"book_ids": v1_book_ids},
+                )
 
             # 5. Delete V1 books
-            print(f"\n--- Deleting V1 Books ---")
+            print("\n--- Deleting V1 Books ---")
             print(f"  {action} {len(v1_books)} V1 books")
             if not dry_run:
                 conn.execute(text(
@@ -114,8 +127,8 @@ def cleanup_v1_data(dry_run: bool = True):
 
             # 6. List S3 prefixes for manual cleanup
             if s3_prefixes:
-                print(f"\n--- S3 Cleanup (manual) ---")
-                print(f"  The following S3 prefixes should be manually deleted:")
+                print("\n--- S3 Cleanup (manual) ---")
+                print("  The following S3 prefixes should be manually deleted:")
                 for prefix in s3_prefixes:
                     print(f"    aws s3 rm s3://$BUCKET/{prefix} --recursive")
 

@@ -273,7 +273,7 @@ def _apply_v2_tables(db_manager):
         conn.commit()
     print("  ✓ V2 unique constraints applied")
 
-    # 3. Seed book_ingestion_v2 LLM config if missing
+    # 4. Seed book_ingestion_v2 LLM config if missing
     with db_manager.engine.connect() as conn:
         exists = conn.execute(text(
             "SELECT 1 FROM llm_config WHERE component_key = 'book_ingestion_v2'"
@@ -347,7 +347,7 @@ def _drop_v1_tables(db_manager):
         for table in v1_tables:
             if table in existing_tables:
                 print(f"  Dropping V1 table {table}...")
-                conn.execute(text(f"DROP TABLE {table}"))
+                conn.execute(text(f"DROP TABLE {table} CASCADE"))
                 print(f"  ✓ {table} dropped")
         conn.commit()
 

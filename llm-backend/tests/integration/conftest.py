@@ -219,7 +219,7 @@ def sample_student(test_config):
 def sample_goal():
     """Generate sample learning goal."""
     return {
-        "topic": "Fractions",
+        "chapter": "Fractions",
         "syllabus": "CBSE Grade 3 Mathematics",
         "learning_objectives": [
             "Compare fractions with like denominators",

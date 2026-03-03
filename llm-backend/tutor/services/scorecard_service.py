@@ -29,8 +29,8 @@ class ScorecardService:
         Build the complete report card for a student.
 
         Returns only deterministic data:
-        - total_sessions, total_topics_studied
-        - Per subtopic: coverage % (teach_me only) + latest exam score
+        - total_sessions, total_chapters_studied
+        - Per topic: coverage % (teach_me only) + latest exam score
         - No aggregate scores, no strengths/weaknesses, no trends
         """
         sessions = self._load_user_sessions(user_id)
@@ -180,7 +180,7 @@ class ScorecardService:
 
     def _group_sessions(self, sessions, guideline_lookup) -> dict:
         """
-        Group sessions into subject → topic → subtopic hierarchy.
+        Group sessions into subject → chapter → topic hierarchy.
         Only accumulates coverage from teach_me sessions.
         Tracks latest exam score from exam sessions.
         """

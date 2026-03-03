@@ -50,7 +50,7 @@ uvicorn main:app --reload
 |----------|--------|-------------|
 | `/` | GET | Health check |
 | `/health/db` | GET | Database health |
-| `/curriculum` | GET | Discover subjects/topics/subtopics |
+| `/curriculum` | GET | Discover subjects/chapters/topics |
 | `/sessions` | POST | Start tutoring session |
 | `/sessions/{id}/step` | POST | Submit student response |
 | `/sessions/{id}/summary` | GET | Session summary |
