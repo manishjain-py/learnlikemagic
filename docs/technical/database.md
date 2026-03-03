@@ -120,8 +120,13 @@ Schema, tables, migrations, and connection management.
 | `guideline` | TEXT | Complete teaching guidelines |
 | `chapter_sequence` | INT | Teaching order of chapter within book (1-based) |
 | `topic_sequence` | INT | Teaching order of topic within chapter (1-based) |
+| `chapter_storyline` | TEXT | Narrative of chapter's teaching progression |
+| `teaching_description` | TEXT | Teaching description (used by V2 sync) |
+| `description` | TEXT | Fallback for guideline text (used by study plan generation) |
 | `source_page_start` | INT | First source page |
 | `source_page_end` | INT | Last source page |
+| `source_pages` | VARCHAR | Page range string (e.g., "5-8") |
+| `metadata_json` | TEXT | JSON: objectives, depth, misconceptions, etc. |
 | `status` | VARCHAR | `draft`, `pending_review`, `approved`, `rejected` (default `draft`) |
 | `review_status` | VARCHAR | `TO_BE_REVIEWED` or `APPROVED` (default `TO_BE_REVIEWED`) |
 | `generated_at` | DATETIME | When guideline was generated |
@@ -243,7 +248,9 @@ Custom imperative migration (not Alembic):
 3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows
 4. `_apply_v2_tables()` -- Creates V2 pipeline tables and unique constraints
 5. `_rename_topic_subtopic_columns()` -- Renames topic/subtopic columns to chapter/topic in teaching_guidelines (idempotent)
-6. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+6. `_drop_v1_tables()` -- Drops `book_guidelines` and `book_jobs` tables if they exist
+7. `_drop_v1_guideline_columns()` -- Drops unused V1 columns from teaching_guidelines (`objectives_json`, `examples_json`, `misconceptions_json`, `assessments_json`, `evidence_summary`, `confidence`)
+8. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 
 ```bash
 # Run migrations
@@ -256,6 +263,12 @@ python db.py --migrate
 1. Add column to the SQLAlchemy model in `entities.py`
 2. Add an `ALTER TABLE` migration in `db.py` with column existence check via `inspect()`
 3. Run `python db.py --migrate`
+
+**V1 data cleanup** (one-time, after migration):
+```bash
+python scripts/cleanup_v1_data.py              # dry run — shows what would be deleted
+python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guidelines, study plans
+```
 
 ---
 

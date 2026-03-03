@@ -70,6 +70,13 @@ def migrate():
         _apply_v2_tables(db_manager)
         _rename_topic_subtopic_columns(db_manager)
 
+        # Drop V1 tables and unused V1 columns
+        _drop_v1_tables(db_manager)
+        _drop_v1_guideline_columns(db_manager)
+
+        # Remove V1 LLM config entry if it exists
+        _remove_v1_llm_config(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -328,6 +335,75 @@ def _rename_topic_subtopic_columns(db_manager):
         print(f"  ✓ Renamed {applied} columns in teaching_guidelines")
     else:
         print("  ✓ teaching_guidelines columns already renamed")
+
+
+def _drop_v1_tables(db_manager):
+    """Drop V1 pipeline tables (book_guidelines, book_jobs) if they exist."""
+    inspector = inspect(db_manager.engine)
+    existing_tables = inspector.get_table_names()
+
+    v1_tables = ["book_guidelines", "book_jobs"]
+    with db_manager.engine.connect() as conn:
+        for table in v1_tables:
+            if table in existing_tables:
+                print(f"  Dropping V1 table {table}...")
+                conn.execute(text(f"DROP TABLE {table}"))
+                print(f"  ✓ {table} dropped")
+        conn.commit()
+
+
+def _drop_v1_guideline_columns(db_manager):
+    """Drop unused V1 structured-field columns from teaching_guidelines.
+
+    Removes: objectives_json, examples_json, misconceptions_json,
+             assessments_json, evidence_summary, confidence.
+    Keeps columns still used by V2 pipeline: teaching_description, description,
+    source_page_start, source_page_end, source_pages, book_id.
+    """
+    inspector = inspect(db_manager.engine)
+
+    if "teaching_guidelines" not in inspector.get_table_names():
+        return
+
+    existing = {col["name"] for col in inspector.get_columns("teaching_guidelines")}
+
+    v1_columns = [
+        "objectives_json",
+        "examples_json",
+        "misconceptions_json",
+        "assessments_json",
+        "evidence_summary",
+        "confidence",
+    ]
+
+    with db_manager.engine.connect() as conn:
+        dropped = 0
+        for col in v1_columns:
+            if col in existing:
+                print(f"  Dropping teaching_guidelines.{col}...")
+                conn.execute(text(f"ALTER TABLE teaching_guidelines DROP COLUMN {col}"))
+                dropped += 1
+        conn.commit()
+
+    if dropped:
+        print(f"  ✓ Dropped {dropped} unused V1 columns from teaching_guidelines")
+    else:
+        print("  ✓ V1 columns already removed from teaching_guidelines")
+
+
+def _remove_v1_llm_config(db_manager):
+    """Remove the V1 'book_ingestion' LLM config entry if it exists.
+
+    The V1 pipeline is gone; only 'book_ingestion_v2' should remain.
+    This is safe because no code references the old key.
+    """
+    with db_manager.engine.connect() as conn:
+        result = conn.execute(text(
+            "DELETE FROM llm_config WHERE component_key = 'book_ingestion'"
+        ))
+        if result.rowcount:
+            print("  ✓ Removed V1 'book_ingestion' LLM config entry")
+        conn.commit()
 
 
 def _seed_llm_config(db_manager):

@@ -267,12 +267,21 @@ class TestTeachingGuidelineEntity:
         assert "status" in cols
         assert "version" in cols
 
-    def test_has_v1_fields(self):
-        """V1 fields should still exist for backward compatibility."""
+    def test_has_legacy_fields_used_by_v2(self):
+        """Legacy fields still used by V2 pipeline / study plan generation."""
         cols = {c.name for c in TeachingGuideline.__table__.columns}
-        assert "objectives_json" in cols
-        assert "misconceptions_json" in cols
+        assert "teaching_description" in cols
         assert "description" in cols
+
+    def test_v1_structured_fields_removed(self):
+        """V1 structured-field columns should no longer exist."""
+        cols = {c.name for c in TeachingGuideline.__table__.columns}
+        assert "objectives_json" not in cols
+        assert "examples_json" not in cols
+        assert "misconceptions_json" not in cols
+        assert "assessments_json" not in cols
+        assert "evidence_summary" not in cols
+        assert "confidence" not in cols
 
 
 class TestStudyPlanEntity:

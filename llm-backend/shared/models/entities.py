@@ -137,15 +137,9 @@ class TeachingGuideline(Base):
     topic_sequence = Column(Integer, nullable=True)       # Teaching order of topic within chapter (1-based)
     chapter_storyline = Column(Text, nullable=True)       # Narrative of chapter's teaching progression
 
-    # V1 structured fields (legacy)
-    objectives_json = Column(Text, nullable=True)
-    examples_json = Column(Text, nullable=True)
-    misconceptions_json = Column(Text, nullable=True)
-    assessments_json = Column(Text, nullable=True)
+    # Legacy fields still used by V2 pipeline / study plan generation
     teaching_description = Column(Text, nullable=True)
-    description = Column(Text, nullable=True)
-    evidence_summary = Column(Text, nullable=True)
-    confidence = Column(Float, nullable=True)
+    description = Column(Text, nullable=True)  # Fallback for guideline text
 
     # Metadata
     book_id = Column(String, nullable=True)  # Reference to books table
@@ -237,7 +231,7 @@ class LLMConfig(Base):
     """
     __tablename__ = "llm_config"
 
-    component_key = Column(String, primary_key=True)  # e.g. "tutor", "book_ingestion"
+    component_key = Column(String, primary_key=True)  # e.g. "tutor", "book_ingestion_v2"
     provider = Column(String, nullable=False)           # "openai", "anthropic", "google"
     model_id = Column(String, nullable=False)           # "gpt-5.2", "claude-opus-4-6", etc.
     description = Column(String, nullable=True)         # Human-readable description
