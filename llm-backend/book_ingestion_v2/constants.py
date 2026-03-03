@@ -6,8 +6,8 @@ from enum import Enum
 CHUNK_SIZE = 3                    # Pages per chunk
 CHUNK_STRIDE = 3                  # Non-overlapping (stride == size)
 CHUNK_MAX_RETRIES = 3             # Retries per chunk on LLM failure
-HEARTBEAT_STALE_THRESHOLD = 120   # Seconds (2 minutes)
-PENDING_STALE_THRESHOLD = 120     # Seconds
+HEARTBEAT_STALE_THRESHOLD = 600   # Seconds (10 minutes — finalization can be slow)
+PENDING_STALE_THRESHOLD = 300     # Seconds (5 minutes)
 
 # LLM config component key
 LLM_CONFIG_KEY = "book_ingestion_v2"

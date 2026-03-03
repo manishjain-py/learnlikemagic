@@ -166,8 +166,8 @@ class TopicExtractionOrchestrator:
             "started_at": datetime.utcnow().isoformat(),
         }
         self.s3_client.upload_bytes(
-            f"{s3_run_base}/config.json",
             json.dumps(run_config, indent=2).encode("utf-8"),
+            f"{s3_run_base}/config.json",
         )
 
         # Process each chunk
@@ -221,8 +221,8 @@ class TopicExtractionOrchestrator:
 
             # Save chunk input to S3
             self.s3_client.upload_bytes(
-                f"{s3_run_base}/chunks/{chunk_idx_str}/input.json",
                 json.dumps(chunk_input.model_dump(), indent=2).encode("utf-8"),
+                f"{s3_run_base}/chunks/{chunk_idx_str}/input.json",
             )
 
             # Process chunk
@@ -252,14 +252,14 @@ class TopicExtractionOrchestrator:
 
                 # Save chunk output to S3
                 self.s3_client.upload_bytes(
-                    f"{s3_run_base}/chunks/{chunk_idx_str}/output.json",
                     json.dumps(output.model_dump(), indent=2).encode("utf-8"),
+                    f"{s3_run_base}/chunks/{chunk_idx_str}/output.json",
                 )
 
                 # Save state snapshot
                 self.s3_client.upload_bytes(
-                    f"{s3_run_base}/chunks/{chunk_idx_str}/state_after.json",
                     json.dumps(state.model_dump(), indent=2).encode("utf-8"),
+                    f"{s3_run_base}/chunks/{chunk_idx_str}/state_after.json",
                 )
 
                 # Save chunk DB record
@@ -344,7 +344,8 @@ class TopicExtractionOrchestrator:
 
         try:
             finalization_service = ChapterFinalizationService(
-                db, llm_service, book_metadata
+                db, llm_service, book_metadata,
+                job_service=self.job_service, job_id=job_id,
             )
             finalization_service.finalize(chapter, job_id)
 

@@ -42,22 +42,23 @@ const BookV2Detail: React.FC = () => {
   const [reuploadingPage, setReuploadingPage] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState(false);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const pollingDoneRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (id) loadBook();
+    if (id) loadBook(true);
     return () => {
       Object.values(pollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
-  const loadBook = async () => {
+  const loadBook = async (isInitial = false) => {
     if (!id) return;
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       setError(null);
       const data = await getBookV2(id);
       setBook(data);
-      // Check for active jobs
+      // Start polling for any chapters in processing state (only if not already polling)
       for (const ch of data.chapters) {
         if (['topic_extraction', 'chapter_finalizing'].includes(ch.status)) {
           startPolling(ch.id);
@@ -66,12 +67,12 @@ const BookV2Detail: React.FC = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load book');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 
   const startPolling = useCallback((chapterId: string) => {
-    if (!id || pollingRef.current[chapterId]) return;
+    if (!id || pollingRef.current[chapterId] || pollingDoneRef.current.has(chapterId)) return;
     const poll = async () => {
       try {
         const job = await getLatestJobV2(id!, chapterId);
@@ -79,10 +80,13 @@ const BookV2Detail: React.FC = () => {
         if (job.status === 'completed' || job.status === 'failed' || job.status === 'completed_with_errors') {
           clearInterval(pollingRef.current[chapterId]);
           delete pollingRef.current[chapterId];
+          pollingDoneRef.current.add(chapterId);
+          // Final refresh to get updated chapter status
           loadBook();
         }
       } catch { /* ignore polling errors */ }
     };
+    // Immediate first fetch, then every POLL_INTERVAL
     poll();
     pollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
@@ -151,8 +155,10 @@ const BookV2Detail: React.FC = () => {
   const handleStartProcessing = async (ch: ChapterResponseV2) => {
     if (!id) return;
     try {
+      setExpandedChapter(ch.id);
       const job = await startProcessing(id, ch.id, ch.status === 'failed');
       setChapterJobs(prev => ({ ...prev, [ch.id]: job }));
+      pollingDoneRef.current.delete(ch.id);
       startPolling(ch.id);
       loadBook();
     } catch (err) {
@@ -186,6 +192,7 @@ const BookV2Detail: React.FC = () => {
     try {
       const job = await reprocessChapter(id, ch.id);
       setChapterJobs(prev => ({ ...prev, [ch.id]: job }));
+      pollingDoneRef.current.delete(ch.id);
       startPolling(ch.id);
       loadBook();
     } catch (err) {
@@ -198,6 +205,7 @@ const BookV2Detail: React.FC = () => {
     try {
       const job = await refinalizeChapter(id, ch.id);
       setChapterJobs(prev => ({ ...prev, [ch.id]: job }));
+      pollingDoneRef.current.delete(ch.id);
       startPolling(ch.id);
       loadBook();
     } catch (err) {
@@ -366,10 +374,43 @@ const BookV2Detail: React.FC = () => {
                 </div>
               </div>
 
+              {/* Processing progress — always visible when job is active */}
+              {job && ['pending', 'running'].includes(job.status) && (
+                <div style={{ borderTop: '1px solid #E5E7EB', padding: '12px 20px', backgroundColor: '#F5F3FF' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#5B21B6' }}>
+                      {job.current_item || 'Starting...'}
+                    </div>
+                    {job.total_items ? (
+                      <span style={{ fontSize: '12px', color: '#6D28D9', fontWeight: 600 }}>
+                        {job.completed_items}/{job.total_items} chunks
+                        {job.failed_items > 0 && <span style={{ color: '#DC2626' }}> ({job.failed_items} failed)</span>}
+                      </span>
+                    ) : null}
+                  </div>
+                  {job.total_items ? (
+                    <div style={{ height: '6px', backgroundColor: '#DDD6FE', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#7C3AED', borderRadius: '3px',
+                        width: `${(job.completed_items / job.total_items) * 100}%`,
+                        transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                  ) : (
+                    <div style={{ height: '6px', backgroundColor: '#DDD6FE', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#7C3AED', borderRadius: '3px', width: '30%',
+                        animation: 'pulse 1.5s ease-in-out infinite',
+                      }} />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Expanded Content */}
               {isExpanded && (
                 <div style={{ borderTop: '1px solid #E5E7EB', padding: '16px 20px' }}>
-                  {/* Progress bar */}
+                  {/* Upload progress bar */}
                   <div style={{ marginBottom: '12px' }}>
                     <div style={{ height: '6px', backgroundColor: '#E5E7EB', borderRadius: '3px', overflow: 'hidden' }}>
                       <div style={{
@@ -378,23 +419,6 @@ const BookV2Detail: React.FC = () => {
                       }} />
                     </div>
                   </div>
-
-                  {/* Processing progress */}
-                  {job && ['pending', 'running'].includes(job.status) && (
-                    <div style={{ backgroundColor: '#EDE9FE', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
-                      <div style={{ fontWeight: 600, fontSize: '13px', color: '#5B21B6' }}>
-                        Processing: {job.current_item || 'Starting...'}
-                      </div>
-                      {job.total_items && (
-                        <div style={{ marginTop: '6px' }}>
-                          <div style={{ height: '4px', backgroundColor: '#C4B5FD', borderRadius: '2px', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', backgroundColor: '#7C3AED', width: `${(job.completed_items / job.total_items) * 100}%` }} />
-                          </div>
-                          <span style={{ fontSize: '12px', color: '#6D28D9' }}>{job.completed_items}/{job.total_items} chunks</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Error display */}
                   {ch.error_message && (
@@ -486,7 +510,8 @@ const BookV2Detail: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Action buttons */}
+                  {/* Action buttons — hidden while a job is actively running */}
+                  {!(job && ['pending', 'running'].includes(job.status)) && (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {ch.status === 'upload_complete' && (
                       <button onClick={() => handleStartProcessing(ch)} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
@@ -517,6 +542,7 @@ const BookV2Detail: React.FC = () => {
                       </>
                     )}
                   </div>
+                  )}
 
                   {/* Topics list */}
                   {topics.length > 0 && (

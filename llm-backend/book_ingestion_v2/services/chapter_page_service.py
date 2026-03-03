@@ -30,6 +30,28 @@ logger = logging.getLogger(__name__)
 SUPPORTED_FORMATS = {".png", ".jpg", ".jpeg", ".tiff", ".webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
+V2_OCR_PROMPT = """Extract the educational content from this textbook page image.
+
+Focus ONLY on content relevant for teaching and learning:
+- All titles, headings, and subheadings
+- All body text, paragraphs, and explanations
+- Math problems, equations, formulas, and worked examples
+- Questions, exercises, and activities
+- Data from tables, charts, and graphs (the actual values/labels)
+- Text in diagrams that conveys educational meaning
+- Captions that explain concepts
+- Key terms, definitions, and vocabulary
+
+IGNORE and DO NOT describe:
+- Decorative illustrations, background art, borders, and ornaments
+- Cartoon characters, mascots, or decorative images
+- Background colors, shapes, or visual design elements
+- Page layout descriptions (columns, margins, etc.)
+- Publisher logos, watermarks, or branding
+
+Output the content in a clean, structured format with headings preserved.
+Use plain text — no markdown image descriptions or visual element callouts."""
+
 
 class ChapterPageService:
     """Service for page upload and management within chapter context."""
@@ -113,7 +135,9 @@ class ChapterPageService:
                 tmp.write(png_data)
                 tmp_path = tmp.name
 
-            ocr_text = self.ocr_service.extract_text_from_image(image_path=tmp_path)
+            ocr_text = self.ocr_service.extract_text_from_image(
+                image_path=tmp_path, prompt=V2_OCR_PROMPT
+            )
             ocr_model = self.ocr_service.model
 
             # Upload OCR text to S3
@@ -208,9 +232,11 @@ class ChapterPageService:
                 tmp.write(png_data)
                 tmp_path = tmp.name
 
-            ocr_text = self.ocr_service.extract_text_from_image(image_path=tmp_path)
+            ocr_text = self.ocr_service.extract_text_from_image(
+                image_path=tmp_path, prompt=V2_OCR_PROMPT
+            )
 
-            self.s3_client.upload_bytes(text_s3_key, ocr_text.encode("utf-8"))
+            self.s3_client.upload_bytes(ocr_text.encode("utf-8"), text_s3_key)
 
             page.text_s3_key = text_s3_key
             page.ocr_status = OCRStatus.COMPLETED.value

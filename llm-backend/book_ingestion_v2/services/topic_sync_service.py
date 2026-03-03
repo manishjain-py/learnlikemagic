@@ -111,6 +111,10 @@ class TopicSyncService:
         topic_key = f"chapter-{chapter.chapter_number}"
         topic_title = chapter.display_name or chapter.chapter_title
 
+        # Build a short teaching description from guidelines (first ~500 chars)
+        teaching_desc = topic.guidelines[:500] if topic.guidelines else topic.topic_title
+        description = topic.summary or f"Teaching guide for {topic.topic_title}"
+
         guideline = TeachingGuideline(
             id=str(uuid.uuid4()),
             country=book.country,
@@ -120,6 +124,8 @@ class TopicSyncService:
             topic=topic_title,
             subtopic=topic.topic_title,
             guideline=topic.guidelines,
+            teaching_description=teaching_desc,
+            description=description,
             topic_key=topic_key,
             topic_title=topic_title,
             topic_summary=chapter.summary,
