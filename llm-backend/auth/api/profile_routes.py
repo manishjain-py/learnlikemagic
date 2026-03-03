@@ -1,6 +1,6 @@
 """Profile API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DBSession
 
 from database import get_db
@@ -45,6 +45,7 @@ async def get_profile(current_user=Depends(get_current_user)):
 @router.put("", response_model=UserProfileResponse)
 async def update_profile(
     request: UpdateProfileRequest,
+    background_tasks: BackgroundTasks,
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
@@ -62,6 +63,25 @@ async def update_profile(
         text_language_preference=request.text_language_preference,
         audio_language_preference=request.audio_language_preference,
     )
+
+    # If personality-triggering fields changed and enrichment exists, trigger regen
+    personality_triggering_fields = {'name', 'preferred_name', 'age', 'grade', 'board'}
+    changed_fields = {k for k, v in request.model_dump(exclude_unset=True).items() if v is not None}
+    if changed_fields & personality_triggering_fields:
+        try:
+            from auth.repositories.enrichment_repository import EnrichmentRepository
+            from auth.services.enrichment_service import EnrichmentService
+            from auth.api.enrichment_routes import _debounced_regenerate
+
+            enrichment_repo = EnrichmentRepository(db)
+            if enrichment_repo.get_by_user_id(current_user.id):
+                enrichment_service = EnrichmentService(db)
+                new_hash = enrichment_service.compute_inputs_hash(current_user.id)
+                if enrichment_service.should_regenerate(current_user.id, new_hash):
+                    background_tasks.add_task(_debounced_regenerate, current_user.id, new_hash)
+        except Exception:
+            pass  # Don't fail profile update if personality trigger fails
+
     return _user_to_response(user)
 
 

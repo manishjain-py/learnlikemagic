@@ -49,6 +49,7 @@ class ExamService:
             teaching_approach=session.topic.guidelines.teaching_approach,
             common_misconceptions="\n".join(f"- {m}" for m in misconceptions) if misconceptions else "(none provided)",
             num_questions=count,
+            personalization_section=self._build_exam_personalization(session),
         )
 
         question_types = ["conceptual", "procedural", "application", "real_world", "error_spotting", "reasoning"]
@@ -174,3 +175,33 @@ class ExamService:
             raise ExamGenerationError("Retry also returned no questions")
 
         return questions
+
+    @staticmethod
+    def _build_exam_personalization(session: SessionState) -> str:
+        """Build personalization section for exam question generation."""
+        pj = getattr(session.student_context, 'personality_json', None)
+        if not pj:
+            return ""
+
+        names = []
+        for p in pj.get("people_to_reference", []):
+            names.append(f"- {p['name']} ({p['context']})")
+        themes = pj.get("example_themes", [])
+        student_name = session.student_context.student_name or ""
+
+        parts = [
+            "\n## Personalization (use in ~30-50% of questions, not all)",
+        ]
+        if student_name:
+            parts.append(f"Student's name: {student_name}")
+        if themes:
+            parts.append(f"Interests/themes: {', '.join(themes)}")
+        if names:
+            parts.append("People to reference in problems:")
+            parts.extend(names)
+        parts.append(
+            "Use these naturally in word problem scenarios. "
+            "Keep core mathematical rigor — only the window dressing is personalized. "
+            "Don't personalize every question — use generic Indian names/contexts for the rest."
+        )
+        return "\n".join(parts)

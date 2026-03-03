@@ -1748,3 +1748,470 @@ body {
 .vt-toggle:hover {
   background: rgba(255, 255, 255, 0.35);
 }
+
+/* ── Enrichment Page ── */
+
+.enrichment-page {
+  max-width: 520px;
+}
+
+.enrichment-progress {
+  margin-bottom: 1.5rem;
+}
+
+.enrichment-progress-bar {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+
+.enrichment-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.enrichment-progress-text {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.enrichment-save-status {
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.enrichment-save-success {
+  color: #38a169;
+}
+
+/* Migration banner */
+.enrichment-migration-banner {
+  background: #fffbeb;
+  border: 1px solid #f6e05e;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.enrichment-migration-banner p {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #744210;
+}
+
+/* Section card */
+.enrichment-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.enrichment-section-open {
+  border-color: #667eea;
+}
+
+.enrichment-section-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-family: inherit;
+  text-align: left;
+  color: #333;
+}
+
+.enrichment-section-header:hover {
+  background: #f8f9fa;
+}
+
+.enrichment-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.enrichment-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.enrichment-section-dot-filled {
+  background: #38a169;
+}
+
+.enrichment-section-arrow {
+  font-size: 0.7rem;
+  color: #999;
+}
+
+.enrichment-section-body {
+  padding: 0 1rem 1rem;
+}
+
+.enrichment-section-helper {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+/* Chip selectors */
+.enrichment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.enrichment-chip {
+  padding: 0.45rem 0.85rem;
+  border: 1px solid #d1d5db;
+  border-radius: 20px;
+  background: white;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #555;
+}
+
+.enrichment-chip:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.enrichment-chip-selected {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+.enrichment-chip-selected:hover {
+  background: #5a6fd6;
+  color: white;
+}
+
+.enrichment-chip-add {
+  border-style: dashed;
+  color: #888;
+}
+
+.enrichment-chip-custom {
+  display: inline-flex;
+}
+
+.enrichment-chip-custom input {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #667eea;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  outline: none;
+  width: 160px;
+  font-family: inherit;
+}
+
+/* People editor */
+.enrichment-people {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.enrichment-person-card {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.enrichment-person-name {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.enrichment-person-rel {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: white;
+}
+
+.enrichment-person-remove {
+  background: none;
+  border: none;
+  color: #e53e3e;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.enrichment-person-remove:hover {
+  background: #fff5f5;
+}
+
+.enrichment-add-btn {
+  padding: 0.5rem 1rem;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #888;
+  font-family: inherit;
+}
+
+.enrichment-add-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+/* Personality sliders */
+.enrichment-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.enrichment-slider-pair {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.enrichment-slider-option {
+  flex: 1;
+  padding: 0.6rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+  color: #555;
+}
+
+.enrichment-slider-option:hover {
+  border-color: #667eea;
+}
+
+.enrichment-slider-selected {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+/* Tag input */
+.enrichment-tag-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.enrichment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.enrichment-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  background: #edf2f7;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  color: #4a5568;
+}
+
+.enrichment-tag button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #a0aec0;
+  font-size: 0.7rem;
+  padding: 0;
+  margin-left: 0.2rem;
+}
+
+.enrichment-tag-input input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+/* Char counter */
+.enrichment-char-count {
+  font-size: 0.75rem;
+  color: #aaa;
+  text-align: right;
+}
+
+/* Session preferences section */
+.enrichment-session-section {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.enrichment-session-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 0.75rem;
+}
+
+/* Personality card */
+.enrichment-personality-card {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #f0f4ff 0%, #faf0ff 100%);
+  border-radius: 12px;
+  border: 1px solid #e2e0f0;
+}
+
+.enrichment-personality-card h3 {
+  font-size: 1rem;
+  color: #4a3d8f;
+  margin-bottom: 0.75rem;
+}
+
+.enrichment-personality-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.enrichment-personality-field strong {
+  display: block;
+  font-size: 0.8rem;
+  color: #6b5fa5;
+  margin-bottom: 0.2rem;
+}
+
+.enrichment-personality-field p {
+  font-size: 0.85rem;
+  color: #555;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.enrichment-personality-updated {
+  font-size: 0.75rem;
+  color: #aaa;
+  margin-top: 0.75rem;
+}
+
+.enrichment-personality-generating {
+  text-align: center;
+}
+
+.enrichment-personality-generating p {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.enrichment-personality-empty {
+  text-align: center;
+}
+
+.enrichment-personality-empty p {
+  font-size: 0.9rem;
+  color: #888;
+}
+
+/* CTA card on Profile page */
+.enrichment-cta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  background: linear-gradient(135deg, #f0f4ff 0%, #faf0ff 100%);
+  border: 1px solid #d6d0f0;
+  border-radius: 12px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.enrichment-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.enrichment-cta-content h3 {
+  font-size: 0.95rem;
+  color: #4a3d8f;
+  margin-bottom: 0.25rem;
+}
+
+.enrichment-cta-content p {
+  font-size: 0.8rem;
+  color: #888;
+  margin: 0;
+}
+
+.enrichment-cta-arrow {
+  font-size: 1.2rem;
+  color: #667eea;
+  flex-shrink: 0;
+}
+
+/* Home screen enrichment prompt */
+.enrichment-home-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #f0f4ff 0%, #faf0ff 100%);
+  border: 1px solid #d6d0f0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #4a3d8f;
+  transition: transform 0.15s;
+}
+
+.enrichment-home-prompt:hover {
+  transform: translateY(-1px);
+}
+
+.enrichment-home-dismiss {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.enrichment-home-dismiss:hover {
+  background: rgba(0, 0, 0, 0.05);
+}

@@ -20,7 +20,6 @@ export default function ProfilePage() {
   const [grade, setGrade] = useState(user?.grade?.toString() || '');
   const [board, setBoard] = useState(user?.board || '');
   const [schoolName, setSchoolName] = useState(user?.school_name || '');
-  const [aboutMe, setAboutMe] = useState(user?.about_me || '');
   const [textLang, setTextLang] = useState(user?.text_language_preference || 'en');
   const [audioLang, setAudioLang] = useState(user?.audio_language_preference || 'en');
   const [editing, setEditing] = useState(false);
@@ -48,7 +47,6 @@ export default function ProfilePage() {
           grade: grade ? parseInt(grade) : undefined,
           board: board || undefined,
           school_name: schoolName.trim() || undefined,
-          about_me: aboutMe.trim() || undefined,
           text_language_preference: textLang,
           audio_language_preference: audioLang,
         }),
@@ -157,17 +155,6 @@ export default function ProfilePage() {
             />
           </div>
 
-          <div className="auth-field">
-            <label>About me (optional)</label>
-            <textarea
-              value={aboutMe}
-              onChange={(e) => setAboutMe(e.target.value)}
-              placeholder="I like cricket, I learn better with stories..."
-              rows={3}
-              disabled={!editing}
-            />
-          </div>
-
           <div className="profile-section">
             <h3>Language Preferences</h3>
             <div className="auth-field">
@@ -219,6 +206,19 @@ export default function ProfilePage() {
             </button>
           )}
         </form>
+
+        {/* Enrichment CTA */}
+        <div
+          className="enrichment-cta"
+          onClick={() => navigate('/profile/enrichment')}
+          style={{ cursor: 'pointer' }}
+        >
+          <div className="enrichment-cta-content">
+            <h3>Help us know {user?.preferred_name || user?.name || 'your child'} better</h3>
+            <p>Tell us about their interests, learning style, and personality to personalize their experience.</p>
+          </div>
+          <span className="enrichment-cta-arrow">&rarr;</span>
+        </div>
 
         <div className="profile-section">
           <h3>Account</h3>

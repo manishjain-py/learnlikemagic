@@ -309,15 +309,42 @@ class SessionService:
         user_repo = UserRepository(self.db)
         user = user_repo.get_by_id(user_id)
         if user and user.grade and user.board:
+            # Load personality and enrichment preferences (if exists)
+            tutor_brief = None
+            personality_json = None
+            attention_span = None
+            preferred_examples = ["food", "sports", "games"]  # default
+            try:
+                from auth.repositories.personality_repository import PersonalityRepository
+                from auth.repositories.enrichment_repository import EnrichmentRepository
+                personality_repo = PersonalityRepository(self.db)
+                personality = personality_repo.get_latest_ready(user_id)
+                if personality:
+                    tutor_brief = personality.tutor_brief
+                    personality_json = personality.personality_json
+                    if personality_json and personality_json.get("example_themes"):
+                        preferred_examples = personality_json["example_themes"]
+                # Load attention span from enrichment
+                enrichment_repo = EnrichmentRepository(self.db)
+                enrichment = enrichment_repo.get_by_user_id(user_id)
+                if enrichment and enrichment.attention_span:
+                    attention_span = enrichment.attention_span
+            except Exception:
+                pass  # Personality/enrichment not available — use defaults
+
             return StudentContext(
                 grade=user.grade,
                 board=user.board,
                 language_level="simple" if (user.age and user.age <= 10) else "standard",
+                preferred_examples=preferred_examples,
                 student_name=user.preferred_name or user.name,
                 student_age=user.age,
                 about_me=user.about_me,
                 text_language_preference=user.text_language_preference or 'en',
                 audio_language_preference=user.audio_language_preference or 'en',
+                tutor_brief=tutor_brief,
+                personality_json=personality_json,
+                attention_span=attention_span,
             )
         # Fallback to request data if profile is incomplete
         return StudentContext(

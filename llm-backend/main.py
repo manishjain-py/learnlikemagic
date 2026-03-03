@@ -16,6 +16,7 @@ from tutor.api import curriculum, sessions, transcription, tts
 from evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
 from auth.api.profile_routes import router as profile_router
+from auth.api.enrichment_routes import router as enrichment_router
 from api.docs import router as docs_router
 from api.test_scenarios import router as test_scenarios_router
 from book_ingestion_v2.api import book_routes as v2_book_routes
@@ -104,6 +105,7 @@ app.include_router(tts.router)              # Text-to-speech via OpenAI TTS
 app.include_router(evaluation_router)  # Evaluation pipeline endpoints
 app.include_router(auth_router)              # Auth: POST /auth/sync
 app.include_router(profile_router)           # Profile: GET/PUT /profile
+app.include_router(enrichment_router)       # Enrichment: GET/PUT /profile/enrichment, /profile/personality
 app.include_router(docs_router)              # Docs: GET /api/docs
 app.include_router(llm_config_routes.router) # LLM config: GET/PUT /api/admin/llm-config
 app.include_router(test_scenarios_router)    # Test scenarios: GET /api/test-scenarios

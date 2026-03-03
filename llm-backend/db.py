@@ -47,6 +47,12 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "gpt-5.2",
         "description": "Book ingestion V2 pipeline (chunk extraction, consolidation, merge)",
     },
+    {
+        "component_key": "personality_derivation",
+        "provider": "openai",
+        "model_id": "gpt-5.2",
+        "description": "Kid personality derivation from enrichment profile",
+    },
 ]
 
 
@@ -76,6 +82,9 @@ def migrate():
 
         # Remove V1 LLM config entry if it exists
         _remove_v1_llm_config(db_manager)
+
+        # Kid enrichment & personality tables + LLM config seed
+        _apply_kid_enrichment_tables(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -403,6 +412,32 @@ def _remove_v1_llm_config(db_manager):
         ))
         if result.rowcount:
             print("  ✓ Removed V1 'book_ingestion' LLM config entry")
+        conn.commit()
+
+
+def _apply_kid_enrichment_tables(db_manager):
+    """Create kid_enrichment_profiles and kid_personalities tables + seed LLM config.
+
+    Tables are created by Base.metadata.create_all() (the ORM models are in entities.py).
+    This function handles the LLM config seed for existing deployments where
+    _LLM_CONFIG_SEEDS won't run (it only seeds when the table is empty).
+    """
+    with db_manager.engine.connect() as conn:
+        exists = conn.execute(text(
+            "SELECT 1 FROM llm_config WHERE component_key = 'personality_derivation'"
+        )).fetchone()
+        if not exists:
+            # Copy provider/model from the tutor config
+            tutor_row = conn.execute(text(
+                "SELECT provider, model_id FROM llm_config WHERE component_key = 'tutor'"
+            )).fetchone()
+            if tutor_row:
+                conn.execute(text(
+                    "INSERT INTO llm_config (component_key, provider, model_id, description) "
+                    "VALUES ('personality_derivation', :provider, :model_id, "
+                    "'Kid personality derivation from enrichment profile')"
+                ), {"provider": tutor_row[0], "model_id": tutor_row[1]})
+                print("  ✓ Seeded personality_derivation LLM config (copied from tutor)")
         conn.commit()
 
 

@@ -35,6 +35,7 @@ import EmailVerifyPage from './pages/EmailVerifyPage';
 // Protected pages
 import OnboardingFlow from './pages/OnboardingFlow';
 import ProfilePage from './pages/ProfilePage';
+import EnrichmentPage from './pages/EnrichmentPage';
 import SessionHistoryPage from './pages/SessionHistoryPage';
 import ScorecardPage from './pages/ScorecardPage';
 
@@ -137,6 +138,12 @@ function App() {
           <Route path="/profile" element={
             <ProtectedRoute>
               <ProfilePage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/profile/enrichment" element={
+            <ProtectedRoute>
+              <EnrichmentPage />
             </ProtectedRoute>
           } />
 

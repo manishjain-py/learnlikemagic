@@ -165,7 +165,21 @@ class MasterTutorAgent(BaseAgent):
                     "Don't introduce new concepts yet. Keep it short and encouraging."
                 )
 
-        return "PACING: STEADY — Progressing normally. One idea at a time."
+        pacing = "PACING: STEADY — Progressing normally. One idea at a time."
+
+        # Add attention span warning if session is getting long
+        attention_span = getattr(session.student_context, 'attention_span', None) if session.student_context else None
+        if attention_span and turn > 1:
+            turn_thresholds = {"short": 8, "medium": 14, "long": 20}
+            threshold = turn_thresholds.get(attention_span)
+            if threshold and turn >= threshold:
+                pacing += (
+                    f" SESSION LENGTH: This student's attention span is '{attention_span}' "
+                    f"and we're at turn {turn}. Start wrapping up — summarize what was covered "
+                    f"and suggest continuing next time."
+                )
+
+        return pacing
 
     def _compute_student_style(self, session: SessionState) -> str:
         """Compute response-style guidance from student's communication patterns."""
@@ -269,6 +283,11 @@ class MasterTutorAgent(BaseAgent):
     @staticmethod
     def _build_personalization_block(ctx) -> str:
         """Build a personalization section from student context profile data."""
+        # If tutor_brief exists, use rich personality
+        if getattr(ctx, 'tutor_brief', None):
+            return f"## Student Personality Profile\n{ctx.tutor_brief}\n"
+
+        # Fallback: current minimal personalization
         lines = []
         if getattr(ctx, 'student_name', None):
             lines.append(f"The student's name is {ctx.student_name}. Address them by name.")

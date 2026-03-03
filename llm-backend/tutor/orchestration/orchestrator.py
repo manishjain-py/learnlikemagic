@@ -710,6 +710,16 @@ class TeacherOrchestrator:
             ),
         )
 
+        # Add personality context for personalized welcome
+        if session.student_context.tutor_brief:
+            prompt += (
+                f"\n\nStudent Personality:\n{session.student_context.tutor_brief}\n\n"
+                "Use this personality to make the welcome message feel personal and tailored. "
+                "Address the student by name."
+            )
+        elif session.student_context.student_name:
+            prompt += f"\n\nThe student's name is {session.student_context.student_name}. Address them by name."
+
         import asyncio
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
@@ -750,6 +760,14 @@ class TeacherOrchestrator:
             f'- "audio_text": The spoken version for TTS. {audio_lang_instr}'
         )
 
+        if session.student_context.tutor_brief:
+            prompt += (
+                f"\n\nStudent Personality:\n{session.student_context.tutor_brief}\n\n"
+                "Use this personality to make the welcome feel personal. Address the student by name."
+            )
+        elif session.student_context.student_name:
+            prompt += f"\n\nThe student's name is {session.student_context.student_name}. Address them by name."
+
         import asyncio
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
@@ -786,6 +804,14 @@ class TeacherOrchestrator:
             f'- "response": The welcome message. {response_lang_instr}\n'
             f'- "audio_text": The spoken version for TTS. {audio_lang_instr}'
         )
+
+        if session.student_context.tutor_brief:
+            prompt += (
+                f"\n\nStudent Personality:\n{session.student_context.tutor_brief}\n\n"
+                "Use this personality to make the welcome feel personal. Address the student by name."
+            )
+        elif session.student_context.student_name:
+            prompt += f"\n\nThe student's name is {session.student_context.student_name}. Address them by name."
 
         import asyncio
         loop = asyncio.get_event_loop()

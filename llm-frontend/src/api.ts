@@ -432,6 +432,80 @@ export async function getExamReview(sessionId: string): Promise<ExamReviewRespon
 }
 
 // ──────────────────────────────────────────────
+// Kid Enrichment Profile & Personality
+// ──────────────────────────────────────────────
+
+export interface MyWorldEntry {
+  name: string;
+  relationship: string;
+}
+
+export interface PersonalityTrait {
+  trait: string;
+  value: string;
+}
+
+export interface EnrichmentProfileResponse {
+  interests: string[] | null;
+  my_world: MyWorldEntry[] | null;
+  learning_styles: string[] | null;
+  motivations: string[] | null;
+  strengths: string[] | null;
+  growth_areas: string[] | null;
+  personality_traits: PersonalityTrait[] | null;
+  favorite_media: string[] | null;
+  favorite_characters: string[] | null;
+  memorable_experience: string | null;
+  aspiration: string | null;
+  parent_notes: string | null;
+  attention_span: string | null;
+  pace_preference: string | null;
+  personality_status: string | null;
+  sections_filled: number;
+  has_about_me: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface EnrichmentUpdateResponse {
+  personality_status: string;
+  sections_filled: number;
+}
+
+export interface PersonalityApiResponse {
+  personality_json: Record<string, any> | null;
+  tutor_brief: string | null;
+  status: string;
+  updated_at: string | null;
+}
+
+export async function getEnrichmentProfile(): Promise<EnrichmentProfileResponse> {
+  const response = await apiFetch('/profile/enrichment');
+  if (!response.ok) throw new Error(`Failed to fetch enrichment profile: ${response.statusText}`);
+  return response.json();
+}
+
+export async function updateEnrichmentProfile(data: Record<string, any>): Promise<EnrichmentUpdateResponse> {
+  const response = await apiFetch('/profile/enrichment', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to update enrichment profile: ${response.statusText}`);
+  return response.json();
+}
+
+export async function getPersonality(): Promise<PersonalityApiResponse> {
+  const response = await apiFetch('/profile/personality');
+  if (!response.ok) throw new Error(`Failed to fetch personality: ${response.statusText}`);
+  return response.json();
+}
+
+export async function regeneratePersonality(): Promise<void> {
+  const response = await apiFetch('/profile/personality/regenerate', { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to regenerate personality: ${response.statusText}`);
+}
+
+// ──────────────────────────────────────────────
 // Audio transcription
 // ──────────────────────────────────────────────
 

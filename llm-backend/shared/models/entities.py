@@ -1,6 +1,7 @@
 """SQLAlchemy ORM database models."""
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Boolean, ForeignKey, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -237,6 +238,49 @@ class LLMConfig(Base):
     description = Column(String, nullable=True)         # Human-readable description
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String, nullable=True)
+
+
+class KidEnrichmentProfile(Base):
+    """Raw enrichment data collected from parents (one per kid)."""
+    __tablename__ = "kid_enrichment_profiles"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
+    interests = Column(JSONB, nullable=True)           # string[]
+    my_world = Column(JSONB, nullable=True)            # {name, relationship}[]
+    learning_styles = Column(JSONB, nullable=True)     # string[]
+    motivations = Column(JSONB, nullable=True)         # string[]
+    strengths = Column(JSONB, nullable=True)           # string[]
+    growth_areas = Column(JSONB, nullable=True)        # string[]
+    personality_traits = Column(JSONB, nullable=True)  # {trait, value}[]
+    favorite_media = Column(JSONB, nullable=True)      # string[]
+    favorite_characters = Column(JSONB, nullable=True) # string[]
+    memorable_experience = Column(Text, nullable=True)
+    aspiration = Column(Text, nullable=True)
+    parent_notes = Column(Text, nullable=True)
+    attention_span = Column(String, nullable=True)     # short/medium/long
+    pace_preference = Column(String, nullable=True)    # slow/balanced/fast
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class KidPersonality(Base):
+    """LLM-derived personality versions (multiple per kid, latest = active)."""
+    __tablename__ = "kid_personalities"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    personality_json = Column(JSONB, nullable=True)
+    tutor_brief = Column(Text, nullable=True)
+    status = Column(String, default="generating")      # generating/ready/failed
+    inputs_hash = Column(String, nullable=True)
+    generator_model = Column(String, nullable=True)
+    version = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_kid_personalities_user_version", "user_id", "version"),
+    )
 
 
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model

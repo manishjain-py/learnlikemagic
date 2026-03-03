@@ -37,6 +37,10 @@ class StudentContext(BaseModel):
     about_me: Optional[str] = Field(default=None, description="Student's self-description")
     text_language_preference: str = Field(default="en", description="Language for text responses: en, hi, hinglish")
     audio_language_preference: str = Field(default="en", description="Language for audio/TTS: en, hi, hinglish")
+    # Kid personality (derived from enrichment profile via LLM)
+    tutor_brief: Optional[str] = Field(default=None, description="Compact prose personality for system prompt")
+    personality_json: Optional[dict] = Field(default=None, description="Full structured personality (for exam gen)")
+    attention_span: Optional[str] = Field(default=None, description="short/medium/long from enrichment profile")
 
 
 # WebSocket Protocol

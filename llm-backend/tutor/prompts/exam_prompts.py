@@ -62,7 +62,9 @@ For each question provide:
 2. expected_answer — the correct answer (concise but complete)
 3. concept — which concept this tests
 4. difficulty — easy, medium, or hard
-5. question_type — one of: conceptual, procedural, application, real_world, error_spotting, reasoning""",
+5. question_type — one of: conceptual, procedural, application, real_world, error_spotting, reasoning
+
+{personalization_section}""",
     name="exam_question_generation",
 )
 
