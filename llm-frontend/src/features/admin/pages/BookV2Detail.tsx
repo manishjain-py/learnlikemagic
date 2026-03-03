@@ -7,6 +7,7 @@ import {
   getPageDetailV2, retryPageOcrV2,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
+  SyncResponseV2,
 } from '../api/adminApiV2';
 
 const POLL_INTERVAL = 3000;
@@ -41,6 +42,11 @@ const BookV2Detail: React.FC = () => {
   const [pageDetailLoading, setPageDetailLoading] = useState(false);
   const [reuploadingPage, setReuploadingPage] = useState(false);
   const [retryingOcr, setRetryingOcr] = useState(false);
+  const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
+  const [syncingChapterId, setSyncingChapterId] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<Record<string, SyncResponseV2>>({});
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncAllResult, setSyncAllResult] = useState<SyncResponseV2 | null>(null);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
 
@@ -168,21 +174,30 @@ const BookV2Detail: React.FC = () => {
 
   const handleSyncChapter = async (ch: ChapterResponseV2) => {
     if (!id) return;
+    setSyncingChapterId(ch.id);
     try {
-      await syncChapter(id, ch.id);
-      alert(`Synced ${ch.chapter_title} to teaching guidelines!`);
+      const result = await syncChapter(id, ch.id);
+      setSyncResult(prev => ({ ...prev, [ch.id]: result }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sync failed');
+      setSyncResult(prev => ({
+        ...prev,
+        [ch.id]: { synced_chapters: 0, synced_topics: 0, errors: [err instanceof Error ? err.message : 'Sync failed'] },
+      }));
+    } finally {
+      setSyncingChapterId(null);
     }
   };
 
   const handleSyncAll = async () => {
     if (!id) return;
+    setSyncingAll(true);
     try {
       const result = await syncBook(id);
-      alert(`Synced ${result.synced_chapters} chapters, ${result.synced_topics} topics.`);
+      setSyncAllResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sync failed');
+      setSyncAllResult({ synced_chapters: 0, synced_topics: 0, errors: [err instanceof Error ? err.message : 'Sync failed'] });
+    } finally {
+      setSyncingAll(false);
     }
   };
 
@@ -309,8 +324,8 @@ const BookV2Detail: React.FC = () => {
             Refresh
           </button>
           {completedChapters > 0 && (
-            <button onClick={handleSyncAll} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
-              Sync All to DB
+            <button onClick={handleSyncAll} disabled={syncingAll} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: syncingAll ? 'wait' : 'pointer', fontSize: '13px', opacity: syncingAll ? 0.6 : 1 }}>
+              {syncingAll ? 'Syncing...' : 'Sync All to DB'}
             </button>
           )}
           <button onClick={handleDeleteBook} disabled={deleting} style={{ backgroundColor: '#FEE2E2', color: '#991B1B', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
@@ -323,6 +338,24 @@ const BookV2Detail: React.FC = () => {
         <div style={{ backgroundColor: '#FEE2E2', color: '#991B1B', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px' }}>
           {error}
           <button onClick={() => setError(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
+        </div>
+      )}
+
+      {syncAllResult && (
+        <div style={{
+          backgroundColor: syncAllResult.errors.length > 0 ? '#FEE2E2' : '#D1FAE5',
+          color: syncAllResult.errors.length > 0 ? '#991B1B' : '#065F46',
+          padding: '12px 16px', borderRadius: '8px', marginBottom: '16px',
+        }}>
+          <button onClick={() => setSyncAllResult(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+          {syncAllResult.errors.length > 0
+            ? <>Sync completed with errors. Synced {syncAllResult.synced_chapters} chapters, {syncAllResult.synced_topics} topics.
+              <ul style={{ margin: '8px 0 0', paddingLeft: '20px' }}>
+                {syncAllResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            </>
+            : <>Synced {syncAllResult.synced_chapters} chapters, {syncAllResult.synced_topics} topics to teaching guidelines.</>
+          }
         </div>
       )}
 
@@ -419,6 +452,18 @@ const BookV2Detail: React.FC = () => {
                       }} />
                     </div>
                   </div>
+
+                  {/* Chapter summary for completed chapters */}
+                  {ch.status === 'chapter_completed' && ch.summary && (
+                    <div style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '8px', padding: '12px 16px', marginBottom: '12px' }}>
+                      {ch.display_name && ch.display_name !== ch.chapter_title && (
+                        <div style={{ fontWeight: 600, fontSize: '14px', color: '#065F46', marginBottom: '4px' }}>
+                          {ch.display_name}
+                        </div>
+                      )}
+                      <p style={{ margin: 0, fontSize: '13px', color: '#047857', lineHeight: '1.5' }}>{ch.summary}</p>
+                    </div>
+                  )}
 
                   {/* Error display */}
                   {ch.error_message && (
@@ -530,8 +575,8 @@ const BookV2Detail: React.FC = () => {
                     )}
                     {ch.status === 'chapter_completed' && (
                       <>
-                        <button onClick={() => handleSyncChapter(ch)} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Sync to DB
+                        <button onClick={() => handleSyncChapter(ch)} disabled={syncingChapterId === ch.id} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: syncingChapterId === ch.id ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: syncingChapterId === ch.id ? 0.6 : 1 }}>
+                          {syncingChapterId === ch.id ? 'Syncing...' : 'Sync to DB'}
                         </button>
                         <button onClick={() => handleRefinalize(ch)} style={{ backgroundColor: '#6366F1', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                           Re-finalize
@@ -544,27 +589,90 @@ const BookV2Detail: React.FC = () => {
                   </div>
                   )}
 
+                  {/* Sync result banner */}
+                  {syncResult[ch.id] && (
+                    <div style={{
+                      marginTop: '12px',
+                      backgroundColor: syncResult[ch.id].errors.length > 0 ? '#FEE2E2' : '#D1FAE5',
+                      color: syncResult[ch.id].errors.length > 0 ? '#991B1B' : '#065F46',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                    }}>
+                      <button onClick={() => setSyncResult(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                      {syncResult[ch.id].errors.length > 0
+                        ? <>Sync failed:
+                          <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                            {syncResult[ch.id].errors.map((e, i) => <li key={i}>{e}</li>)}
+                          </ul>
+                        </>
+                        : <>Synced {syncResult[ch.id].synced_topics} topics to teaching guidelines.</>
+                      }
+                    </div>
+                  )}
+
                   {/* Topics list */}
                   {topics.length > 0 && (
                     <div style={{ marginTop: '16px' }}>
                       <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#374151' }}>
                         Topics ({topics.length})
                       </div>
-                      {topics.map((topic, i) => (
-                        <div key={topic.id} style={{ padding: '10px 12px', backgroundColor: '#F9FAFB', borderRadius: '6px', marginBottom: '6px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: 600, fontSize: '14px' }}>
-                              {topic.sequence_order || i + 1}. {topic.topic_title}
-                            </span>
-                            <span style={{ fontSize: '12px', color: '#6B7280' }}>
-                              pp. {topic.source_page_start}-{topic.source_page_end}
-                            </span>
+                      {topics.map((topic, i) => {
+                        const isTopicExpanded = expandedTopicId === topic.id;
+                        const topicStatusBadge = (() => {
+                          const s = topic.status;
+                          if (s === 'final' || s === 'approved') return { bg: '#D1FAE5', color: '#065F46' };
+                          if (s === 'consolidated') return { bg: '#DBEAFE', color: '#1D4ED8' };
+                          return { bg: '#FEF3C7', color: '#92400E' }; // draft or other
+                        })();
+                        return (
+                          <div key={topic.id} style={{ backgroundColor: '#F9FAFB', borderRadius: '6px', marginBottom: '6px', overflow: 'hidden' }}>
+                            <div
+                              onClick={() => setExpandedTopicId(isTopicExpanded ? null : topic.id)}
+                              style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{isTopicExpanded ? '▼' : '▶'}</span>
+                                <span style={{ fontWeight: 600, fontSize: '14px' }}>
+                                  {topic.sequence_order || i + 1}. {topic.topic_title}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ backgroundColor: topicStatusBadge.bg, color: topicStatusBadge.color, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                                  {topic.status}
+                                </span>
+                                <span style={{ fontSize: '11px', color: '#9CA3AF' }}>v{topic.version}</span>
+                                <span style={{ fontSize: '12px', color: '#6B7280' }}>
+                                  pp. {topic.source_page_start}-{topic.source_page_end}
+                                </span>
+                              </div>
+                            </div>
+                            {isTopicExpanded && (
+                              <div style={{ padding: '0 12px 12px', borderTop: '1px solid #E5E7EB' }}>
+                                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#6B7280', padding: '8px 0', flexWrap: 'wrap' }}>
+                                  <span><strong>Key:</strong> {topic.topic_key}</span>
+                                  <span><strong>Version:</strong> {topic.version}</span>
+                                  <span><strong>Pages:</strong> {topic.source_page_start}-{topic.source_page_end}</span>
+                                </div>
+                                {topic.summary && (
+                                  <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#374151', lineHeight: '1.5' }}>{topic.summary}</p>
+                                )}
+                                {topic.guidelines && (
+                                  <div>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>Guidelines</div>
+                                    <pre style={{
+                                      margin: 0, padding: '12px', backgroundColor: 'white',
+                                      border: '1px solid #E5E7EB', borderRadius: '6px', fontSize: '13px',
+                                      lineHeight: '1.6', whiteSpace: 'pre-wrap', wordWrap: 'break-word',
+                                      fontFamily: 'inherit', overflow: 'auto', maxHeight: '400px',
+                                    }}>
+                                      {topic.guidelines}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {topic.summary && (
-                            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6B7280' }}>{topic.summary}</p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
