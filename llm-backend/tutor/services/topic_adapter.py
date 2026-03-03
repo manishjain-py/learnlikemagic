@@ -35,30 +35,30 @@ def convert_guideline_to_topic(
     Returns:
         Topic model ready for the master tutor
     """
-    # Build TopicGuidelines from guideline data
+    # Build TopicGuidelines from guideline data (scope only — no teaching methodology)
     learning_objectives = []
     common_misconceptions = []
-    teaching_approach = ""
+    scope_boundary = ""
 
     if guideline.metadata:
         learning_objectives = guideline.metadata.learning_objectives or []
         common_misconceptions = guideline.metadata.common_misconceptions or []
-        teaching_approach = "\n".join(guideline.metadata.scaffolding_strategies or [])
+        scope_boundary = getattr(guideline.metadata, "scope_boundary", "") or ""
 
     # If no metadata, extract from guideline text
     if not learning_objectives:
         learning_objectives = [f"Learn about {guideline.topic}"]
 
-    if not teaching_approach:
-        # Use the full guideline text as teaching approach
-        teaching_approach = guideline.guideline[:500] if guideline.guideline else ""
+    if not scope_boundary and guideline.guideline:
+        # Use guideline text as curriculum scope (V2 guidelines are already scope-only)
+        scope_boundary = guideline.guideline[:500]
 
     topic_guidelines = TopicGuidelines(
         learning_objectives=learning_objectives,
         required_depth=guideline.metadata.depth_level if guideline.metadata else "intermediate",
         prerequisite_concepts=guideline.metadata.prerequisites if guideline.metadata else [],
         common_misconceptions=common_misconceptions,
-        teaching_approach=teaching_approach,
+        scope_boundary=scope_boundary,
     )
 
     # Build StudyPlan from plan_json

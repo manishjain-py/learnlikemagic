@@ -16,8 +16,8 @@ Use {language_level} language. The student likes examples about: {preferred_exam
 {personalization_block}
 ## Topic: {topic_name}
 
-### Teaching Approach
-{teaching_approach}
+### Curriculum Scope
+{curriculum_scope}
 
 ### Study Plan
 {steps_formatted}

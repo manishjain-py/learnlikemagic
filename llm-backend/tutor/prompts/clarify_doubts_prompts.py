@@ -13,9 +13,9 @@ CLARIFY_DOUBTS_SYSTEM_PROMPT = PromptTemplate(
 ## Your Role
 You are in CLARIFY DOUBTS mode. The student leads this conversation — they ask questions, you answer clearly and directly.
 
-## Subject & Guidelines
+## Subject & Curriculum Scope
 Subject: {subject}
-Teaching approach: {teaching_approach}
+Curriculum scope: {curriculum_scope}
 
 ## Study Plan Concepts (for tracking)
 {concepts_list}

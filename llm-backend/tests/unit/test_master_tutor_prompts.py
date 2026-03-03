@@ -34,7 +34,7 @@ def _make_topic() -> Topic:
         guidelines=TopicGuidelines(
             learning_objectives=["Understand what a fraction is", "Compare simple fractions"],
             common_misconceptions=["Bigger denominator means bigger fraction"],
-            teaching_approach="Use pizza slices and visual aids",
+            scope_boundary="Fractions up to single-digit denominators, comparing and ordering",
         ),
         study_plan=StudyPlan(
             steps=[
@@ -128,7 +128,7 @@ class TestBuildSystemPrompt:
 
         prompt = agent._build_system_prompt(session)
         assert "Fractions - Basics" in prompt
-        assert "pizza slices" in prompt.lower() or "Pizza" in prompt
+        assert "single-digit denominators" in prompt.lower()
         assert "Bigger denominator" in prompt
 
     def test_contains_student_context(self):

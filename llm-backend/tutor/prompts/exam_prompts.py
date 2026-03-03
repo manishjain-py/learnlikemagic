@@ -22,8 +22,8 @@ Learning Objectives:
 Key Concepts:
 {concepts}
 
-Teaching Approach:
-{teaching_approach}
+Curriculum Scope:
+{curriculum_scope}
 
 Common Misconceptions (use these to craft smart distractors and error-spotting questions):
 {common_misconceptions}

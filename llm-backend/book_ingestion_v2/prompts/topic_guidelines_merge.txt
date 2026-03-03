@@ -1,4 +1,4 @@
-You are merging teaching guidelines for a textbook topic.
+You are merging curriculum scope guidelines for a textbook topic.
 
 BOOK: {book_title} ({subject}, Grade {grade})
 CHAPTER: {chapter_title}
@@ -13,11 +13,11 @@ Merge the accumulated guidelines into a single comprehensive, well-organized tex
 REQUIREMENTS:
 1. Combine information without duplication
 2. Maintain natural language flow
-3. Keep all unique objectives, examples, misconceptions, and assessments
-4. Organize logically: objectives → teaching strategies → examples → misconceptions → assessments
-5. If information overlaps, keep the more detailed version
-6. Preserve specific details (page numbers, problem numbers, exact examples)
-7. The final text should read as a single cohesive teaching guide
+3. Organize logically: learning objectives → required depth → prerequisites → misconceptions → scope boundaries
+4. If information overlaps, keep the more detailed version
+5. The final text should read as a cohesive curriculum scope document
+6. Focus on WHAT to teach and at what depth — not HOW to teach it
+7. Do NOT include specific examples, exercises, or teaching strategies from the textbook
 
 OUTPUT:
 Return ONLY the merged guidelines text. No extra commentary, no JSON wrapping, no markdown code blocks.

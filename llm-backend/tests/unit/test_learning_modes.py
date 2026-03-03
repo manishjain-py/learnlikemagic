@@ -35,7 +35,7 @@ def make_test_guidelines(**kwargs) -> TopicGuidelines:
         required_depth="conceptual",
         prerequisite_concepts=["whole numbers"],
         common_misconceptions=["bigger denominator means bigger fraction"],
-        teaching_approach="visual models",
+        scope_boundary="Fractions with single-digit denominators",
     )
     defaults.update(kwargs)
     return TopicGuidelines(**defaults)

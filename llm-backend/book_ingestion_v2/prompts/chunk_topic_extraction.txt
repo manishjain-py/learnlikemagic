@@ -19,7 +19,7 @@ TASK:
 1. Read the current pages carefully.
 2. Identify which topics are taught in these pages.
 3. For each topic, determine if it is NEW or a continuation of an EXISTING topic from the list above.
-4. Write teaching guidelines for each topic based on what these pages cover.
+4. Write curriculum scope guidelines for each topic based on what these pages cover.
 5. Update the chapter summary to incorporate what these pages add.
 
 TOPIC GRANULARITY RULES:
@@ -33,12 +33,21 @@ DECISION GUIDE - Existing vs New:
 - NEW when: introduces a new learning objective or conceptual unit, introduces a new method/process requiring independent mastery, would be taught as a distinct mini-lesson
 
 GUIDELINES FORMAT:
-Write practical teaching guidelines that include:
-- What concepts/skills to teach
-- Key examples from the pages
-- Common misconceptions to address
-- How to assess understanding
-- Specific problems or exercises mentioned
+Extract WHAT to teach and at what depth — NOT how to teach it. The teaching method,
+examples, and exercises will be generated dynamically by the AI tutor.
+
+Write curriculum scope guidelines that include:
+- Learning objectives: what concepts/skills the student must master
+- Required depth: conceptual understanding, procedural fluency, or both
+- Prerequisite concepts: what the student should already know
+- Common misconceptions: specific errors students make on this topic
+- Scope boundary: what is explicitly in-scope vs out-of-scope for this grade level
+
+Do NOT include:
+- Specific examples or worked problems from the textbook
+- Exercises, practice problems, or question sets
+- Teaching strategies, scaffolding sequences, or pedagogical methods
+- Assessment approaches or how to check understanding
 
 OUTPUT FORMAT (strict JSON):
 {{

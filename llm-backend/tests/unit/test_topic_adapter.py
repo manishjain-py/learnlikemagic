@@ -57,7 +57,7 @@ def guideline_with_metadata():
             depth_level="intermediate",
             prerequisites=["counting", "number line"],
             common_misconceptions=["bigger denominator means bigger fraction"],
-            scaffolding_strategies=["Use visual aids", "Show number line"],
+            scope_boundary="Comparing fractions with same and different denominators, up to single-digit denominators only",
         ),
     )
 
@@ -148,10 +148,10 @@ class TestConvertGuidelineToTopicWithMetadata:
             "bigger denominator means bigger fraction"
         ]
 
-    def test_teaching_approach_from_scaffolding(self, guideline_with_metadata):
-        """teaching_approach is joined scaffolding_strategies."""
+    def test_scope_boundary_from_metadata(self, guideline_with_metadata):
+        """scope_boundary is taken from metadata."""
         topic = convert_guideline_to_topic(guideline_with_metadata)
-        assert topic.guidelines.teaching_approach == "Use visual aids\nShow number line"
+        assert "single-digit denominators" in topic.guidelines.scope_boundary
 
     def test_required_depth_from_metadata(self, guideline_with_metadata):
         """required_depth comes from metadata.depth_level."""
@@ -177,10 +177,10 @@ class TestConvertGuidelineToTopicWithoutMetadata:
         assert len(topic.guidelines.learning_objectives) == 1
         assert "Adding" in topic.guidelines.learning_objectives[0]
 
-    def test_fallback_teaching_approach_uses_guideline_text(self, guideline_without_metadata):
-        """Without metadata scaffolding, teaching_approach falls back to guideline text."""
+    def test_fallback_scope_boundary_uses_guideline_text(self, guideline_without_metadata):
+        """Without metadata, scope_boundary falls back to guideline text."""
         topic = convert_guideline_to_topic(guideline_without_metadata)
-        assert topic.guidelines.teaching_approach.startswith("Full guideline text")
+        assert topic.guidelines.scope_boundary.startswith("Full guideline text")
 
     def test_fallback_required_depth(self, guideline_without_metadata):
         """Without metadata, required_depth defaults to 'intermediate'."""

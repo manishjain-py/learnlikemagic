@@ -46,7 +46,7 @@ class ExamService:
                 f"- {obj}" for obj in session.topic.guidelines.learning_objectives
             ),
             concepts="\n".join(f"- {c}" for c in concepts),
-            teaching_approach=session.topic.guidelines.teaching_approach,
+            curriculum_scope=session.topic.guidelines.scope_boundary,
             common_misconceptions="\n".join(f"- {m}" for m in misconceptions) if misconceptions else "(none provided)",
             num_questions=count,
             personalization_section=self._build_exam_personalization(session),

@@ -9,13 +9,13 @@ from pydantic import BaseModel, Field
 
 
 class TopicGuidelines(BaseModel):
-    """Teaching guidelines for a topic."""
+    """Curriculum scope guidelines for a topic — what to teach and at what depth."""
 
     learning_objectives: list[str] = Field(description="What the student should learn")
     required_depth: str = Field(default="conceptual + procedural", description="Depth of understanding required")
     prerequisite_concepts: list[str] = Field(default_factory=list, description="Concepts student should already know")
     common_misconceptions: list[str] = Field(default_factory=list, description="Common mistakes students make")
-    teaching_approach: str = Field(default="", description="Recommended teaching strategy")
+    scope_boundary: str = Field(default="", description="What is in-scope vs out-of-scope for this grade level")
 
 
 class StudyPlanStep(BaseModel):

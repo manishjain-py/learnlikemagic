@@ -23,7 +23,7 @@ _VALID_METADATA = {
     "depth_level": "intermediate",
     "prerequisites": ["counting"],
     "common_misconceptions": ["bigger is better"],
-    "scaffolding_strategies": ["Use visuals"],
+    "scope_boundary": "Fractions with single-digit denominators",
 }
 
 _SENTINEL = object()
@@ -79,7 +79,7 @@ class TestParseMetadata:
         assert result.depth_level == "intermediate"
         assert result.prerequisites == ["counting"]
         assert result.common_misconceptions == ["bigger is better"]
-        assert result.scaffolding_strategies == ["Use visuals"]
+        assert result.scope_boundary == "Fractions with single-digit denominators"
 
     def test_invalid_json_returns_none(self, db_session):
         repo = TeachingGuidelineRepository(db_session)
@@ -107,7 +107,7 @@ class TestParseMetadata:
         assert result.depth_level == "intermediate"  # default
         assert result.prerequisites == []  # default
         assert result.common_misconceptions == []  # default
-        assert result.scaffolding_strategies == []  # default
+        assert result.scope_boundary == ""  # default
 
 
 # ===========================================================================

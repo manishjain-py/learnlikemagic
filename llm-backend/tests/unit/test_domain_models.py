@@ -241,8 +241,7 @@ class TestGuidelineMetadata:
         assert meta.depth_level == "intermediate"
         assert meta.prerequisites == []
         assert meta.common_misconceptions == []
-        assert meta.scaffolding_strategies == []
-        assert meta.assessment_criteria == {}
+        assert meta.scope_boundary == ""
 
     def test_fully_populated(self):
         meta = GuidelineMetadata(
@@ -250,9 +249,8 @@ class TestGuidelineMetadata:
             depth_level="advanced",
             prerequisites=["Counting", "Division concept"],
             common_misconceptions=["Bigger denominator = bigger fraction"],
-            scaffolding_strategies=["Use visuals", "Concrete to abstract"],
-            assessment_criteria={"basic": "Can identify fraction", "advanced": "Can compare"},
+            scope_boundary="Fractions up to single-digit denominators only",
         )
         assert len(meta.learning_objectives) == 2
         assert meta.depth_level == "advanced"
-        assert len(meta.assessment_criteria) == 2
+        assert meta.scope_boundary == "Fractions up to single-digit denominators only"

@@ -70,7 +70,7 @@ def _make_topic():
         guidelines=TopicGuidelines(
             learning_objectives=["Understand fractions"],
             common_misconceptions=["Denominator confusion"],
-            teaching_approach="Use visuals",
+            scope_boundary="Basic fractions with single-digit denominators",
         ),
         study_plan=StudyPlan(
             steps=[

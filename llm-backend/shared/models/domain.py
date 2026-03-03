@@ -63,10 +63,9 @@ class RAGSnippet(BaseModel):
 
 
 class GuidelineMetadata(BaseModel):
-    """Metadata for teaching guidelines."""
+    """Metadata for teaching guidelines — curriculum scope only."""
     learning_objectives: List[str] = Field(default_factory=list)
     depth_level: str = "intermediate"  # basic, intermediate, advanced
     prerequisites: List[str] = Field(default_factory=list)
     common_misconceptions: List[str] = Field(default_factory=list)
-    scaffolding_strategies: List[str] = Field(default_factory=list)
-    assessment_criteria: Dict[str, str] = Field(default_factory=dict)
+    scope_boundary: str = ""  # what is in-scope vs out-of-scope for this grade
