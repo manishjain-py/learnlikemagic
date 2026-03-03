@@ -10,6 +10,7 @@ import {
   getEnrichmentProfile,
   updateEnrichmentProfile,
   getPersonality,
+  regeneratePersonality,
   EnrichmentProfileResponse,
   PersonalityApiResponse,
   MyWorldEntry,
@@ -122,6 +123,7 @@ export default function EnrichmentPage() {
   const [loading, setLoading] = useState(true);
   const [hasAboutMe, setHasAboutMe] = useState(false);
   const [personality, setPersonality] = useState<PersonalityApiResponse | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   // Load profile on mount
   useEffect(() => {
@@ -219,12 +221,31 @@ export default function EnrichmentPage() {
     }
   };
 
-  // Migration: pre-fill parent_notes from about_me
-  const handleMigrateAboutMe = () => {
+  // Migration: copy about_me into parent_notes and persist immediately
+  const handleMigrateAboutMe = async () => {
     if (user?.about_me) {
       setParentNotes(user.about_me);
       setHasAboutMe(false);
       setOpenSection(8); // Open Parent's Notes section
+      // Persist immediately so data isn't lost if user navigates away
+      try {
+        const result = await updateEnrichmentProfile({ parent_notes: user.about_me });
+        setSectionsFilledCount(result.sections_filled);
+      } catch (err) {
+        console.error('Failed to migrate about_me:', err);
+      }
+    }
+  };
+
+  const handleRetryPersonality = async () => {
+    setRegenerating(true);
+    try {
+      await regeneratePersonality();
+      setPersonality({ status: 'generating' });
+    } catch (err) {
+      console.error('Failed to regenerate personality:', err);
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -426,9 +447,28 @@ export default function EnrichmentPage() {
             <p>This takes a few seconds. Refresh to see the result.</p>
           </div>
         )}
+        {personality && personality.status === 'failed' && (
+          <div className="enrichment-personality-card enrichment-personality-failed">
+            <h3>We couldn't generate the profile</h3>
+            <p>Something went wrong. Please try again.</p>
+            <button
+              className="auth-btn auth-btn-primary"
+              onClick={handleRetryPersonality}
+              disabled={regenerating}
+            >
+              {regenerating ? 'Retrying...' : 'Try again'}
+            </button>
+          </div>
+        )}
         {(!personality || personality.status === 'none') && sectionsFilledCount === 0 && (
           <div className="enrichment-personality-card enrichment-personality-empty">
             <p>Fill in a few sections above and we'll create a personalized learning profile for {kidName}!</p>
+          </div>
+        )}
+        {(!personality || personality.status === 'none') && sectionsFilledCount > 0 && (
+          <div className="enrichment-personality-card enrichment-personality-generating">
+            <h3>Almost there!</h3>
+            <p>Save a section to generate {kidName}'s personalized learning profile.</p>
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session as DBSession
 from shared.models.entities import KidEnrichmentProfile
 
 
-# Fields that map to the 9 enrichment sections (excludes session preferences)
+# All enrichment fields including session preferences (used for hash computation)
 ENRICHMENT_FIELDS = [
     "interests", "my_world", "learning_styles", "motivations",
     "strengths", "growth_areas", "personality_traits",

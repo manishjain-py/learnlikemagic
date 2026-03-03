@@ -69,6 +69,7 @@ class EnrichmentUpdateResponse(BaseModel):
     """Minimal response for PUT - frontend already has the data it sent."""
     personality_status: str  # generating/unchanged/none
     sections_filled: int
+    inputs_hash: Optional[str] = None  # passed to background task for debounce
 
 
 class PersonalityResponse(BaseModel):

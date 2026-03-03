@@ -67,9 +67,7 @@ async def update_enrichment(
     result = service.update_profile(current_user.id, request)
 
     if result.personality_status == "generating":
-        # Compute hash to pass to background task for debounce re-check
-        new_hash = service.compute_inputs_hash(current_user.id)
-        background_tasks.add_task(_debounced_regenerate, current_user.id, new_hash)
+        background_tasks.add_task(_debounced_regenerate, current_user.id, result.inputs_hash)
 
     return result
 
@@ -93,6 +91,13 @@ async def get_personality(
     )
 
 
+def _force_regenerate_bg(user_id: str):
+    """Run force_regenerate with its own DB session (not request-scoped)."""
+    with get_db_manager().session_scope() as db:
+        from auth.services.personality_service import PersonalityService
+        PersonalityService(db).force_regenerate(user_id)
+
+
 @router.post("/personality/regenerate")
 async def regenerate_personality(
     background_tasks: BackgroundTasks,
@@ -100,13 +105,10 @@ async def regenerate_personality(
     db: DBSession = Depends(get_db),
 ):
     """Force regeneration of personality (admin/debug use)."""
-    from auth.services.personality_service import PersonalityService
-    service = PersonalityService(db)
-
     enrichment = EnrichmentService(db)
     profile = enrichment.enrichment_repo.get_by_user_id(current_user.id)
     if not profile or not enrichment.has_meaningful_data(profile):
         raise HTTPException(status_code=400, detail="No enrichment data to generate personality from")
 
-    background_tasks.add_task(service.force_regenerate, current_user.id)
+    background_tasks.add_task(_force_regenerate_bg, current_user.id)
     return {"status": "regenerating"}

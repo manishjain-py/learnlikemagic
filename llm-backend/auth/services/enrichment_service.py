@@ -132,6 +132,7 @@ class EnrichmentService:
         return EnrichmentUpdateResponse(
             personality_status=personality_status,
             sections_filled=sections_filled,
+            inputs_hash=new_hash,
         )
 
     def compute_inputs_hash(self, user_id: str) -> str:
@@ -142,6 +143,7 @@ class EnrichmentService:
         hash_input = {
             "enrichment": enrichment_dict,
             "name": user.name if user else None,
+            "preferred_name": user.preferred_name if user else None,
             "age": user.age if user else None,
             "grade": user.grade if user else None,
             "board": user.board if user else None,

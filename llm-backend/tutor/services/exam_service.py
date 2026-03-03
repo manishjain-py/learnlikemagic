@@ -185,7 +185,10 @@ class ExamService:
 
         names = []
         for p in pj.get("people_to_reference", []):
-            names.append(f"- {p['name']} ({p['context']})")
+            name = p.get("name", "")
+            context = p.get("context", "")
+            if name:
+                names.append(f"- {name} ({context})" if context else f"- {name}")
         themes = pj.get("example_themes", [])
         student_name = session.student_context.student_name or ""
 

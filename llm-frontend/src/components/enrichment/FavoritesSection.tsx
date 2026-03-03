@@ -97,7 +97,7 @@ export default function FavoritesSection({
       </div>
 
       <div className="auth-field">
-        <label>What does they want to be when they grow up?</label>
+        <label>What do they want to be when they grow up?</label>
         <input
           type="text"
           value={aspiration}
@@ -105,6 +105,7 @@ export default function FavoritesSection({
           placeholder="E.g., astronaut, doctor, cricketer..."
           maxLength={200}
         />
+        <span className="enrichment-char-count">{aspiration.length}/200</span>
       </div>
     </div>
   );

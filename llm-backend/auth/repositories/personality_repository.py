@@ -1,10 +1,13 @@
 """Data access layer for kid personalities (LLM-derived)."""
 
+import logging
 from typing import Optional
 from uuid import uuid4
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import desc
 from shared.models.entities import KidPersonality
+
+logger = logging.getLogger(__name__)
 
 
 class PersonalityRepository:
@@ -51,6 +54,7 @@ class PersonalityRepository:
             KidPersonality.id == personality_id
         ).first()
         if not personality:
+            logger.warning("update_status: personality row %s not found", personality_id)
             return
         personality.status = status
         if personality_json is not None:
