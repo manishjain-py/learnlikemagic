@@ -166,10 +166,13 @@ class EnrichmentService:
             return True
 
     def has_meaningful_data(self, profile: KidEnrichmentProfile) -> bool:
-        """Returns True if at least 1 of the 9 main sections has data."""
+        """Returns True if any enrichment data exists (sections or session preferences)."""
         if not profile:
             return False
-        return any(check(profile) for check in _SECTION_CHECKS)
+        # Any of the 9 sections or session preferences counts
+        if any(check(profile) for check in _SECTION_CHECKS):
+            return True
+        return bool(profile.attention_span) or bool(profile.pace_preference)
 
     def _count_sections_filled(self, profile: KidEnrichmentProfile) -> int:
         """Count how many of the 9 sections have data."""

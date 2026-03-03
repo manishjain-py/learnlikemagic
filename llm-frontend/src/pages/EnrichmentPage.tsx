@@ -186,8 +186,11 @@ export default function EnrichmentPage() {
         pace_preference: pacePreference || undefined,
       });
       setSectionsFilledCount(result.sections_filled);
+      if (result.personality_status === 'generating') {
+        setPersonality({ status: 'generating' });
+      }
       setSaveMsg('Saved!');
-      setTimeout(() => setSaveMsg(''), 2000);
+      setTimeout(() => setSaveMsg(''), 3000);
     } catch (err) {
       setSaveMsg('Failed to save');
     } finally {
@@ -438,15 +441,9 @@ export default function EnrichmentPage() {
             </button>
           </div>
         )}
-        {(!personality || personality.status === 'none') && sectionsFilledCount === 0 && (
+        {(!personality || personality.status === 'none') && (
           <div className="enrichment-personality-card enrichment-personality-empty">
-            <p>Fill in a few sections above and we'll create a personalized learning profile for {kidName}!</p>
-          </div>
-        )}
-        {(!personality || personality.status === 'none') && sectionsFilledCount > 0 && (
-          <div className="enrichment-personality-card enrichment-personality-generating">
-            <h3>Almost there!</h3>
-            <p>Save a section to generate {kidName}'s personalized learning profile.</p>
+            <p>Fill in any sections above and click Save — we'll create a personalized learning profile for {kidName}!</p>
           </div>
         )}
       </div>
