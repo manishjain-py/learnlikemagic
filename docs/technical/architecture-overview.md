@@ -163,17 +163,13 @@ llm-frontend/src/
 ├── features/
 │   ├── admin/            # Admin pages + components
 │   │   ├── pages/
-│   │   │   ├── BooksDashboard.tsx, CreateBook.tsx, BookDetail.tsx
-│   │   │   ├── GuidelinesReview.tsx, EvaluationDashboard.tsx
+│   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
+│   │   │   ├── CreateBookV2.tsx      # Create new book (V2)
+│   │   │   ├── BookV2Detail.tsx      # Book detail + chapters (V2)
+│   │   │   ├── EvaluationDashboard.tsx
 │   │   │   ├── DocsViewer.tsx        # In-app documentation browser
 │   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
 │   │   │   └── TestScenariosPage.tsx # E2E test results viewer
-│   │   └── components/
-│   │       ├── BookStatusBadge.tsx    # Book status indicator
-│   │       ├── GuidelinesPanel.tsx    # Guidelines display panel
-│   │       ├── PageUploadPanel.tsx    # Book page upload UI
-│   │       ├── PageViewPanel.tsx      # Book page viewer
-│   │       └── PagesSidebar.tsx       # Book pages navigation sidebar
 │   └── devtools/         # Debug tools (shown in chat session)
 │       ├── api/devToolsApi.ts         # Dev tools API client
 │       ├── components/
@@ -208,11 +204,10 @@ llm-frontend/src/
 | `/scorecard` | ScorecardPage | Protected | Student scorecard |
 | `/report-card` | ScorecardPage | Protected | Alias for scorecard |
 | `/onboarding` | OnboardingFlow | Protected | First-time setup |
-| `/admin` | (redirect) | Unprotected | Redirects to `/admin/books` |
-| `/admin/books` | BooksDashboard | Unprotected | Book management |
-| `/admin/books/new` | CreateBook | Unprotected | Create new book |
-| `/admin/books/:id` | BookDetail | Unprotected | Book detail + pages |
-| `/admin/guidelines` | GuidelinesReview | Unprotected | Guidelines review |
+| `/admin` | (redirect) | Unprotected | Redirects to `/admin/books-v2` |
+| `/admin/books-v2` | BookV2Dashboard | Unprotected | Book management (V2) |
+| `/admin/books-v2/new` | CreateBookV2 | Unprotected | Create new book (V2) |
+| `/admin/books-v2/:id` | BookV2Detail | Unprotected | Book detail + chapters (V2) |
 | `/admin/evaluation` | EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | LLMConfigPage | Unprotected | LLM provider/model configuration |

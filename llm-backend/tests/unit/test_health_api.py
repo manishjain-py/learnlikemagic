@@ -62,7 +62,7 @@ class TestGetModelConfig:
         mock_service = MagicMock()
         mock_service.get_all_configs.return_value = [
             {"component_key": "tutor", "provider": "openai", "model_id": "gpt-5.2", "description": "Tutor"},
-            {"component_key": "book_ingestion", "provider": "openai", "model_id": "gpt-4o-mini", "description": "Ingestion"},
+            {"component_key": "book_ingestion_v2", "provider": "openai", "model_id": "gpt-5.2", "description": "Book Ingestion V2"},
         ]
         mock_cls.return_value = mock_service
 
@@ -71,8 +71,8 @@ class TestGetModelConfig:
         data = resp.json()
         assert data["tutor"]["provider"] == "openai"
         assert data["tutor"]["model_id"] == "gpt-5.2"
-        assert data["book_ingestion"]["provider"] == "openai"
-        assert data["book_ingestion"]["model_id"] == "gpt-4o-mini"
+        assert data["book_ingestion_v2"]["provider"] == "openai"
+        assert data["book_ingestion_v2"]["model_id"] == "gpt-5.2"
 
 
 # ===========================================================================
