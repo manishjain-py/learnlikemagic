@@ -22,6 +22,11 @@ Usage:
 """
 
 import argparse
+import sys
+from pathlib import Path
+
+# Ensure llm-backend root is on sys.path when running as a script
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import text, bindparam
 from database import get_db_manager
