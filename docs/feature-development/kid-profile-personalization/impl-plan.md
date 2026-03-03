@@ -40,7 +40,7 @@ GET /profile/personality             BackgroundTask:                    ├─ _
 - `auth/repositories/personality_repository.py` — CRUD for `kid_personalities`
 - `auth/services/enrichment_service.py` — enrichment save logic + personality trigger
 - `auth/services/personality_service.py` — LLM-based personality derivation
-- `auth/models/enrichment_schemas.py` — Pydantic models for enrichment + personality
+- `auth/models/enrichment_schemas.py` — Pydantic request/response schemas for enrichment + personality
 - `auth/api/enrichment_routes.py` — API routes for `/profile/enrichment` and `/profile/personality`
 - `auth/prompts/personality_prompts.py` — personality derivation prompt
 
@@ -49,8 +49,8 @@ GET /profile/personality             BackgroundTask:                    ├─ _
 - `components/enrichment/` — section components (ChipSelector, PeopleEditor, PersonalityTraits, etc.)
 
 **Modified files (backend):**
-- `shared/models/entities.py` — two new ORM models
-- `db.py` — migration functions for new tables
+- `shared/models/entities.py` — two new ORM models (`KidEnrichmentProfile`, `KidPersonality`)
+- `db.py` — migration function for new tables + LLM config seeding
 - `main.py` — register new router
 - `tutor/models/messages.py` — add `tutor_brief`, `personality_json` to `StudentContext`
 - `tutor/agents/master_tutor.py` — update `_build_personalization_block()`
@@ -89,29 +89,41 @@ users ──1:N──► kid_personalities        (versioned, latest = active)
 
 ### Migration Plan
 
-In `db.py`, add two new migration functions following the existing pattern:
+In `db.py`, add a migration function following the existing pattern. The ORM models are defined in `shared/models/entities.py` (same file as all other ORM models), so `Base.metadata.create_all()` — which already runs at the top of `migrate()` — will create the tables automatically when they don't exist. The migration function handles the LLM config seeding:
 
 ```python
 def _apply_kid_enrichment_tables(engine):
-    """Create kid_enrichment_profiles and kid_personalities tables."""
-    # Import the new ORM models so Base.metadata knows about them
-    from auth.models.enrichment_entities import KidEnrichmentProfile, KidPersonality
+    """Create kid_enrichment_profiles and kid_personalities tables + seed LLM config.
 
-    inspector = inspect(engine)
-    existing = inspector.get_table_names()
-
-    if "kid_enrichment_profiles" not in existing:
-        KidEnrichmentProfile.__table__.create(engine)
-        logger.info("Created kid_enrichment_profiles table")
-
-    if "kid_personalities" not in existing:
-        KidPersonality.__table__.create(engine)
-        logger.info("Created kid_personalities table")
+    Tables are created by Base.metadata.create_all() (the ORM models are in entities.py).
+    This function handles the LLM config seed for existing deployments where
+    _LLM_CONFIG_SEEDS won't run (it only seeds when the table is empty).
+    """
+    # Seed personality_derivation config for existing deployments
+    # (new deployments get it via _LLM_CONFIG_SEEDS)
+    with Session(engine) as session:
+        existing = session.query(LLMConfig).filter_by(
+            component_key="personality_derivation"
+        ).first()
+        if not existing:
+            # Copy provider/model from the tutor config
+            tutor_config = session.query(LLMConfig).filter_by(
+                component_key="tutor"
+            ).first()
+            if tutor_config:
+                session.add(LLMConfig(
+                    component_key="personality_derivation",
+                    provider=tutor_config.provider,
+                    model_id=tutor_config.model_id,
+                    description="Kid personality derivation from enrichment profile",
+                ))
+                session.commit()
+                logger.info("Seeded personality_derivation LLM config (copied from tutor)")
 ```
 
-Add a `"personality_derivation"` seed to `_LLM_CONFIG_SEEDS` so the LLM config table has a row for the personality generation component.
+Also add `"personality_derivation"` to `_LLM_CONFIG_SEEDS` for fresh deployments (using the tutor's default provider/model).
 
-**Decision:** ORM models for the two new tables go in `auth/models/enrichment_entities.py` (not in `shared/models/entities.py`) to keep domain separation clean. They import and extend the same shared `Base` so `create_all()` and migrations work.
+**Decision:** ORM models live in `shared/models/entities.py` — matching the existing convention where every ORM model is defined there. This ensures `Base.metadata.create_all()` picks them up automatically without needing explicit `__table__.create()` calls. The LLM config seed is done explicitly in the migration function (not just in `_LLM_CONFIG_SEEDS`) because the seed list only runs on empty tables — existing deployments would miss it.
 
 **No data backfill needed.** Both tables start empty. Existing users simply have no enrichment profile — the fallback behavior (current personalization block) handles them.
 
@@ -121,7 +133,9 @@ Add a `"personality_derivation"` seed to `_LLM_CONFIG_SEEDS` so the LLM config t
 
 ### 4.1 Auth Module — Enrichment & Personality
 
-#### ORM Models (`auth/models/enrichment_entities.py`)
+#### ORM Models (`shared/models/entities.py`)
+
+Add both models to the existing `entities.py` file alongside all other ORM models:
 
 ```python
 class KidEnrichmentProfile(Base):
@@ -163,9 +177,18 @@ class KidPersonality(Base):
 
 ```python
 # --- Enrichment ---
+
+VALID_RELATIONSHIPS = Literal[
+    "Mom", "Dad", "Brother", "Sister", "Grandparent",
+    "Cousin", "Uncle", "Aunt", "Friend", "Neighbor", "Teacher", "Pet"
+]
+
+# Alphanumeric + spaces + common diacritics (Hindi/Indian names)
+NAME_PATTERN = r'^[\w\s\u0900-\u097F\u00C0-\u024F\.\'-]+$'
+
 class MyWorldEntry(BaseModel):
-    name: str = Field(max_length=50)
-    relationship: str
+    name: str = Field(max_length=50, pattern=NAME_PATTERN)
+    relationship: VALID_RELATIONSHIPS
 
 class PersonalityTrait(BaseModel):
     trait: str
@@ -174,7 +197,7 @@ class PersonalityTrait(BaseModel):
 class EnrichmentProfileRequest(BaseModel):
     """Partial update — all fields optional."""
     interests: Optional[list[str]] = None
-    my_world: Optional[list[MyWorldEntry]] = None  # max 15
+    my_world: Optional[list[MyWorldEntry]] = Field(default=None, max_length=15)
     learning_styles: Optional[list[str]] = None
     motivations: Optional[list[str]] = None
     strengths: Optional[list[str]] = None
@@ -182,9 +205,9 @@ class EnrichmentProfileRequest(BaseModel):
     personality_traits: Optional[list[PersonalityTrait]] = None
     favorite_media: Optional[list[str]] = None
     favorite_characters: Optional[list[str]] = None
-    memorable_experience: Optional[str] = None  # max 500
-    aspiration: Optional[str] = None  # max 200
-    parent_notes: Optional[str] = None  # max 1000
+    memorable_experience: Optional[str] = Field(default=None, max_length=500)
+    aspiration: Optional[str] = Field(default=None, max_length=200)
+    parent_notes: Optional[str] = Field(default=None, max_length=1000)
     attention_span: Optional[Literal["short", "medium", "long"]] = None
     pace_preference: Optional[Literal["slow", "balanced", "fast"]] = None
 
@@ -267,6 +290,23 @@ def __init__(self, db: Session):
 - `update_profile(user_id, request: EnrichmentProfileRequest) → dict` — upserts enrichment, computes inputs_hash, returns `{"personality_status": ..., "sections_filled": ...}`
 - `compute_inputs_hash(user_id) → str` — builds canonical JSON from enrichment + basic profile fields (name, age, grade, board, about_me), returns SHA256
 - `should_regenerate(user_id, new_hash) → bool` — compares with latest personality's `inputs_hash`
+- `has_meaningful_data(profile) → bool` — returns True if at least 1 of the 9 main sections has data. Session preferences alone (attention_span, pace_preference) are not sufficient to trigger personality generation.
+
+**`sections_filled` mapping** — DB columns → 9 PRD sections:
+
+| Section # | PRD Section | Columns Checked (non-null and non-empty) |
+|-----------|-------------|------------------------------------------|
+| 1 | Interests & Hobbies | `interests` |
+| 2 | My World | `my_world` |
+| 3 | How They Learn | `learning_styles` |
+| 4 | What Motivates | `motivations` |
+| 5 | Superpowers | `strengths` |
+| 6 | Areas to Grow | `growth_areas` |
+| 7 | Personality | `personality_traits` |
+| 8 | Favorites & Fun Facts | any of: `favorite_media`, `favorite_characters`, `memorable_experience`, `aspiration` |
+| 9 | Parent's Notes | `parent_notes` |
+
+A section counts as "filled" if its column(s) contain non-null, non-empty data. Section 8 counts as filled if *any* of its 4 columns has data.
 
 #### Service Layer (`auth/services/personality_service.py`)
 
@@ -351,21 +391,26 @@ def _debounced_regenerate(user_id: str, expected_hash: str):
     import time
     time.sleep(5)
 
-    db = next(get_db())
-    try:
+    # Use db_manager.session_scope() for proper lifecycle management
+    # (commit on success, rollback on error, always closes)
+    from database import get_db_manager
+    with get_db_manager().session_scope() as db:
         service = EnrichmentService(db)
         current_hash = service.compute_inputs_hash(user_id)
         if current_hash != expected_hash:
             # Parent saved again within 5s — a newer task will handle it
             return
 
+        # Only regenerate if at least 1 of the 9 main sections has data
+        profile = service.enrichment_repo.get_by_user_id(user_id)
+        if not profile or not service.has_meaningful_data(profile):
+            return
+
         personality_service = PersonalityService(db)
         personality_service.generate_personality(user_id)
-    finally:
-        db.close()
 ```
 
-**Decision:** Simple `time.sleep(5)` in a background task thread. Not ideal for high scale, but matches the single-process App Runner deployment model. The inputs_hash re-check handles the dedup: if a second save happened within 5s, its background task will see a different hash and run the final regeneration.
+**Decision:** Simple `time.sleep(5)` in a background task thread. Uses `db_manager.session_scope()` (the existing context manager in `database.py`) instead of `next(get_db())` — this properly handles commit/rollback/close lifecycle. The inputs_hash re-check handles dedup: if a second save happened within 5s, its background task will see a different hash and the final regeneration runs only once. The `has_meaningful_data()` check prevents triggering LLM generation when only session preferences (attention_span/pace_preference) are filled and no actual enrichment sections have content.
 
 ---
 
@@ -449,47 +494,70 @@ def _build_personalization_block(ctx) -> str:
 
 #### Welcome Message (`tutor/orchestration/orchestrator.py`)
 
-In `generate_welcome_message()`, add personality context to the prompt:
+**Note:** The current welcome message prompts (`WELCOME_MESSAGE_PROMPT`, `generate_clarify_welcome()`, `generate_exam_welcome()`) have *no* student name or personality context — they only pass `grade`, `topic_name`, `language_level`, `preferred_examples`, and language instructions. This is a **new addition**, not an augmentation of existing personalization.
+
+In `generate_welcome_message()`, append personality context to the prompt:
 
 ```python
 # After existing prompt construction, before LLM call:
 if session.student_context.tutor_brief:
-    prompt += f"\n\nStudent Personality:\n{session.student_context.tutor_brief}\n\nUse this personality to make the welcome message feel personal and tailored."
+    prompt += (
+        f"\n\nStudent Personality:\n{session.student_context.tutor_brief}\n\n"
+        "Use this personality to make the welcome message feel personal and tailored. "
+        "Address the student by name."
+    )
+elif session.student_context.student_name:
+    prompt += f"\n\nThe student's name is {session.student_context.student_name}. Address them by name."
 ```
 
-Similarly for `generate_clarify_welcome()` and `generate_exam_welcome()`.
+Similarly for `generate_clarify_welcome()` and `generate_exam_welcome()`. The `elif` ensures even non-enrichment users get name-based welcome messages (a minor improvement over current behavior).
 
-#### Exam Question Personalization (`tutor/services/exam_service.py`)
+#### Exam Question Personalization (`tutor/services/exam_service.py` + `tutor/prompts/exam_prompts.py`)
 
-Add a `personality_context` section to the exam generation prompt when personality exists:
+Add a `{personalization_section}` template variable to `EXAM_QUESTION_GENERATION_PROMPT`. This is cleaner than string concatenation — the template is self-documenting and the variable defaults to empty when no personality exists.
+
+**Prompt change** (`exam_prompts.py`): Add at the end of the template, before the output instructions:
+
+```
+{personalization_section}
+```
+
+**Service change** (`exam_service.py`): Build the personalization section and pass it as a template variable:
 
 ```python
-def generate_questions(self, session, count=7, timeout_s=20.0):
-    # ... existing code ...
-
-    # Build personality context for word problems
-    personality_section = ""
+def _build_exam_personalization(self, session: SessionState) -> str:
+    """Build personalization section for exam question generation."""
     pj = session.student_context.personality_json
-    if pj:
-        names = []
-        for p in pj.get("people_to_reference", []):
-            names.append(f"- {p['name']} ({p['context']})")
-        themes = pj.get("example_themes", [])
+    if not pj:
+        return ""
 
-        personality_section = (
-            "\n## Personalization (use in ~30-50% of questions, not all)\n"
-            f"Student's name: {session.student_context.student_name}\n"
-            f"Interests/themes: {', '.join(themes)}\n"
-            f"People to reference in problems:\n" + "\n".join(names) + "\n"
-            "Use these naturally in word problem scenarios. "
-            "Keep core mathematical rigor — only the window dressing is personalized. "
-            "Don't personalize every question — use generic Indian names/contexts for the rest."
-        )
+    names = []
+    for p in pj.get("people_to_reference", []):
+        names.append(f"- {p['name']} ({p['context']})")
+    themes = pj.get("example_themes", [])
 
-    prompt = EXAM_QUESTION_GENERATION_PROMPT.render(...) + personality_section
+    return (
+        "\n## Personalization (use in ~30-50% of questions, not all)\n"
+        f"Student's name: {session.student_context.student_name}\n"
+        f"Interests/themes: {', '.join(themes)}\n"
+        f"People to reference in problems:\n" + "\n".join(names) + "\n"
+        "Use these naturally in word problem scenarios. "
+        "Keep core mathematical rigor — only the window dressing is personalized. "
+        "Don't personalize every question — use generic Indian names/contexts for the rest."
+    )
 ```
 
-**Decision:** The personality context is appended to the existing prompt rather than being a template variable. This keeps the change minimal and avoids modifying the prompt template's parameter list (which would require updating the retry path too).
+Pass to `render()`:
+```python
+prompt = EXAM_QUESTION_GENERATION_PROMPT.render(
+    ...,  # existing params
+    personalization_section=self._build_exam_personalization(session),
+)
+```
+
+The `_retry_with_fewer` method also passes this parameter (it re-renders the prompt, so it gets the same personalization).
+
+**Decision:** Using a template variable instead of string concatenation. The template is self-documenting — you can see that `{personalization_section}` exists by reading the prompt file. The variable defaults to `""` when no personality exists, so the no-personalization path is clean. Both the primary and retry paths pass the same parameter.
 
 ---
 
@@ -533,7 +601,7 @@ async def update_profile(
 
 | Component | Changes |
 |-----------|---------|
-| `ProfilePage.tsx` | Remove `about_me` textarea, add "Help us know {name} better" CTA card linking to `/profile/enrichment`. Add migration banner for users with `about_me` but no enrichment. |
+| `ProfilePage.tsx` | Remove `about_me` textarea, add "Help us know {name} better" CTA card linking to `/profile/enrichment`. Add migration banner for users with `about_me` but no enrichment. **Note:** The CTA card is a pure navigation link (`navigate('/profile/enrichment')`) — no API call needed. The `about_me` migration check uses `user.about_me` from `AuthContext` (already available). The existing `ProfilePage` uses raw `fetch()` instead of `apiFetch()` — follow the same pattern for any new API calls on this page. |
 | `App.tsx` | Add route: `<Route path="/profile/enrichment" element={<ProtectedRoute><EnrichmentPage /></ProtectedRoute>} />` |
 
 ### New Components
@@ -568,10 +636,11 @@ async def update_profile(
 
 **`components/enrichment/PersonalityCard.tsx`** — Read-only card showing derived personality.
 - Fetches `GET /profile/personality` on mount
-- Renders friendly sections from `personality_json`: "How we'll teach", "Examples we'll use", etc.
-- Shows "Updating..." badge when `status === "generating"`
-- Shows motivational prompt when no personality exists yet
-- "Last updated" timestamp
+- **Status states:**
+  - `ready` → Renders friendly sections from `personality_json`: "How we'll teach", "Examples we'll use", etc. Shows "Last updated" timestamp.
+  - `generating` → Shows the previous personality (if any) with an "Updating..." badge. If no previous personality, shows a spinner with "Creating {name}'s learning profile..."
+  - `failed` → Shows "We couldn't generate the profile — try again" message with a "Retry" button that calls `POST /profile/personality/regenerate`. If a previous `ready` personality exists, shows it with a "Last update failed — retry?" banner.
+  - `none` (no enrichment data yet) → Shows motivational prompt: "Fill in a few sections above and we'll create a personalized learning profile for {name}!"
 
 **`components/enrichment/SessionPreferences.tsx`** — Attention span + pace preference.
 - Single-select chip groups
@@ -643,12 +712,12 @@ None. The personality derivation model is configured via the `llm_config` DB tab
 
 ### Config Changes
 
-No changes to `config.py`. LLM config seeding in `db.py`:
+No changes to `config.py`. LLM config seeding handled in two places:
 
-```python
-# Added to _LLM_CONFIG_SEEDS
-{"component_key": "personality_derivation", "provider": "openai", "model_id": "gpt-5.2", "description": "Kid personality derivation from enrichment profile"}
-```
+1. **`_LLM_CONFIG_SEEDS`** (for fresh deployments): Add a `"personality_derivation"` entry using the same provider/model as the `"tutor"` seed.
+2. **`_apply_kid_enrichment_tables()`** migration (for existing deployments): Copies provider/model from the existing `tutor` config row (see Section 3, Migration Plan).
+
+This ensures the config row exists regardless of whether the deployment is new or existing. The admin can change the model post-deployment via the LLM Config admin page.
 
 ---
 
@@ -660,7 +729,7 @@ Order rationale: Database first → Repository → Service → API → Frontend.
 
 | Step | What to Build | Files | Depends On | Testable? |
 |------|---------------|-------|------------|-----------|
-| 1.1 | ORM models for new tables | `auth/models/enrichment_entities.py`, `shared/models/entities.py` (import) | — | Run `python db.py --migrate`, verify tables exist |
+| 1.1 | ORM models for new tables | `shared/models/entities.py` | — | Run `python db.py --migrate`, verify tables exist |
 | 1.2 | DB migration function | `db.py` | 1.1 | `python db.py --migrate` creates both tables |
 | 1.3 | Pydantic schemas | `auth/models/enrichment_schemas.py` | — | Unit test validation rules |
 | 1.4 | Enrichment repository | `auth/repositories/enrichment_repository.py` | 1.1 | Unit test with in-memory DB |
@@ -680,7 +749,7 @@ Order rationale: Database first → Repository → Service → API → Frontend.
 | 2.3 | Personality service (LLM call + hash logic) | `auth/services/personality_service.py` | 2.1, 2.2 | Unit test with mocked LLM; integration test with real LLM |
 | 2.4 | Wire debounced trigger into enrichment PUT | `auth/api/enrichment_routes.py`, `auth/services/enrichment_service.py` | 2.3 | Save enrichment → verify personality row created after 5s |
 | 2.5 | Personality API (GET + POST regenerate) | `auth/api/enrichment_routes.py` | 2.3 | curl: GET personality after enrichment save |
-| 2.6 | Seed LLM config | `db.py` | — | Verify `personality_derivation` row in `llm_config` |
+| 2.6 | Seed LLM config (both `_LLM_CONFIG_SEEDS` and migration function) | `db.py` | — | Verify `personality_derivation` row in `llm_config` (both fresh DB and existing DB) |
 | 2.7 | Frontend: PersonalityCard on enrichment page | `components/enrichment/PersonalityCard.tsx`, `EnrichmentPage.tsx` | 2.5 | Manual: fill enrichment → wait → see personality card |
 
 ### Phase 3: Teaching Personalization (Tutor Integration)
@@ -691,7 +760,7 @@ Order rationale: Database first → Repository → Service → API → Frontend.
 | 3.2 | Load personality in session creation | `tutor/services/session_service.py` | 2.1, 3.1 | Unit test: verify StudentContext has personality |
 | 3.3 | Update `_build_personalization_block()` | `tutor/agents/master_tutor.py` | 3.1 | Unit test: verify tutor brief used when present, fallback when not |
 | 3.4 | Update welcome messages | `tutor/orchestration/orchestrator.py` | 3.1 | Integration test: welcome message with personality |
-| 3.5 | Update exam question generation | `tutor/services/exam_service.py`, `tutor/prompts/exam_prompts.py` | 3.1 | Integration test: exam questions use kid's names/interests |
+| 3.5 | Update exam question generation (add `{personalization_section}` template var) | `tutor/services/exam_service.py`, `tutor/prompts/exam_prompts.py` | 3.1 | Integration test: exam questions use kid's names/interests |
 | 3.6 | Remove hardcoded `preferred_examples` default path | `tutor/services/session_service.py` | 3.2 | Unit test: verify examples come from personality when available |
 
 ### Phase 4: Polish
@@ -716,7 +785,12 @@ Order rationale: Database first → Repository → Service → API → Frontend.
 | `test_personality_repository_latest_ready` | Only `status=ready` personalities are returned | In-memory DB |
 | `test_enrichment_schema_validation` | Pydantic rejects invalid data (too-long strings, invalid enums) | None |
 | `test_enrichment_schema_partial` | All fields optional, partial updates work | None |
-| `test_my_world_name_validation` | Name max 50 chars, relationship must be valid | None |
+| `test_my_world_name_validation` | Name max 50 chars, alphanumeric+diacritics only, rejects special chars | None |
+| `test_my_world_relationship_validation` | Relationship must be one of the 12 valid options, rejects invalid values | None |
+| `test_my_world_max_entries` | List rejects >15 entries | None |
+| `test_text_field_max_length` | `memorable_experience` max 500, `aspiration` max 200, `parent_notes` max 1000 | None |
+| `test_sections_filled_count` | Correct count: section 8 counts as filled when any of its 4 fields has data | None |
+| `test_has_meaningful_data` | Returns False when only session prefs filled, True when any main section filled | None |
 | `test_compute_inputs_hash_deterministic` | Same inputs produce same hash, different inputs produce different hash | Mock repo |
 | `test_compute_inputs_hash_includes_basic_fields` | Hash changes when name/age/grade change | Mock repo |
 | `test_personality_service_skips_unchanged` | No LLM call when inputs_hash matches | Mock LLM, mock repo |
@@ -727,7 +801,6 @@ Order rationale: Database first → Repository → Service → API → Frontend.
 | `test_student_context_loads_personality` | `_build_student_context_from_profile` populates tutor_brief and personality_json | Mock repos |
 | `test_preferred_examples_from_personality` | `preferred_examples` comes from `personality_json.example_themes` | Mock repos |
 | `test_preferred_examples_default_fallback` | Default `["food", "sports", "games"]` when no personality | Mock repos |
-| `test_sections_filled_count` | Correct count of filled vs empty sections | None |
 
 ### Integration Tests
 
@@ -792,8 +865,6 @@ The migration is purely additive (new tables, no column changes to existing tabl
 
 1. **About_me migration UX:** Should the migration banner on the enrichment page auto-fill parent_notes, or just show the old `about_me` text and let the parent decide which section it belongs in? (PRD says pre-fill Section 9 — implementing as specified.)
 
-2. **LLM config seeding:** Should `personality_derivation` default to the same model as `tutor`, or a cheaper/faster model since it runs in the background? (Defaulting to same model per PRD guidance — admin can change it post-deployment.)
+2. **Enrichment page for multiple children:** The current system is one account per child. If the parent has multiple children, they'd need to log into each child's account to fill enrichment. No changes needed for now, but worth noting.
 
-3. **Enrichment page for multiple children:** The current system is one account per child. If the parent has multiple children, they'd need to log into each child's account to fill enrichment. No changes needed for now, but worth noting.
-
-4. **Rate limiting on personality regeneration:** Should we limit how often a parent can trigger regeneration? Currently bounded by the 5s debounce and hash check — rapid saves produce at most one regeneration per distinct data state. Likely sufficient.
+3. **Rate limiting on personality regeneration:** Should we limit how often a parent can trigger regeneration? Currently bounded by the 5s debounce, hash check, and minimum-data threshold — rapid saves produce at most one regeneration per distinct data state. Likely sufficient.
