@@ -1779,17 +1779,6 @@ body {
   color: #888;
 }
 
-.enrichment-save-status {
-  font-size: 0.8rem;
-  color: #888;
-  margin-bottom: 0.5rem;
-  text-align: center;
-}
-
-.enrichment-save-success {
-  color: #38a169;
-}
-
 /* Migration banner */
 .enrichment-migration-banner {
   background: #fffbeb;
@@ -1872,15 +1861,30 @@ body {
   line-height: 1.4;
 }
 
-.enrichment-section-save {
+.enrichment-save-all {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
 }
 
-.enrichment-save-btn {
-  padding: 0.5rem 1.5rem;
+.enrichment-save-all-btn {
+  padding: 0.65rem 2rem;
+  font-size: 1rem;
+}
+
+.enrichment-save-msg {
   font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.enrichment-save-success {
+  color: #38a169;
+}
+
+.enrichment-save-error {
+  color: #e74c3c;
 }
 
 /* Chip selectors */

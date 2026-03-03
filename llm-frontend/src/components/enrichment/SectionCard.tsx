@@ -10,12 +10,10 @@ interface SectionCardProps {
   isFilled: boolean;
   isOpen: boolean;
   onToggle: () => void;
-  onSave: () => void;
-  saving: boolean;
   children: React.ReactNode;
 }
 
-export default function SectionCard({ title, helper, isFilled, isOpen, onToggle, onSave, saving, children }: SectionCardProps) {
+export default function SectionCard({ title, helper, isFilled, isOpen, onToggle, children }: SectionCardProps) {
   return (
     <div className={`enrichment-section ${isOpen ? 'enrichment-section-open' : ''}`}>
       <button type="button" className="enrichment-section-header" onClick={onToggle}>
@@ -29,16 +27,6 @@ export default function SectionCard({ title, helper, isFilled, isOpen, onToggle,
         <div className="enrichment-section-body">
           <p className="enrichment-section-helper">{helper}</p>
           {children}
-          <div className="enrichment-section-save">
-            <button
-              type="button"
-              className="auth-btn auth-btn-primary enrichment-save-btn"
-              onClick={onSave}
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
         </div>
       )}
     </div>

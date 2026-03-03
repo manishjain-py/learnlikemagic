@@ -3,7 +3,7 @@
  * Parents fill this to help personalize the tutoring experience.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -164,12 +164,27 @@ export default function EnrichmentPage() {
     }
   };
 
-  // Auto-save when a section is closed
-  const saveSection = useCallback(async (fields: Record<string, any>) => {
+  // Save all sections in one PUT
+  const handleSaveAll = async () => {
     setSaving(true);
     setSaveMsg('');
     try {
-      const result = await updateEnrichmentProfile(fields);
+      const result = await updateEnrichmentProfile({
+        interests,
+        my_world: myWorld.filter((e) => e.name.trim()),
+        learning_styles: learningStyles,
+        motivations,
+        strengths,
+        growth_areas: growthAreas,
+        personality_traits: personalityTraits,
+        favorite_media: favoriteMedia,
+        favorite_characters: favoriteCharacters,
+        memorable_experience: memorableExperience || undefined,
+        aspiration: aspiration || undefined,
+        parent_notes: parentNotes || undefined,
+        attention_span: attentionSpan || undefined,
+        pace_preference: pacePreference || undefined,
+      });
       setSectionsFilledCount(result.sections_filled);
       setSaveMsg('Saved!');
       setTimeout(() => setSaveMsg(''), 2000);
@@ -178,62 +193,18 @@ export default function EnrichmentPage() {
     } finally {
       setSaving(false);
     }
-  }, []);
+  };
 
   const handleSectionToggle = (sectionIndex: number) => {
-    // If closing a section, save its data
-    if (openSection === sectionIndex) {
-      saveSectionData(sectionIndex);
-      setOpenSection(null);
-    } else {
-      // Save previous section if one was open
-      if (openSection !== null) {
-        saveSectionData(openSection);
-      }
-      setOpenSection(sectionIndex);
-    }
+    setOpenSection(openSection === sectionIndex ? null : sectionIndex);
   };
 
-  const saveSectionData = (sectionIndex: number) => {
-    const fieldMap: Record<number, Record<string, any>> = {
-      0: { interests },
-      1: { my_world: myWorld.filter((e) => e.name.trim()) },
-      2: { learning_styles: learningStyles },
-      3: { motivations },
-      4: { strengths },
-      5: { growth_areas: growthAreas },
-      6: { personality_traits: personalityTraits },
-      7: {
-        favorite_media: favoriteMedia,
-        favorite_characters: favoriteCharacters,
-        memorable_experience: memorableExperience || undefined,
-        aspiration: aspiration || undefined,
-      },
-      8: { parent_notes: parentNotes || undefined },
-      9: {
-        attention_span: attentionSpan || undefined,
-        pace_preference: pacePreference || undefined,
-      },
-    };
-    const fields = fieldMap[sectionIndex];
-    if (fields) {
-      saveSection(fields);
-    }
-  };
-
-  // Migration: copy about_me into parent_notes and persist immediately
-  const handleMigrateAboutMe = async () => {
+  // Migration: copy about_me into parent_notes (persisted when user clicks Save)
+  const handleMigrateAboutMe = () => {
     if (user?.about_me) {
       setParentNotes(user.about_me);
       setHasAboutMe(false);
       setOpenSection(8); // Open Parent's Notes section
-      // Persist immediately so data isn't lost if user navigates away
-      try {
-        const result = await updateEnrichmentProfile({ parent_notes: user.about_me });
-        setSectionsFilledCount(result.sections_filled);
-      } catch (err) {
-        console.error('Failed to migrate about_me:', err);
-      }
     }
   };
 
@@ -312,13 +283,6 @@ export default function EnrichmentPage() {
           <span className="enrichment-progress-text">{sectionsFilledCount} of 9 sections filled</span>
         </div>
 
-        {/* Save status */}
-        {(saving || saveMsg) && (
-          <div className={`enrichment-save-status ${saveMsg === 'Saved!' ? 'enrichment-save-success' : ''}`}>
-            {saving ? 'Saving...' : saveMsg}
-          </div>
-        )}
-
         {/* Migration banner */}
         {hasAboutMe && (
           <div className="enrichment-migration-banner">
@@ -338,8 +302,6 @@ export default function EnrichmentPage() {
             isFilled={isSectionFilled(index)}
             isOpen={openSection === index}
             onToggle={() => handleSectionToggle(index)}
-            onSave={() => saveSectionData(index)}
-            saving={saving}
           >
             {index === 0 && (
               <ChipSelector options={INTEREST_OPTIONS} selected={interests} onChange={setInterests} allowCustom />
@@ -400,13 +362,27 @@ export default function EnrichmentPage() {
             onChange={(field, value) => {
               if (field === 'attention_span') setAttentionSpan(value);
               else if (field === 'pace_preference') setPacePreference(value);
-              // Auto-save session preferences immediately
-              saveSection({ [field]: value });
             }}
           />
         </div>
 
-        {/* Personality Card placeholder (Phase 2) */}
+        {/* Save button */}
+        <div className="enrichment-save-all">
+          <button
+            className="auth-btn auth-btn-primary enrichment-save-all-btn"
+            onClick={handleSaveAll}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          {saveMsg && (
+            <span className={`enrichment-save-msg ${saveMsg === 'Saved!' ? 'enrichment-save-success' : 'enrichment-save-error'}`}>
+              {saveMsg}
+            </span>
+          )}
+        </div>
+
+        {/* Personality Card */}
         {personality && personality.status === 'ready' && personality.personality_json && (
           <div className="enrichment-personality-card">
             <h3>Here's what we understand about {kidName}</h3>
