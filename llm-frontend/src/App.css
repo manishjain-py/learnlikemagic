@@ -766,6 +766,19 @@ body {
   font-size: 0.75rem;
   color: #999;
   margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-toggle {
+  color: #667eea;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.info-toggle:hover {
+  text-decoration: underline;
 }
 
 /* Right column: chevron arrow */

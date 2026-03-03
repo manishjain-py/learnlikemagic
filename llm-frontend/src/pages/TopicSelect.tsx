@@ -12,6 +12,7 @@ export default function TopicSelect() {
   const [topics, setTopics] = useState<TopicInfo[]>([]);
   const [progress, setProgress] = useState<Record<string, TopicProgress>>({});
   const [loading, setLoading] = useState(true);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!subject || !chapter) return;
@@ -41,6 +42,11 @@ export default function TopicSelect() {
     );
   };
 
+  const toggleSummary = (e: React.MouseEvent, idx: number) => {
+    e.stopPropagation();
+    setExpandedIdx(expandedIdx === idx ? null : idx);
+  };
+
   return (
     <div className="selection-step">
       <div className="breadcrumb">
@@ -67,6 +73,7 @@ export default function TopicSelect() {
           {topics.map((t, idx) => {
             const status = getTopicStatus(t);
             const cov = progress[t.guideline_id]?.coverage ?? 0;
+            const isExpanded = expandedIdx === idx;
             return (
               <button
                 key={t.guideline_id}
@@ -81,11 +88,19 @@ export default function TopicSelect() {
                 </div>
                 <div className="learning-path-content">
                   <div className="learning-path-title">{t.topic}</div>
-                  {t.topic_summary && (
+                  <div className="learning-path-meta">
+                    {cov > 0 && <span>{cov.toFixed(0)}% covered</span>}
+                    {t.topic_summary && (
+                      <span
+                        className="info-toggle"
+                        onClick={(e) => toggleSummary(e, idx)}
+                      >
+                        {isExpanded ? 'Hide info' : 'Info'}
+                      </span>
+                    )}
+                  </div>
+                  {isExpanded && t.topic_summary && (
                     <div className="learning-path-summary">{t.topic_summary}</div>
-                  )}
-                  {cov > 0 && (
-                    <div className="learning-path-meta">{cov.toFixed(0)}% covered</div>
                   )}
                 </div>
                 <div className="learning-path-arrow">&rsaquo;</div>

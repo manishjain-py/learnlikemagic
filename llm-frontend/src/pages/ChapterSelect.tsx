@@ -12,6 +12,7 @@ export default function ChapterSelect() {
   const [chapters, setChapters] = useState<ChapterInfo[]>([]);
   const [progress, setProgress] = useState<Record<string, TopicProgress>>({});
   const [loading, setLoading] = useState(true);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!subject) return;
@@ -36,6 +37,11 @@ export default function ChapterSelect() {
     return 'not_started';
   };
 
+  const toggleSummary = (e: React.MouseEvent, idx: number) => {
+    e.stopPropagation();
+    setExpandedIdx(expandedIdx === idx ? null : idx);
+  };
+
   return (
     <div className="selection-step">
       <div className="breadcrumb">
@@ -54,6 +60,7 @@ export default function ChapterSelect() {
         <div className="learning-path" data-testid="chapter-list">
           {chapters.map((ch, idx) => {
             const status = getChapterStatus(ch);
+            const isExpanded = expandedIdx === idx;
             return (
               <button
                 key={ch.chapter}
@@ -72,12 +79,20 @@ export default function ChapterSelect() {
                 </div>
                 <div className="learning-path-content">
                   <div className="learning-path-title">{ch.chapter}</div>
-                  {ch.chapter_summary && (
-                    <div className="learning-path-summary">{ch.chapter_summary}</div>
-                  )}
                   <div className="learning-path-meta">
                     {ch.topic_count} topic{ch.topic_count !== 1 ? 's' : ''}
+                    {ch.chapter_summary && (
+                      <span
+                        className="info-toggle"
+                        onClick={(e) => toggleSummary(e, idx)}
+                      >
+                        {isExpanded ? 'Hide info' : 'Info'}
+                      </span>
+                    )}
                   </div>
+                  {isExpanded && ch.chapter_summary && (
+                    <div className="learning-path-summary">{ch.chapter_summary}</div>
+                  )}
                 </div>
                 <div className="learning-path-arrow">&rsaquo;</div>
               </button>
