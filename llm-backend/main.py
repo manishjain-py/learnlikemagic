@@ -10,8 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings, validate_required_settings
 from database import get_db_manager
-from book_ingestion.api import routes as admin_routes
-from study_plans.api import admin as admin_guidelines
 from shared.api import health
 from shared.api import llm_config_routes
 from tutor.api import curriculum, sessions, transcription, tts
@@ -104,8 +102,6 @@ app.include_router(sessions.router)
 app.include_router(transcription.router)  # Audio-to-text via Whisper
 app.include_router(tts.router)              # Text-to-speech via OpenAI TTS
 app.include_router(evaluation_router)  # Evaluation pipeline endpoints
-app.include_router(admin_routes.router)  # Book ingestion admin routes
-app.include_router(admin_guidelines.router)  # Phase 6 guidelines admin UI
 app.include_router(auth_router)              # Auth: POST /auth/sync
 app.include_router(profile_router)           # Profile: GET/PUT /profile
 app.include_router(docs_router)              # Docs: GET /api/docs

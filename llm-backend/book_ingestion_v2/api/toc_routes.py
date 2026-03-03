@@ -28,7 +28,7 @@ def extract_toc_from_images(
 ):
     """Extract TOC from uploaded page images using OCR + LLM. Does NOT save to DB."""
     try:
-        from book_ingestion.repositories.book_repository import BookRepository
+        from shared.repositories.book_repository import BookRepository
         from config import get_settings
         from shared.services.llm_config_service import LLMConfigService
         from shared.services.llm_service import LLMService

@@ -48,16 +48,10 @@ import ChatSession from './pages/ChatSession';
 import ExamReviewPage from './pages/ExamReviewPage';
 
 // Admin pages
-import BooksDashboard from './features/admin/pages/BooksDashboard';
-import CreateBook from './features/admin/pages/CreateBook';
-import BookDetail from './features/admin/pages/BookDetail';
-import GuidelinesReview from './features/admin/pages/GuidelinesReview';
 import EvaluationDashboard from './features/admin/pages/EvaluationDashboard';
 import DocsViewer from './features/admin/pages/DocsViewer';
 import LLMConfigPage from './features/admin/pages/LLMConfigPage';
 import TestScenariosPage from './features/admin/pages/TestScenariosPage';
-
-// Admin V2 pages
 import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
 import CreateBookV2 from './features/admin/pages/CreateBookV2';
 import BookV2Detail from './features/admin/pages/BookV2Detail';
@@ -164,18 +158,13 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Admin routes (unchanged, no auth required for now) */}
-          <Route path="/admin" element={<Navigate to="/admin/books" replace />} />
-          <Route path="/admin/books" element={<BooksDashboard />} />
-          <Route path="/admin/books/new" element={<CreateBook />} />
-          <Route path="/admin/books/:id" element={<BookDetail />} />
-          <Route path="/admin/guidelines" element={<GuidelinesReview />} />
+          {/* Admin routes */}
+          <Route path="/admin" element={<Navigate to="/admin/books-v2" replace />} />
+          <Route path="/admin/books" element={<Navigate to="/admin/books-v2" replace />} />
           <Route path="/admin/evaluation" element={<EvaluationDashboard />} />
           <Route path="/admin/docs" element={<DocsViewer />} />
           <Route path="/admin/llm-config" element={<LLMConfigPage />} />
           <Route path="/admin/test-scenarios" element={<TestScenariosPage />} />
-
-          {/* Admin V2 routes */}
           <Route path="/admin/books-v2" element={<BookV2Dashboard />} />
           <Route path="/admin/books-v2/new" element={<CreateBookV2 />} />
           <Route path="/admin/books-v2/:id" element={<BookV2Detail />} />

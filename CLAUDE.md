@@ -21,13 +21,11 @@ learnlikemagic/
 | `docs/functional/learning-session.md` | Tutoring experience from student POV | Understanding the tutor feature |
 | `docs/functional/evaluation.md` | Tutor quality testing from admin POV | Understanding evaluation |
 | `docs/functional/scorecard.md` | Student progress report | Understanding scorecard |
-| `docs/functional/book-guidelines.md` | Book → guidelines → study plans from admin POV | Understanding content pipeline |
 | `docs/functional/auth-and-onboarding.md` | Login, signup, onboarding | Understanding auth flows |
 | `docs/technical/architecture-overview.md` | Full-stack architecture, tech stack, conventions | Code organization, adding new code |
 | `docs/technical/learning-session.md` | Tutor pipeline technical details | Working on tutor code |
 | `docs/technical/evaluation.md` | Evaluation pipeline technical details | Working on evaluation |
 | `docs/technical/scorecard.md` | Scorecard service technical details | Working on scorecard |
-| `docs/technical/book-guidelines.md` | Book/guidelines pipeline technical details | Working on content pipeline |
 | `docs/technical/auth-and-onboarding.md` | Auth architecture, Cognito, APIs | Working on auth |
 | `docs/technical/dev-workflow.md` | Local setup, testing, git workflow | Dev environment, testing |
 | `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |

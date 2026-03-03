@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from shared.models.entities import Base
 # Import all models to ensure they are registered with Base.metadata
 from shared.models.entities import *
-from book_ingestion.models.database import *
 from main import app
 
 

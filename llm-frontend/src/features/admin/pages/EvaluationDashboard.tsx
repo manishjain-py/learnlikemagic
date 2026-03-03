@@ -1140,7 +1140,7 @@ const EvaluationDashboard: React.FC = () => {
           }}
         >
           <button
-            onClick={() => navigate('/admin/books')}
+            onClick={() => navigate('/admin/books-v2')}
             style={{
               padding: '6px 12px',
               backgroundColor: 'white',

@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from botocore.exceptions import ClientError
 
-from book_ingestion.utils.s3_client import get_s3_client
+from shared.utils.s3_client import get_s3_client
 
 logger = logging.getLogger(__name__)
 

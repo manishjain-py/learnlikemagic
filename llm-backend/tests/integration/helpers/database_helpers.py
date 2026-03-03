@@ -35,15 +35,10 @@ def cleanup_books(db_session, book_ids):
         db_session: SQLAlchemy session
         book_ids: List of book IDs to delete
     """
-    from book_ingestion.models.database import Book, BookGuideline
+    from shared.models.entities import Book
 
     if not book_ids:
         return
-
-    # Delete book guidelines first
-    db_session.query(BookGuideline).filter(
-        BookGuideline.book_id.in_(book_ids)
-    ).delete(synchronize_session=False)
 
     # Delete books
     db_session.query(Book).filter(
@@ -108,7 +103,7 @@ def verify_book_in_db(db_session, book_id):
     Raises:
         AssertionError: If book not found
     """
-    from book_ingestion.models.database import Book
+    from shared.models.entities import Book
 
     book = db_session.query(Book).filter_by(id=book_id).first()
     assert book is not None, f"Book {book_id} not found in database"

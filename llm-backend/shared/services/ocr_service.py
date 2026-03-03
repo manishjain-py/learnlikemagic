@@ -83,9 +83,6 @@ class OCRService:
         """
         Extract complete text from textbook page image using OpenAI Vision API.
 
-        Extracts all text, drawings, images, formulas, captions, and visual elements
-        from a book page.
-
         Args:
             image_path: Path to image file (provide either this or image_bytes)
             image_bytes: Image data as bytes (provide either this or image_path)
@@ -122,7 +119,7 @@ class OCRService:
             if prompt:
                 prompt_text = prompt
             else:
-                # Detailed interpretation prompt (default — used by V1)
+                # Detailed interpretation prompt (default)
                 prompt_text = """I have a book page image that I need you to interpret completely.
 
 Please read this image and give me each and everything that's present in this book page image.
@@ -159,7 +156,7 @@ Format the output clearly with appropriate structure and formatting."""
 
             # Extract text from response
             extracted_text = response.choices[0].message.content
-            
+
             duration_ms = int((time.time() - start_time) * 1000)
             logger.info(json.dumps({
                 "step": "OCR",

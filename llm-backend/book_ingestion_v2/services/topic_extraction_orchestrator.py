@@ -19,7 +19,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from config import get_settings
-from book_ingestion.utils.s3_client import get_s3_client
+from shared.utils.s3_client import get_s3_client
 from shared.services.llm_service import LLMService
 from shared.services.llm_config_service import LLMConfigService
 
@@ -90,7 +90,7 @@ class TopicExtractionOrchestrator:
         chunk_processor = ChunkProcessorService(llm_service)
 
         # Get book metadata
-        from book_ingestion.repositories.book_repository import BookRepository
+        from shared.repositories.book_repository import BookRepository
         book_repo = BookRepository(db)
         book = book_repo.get_by_id(book_id)
         book_metadata = {

@@ -109,8 +109,8 @@ Schema, tables, migrations, and connection management.
 | `board` | VARCHAR | Education board |
 | `grade` | INT | Grade level |
 | `subject` | VARCHAR | Subject name |
-| `topic` | VARCHAR | Legacy topic name (deprecated, use topic_title) |
-| `subtopic` | VARCHAR | Legacy subtopic name (deprecated, use subtopic_title) |
+| `topic` | VARCHAR | Topic name |
+| `subtopic` | VARCHAR | Subtopic name |
 | `topic_key` | VARCHAR | Slugified topic identifier |
 | `subtopic_key` | VARCHAR | Slugified subtopic identifier |
 | `topic_title` | VARCHAR | Human-readable topic name |
@@ -118,6 +118,8 @@ Schema, tables, migrations, and connection management.
 | `topic_summary` | TEXT | Topic summary (20-40 words) |
 | `subtopic_summary` | TEXT | Subtopic summary (15-30 words) |
 | `guideline` | TEXT | Complete teaching guidelines |
+| `topic_sequence` | INT | Teaching order of topic within book (1-based) |
+| `subtopic_sequence` | INT | Teaching order of subtopic within topic (1-based) |
 | `source_page_start` | INT | First source page |
 | `source_page_end` | INT | Last source page |
 | `status` | VARCHAR | `draft`, `pending_review`, `approved`, `rejected` (default `draft`) |
@@ -130,8 +132,6 @@ Schema, tables, migrations, and connection management.
 | `updated_at` | DATETIME | Timestamp |
 
 **Indexes:** `idx_curriculum` (country, board, grade, subject, topic)
-
-V1 legacy columns (nullable, not actively used): `objectives_json`, `examples_json`, `misconceptions_json`, `assessments_json`, `teaching_description`, `description`, `evidence_summary`, `confidence`, `metadata_json`, `source_pages`.
 
 ### Study Plans
 
@@ -162,7 +162,7 @@ Centralized model configuration per component. Single source of truth for which 
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `component_key` | VARCHAR | Primary key (e.g. `tutor`, `book_ingestion`) |
+| `component_key` | VARCHAR | Primary key (e.g. `tutor`, `book_ingestion_v2`) |
 | `provider` | VARCHAR | LLM provider: `openai`, `anthropic`, `google` |
 | `model_id` | VARCHAR | Model identifier (e.g. `gpt-5.2`, `claude-opus-4-6`) |
 | `description` | VARCHAR | Human-readable description |
@@ -174,15 +174,15 @@ Centralized model configuration per component. Single source of truth for which 
 | Component Key | Provider | Model | Purpose |
 |---------------|----------|-------|---------|
 | `tutor` | openai | gpt-5.2 | Main tutoring pipeline (safety + master tutor + welcome) |
-| `book_ingestion` | openai | gpt-5.2 | All book ingestion services (OCR, boundaries, merge, etc.) |
 | `study_plan_generator` | openai | gpt-5.2 | Study plan creation from teaching guidelines |
 | `study_plan_reviewer` | openai | gpt-5.2 | Study plan review and improvement |
 | `eval_evaluator` | openai | gpt-5.2 | Evaluation judge (scores tutor quality) |
 | `eval_simulator` | openai | gpt-5.2 | Student simulator for evaluations |
+| `book_ingestion_v2` | openai | gpt-5.2 | Book ingestion V2 pipeline (chunk extraction, consolidation, merge) |
 
-### Books (Book Ingestion)
+### Books
 
-**Table:** `books` | **Model:** `Book` (`book_ingestion/models/database.py`)
+**Table:** `books` | **Model:** `Book` (`shared/models/entities.py`)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -195,6 +195,7 @@ Centralized model configuration per component. Single source of truth for which 
 | `board` | VARCHAR | Education board |
 | `grade` | INT | Grade level |
 | `subject` | VARCHAR | Subject |
+| `pipeline_version` | INT | Pipeline version (default 1) |
 | `s3_prefix` | VARCHAR | `books/{book_id}/` |
 | `metadata_s3_key` | VARCHAR | `books/{book_id}/metadata.json` |
 | `cover_image_s3_key` | VARCHAR | Optional cover image |
@@ -204,49 +205,14 @@ Centralized model configuration per component. Single source of truth for which 
 
 **Indexes:** `idx_books_curriculum` (country, board, grade, subject)
 
-### Book Jobs
+### V2 Pipeline Tables
 
-**Table:** `book_jobs` | **Model:** `BookJob` (`book_ingestion/models/database.py`)
-
-Tracks active jobs per book with progress tracking and stale detection. State machine: `pending` --> `running` --> `completed` | `failed`. Stale detection: running jobs with expired heartbeat are auto-marked failed (see `job_lock_service.py`).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | VARCHAR | Primary key |
-| `book_id` | VARCHAR | FK --> books (CASCADE delete) |
-| `job_type` | VARCHAR | `extraction`, `finalization`, `sync`, `ocr_batch` |
-| `status` | VARCHAR | `pending`, `running`, `completed`, `failed` (default `pending`) |
-| `total_items` | INT | Total pages to process (nullable) |
-| `completed_items` | INT | Pages completed so far (default 0) |
-| `failed_items` | INT | Pages that errored (default 0) |
-| `current_item` | INT | Page currently being processed (nullable) |
-| `last_completed_item` | INT | Last successfully processed page, for resume (nullable) |
-| `progress_detail` | TEXT | JSON: per-page errors + running stats (nullable) |
-| `heartbeat_at` | DATETIME | Last heartbeat from background thread (updated every 30s, nullable) |
-| `started_at` | DATETIME | Start timestamp |
-| `completed_at` | DATETIME | Completion timestamp |
-| `error_message` | TEXT | Error details on failure |
-
-**Partial unique index:** `idx_book_running_job` on (book_id) WHERE status IN ('pending', 'running') -- ensures at most one pending/running job per book.
-
-### Book Guidelines
-
-**Table:** `book_guidelines` | **Model:** `BookGuideline` (`book_ingestion/models/database.py`)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | VARCHAR | Primary key |
-| `book_id` | VARCHAR | FK --> books (CASCADE delete) |
-| `guideline_s3_key` | VARCHAR | S3 path to guideline JSON |
-| `status` | VARCHAR | draft, pending_review, approved, rejected |
-| `review_status` | VARCHAR | TO_BE_REVIEWED, APPROVED (default `TO_BE_REVIEWED`) |
-| `generated_at` | DATETIME | When guideline was generated |
-| `reviewed_at` | DATETIME | When guideline was reviewed |
-| `reviewed_by` | VARCHAR | Who reviewed the guideline |
-| `version` | INT | Version counter (default 1) |
-| `created_at` | DATETIME | Timestamp |
-
-**Indexes:** `idx_book_guidelines_book` (book_id)
+See `book_ingestion_v2/models/database.py` for the full V2 pipeline tables:
+- `book_chapters` — chapter definitions from TOC
+- `chapter_pages` — uploaded page images with OCR text
+- `chapter_chunks` — processing chunk records
+- `chapter_topics` — extracted topics with guidelines
+- `chapter_processing_jobs` — background job tracking
 
 ---
 
@@ -255,16 +221,14 @@ Tracks active jobs per book with progress tracking and stale detection. State ma
 ```
 users ──1:N──> sessions ──1:N──> events
 teaching_guidelines ──1:1──> study_plans
-books ──1:N──> book_jobs
-books ──1:N──> book_guidelines
+books ──1:N──> book_chapters ──1:N──> chapter_pages
+books ──1:N──> book_chapters ──1:N──> chapter_topics
 llm_config (standalone, no FKs)
 ```
 
 - `Session.user_id` --> `User.id` (nullable -- anonymous sessions supported)
 - `Event.session_id` --> `Session.id`
 - `StudyPlan.guideline_id` --> `TeachingGuideline.id` (unique constraint, 1:1, CASCADE delete)
-- `BookJob.book_id` --> `Book.id` (CASCADE delete)
-- `BookGuideline.book_id` --> `Book.id` (CASCADE delete)
 
 ---
 
@@ -277,7 +241,7 @@ Custom imperative migration (not Alembic):
 1. `Base.metadata.create_all()` -- Creates new tables (idempotent for existing)
 2. `_apply_session_columns()` -- Adds `user_id` and `subject` columns to sessions if missing
 3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows
-4. `_apply_book_job_columns()` -- Adds progress tracking columns to book_jobs if they exist (`total_items`, `completed_items`, `failed_items`, `current_item`, `last_completed_item`, `progress_detail`, `heartbeat_at`); backfills legacy running jobs without heartbeat to `failed`; recreates partial unique index to cover both `pending` and `running` statuses
+4. `_apply_v2_tables()` -- Creates V2 pipeline tables and unique constraints
 5. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 
 ```bash
@@ -288,7 +252,7 @@ python db.py --migrate
 ```
 
 **Adding new columns to existing tables:**
-1. Add column to the SQLAlchemy model in `entities.py` (or `book_ingestion/models/database.py`)
+1. Add column to the SQLAlchemy model in `entities.py`
 2. Add an `ALTER TABLE` migration in `db.py` with column existence check via `inspect()`
 3. Run `python db.py --migrate`
 
@@ -322,8 +286,8 @@ python db.py --migrate
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, LLMConfig) |
-| `book_ingestion/models/database.py` | Book ingestion ORM models (Book, BookGuideline, BookJob) |
+| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, LLMConfig, Book) |
+| `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob) |
 | `db.py` | Migration CLI and migration functions |
 | `database.py` | DatabaseManager, connection pooling, `get_db()` dependency |
 | `config.py` | Database URL and pool settings via pydantic-settings |

@@ -18,7 +18,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Backend (FastAPI + Python)                                     │
 │  AWS App Runner                                                 │
 │                                                                 │
-│  Modules: tutor, book_ingestion, study_plans, evaluation, auth  │
+│  Modules: tutor, book_ingestion_v2, study_plans, evaluation, auth│
 │  Root API: api/ (docs, test_scenarios)                          │
 │  Shared: llm_service, llm_config_service, anthropic_adapter,    │
 │          api, models, utils, repositories, prompts              │
@@ -27,8 +27,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ┌────────────────────────────▼────────────────────────────────────┐
 │  Database (Aurora Serverless v2 PostgreSQL)                      │
 │  Tables: users, sessions, events, contents,                     │
-│          teaching_guidelines, study_plans, books, book_jobs,     │
-│          book_guidelines, llm_config                            │
+│          teaching_guidelines, study_plans, books, llm_config,    │
+│          book_chapters, chapter_pages, chapter_topics            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,7 +77,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ```
 llm-backend/
 ├── tutor/                # Runtime tutoring sessions (teach, clarify, exam)
-├── book_ingestion/       # Book upload & guideline extraction
+├── book_ingestion_v2/    # Book upload & guideline extraction (V2 pipeline)
 ├── study_plans/          # Study plan generation
 ├── evaluation/           # Session evaluation pipeline (flat structure)
 ├── auth/                 # Authentication & user profiles
@@ -271,7 +271,7 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 
 ### LLM Configuration (DB-Backed)
 
-Each system component (tutor, book_ingestion, evaluator, etc.) has its own row in the `llm_config` DB table specifying which provider and model it uses. This replaced the earlier environment-variable-based provider switching.
+Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own row in the `llm_config` DB table specifying which provider and model it uses. This replaced the earlier environment-variable-based provider switching.
 
 - **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
 - **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one

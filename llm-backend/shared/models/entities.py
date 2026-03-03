@@ -205,6 +205,38 @@ class StudyPlan(Base):
 
 
 
+class Book(Base):
+    """
+    Book table - stores metadata for uploaded textbooks.
+    """
+    __tablename__ = "books"
+
+    id = Column(String, primary_key=True)
+    title = Column(String, nullable=False)
+    author = Column(String, nullable=True)
+    edition = Column(String, nullable=True)
+    edition_year = Column(Integer, nullable=True)
+    country = Column(String, nullable=False)
+    board = Column(String, nullable=False)  # e.g., "CBSE"
+    grade = Column(Integer, nullable=False)
+    subject = Column(String, nullable=False)  # e.g., "Mathematics"
+    pipeline_version = Column(Integer, default=1)  # 1=V1, 2=V2
+
+    # S3 storage
+    cover_image_s3_key = Column(String, nullable=True)
+    s3_prefix = Column(String, nullable=False)  # books/{book_id}/
+    metadata_s3_key = Column(String, nullable=True)  # books/{book_id}/metadata.json
+
+    # Audit fields
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(String, default="admin")
+
+    __table_args__ = (
+        Index("idx_books_curriculum", "country", "board", "grade", "subject"),
+    )
+
+
 class LLMConfig(Base):
     """Centralized LLM model configuration per component.
 

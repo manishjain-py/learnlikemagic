@@ -16,8 +16,8 @@ import io
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from book_ingestion.utils.s3_client import get_s3_client
-from book_ingestion.services.ocr_service import get_ocr_service
+from shared.utils.s3_client import get_s3_client
+from shared.services.ocr_service import get_ocr_service
 from shared.services.llm_config_service import LLMConfigService
 from book_ingestion_v2.constants import ChapterStatus, OCRStatus, LLM_CONFIG_KEY
 from book_ingestion_v2.models.database import ChapterPage, BookChapter

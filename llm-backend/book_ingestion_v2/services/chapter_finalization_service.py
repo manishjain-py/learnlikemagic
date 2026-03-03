@@ -14,7 +14,7 @@ from book_ingestion_v2.repositories.topic_repository import TopicRepository
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.constants import TopicStatus
 from shared.services.llm_service import LLMService
-from book_ingestion.utils.s3_client import get_s3_client
+from shared.utils.s3_client import get_s3_client
 
 logger = logging.getLogger(__name__)
 

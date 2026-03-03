@@ -8,7 +8,7 @@ import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
 
-from book_ingestion.repositories.book_repository import BookRepository
+from shared.repositories.book_repository import BookRepository
 from book_ingestion_v2.constants import ChapterStatus
 from book_ingestion_v2.models.database import BookChapter
 from book_ingestion_v2.models.schemas import (

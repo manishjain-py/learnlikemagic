@@ -8,9 +8,9 @@ from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 
-from book_ingestion.models.database import Book
-from book_ingestion.repositories.book_repository import BookRepository
-from book_ingestion.utils.s3_client import get_s3_client
+from shared.models.entities import Book
+from shared.repositories.book_repository import BookRepository
+from shared.utils.s3_client import get_s3_client
 from book_ingestion_v2.models.schemas import (
     CreateBookV2Request,
     BookV2Response,

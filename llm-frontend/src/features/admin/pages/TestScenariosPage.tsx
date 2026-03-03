@@ -347,7 +347,7 @@ const TestScenariosPage: React.FC = () => {
       {/* Nav buttons */}
       <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button
-          onClick={() => navigate('/admin/books')}
+          onClick={() => navigate('/admin/books-v2')}
           style={{
             padding: '10px 20px',
             backgroundColor: 'white',
@@ -360,7 +360,7 @@ const TestScenariosPage: React.FC = () => {
           Books
         </button>
         <button
-          onClick={() => navigate('/admin/guidelines')}
+          onClick={() => navigate('/admin/books-v2')}
           style={{
             padding: '10px 20px',
             backgroundColor: 'white',

@@ -10,8 +10,6 @@ from sqlalchemy.orm import sessionmaker
 from main import app
 from database import DatabaseManager
 from shared.models.entities import Base
-from book_ingestion.models.database import *
-from book_ingestion.models.guideline_models import *
 
 
 @pytest.fixture(scope="session")
@@ -124,12 +122,7 @@ def cleanup_books_after_test(db_session, cleanup_tracker, request):
 
     # Cleanup books
     if cleanup_tracker["book_ids"]:
-        from book_ingestion.models.database import Book, BookGuideline
-
-        # Delete book guidelines first
-        db_session.query(BookGuideline).filter(
-            BookGuideline.book_id.in_(cleanup_tracker["book_ids"])
-        ).delete(synchronize_session=False)
+        from shared.models.entities import Book
 
         # Delete books
         db_session.query(Book).filter(
@@ -187,22 +180,16 @@ def mock_s3(monkeypatch):
     """
     Mock S3Client for all integration tests.
     """
-    import book_ingestion.utils.s3_client as s3_module
-    import book_ingestion.services.book_service as book_service_module
-    import book_ingestion.services.page_service as page_service_module
-    
+    import shared.utils.s3_client as s3_module
+
     mock_client = MockS3Client()
-    
-    def get_mock_client(*args, **kwargs):
-        return mock_client
 
     # Patch S3Client class
-    monkeypatch.setattr(s3_module, "S3Client", get_mock_client)
-    
-    # Patch get_s3_client if used
-    if hasattr(s3_module, "get_s3_client"):
-         monkeypatch.setattr(s3_module, "get_s3_client", lambda: mock_client)
-    
+    monkeypatch.setattr(s3_module, "S3Client", lambda *a, **kw: mock_client)
+
+    # Patch get_s3_client
+    monkeypatch.setattr(s3_module, "get_s3_client", lambda: mock_client)
+
     return mock_client
 
 @pytest.fixture

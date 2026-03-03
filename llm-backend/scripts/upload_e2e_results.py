@@ -20,7 +20,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from book_ingestion.utils.s3_client import get_s3_client
+from shared.utils.s3_client import get_s3_client
 
 
 def upload_results(results_dir: str) -> None:

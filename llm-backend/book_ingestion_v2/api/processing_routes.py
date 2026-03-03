@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-from book_ingestion.services.background_task_runner import run_in_background
+# V2 uses its own run_in_background_v2 defined below
 from book_ingestion_v2.constants import ChapterStatus, V2JobType
 from book_ingestion_v2.models.schemas import (
     StartProcessingRequest,
@@ -366,7 +366,7 @@ def _run_refinalization(db: Session, job_id: str, chapter_id: str, book_id: str)
     from config import get_settings
     from shared.services.llm_config_service import LLMConfigService
     from shared.services.llm_service import LLMService
-    from book_ingestion.repositories.book_repository import BookRepository
+    from shared.repositories.book_repository import BookRepository
     from book_ingestion_v2.constants import LLM_CONFIG_KEY, ChapterStatus
     from book_ingestion_v2.services.chapter_finalization_service import ChapterFinalizationService
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService

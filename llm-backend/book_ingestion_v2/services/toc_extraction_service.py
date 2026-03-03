@@ -14,8 +14,8 @@ from pillow_heif import register_heif_opener
 
 register_heif_opener()
 
-from book_ingestion.services.ocr_service import OCRService
-from book_ingestion.utils.s3_client import get_s3_client
+from shared.services.ocr_service import OCRService
+from shared.utils.s3_client import get_s3_client
 from shared.services.llm_service import LLMService
 from book_ingestion_v2.models.schemas import TOCEntry
 

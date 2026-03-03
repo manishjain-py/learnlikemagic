@@ -88,7 +88,7 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 
 **pytest.ini defaults:** Coverage is enabled by default (`--cov=.`, `--cov-report=term-missing`, `--cov-report=html`), strict markers, short tracebacks, warnings disabled.
 
-**Coverage omissions (pytest.ini):** `tests/`, `__pycache__/`, `venv/`, `migrations/`, `scripts/`, `evaluation/run_evaluation.py`, `book_ingestion/utils/setup_s3.py`, `book_ingestion/utils/create_bucket.py`, `db.py`.
+**Coverage omissions (pytest.ini):** `tests/`, `__pycache__/`, `venv/`, `migrations/`, `scripts/`, `evaluation/run_evaluation.py`, `db.py`.
 
 **Coverage omissions (.coveragerc):** Same as above plus `database.py`. The `.coveragerc` file is used by the daily coverage CI workflow and adds `database.py` to the omit list.
 
@@ -173,7 +173,7 @@ curl -X POST http://localhost:8000/sessions \
 
 ### Adding Database Models
 
-1. **ORM model** (`shared/models/entities.py` or `book_ingestion/models/database.py`): Define table
+1. **ORM model** (`shared/models/entities.py`): Define table
 2. **Repository** (`repositories/`): Add CRUD operations
 3. **Migrate**: `python db.py --migrate` (or `make db-migrate`)
 

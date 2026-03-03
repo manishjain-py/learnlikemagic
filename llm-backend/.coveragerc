@@ -8,8 +8,6 @@ omit =
     */migrations/*
     scripts/*
     evaluation/run_evaluation.py
-    book_ingestion/utils/setup_s3.py
-    book_ingestion/utils/create_bucket.py
     db.py
     database.py
 
@@ -25,7 +23,5 @@ omit =
     */migrations/*
     scripts/*
     evaluation/run_evaluation.py
-    book_ingestion/utils/setup_s3.py
-    book_ingestion/utils/create_bucket.py
     db.py
     database.py

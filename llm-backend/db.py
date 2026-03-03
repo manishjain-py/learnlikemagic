@@ -18,12 +18,6 @@ _LLM_CONFIG_SEEDS = [
         "description": "Main tutoring pipeline (safety + master tutor + welcome)",
     },
     {
-        "component_key": "book_ingestion",
-        "provider": "openai",
-        "model_id": "gpt-5.2",
-        "description": "All book ingestion services (OCR, boundaries, merge, etc.)",
-    },
-    {
         "component_key": "study_plan_generator",
         "provider": "openai",
         "model_id": "gpt-5.2",
@@ -70,7 +64,6 @@ def migrate():
         # (create_all only creates NEW tables, it won't add columns to existing ones)
         _apply_session_columns(db_manager)
         _apply_learning_modes_columns(db_manager)
-        _apply_book_job_columns(db_manager)
         _apply_user_language_columns(db_manager)
         _apply_user_preferred_name_column(db_manager)
         _apply_sequencing_columns(db_manager)
@@ -156,51 +149,6 @@ def _apply_learning_modes_columns(db_manager):
         conn.execute(text("UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL"))
 
         conn.commit()
-
-
-def _apply_book_job_columns(db_manager):
-    """Add progress tracking columns to book_jobs table if they don't exist."""
-    inspector = inspect(db_manager.engine)
-
-    if "book_jobs" not in inspector.get_table_names():
-        return  # Table doesn't exist yet, create_all will handle it
-
-    existing_columns = {col["name"] for col in inspector.get_columns("book_jobs")}
-
-    new_columns = {
-        "total_items": "INTEGER",
-        "completed_items": "INTEGER DEFAULT 0",
-        "failed_items": "INTEGER DEFAULT 0",
-        "current_item": "INTEGER",
-        "last_completed_item": "INTEGER",
-        "progress_detail": "TEXT",
-        "heartbeat_at": "TIMESTAMP",
-    }
-
-    with db_manager.engine.connect() as conn:
-        for col_name, col_type in new_columns.items():
-            if col_name not in existing_columns:
-                print(f"  Adding {col_name} column to book_jobs...")
-                conn.execute(text(f"ALTER TABLE book_jobs ADD COLUMN {col_name} {col_type}"))
-                print(f"  ✓ {col_name} column added")
-
-        # Update default status from 'running' to 'pending' for new state machine
-        # Backfill existing 'running' jobs that have no heartbeat (legacy) to 'failed'
-        conn.execute(text(
-            "UPDATE book_jobs SET status = 'failed', "
-            "error_message = 'Migrated: legacy running job without heartbeat' "
-            "WHERE status = 'running' AND heartbeat_at IS NULL AND completed_at IS NULL"
-        ))
-
-        # Update the partial unique index to cover both pending and running
-        conn.execute(text("DROP INDEX IF EXISTS idx_book_running_job"))
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_book_running_job "
-            "ON book_jobs (book_id) WHERE status IN ('pending', 'running')"
-        ))
-
-        conn.commit()
-        print("  ✓ book_jobs progress columns applied")
 
 
 def _apply_user_language_columns(db_manager):

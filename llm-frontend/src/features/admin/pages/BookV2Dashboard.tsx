@@ -62,15 +62,6 @@ const BookV2Dashboard: React.FC = () => {
           >
             Refresh
           </button>
-          <button
-            onClick={() => navigate('/admin/books')}
-            style={{
-              backgroundColor: '#F3F4F6', border: '1px solid #D1D5DB',
-              padding: '10px 16px', borderRadius: '8px', cursor: 'pointer',
-            }}
-          >
-            V1 Dashboard
-          </button>
         </div>
       </div>
 
