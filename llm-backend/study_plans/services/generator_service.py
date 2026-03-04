@@ -1,9 +1,12 @@
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from shared.services import LLMService
 from shared.models.entities import TeachingGuideline
+
+if TYPE_CHECKING:
+    from tutor.models.messages import StudentContext
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,8 @@ class StudyPlanStep(BaseModel):
     description: str = Field(description="Short, fun description of the activity")
     teaching_approach: str = Field(description="Specific method (e.g., 'Visual + Gamification')")
     success_criteria: str = Field(description="Observable outcome that defines completion")
+    building_blocks: List[str] = Field(default_factory=list, description="Ordered sub-ideas to cover (simplest to complex)")
+    analogy: str = Field(default="", description="Age-appropriate real-world connection")
     status: str = Field(default="pending", description="Current status of the step")
 
 
@@ -58,12 +63,13 @@ class StudyPlanGeneratorService:
             StudyPlan.model_json_schema()
         )
 
-    def generate_plan(self, guideline: TeachingGuideline) -> Dict[str, Any]:
+    def generate_plan(self, guideline: TeachingGuideline, student_context: Optional["StudentContext"] = None) -> Dict[str, Any]:
         """
         Generate a study plan for the given guideline.
 
         Args:
             guideline: The teaching guideline database model
+            student_context: Optional student context for personalization
 
         Returns:
             Dict containing:
@@ -74,7 +80,7 @@ class StudyPlanGeneratorService:
         try:
             # 1. Load prompt template
             prompt_template = self.prompt_loader.load("study_plan_generator")
-            
+
             # 2. Format prompt
             chapter = guideline.chapter_title or guideline.chapter
             topic = guideline.topic_title or guideline.topic
@@ -84,7 +90,8 @@ class StudyPlanGeneratorService:
                 chapter=chapter,
                 topic=topic,
                 grade=guideline.grade,
-                guideline_text=guideline_text
+                guideline_text=guideline_text,
+                student_personality_section=self._build_personality_section(student_context),
             )
 
             logger.info(json.dumps({
@@ -145,6 +152,29 @@ class StudyPlanGeneratorService:
         except Exception as e:
             logger.error(f"Failed to generate study plan: {str(e)}", exc_info=True)
             raise
+
+    @staticmethod
+    def _build_personality_section(student_context: Optional["StudentContext"]) -> str:
+        """Build the student personality section for the prompt template."""
+        if not student_context:
+            return ""
+
+        lines = ["\n## Student Profile (personalize the plan for this student)"]
+        if student_context.student_name:
+            lines.append(f"- Name: {student_context.student_name}")
+        if student_context.student_age:
+            lines.append(f"- Age: {student_context.student_age}")
+        if student_context.preferred_examples:
+            lines.append(f"- Interests: {', '.join(student_context.preferred_examples)}")
+        if student_context.attention_span:
+            lines.append(f"- Attention span: {student_context.attention_span}")
+        if student_context.tutor_brief:
+            lines.append(f"- Personality brief: {student_context.tutor_brief}")
+
+        # Only return section if we have meaningful data beyond the header
+        if len(lines) <= 1:
+            return ""
+        return "\n".join(lines) + "\n"
 
     def _validate_plan_schema(self, plan: Dict[str, Any]) -> None:
         """Validate that the generated plan matches the expected schema."""

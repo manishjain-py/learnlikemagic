@@ -79,6 +79,24 @@ class TutorTurnOutput(BaseModel):
         default=None, description="Which concept the question tests"
     )
 
+    # Explanation phase tracking (only used during explain steps)
+    explanation_phase_update: Optional[str] = Field(
+        default=None,
+        description="Update explanation phase: 'opening', 'explaining', 'informal_check', 'complete', or 'skip'. Only set during explain steps."
+    )
+    explanation_building_blocks_covered: list[str] = Field(
+        default_factory=list,
+        description="Building blocks covered in THIS turn (from the step's building_blocks list)"
+    )
+    student_shows_understanding: Optional[bool] = Field(
+        default=None,
+        description="During informal_check phase: did the student demonstrate understanding? null if not checking."
+    )
+    student_shows_prior_knowledge: Optional[bool] = Field(
+        default=None,
+        description="Set true if the student clearly demonstrates they already know this concept and explanation can be skipped."
+    )
+
     # Session completion
     session_complete: bool = Field(
         default=False,
@@ -116,10 +134,25 @@ class MasterTutorAgent(BaseAgent):
 
         if turn == 1:
             return (
-                "PACING: FIRST TURN — Keep opening to 2-3 sentences MAX. Ask ONE simple "
-                "question to gauge level. Don't explain the topic yet. No tables, no "
-                "multi-step walkthroughs. Just a brief hook and one question."
+                "PACING: FIRST TURN — Start with a curiosity-building hook that connects "
+                "to the student's world. End with an inviting question like 'Have you ever "
+                "noticed...?' or 'What do you think would happen if...?' — NOT a test "
+                "question. Keep it to 2-3 sentences. Set explanation_phase_update='opening'."
             )
+
+        # Explanation-aware pacing: when current step is an explain step
+        current_step = session.current_step_data
+        if current_step and current_step.type == "explain":
+            ep = session.get_current_explanation()
+            if ep:
+                return self._compute_explanation_pacing(ep, current_step)
+            else:
+                # Explain step but no explanation phase initialized yet — start it
+                return (
+                    "PACING: EXPLAIN — Begin with a curiosity hook for this concept. "
+                    "ONE idea in 2-3 sentences with an everyday example. End with an "
+                    "engaging check-in: 'Does that make sense?' Set explanation_phase_update='opening'."
+                )
 
         # Also accelerate if most concepts are strong (early fast-track detection)
         if mastery_values:
@@ -180,6 +213,90 @@ class MasterTutorAgent(BaseAgent):
                 )
 
         return pacing
+
+    @staticmethod
+    def _compute_explanation_pacing(ep, current_step) -> str:
+        """Compute pacing directive specific to explanation phases."""
+        from tutor.models.session_state import ExplanationPhase
+
+        blocks = current_step.explanation_building_blocks or []
+        blocks_remaining = [b for b in blocks if b not in ep.building_blocks_covered]
+
+        if ep.phase == "opening":
+            return (
+                "PACING: EXPLAIN (opening) — Begin the core explanation. Present ONE idea "
+                "in 2-3 sentences with an everyday example. Check in: 'Does that make sense?' "
+                "Do NOT ask a test question yet. Set explanation_phase_update='explaining'."
+            )
+
+        if ep.phase == "explaining":
+            if blocks_remaining:
+                next_block = blocks_remaining[0]
+                return (
+                    f"PACING: EXPLAIN (building) — Continue explaining. Cover the next idea: "
+                    f"'{next_block}'. Use a different representation (story, real-world example, "
+                    f"visual description). ONE idea per turn. Add this to "
+                    f"explanation_building_blocks_covered. Keep explanation_phase_update='explaining'."
+                )
+            else:
+                return (
+                    "PACING: EXPLAIN (summarize) — All building blocks covered. Summarize the "
+                    "key idea in 1-2 sentences. Then ask an informal understanding check: "
+                    "'Can you explain this back in your own words?' or 'What would happen if...?' "
+                    "Set explanation_phase_update='informal_check'."
+                )
+
+        if ep.phase == "informal_check":
+            if ep.informal_check_passed:
+                return (
+                    "PACING: EXPLAIN (done) — Student showed understanding. Acknowledge briefly "
+                    "and transition naturally to the next activity. Set explanation_phase_update='complete'."
+                )
+            else:
+                return (
+                    "PACING: EXPLAIN (check) — Evaluate the student's response to the informal check. "
+                    "If they show understanding, set student_shows_understanding=true and "
+                    "explanation_phase_update='complete'. If not, clarify the gap, try a different "
+                    "angle, and ask again. Keep explanation_phase_update='informal_check'."
+                )
+
+        # Phase is complete or not_started — fall through to normal pacing
+        return "PACING: STEADY — Progressing normally. One idea at a time."
+
+    @staticmethod
+    def _build_explanation_context(session: SessionState) -> str:
+        """Build explanation plan context for the turn prompt."""
+        current_step = session.current_step_data
+        if not current_step or current_step.type != "explain":
+            return ""
+
+        ep = session.get_current_explanation()
+        lines = ["## Explanation Plan"]
+
+        if current_step.explanation_approach:
+            lines.append(f"**Approach**: {current_step.explanation_approach}")
+        if current_step.explanation_analogy:
+            lines.append(f"**Suggested Analogy**: {current_step.explanation_analogy}")
+
+        blocks = current_step.explanation_building_blocks or []
+        if blocks:
+            covered = ep.building_blocks_covered if ep else []
+            remaining = [b for b in blocks if b not in covered]
+            lines.append(f"**Building Blocks** (cover one per turn):")
+            for b in blocks:
+                marker = "done" if b in covered else "TODO"
+                lines.append(f"  - [{marker}] {b}")
+            if remaining:
+                lines.append(f"**Next to cover**: {remaining[0]}")
+
+        if ep:
+            lines.append(f"**Current Phase**: {ep.phase}")
+            lines.append(f"**Tutor Turns in Explanation**: {ep.tutor_turns_in_phase}")
+            lines.append(f"**Min Turns Required**: {current_step.min_explanation_turns}")
+            if ep.informal_check_passed:
+                lines.append("**Informal Check**: PASSED")
+
+        return "\n".join(lines)
 
     def _compute_student_style(self, session: SessionState) -> str:
         """Compute response-style guidance from student's communication patterns."""
@@ -398,6 +515,7 @@ class MasterTutorAgent(BaseAgent):
         # Compute dynamic signals
         pacing_directive = self._compute_pacing_directive(session)
         student_style = self._compute_student_style(session)
+        explanation_context = self._build_explanation_context(session)
 
         conversation = format_conversation_history(session.conversation_history, max_turns=10)
         if not conversation.strip():
@@ -408,6 +526,7 @@ class MasterTutorAgent(BaseAgent):
             total_steps=session.topic.study_plan.total_steps if session.topic else 0,
             current_step_info=current_step_info,
             content_hint=content_hint,
+            explanation_context=explanation_context,
             mastery_formatted=mastery_formatted,
             misconceptions=misconceptions,
             turn_timeline=turn_timeline,

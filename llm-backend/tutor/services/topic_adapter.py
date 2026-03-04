@@ -103,6 +103,15 @@ def _convert_study_plan(
         concept = item.get("title", f"Step {i}").strip()
         content_hint = item.get("description", "").strip()
 
+        # Build explanation sub-plan fields for explain steps
+        explanation_kwargs = {}
+        if step_type == "explain":
+            explanation_kwargs["explanation_approach"] = item.get("teaching_approach")
+            if item.get("building_blocks"):
+                explanation_kwargs["explanation_building_blocks"] = item["building_blocks"]
+            if item.get("analogy"):
+                explanation_kwargs["explanation_analogy"] = item["analogy"]
+
         step = StudyPlanStep(
             step_id=i,
             type=step_type,
@@ -110,6 +119,7 @@ def _convert_study_plan(
             content_hint=content_hint if step_type == "explain" else None,
             question_type="conceptual" if step_type == "check" else None,
             question_count=2 if step_type == "practice" else None,
+            **explanation_kwargs,
         )
         steps.append(step)
 
@@ -147,6 +157,9 @@ def _generate_default_plan(guideline: GuidelineResponse) -> StudyPlan:
             type="explain",
             concept=topic_name,
             content_hint=f"Introduce {topic_name} with a concrete example",
+            explanation_approach="real-world analogy",
+            explanation_building_blocks=[f"What is {topic_name}", f"Why {topic_name} matters"],
+            explanation_analogy=f"Everyday example that connects {topic_name} to the student's life",
         ),
         StudyPlanStep(
             step_id=2,
@@ -159,6 +172,9 @@ def _generate_default_plan(guideline: GuidelineResponse) -> StudyPlan:
             type="explain",
             concept=topic_name,
             content_hint=f"Deepen understanding of {topic_name}",
+            explanation_approach="progressive building",
+            explanation_building_blocks=[f"How {topic_name} works step by step", f"Special cases of {topic_name}"],
+            explanation_analogy=f"A different angle on {topic_name} using something the student already knows",
         ),
         StudyPlanStep(
             step_id=4,

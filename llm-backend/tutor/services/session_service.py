@@ -73,17 +73,7 @@ class SessionService:
                     },
                 )
 
-        # Load study plan from DB if available
-        study_plan_record = (
-            self.db.query(StudyPlanRecord)
-            .filter(StudyPlanRecord.guideline_id == request.goal.guideline_id)
-            .first()
-        )
-
-        # Convert DB guideline to new Topic model
-        topic = convert_guideline_to_topic(guideline, study_plan_record)
-
-        # Create student context
+        # Build student context FIRST (needed for personalized plan generation)
         if user_id:
             student_context = self._build_student_context_from_profile(user_id, request)
         else:
@@ -93,12 +83,46 @@ class SessionService:
                 language_level="simple" if request.student.grade <= 5 else "standard",
             )
 
+        # Load personalized study plan from DB (user_id + guideline_id)
+        study_plan_record = None
+        if user_id:
+            study_plan_record = (
+                self.db.query(StudyPlanRecord)
+                .filter(
+                    StudyPlanRecord.user_id == user_id,
+                    StudyPlanRecord.guideline_id == request.goal.guideline_id,
+                )
+                .first()
+            )
+        if not study_plan_record:
+            # Fallback: check for any existing plan for this guideline
+            study_plan_record = (
+                self.db.query(StudyPlanRecord)
+                .filter(StudyPlanRecord.guideline_id == request.goal.guideline_id)
+                .first()
+            )
+
+        # Generate personalized plan for teach_me mode if none exists
+        if not study_plan_record and mode == "teach_me" and user_id:
+            study_plan_record = self._generate_personalized_plan(
+                guideline, user_id, student_context
+            )
+
+        # Convert DB guideline to new Topic model
+        topic = convert_guideline_to_topic(guideline, study_plan_record)
+
         # Create mode-specific session
         session = create_session(topic=topic, student_context=student_context, mode=mode)
         session_id = str(uuid4())
         session.session_id = session_id
 
         logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode}")
+
+        # Initialize explanation phase if first step is "explain" (teach_me mode)
+        if mode == "teach_me":
+            first_step = session.topic.study_plan.get_step(1) if session.topic else None
+            if first_step and first_step.type == "explain":
+                session.start_explanation(first_step.concept, first_step.step_id)
 
         # For exam mode, generate questions before welcome (sync call)
         import asyncio
@@ -352,6 +376,72 @@ class SessionService:
             board=request.goal.syllabus.split(" ")[0] if request.goal.syllabus else "CBSE",
             language_level="simple" if request.student.grade <= 5 else "standard",
         )
+
+    def _generate_personalized_plan(
+        self,
+        guideline,
+        user_id: str,
+        student_context: StudentContext,
+    ) -> Optional[StudyPlanRecord]:
+        """Generate a personalized study plan for this student+guideline.
+
+        Returns the saved StudyPlanRecord, or None if generation fails.
+        """
+        try:
+            from shared.models.entities import TeachingGuideline as GuidelineEntity
+            from shared.services.llm_config_service import LLMConfigService
+            from shared.prompts import PromptLoader
+            from study_plans.services.generator_service import StudyPlanGeneratorService
+
+            # Load the ORM entity (generator expects TeachingGuideline, not GuidelineResponse)
+            guideline_entity = (
+                self.db.query(GuidelineEntity)
+                .filter(GuidelineEntity.id == guideline.id)
+                .first()
+            )
+            if not guideline_entity:
+                logger.warning(f"Guideline entity not found for {guideline.id}")
+                return None
+
+            # Create LLM service with study_plan_generator config
+            settings = get_settings()
+            gen_config = LLMConfigService(self.db).get_config("study_plan_generator")
+            gen_llm = LLMService(
+                api_key=settings.openai_api_key,
+                provider=gen_config["provider"],
+                model_id=gen_config["model_id"],
+                gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+                anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+            )
+
+            generator = StudyPlanGeneratorService(gen_llm, PromptLoader)
+            result = generator.generate_plan(guideline_entity, student_context=student_context)
+
+            # Save to DB
+            import json
+            record = StudyPlanRecord(
+                id=str(uuid4()),
+                guideline_id=guideline.id,
+                user_id=user_id,
+                plan_json=json.dumps(result["plan"]),
+                generator_model=result.get("model"),
+                generation_reasoning=result.get("reasoning"),
+                status="generated",
+            )
+            self.db.add(record)
+            self.db.commit()
+            self.db.refresh(record)
+
+            logger.info(f"Generated personalized study plan {record.id} for user={user_id} guideline={guideline.id}")
+            return record
+
+        except Exception as e:
+            logger.error(f"Failed to generate personalized plan: {e}", exc_info=True)
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            return None
 
     def _update_session_db(self, session_id: str, session: SessionState) -> None:
         """Update existing session in DB."""

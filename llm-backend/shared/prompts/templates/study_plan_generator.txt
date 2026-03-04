@@ -8,7 +8,7 @@ Topic: {topic}
 Grade Level: {grade}
 Guideline Content:
 {guideline_text}
-
+{student_personality_section}
 ## Requirements
 1. **Structure**: Create a plan with 3-5 distinct steps.
 2. **Engagement**: Each step MUST be creative and engaging. Use gamification, real-world analogies, or visual storytelling. Avoid boring, textbook-style descriptions.
@@ -25,6 +25,8 @@ Guideline Content:
       "description": "Short, fun description of the activity.",
       "teaching_approach": "Specific method (e.g., 'Visual + Gamification', 'Socratic Questioning')",
       "success_criteria": "Observable outcome that defines completion.",
+      "building_blocks": ["sub-idea 1 (simplest)", "sub-idea 2", "sub-idea 3 (most complex)"],
+      "analogy": "Age-appropriate real-world connection (e.g., 'Sharing a pizza equally among friends')",
       "status": "pending"
     }}
   ],
@@ -41,6 +43,9 @@ Guideline Content:
 - **Do not** simply say "Explain the concept". Instead say "Use a story about sharing cookies to explain fractions".
 - **Do not** make steps too long. 5-10 minutes per step is ideal.
 - **Do not** include quizzes as separate steps; integrate assessment into the playful activities.
+- Every explanation step MUST have `building_blocks` (2-4 sub-ideas, ordered simplest to most complex). These are the individual ideas the tutor will cover one per turn.
+- Every explanation step MUST have an `analogy` — an age-appropriate real-world connection the student can relate to.
 - The plan should be "ready to run" for an AI tutor.
+- **Personalization**: If student data is provided above, weave the student's interests into analogies and themes. Adapt pacing based on their attention span (shorter steps for "short", more detail for "long"). Set `is_generic: false` in metadata when student data is provided.
 
 Respond ONLY with the VALID JSON.

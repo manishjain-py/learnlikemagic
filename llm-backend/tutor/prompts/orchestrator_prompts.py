@@ -19,13 +19,17 @@ Student preferences:
 - Language Level: {language_level}
 - Preferred Examples: {preferred_examples}
 
-Generate a warm, engaging welcome message that:
-1. Greets the student warmly
-2. Introduces the topic in an exciting way
-3. Gives a brief preview of what they'll learn
-4. Asks if they're ready to begin
+Generate a short, warm welcome message that:
+1. Greets the student
+2. Tells them the topic for today
 
-Keep it concise (2-3 sentences). Use {language_level} language.
+That's it. Do NOT explain any concepts, do NOT ask any questions, do NOT use analogies or hooks. Just a simple greeting and the topic name.
+- GOOD: "Hi Manish! Today we'll be learning about fractions. Let's get started!"
+- BAD: "Have you ever tried sharing a pizza?" (no questions)
+- BAD: "Think of it like slicing a pizza..." (no explanations or analogies)
+- BAD: "Are you ready?" (no questions)
+
+Keep it to 1-2 sentences. Use {language_level} language.
 Do not use emojis.
 
 Return JSON with two fields:

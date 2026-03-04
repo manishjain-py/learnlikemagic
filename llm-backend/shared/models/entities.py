@@ -161,12 +161,13 @@ class TeachingGuideline(Base):
 
 
 class StudyPlan(Base):
-    """Pre-generated study plans for teaching guidelines (1:1 relationship)."""
+    """Pre-generated study plans for teaching guidelines (per-user personalized or generic)."""
     __tablename__ = "study_plans"
 
     id = Column(String, primary_key=True)
     guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"),
-                          nullable=False, unique=True)
+                          nullable=False)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
 
     # The plan JSON (same structure as PLANNER output)
     plan_json = Column(Text, nullable=False)
@@ -188,6 +189,7 @@ class StudyPlan(Base):
 
     __table_args__ = (
         Index("idx_study_plans_guideline", "guideline_id"),
+        Index("idx_study_plans_user_guideline", "user_id", "guideline_id", unique=True),
     )
 
 

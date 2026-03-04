@@ -339,9 +339,76 @@ class TeacherOrchestrator:
                 f"matched '{match.group()}' — response may contain internal language shown to student"
             )
 
+    def _handle_explanation_phase(self, session: SessionState, output: TutorTurnOutput) -> bool:
+        """Handle explanation phase lifecycle based on tutor output."""
+        current_step = session.current_step_data
+        if not current_step or current_step.type != "explain":
+            return False
+
+        changed = False
+
+        # Initialize explanation phase if not started
+        ep = session.get_current_explanation()
+        if ep is None or ep.step_id != current_step.step_id:
+            ep = session.start_explanation(current_step.concept, current_step.step_id)
+            changed = True
+
+        # Handle prior knowledge skip
+        if output.student_shows_prior_knowledge:
+            ep.skip_reason = "student_demonstrated_knowledge"
+            ep.phase = "complete"
+            session.current_explanation_concept = None
+            logger.info(
+                f"Explanation skipped for '{ep.concept}' — student demonstrated prior knowledge"
+            )
+            return True
+
+        # Apply phase transition from tutor output
+        if output.explanation_phase_update:
+            new_phase = output.explanation_phase_update
+            if new_phase in ("opening", "explaining", "informal_check", "complete"):
+                ep.phase = new_phase
+                changed = True
+            elif new_phase == "skip":
+                ep.phase = "complete"
+                ep.skip_reason = "tutor_skipped"
+                session.current_explanation_concept = None
+                return True
+
+        # Track building blocks covered
+        if output.explanation_building_blocks_covered:
+            for block in output.explanation_building_blocks_covered:
+                if block not in ep.building_blocks_covered:
+                    ep.building_blocks_covered.append(block)
+            changed = True
+
+        # Handle informal check result
+        if output.student_shows_understanding is not None:
+            if output.student_shows_understanding:
+                ep.informal_check_passed = True
+                ep.phase = "complete"
+                session.current_explanation_concept = None
+                changed = True
+            else:
+                ep.student_engaged = True
+                changed = True
+
+        # Increment turn counter
+        ep.tutor_turns_in_phase += 1
+
+        # Mark complete if phase is done
+        if ep.phase == "complete" and session.current_explanation_concept == current_step.concept:
+            session.current_explanation_concept = None
+
+        return changed
+
     def _apply_state_updates(self, session: SessionState, output: TutorTurnOutput) -> bool:
         """Apply structured state updates from master tutor output."""
         changed = False
+
+        # 0. Handle explanation phase lifecycle
+        if self._handle_explanation_phase(session, output):
+            changed = True
 
         # 1. Update mastery scores
         for update in output.mastery_updates:
@@ -360,15 +427,27 @@ class TeacherOrchestrator:
         if self._handle_question_lifecycle(session, output, current_concept):
             changed = True
 
-        # 4. Advance step + coverage tracking
+        # 4. Advance step + coverage tracking (with explanation guard)
         if output.advance_to_step and output.advance_to_step > session.current_step:
-            for step_id in range(session.current_step, output.advance_to_step):
-                step = session.topic.study_plan.get_step(step_id) if session.topic else None
-                if step:
-                    session.concepts_covered_set.add(step.concept)
-            while session.current_step < output.advance_to_step:
-                session.advance_step()
-            changed = True
+            # Check if current step is an explain step that isn't complete yet
+            current_step = session.current_step_data
+            if current_step and current_step.type == "explain" and not session.can_advance_past_explanation():
+                logger.info(
+                    f"Advancement to step {output.advance_to_step} blocked — "
+                    f"explanation for '{current_step.concept}' is not yet complete "
+                    f"(phase={session.get_current_explanation().phase if session.get_current_explanation() else 'none'})"
+                )
+            else:
+                for step_id in range(session.current_step, output.advance_to_step):
+                    step = session.topic.study_plan.get_step(step_id) if session.topic else None
+                    if step:
+                        session.concepts_covered_set.add(step.concept)
+                while session.current_step < output.advance_to_step:
+                    session.advance_step()
+                # Clear explanation concept when advancing past explain step
+                if current_step and current_step.type == "explain":
+                    session.current_explanation_concept = None
+                changed = True
 
         # 5. Track off-topic
         if output.intent == "off_topic":

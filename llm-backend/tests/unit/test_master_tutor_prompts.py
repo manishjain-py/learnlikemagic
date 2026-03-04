@@ -243,6 +243,8 @@ class TestBuildTurnPrompt:
     def test_pacing_accelerate(self):
         agent = _make_agent()
         session = _make_session(turn_count=5)
+        # Move to a check step (step 2) so ACCELERATE pacing applies instead of explain pacing
+        session.current_step = 2
         session.mastery_estimates = {"What is a fraction": 0.9, "Comparing fractions": 0.85}
         session.session_summary.progress_trend = "improving"
 
@@ -252,6 +254,8 @@ class TestBuildTurnPrompt:
     def test_pacing_simplify(self):
         agent = _make_agent()
         session = _make_session(turn_count=5)
+        # Move to a check step (step 2) so SIMPLIFY pacing applies instead of explain pacing
+        session.current_step = 2
         session.mastery_estimates = {"What is a fraction": 0.2, "Comparing fractions": 0.1}
         session.session_summary.progress_trend = "struggling"
 
@@ -371,6 +375,8 @@ class TestComputePacingDirective:
     def test_steady_pacing(self):
         agent = _make_agent()
         session = _make_session(turn_count=3)
+        # Move to a check step so explain pacing doesn't intercept
+        session.current_step = 2
         session.mastery_estimates = {"What is a fraction": 0.55}
         session.session_summary.progress_trend = "steady"
 
@@ -380,6 +386,8 @@ class TestComputePacingDirective:
     def test_consolidate_after_struggle(self):
         agent = _make_agent()
         session = _make_session(turn_count=5)
+        # Move to a check step so explain pacing doesn't intercept
+        session.current_step = 2
         session.mastery_estimates = {"What is a fraction": 0.5}
         session.session_summary.progress_trend = "steady"
         session.last_question = Question(

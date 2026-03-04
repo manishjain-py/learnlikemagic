@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getGuidelineSessions, GuidelineSessionEntry, TopicInfo } from '../api';
 
 const MODE_LOADING_MESSAGES: Record<string, string> = {
-  teach_me: 'Setting up your lesson...',
+  teach_me: 'Creating your personalized lesson plan...',
   clarify_doubts: 'Getting ready for your questions...',
   exam: 'Preparing your question paper...',
 };

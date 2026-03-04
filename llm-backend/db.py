@@ -89,6 +89,9 @@ def migrate():
         # Drop unused enrichment columns (simplified from 9 to 4 sections)
         _drop_unused_enrichment_columns(db_manager)
 
+        # Add user_id to study_plans for per-student personalized plans
+        _apply_study_plan_user_column(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -459,6 +462,48 @@ def _drop_unused_enrichment_columns(db_manager):
             if col in existing:
                 conn.execute(text(f"ALTER TABLE kid_enrichment_profiles DROP COLUMN {col}"))
                 print(f"  ✓ Dropped kid_enrichment_profiles.{col}")
+        conn.commit()
+
+
+def _apply_study_plan_user_column(db_manager):
+    """Add user_id column to study_plans for per-student personalized plans."""
+    inspector = inspect(db_manager.engine)
+
+    if "study_plans" not in inspector.get_table_names():
+        return  # Table doesn't exist yet, create_all will handle it
+
+    existing_columns = {col["name"] for col in inspector.get_columns("study_plans")}
+
+    with db_manager.engine.connect() as conn:
+        if "user_id" not in existing_columns:
+            print("  Adding user_id column to study_plans...")
+            conn.execute(text(
+                "ALTER TABLE study_plans ADD COLUMN user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE"
+            ))
+            print("  ✓ user_id column added")
+
+        # Drop old unique constraint on guideline_id (if exists)
+        existing_unique = {c["name"] for c in inspector.get_unique_constraints("study_plans")}
+        # Also check indexes that enforce uniqueness
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("study_plans")}
+        for name in list(existing_unique | existing_indexes):
+            # The old ORM-generated unique constraint name varies by DB
+            if name and "guideline_id" in name and "user" not in name:
+                try:
+                    conn.execute(text(f"ALTER TABLE study_plans DROP CONSTRAINT IF EXISTS {name}"))
+                except Exception:
+                    try:
+                        conn.execute(text(f"DROP INDEX IF EXISTS {name}"))
+                    except Exception:
+                        pass
+
+        # Create composite unique index (idempotent)
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_study_plans_user_guideline "
+            "ON study_plans(user_id, guideline_id)"
+        ))
+        print("  ✓ study_plans user_id migration complete")
+
         conn.commit()
 
 

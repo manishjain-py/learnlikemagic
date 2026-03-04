@@ -17,6 +17,21 @@ MasteryLevel = Literal["not_started", "needs_work", "developing", "adequate", "s
 
 SessionMode = Literal["teach_me", "clarify_doubts", "exam"]
 
+ExplanationPhaseName = Literal["not_started", "opening", "explaining", "informal_check", "complete"]
+
+
+class ExplanationPhase(BaseModel):
+    """Tracks the explanation lifecycle for a single concept."""
+
+    concept: str = Field(description="Concept being explained")
+    step_id: int = Field(description="Study plan step ID for this explanation")
+    phase: ExplanationPhaseName = Field(default="not_started", description="Current phase of explanation")
+    tutor_turns_in_phase: int = Field(default=0, description="Tutor turns spent in explanation so far")
+    building_blocks_covered: list[str] = Field(default_factory=list, description="Building blocks already covered")
+    student_engaged: bool = Field(default=False, description="Whether student has shown engagement")
+    informal_check_passed: bool = Field(default=False, description="Whether informal understanding check passed")
+    skip_reason: Optional[str] = Field(default=None, description="Reason explanation was skipped e.g. 'student_demonstrated_knowledge'")
+
 
 class Misconception(BaseModel):
     """A detected student misconception."""
@@ -151,6 +166,14 @@ class SessionState(BaseModel):
         description="Whether this Clarify Doubts session has been ended by the student"
     )
 
+    # Explanation tracking
+    explanation_phases: dict[str, ExplanationPhase] = Field(
+        default_factory=dict, description="Per-concept explanation phase tracking (keyed by concept name)"
+    )
+    current_explanation_concept: Optional[str] = Field(
+        default=None, description="Which concept is currently being explained"
+    )
+
     # Memory
     session_summary: SessionSummary = Field(default_factory=SessionSummary)
     conversation_history: list[Message] = Field(default_factory=list)
@@ -241,6 +264,45 @@ class SessionState(BaseModel):
     def increment_turn(self) -> None:
         self.turn_count += 1
         self.updated_at = datetime.utcnow()
+
+    # --- Explanation phase helpers ---
+
+    def start_explanation(self, concept: str, step_id: int) -> ExplanationPhase:
+        """Initialize explanation tracking for a concept."""
+        phase = ExplanationPhase(concept=concept, step_id=step_id, phase="opening")
+        self.explanation_phases[concept] = phase
+        self.current_explanation_concept = concept
+        self.updated_at = datetime.utcnow()
+        return phase
+
+    def get_current_explanation(self) -> Optional[ExplanationPhase]:
+        """Get the ExplanationPhase for the currently active concept."""
+        if not self.current_explanation_concept:
+            return None
+        return self.explanation_phases.get(self.current_explanation_concept)
+
+    def is_in_explanation_phase(self) -> bool:
+        """Check if we are currently in an active explanation."""
+        ep = self.get_current_explanation()
+        return ep is not None and ep.phase not in ("not_started", "complete")
+
+    def can_advance_past_explanation(self) -> bool:
+        """Check if the current explanation is complete enough to advance."""
+        ep = self.get_current_explanation()
+        if ep is None:
+            return True  # no explanation tracking → allow advancement
+        if ep.phase == "complete":
+            return True
+        if ep.skip_reason:
+            return True  # student demonstrated prior knowledge
+        if ep.informal_check_passed:
+            return True
+        # Check minimum turns
+        step = self.current_step_data
+        min_turns = step.min_explanation_turns if step and hasattr(step, 'min_explanation_turns') else 2
+        if ep.tutor_turns_in_phase >= min_turns and ep.phase == "informal_check":
+            return True
+        return False
 
 
 def create_session(

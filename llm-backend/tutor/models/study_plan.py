@@ -30,6 +30,12 @@ class StudyPlanStep(BaseModel):
     )
     question_count: Optional[int] = Field(default=None, ge=1, description="Number of questions (practice steps)")
 
+    # Explanation sub-plan fields (only used for explain steps)
+    explanation_approach: Optional[str] = Field(default=None, description="Teaching method e.g. 'visual analogy', 'storytelling'")
+    explanation_building_blocks: Optional[list[str]] = Field(default=None, description="Ordered sub-ideas to cover across turns")
+    explanation_analogy: Optional[str] = Field(default=None, description="Suggested real-world connection")
+    min_explanation_turns: int = Field(default=2, description="Minimum tutor turns in explanation before advancing")
+
 
 class StudyPlan(BaseModel):
     """Complete study plan with ordered steps."""
@@ -67,8 +73,23 @@ class Topic(BaseModel):
 
 # Factory Functions
 
-def create_explain_step(step_id: int, concept: str, content_hint: str) -> StudyPlanStep:
-    return StudyPlanStep(step_id=step_id, type="explain", concept=concept, content_hint=content_hint)
+def create_explain_step(
+    step_id: int,
+    concept: str,
+    content_hint: str,
+    explanation_approach: Optional[str] = None,
+    explanation_building_blocks: Optional[list[str]] = None,
+    explanation_analogy: Optional[str] = None,
+) -> StudyPlanStep:
+    return StudyPlanStep(
+        step_id=step_id,
+        type="explain",
+        concept=concept,
+        content_hint=content_hint,
+        explanation_approach=explanation_approach,
+        explanation_building_blocks=explanation_building_blocks,
+        explanation_analogy=explanation_analogy,
+    )
 
 
 def create_check_step(
