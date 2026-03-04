@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation, useOutletContext } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -79,11 +79,14 @@ export default function ChatSession() {
   const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
   const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
   const isSpeaking = playingMsgIdx !== null;
-  const [focusCardMsgIdx, setFocusCardMsgIdx] = useState<number | null>(null);
+  const [focusCardIdx, setFocusCardIdx] = useState<number | null>(null);
+  const focusDismissedRef = useRef(false);
   const lastTapRef = useRef<{ idx: number; time: number }>({ idx: -1, time: 0 });
-  const focusCardTouchStartY = useRef<number>(0);
-  const focusCardTranslateY = useRef<number>(0);
-  const focusCardRef = useRef<HTMLDivElement>(null);
+  const focusTrackRef = useRef<HTMLDivElement>(null);
+  const focusSwipeStartX = useRef(0);
+  const focusSwipeStartY = useRef(0);
+  const focusSwipeDir = useRef<'h' | 'v' | null>(null);
+  const prevFocusCardsLen = useRef(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -96,6 +99,37 @@ export default function ChatSession() {
   const subject = params.subject || '';
   const chapter = params.chapter || '';
   const topic = params.topic || '';
+
+  // Derive focus carousel cards: each card = tutor message + optional student reply
+  const focusCards = useMemo(() => {
+    const cards: { tutorMsg: Message; tutorIdx: number; studentMsg: Message | null }[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === 'teacher') {
+        const next = (i + 1 < messages.length && messages[i + 1].role === 'student')
+          ? messages[i + 1] : null;
+        cards.push({ tutorMsg: messages[i], tutorIdx: i, studentMsg: next });
+      }
+    }
+    return cards;
+  }, [messages]);
+
+  // Auto-advance carousel when new cards appear
+  useEffect(() => {
+    if (focusCardIdx === null || focusDismissedRef.current) return;
+    const prev = prevFocusCardsLen.current;
+    prevFocusCardsLen.current = focusCards.length;
+    if (focusCards.length > prev && prev > 0) {
+      // Only auto-advance if user was on the last card
+      if (focusCardIdx === prev - 1) {
+        setFocusCardIdx(focusCards.length - 1);
+        // Auto-play TTS for new card
+        const newCard = focusCards[focusCards.length - 1];
+        if (newCard && user?.focus_mode && !virtualTeacherOn) {
+          playTeacherAudio(newCard.tutorMsg.audioText || newCard.tutorMsg.content, newCard.tutorIdx);
+        }
+      }
+    }
+  }, [focusCards.length]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -190,9 +224,11 @@ export default function ChatSession() {
       if (virtualTeacherOn && locState.firstTurn.message) {
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
       }
-      // Auto-open focus card on first turn
+      // Auto-open focus carousel on first turn
       if (user?.focus_mode && !virtualTeacherOn) {
-        setFocusCardMsgIdx(0);
+        setFocusCardIdx(0);
+        prevFocusCardsLen.current = 1;
+        focusDismissedRef.current = false;
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 0);
       }
     } else if (locState?.conversationHistory) {
@@ -336,12 +372,7 @@ export default function ChatSession() {
         playTeacherAudio(response.next_turn.audio_text || response.next_turn.message);
       }
 
-      // Auto-open focus card on new tutor response
-      if (user?.focus_mode && !virtualTeacherOn && response.next_turn.message) {
-        const newIdx = messages.length + 1; // +1 because student msg was just added
-        setFocusCardMsgIdx(newIdx);
-        playTeacherAudio(response.next_turn.audio_text || response.next_turn.message, newIdx);
-      }
+      // Focus carousel auto-advance is handled by the useEffect watching focusCards.length
 
       // Update concepts discussed for clarify_doubts mode
       if (response.next_turn.concepts_discussed) {
@@ -561,9 +592,14 @@ export default function ChatSession() {
   const handleTeacherDoubleTap = (idx: number) => {
     const now = Date.now();
     if (lastTapRef.current.idx === idx && now - lastTapRef.current.time < 300) {
-      setFocusCardMsgIdx(idx);
-      if (user?.focus_mode && messages[idx]) {
-        playTeacherAudio(messages[idx].audioText || messages[idx].content, idx);
+      const cardIdx = focusCards.findIndex((c) => c.tutorIdx === idx);
+      if (cardIdx >= 0) {
+        setFocusCardIdx(cardIdx);
+        focusDismissedRef.current = false;
+        prevFocusCardsLen.current = focusCards.length;
+        if (user?.focus_mode && messages[idx]) {
+          playTeacherAudio(messages[idx].audioText || messages[idx].content, idx);
+        }
       }
       lastTapRef.current = { idx: -1, time: 0 };
     } else {
@@ -572,33 +608,52 @@ export default function ChatSession() {
   };
 
   const closeFocusCard = () => {
-    setFocusCardMsgIdx(null);
+    setFocusCardIdx(null);
+    focusDismissedRef.current = true;
     stopAudio();
   };
 
-  const handleFocusTouchStart = (e: React.TouchEvent) => {
-    focusCardTouchStartY.current = e.touches[0].clientY;
-    focusCardTranslateY.current = 0;
+  const handleFocusSwipeStart = (e: React.TouchEvent) => {
+    focusSwipeStartX.current = e.touches[0].clientX;
+    focusSwipeStartY.current = e.touches[0].clientY;
+    focusSwipeDir.current = null;
+    if (focusTrackRef.current) {
+      focusTrackRef.current.style.transition = 'none';
+    }
   };
 
-  const handleFocusTouchMove = (e: React.TouchEvent) => {
-    const dy = e.touches[0].clientY - focusCardTouchStartY.current;
-    if (dy > 0) {
-      focusCardTranslateY.current = dy;
-      if (focusCardRef.current) {
-        focusCardRef.current.style.transform = `translateY(${dy}px)`;
+  const handleFocusSwipeMove = (e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - focusSwipeStartX.current;
+    const dy = e.touches[0].clientY - focusSwipeStartY.current;
+
+    if (focusSwipeDir.current === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      focusSwipeDir.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    }
+
+    if (focusSwipeDir.current === 'h' && focusCardIdx !== null) {
+      const baseOffset = -(focusCardIdx * window.innerWidth);
+      if (focusTrackRef.current) {
+        focusTrackRef.current.style.transform = `translateX(${baseOffset + dx}px)`;
       }
     }
   };
 
-  const handleFocusTouchEnd = () => {
-    if (focusCardTranslateY.current > 120) {
-      closeFocusCard();
+  const handleFocusSwipeEnd = (e: React.TouchEvent) => {
+    let newIdx = focusCardIdx;
+    if (focusSwipeDir.current === 'h' && focusCardIdx !== null) {
+      const dx = e.changedTouches[0].clientX - focusSwipeStartX.current;
+      if (dx > 80 && focusCardIdx > 0) {
+        newIdx = focusCardIdx - 1;
+      } else if (dx < -80 && focusCardIdx < focusCards.length - 1) {
+        newIdx = focusCardIdx + 1;
+      }
+      if (newIdx !== focusCardIdx) setFocusCardIdx(newIdx);
     }
-    if (focusCardRef.current) {
-      focusCardRef.current.style.transform = '';
+    if (focusTrackRef.current && newIdx !== null) {
+      focusTrackRef.current.style.transition = 'transform 0.3s ease-out';
+      focusTrackRef.current.style.transform = `translateX(${-(newIdx * window.innerWidth)}px)`;
     }
-    focusCardTranslateY.current = 0;
+    focusSwipeDir.current = null;
   };
 
   if (replayLoading) {
@@ -1162,28 +1217,96 @@ export default function ChatSession() {
         />
       )}
 
-      {/* Focus Card Overlay */}
-      {focusCardMsgIdx !== null && messages[focusCardMsgIdx] && (
-        <div className="focus-card-backdrop" onClick={closeFocusCard}>
-          <div
-            ref={focusCardRef}
-            className="focus-card"
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={handleFocusTouchStart}
-            onTouchMove={handleFocusTouchMove}
-            onTouchEnd={handleFocusTouchEnd}
-          >
-            <div className="focus-card-drag-handle" />
-            <button className="focus-card-close" onClick={closeFocusCard} aria-label="Close focus card">
+      {/* Focus Carousel */}
+      {focusCardIdx !== null && focusCards.length > 0 && sessionMode !== 'exam' && !virtualTeacherOn && !isComplete && (
+        <div className="focus-carousel">
+          <div className="focus-header">
+            <button className="focus-exit-btn" onClick={closeFocusCard} aria-label="Exit focus mode">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
-            <div className="focus-card-content">
-              <ReactMarkdown>{messages[focusCardMsgIdx].content}</ReactMarkdown>
+            <span className="focus-counter">{(focusCardIdx ?? 0) + 1}/{focusCards.length}</span>
+          </div>
+          <div
+            className="focus-track-container"
+            onTouchStart={handleFocusSwipeStart}
+            onTouchMove={handleFocusSwipeMove}
+            onTouchEnd={handleFocusSwipeEnd}
+          >
+            <div
+              ref={focusTrackRef}
+              className="focus-track"
+              style={{
+                transform: `translateX(${-(focusCardIdx * window.innerWidth)}px)`,
+                transition: 'transform 0.3s ease-out',
+              }}
+            >
+              {focusCards.map((card, ci) => (
+                <div key={ci} className="focus-slide">
+                  <div className="focus-tutor-msg">
+                    <ReactMarkdown>{card.tutorMsg.content}</ReactMarkdown>
+                  </div>
+                  {card.studentMsg && (
+                    <div className="focus-student-msg">
+                      <div className="focus-student-label">You</div>
+                      {card.studentMsg.content}
+                    </div>
+                  )}
+                  {ci === focusCards.length - 1 && loading && (
+                    <div className="focus-typing">
+                      <div className="typing-indicator">
+                        <span></span><span></span><span></span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
+          {focusCardIdx === focusCards.length - 1 && !loading && !isComplete && (
+            <div className="focus-input-area">
+              <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                  disabled={loading || isTranscribing}
+                  className="input-field"
+                />
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  disabled={loading || isTranscribing}
+                  className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                  title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                  aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                >
+                  {isTranscribing ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 6v6l4 2" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <line x1="12" y1="19" x2="12" y2="23" />
+                      <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                  )}
+                </button>
+                <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" aria-label="Send">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5" />
+                    <polyline points="5 12 12 5 19 12" />
+                  </svg>
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       )}
     </>

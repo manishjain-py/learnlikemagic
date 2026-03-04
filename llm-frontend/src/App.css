@@ -2418,57 +2418,30 @@ body {
   background: rgba(0, 0, 0, 0.05);
 }
 
-/* ===== Focus Card ===== */
+/* ===== Focus Carousel ===== */
 
-.focus-card-backdrop {
+.focus-carousel {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
   z-index: 100;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  animation: focusBackdropIn 0.2s ease-out;
-}
-
-@keyframes focusBackdropIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.focus-card {
-  position: relative;
-  width: 100%;
-  max-width: 800px;
-  max-height: 90vh;
   background: white;
-  border-radius: 20px 20px 0 0;
-  overflow-y: auto;
-  padding: 20px 24px 40px;
-  animation: focusSlideUp 0.3s ease-out;
-  transition: transform 0.15s ease-out;
+  display: flex;
+  flex-direction: column;
 }
 
-@keyframes focusSlideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+.focus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
-.focus-card-drag-handle {
-  width: 40px;
-  height: 5px;
-  background: #d0d0d0;
-  border-radius: 3px;
-  margin: 0 auto 16px;
-}
-
-.focus-card-close {
-  position: absolute;
-  top: 14px;
-  right: 16px;
+.focus-exit-btn {
   background: #f0f0f0;
   border: none;
   border-radius: 50%;
@@ -2479,45 +2452,106 @@ body {
   justify-content: center;
   cursor: pointer;
   color: #555;
-  z-index: 2;
   transition: background 0.15s;
 }
 
-.focus-card-close:hover {
+.focus-exit-btn:hover {
   background: #e0e0e0;
 }
 
-.focus-card-content {
+.focus-counter {
+  font-size: 0.85rem;
+  color: #999;
+  font-weight: 500;
+}
+
+.focus-track-container {
+  flex: 1;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.focus-track {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+}
+
+.focus-slide {
+  flex: 0 0 100vw;
+  width: 100vw;
+  overflow-y: auto;
+  padding: 24px 20px 32px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.focus-tutor-msg {
   font-size: 1.3rem;
   line-height: 1.8;
   color: #222;
   padding: 8px 0;
 }
 
-.focus-card-content p {
+.focus-tutor-msg p {
   margin-bottom: 1em;
 }
 
-.focus-card-content strong {
+.focus-tutor-msg strong {
   color: #333;
   font-weight: 700;
 }
 
-.focus-card-content ul,
-.focus-card-content ol {
+.focus-tutor-msg ul,
+.focus-tutor-msg ol {
   margin-left: 1.2em;
   margin-bottom: 1em;
 }
 
-.focus-card-content li {
+.focus-tutor-msg li {
   margin-bottom: 0.5em;
 }
 
-.focus-card-content h1,
-.focus-card-content h2,
-.focus-card-content h3 {
+.focus-tutor-msg h1,
+.focus-tutor-msg h2,
+.focus-tutor-msg h3 {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
+}
+
+.focus-student-msg {
+  background: #eef2ff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 16px;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+.focus-student-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.focus-typing {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.focus-input-area {
+  border-top: 1px solid #e2e8f0;
+  padding: 12px 16px;
+  background: white;
+  flex-shrink: 0;
+}
+
+.focus-input-area .input-form {
+  margin: 0;
 }
 
 /* ===== Toggle Switch (Profile) ===== */
