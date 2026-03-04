@@ -2417,3 +2417,158 @@ body {
 .enrichment-home-dismiss:hover {
   background: rgba(0, 0, 0, 0.05);
 }
+
+/* ===== Focus Card ===== */
+
+.focus-card-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: focusBackdropIn 0.2s ease-out;
+}
+
+@keyframes focusBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.focus-card {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  background: white;
+  border-radius: 20px 20px 0 0;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+  animation: focusSlideUp 0.3s ease-out;
+  transition: transform 0.15s ease-out;
+}
+
+@keyframes focusSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.focus-card-drag-handle {
+  width: 40px;
+  height: 5px;
+  background: #d0d0d0;
+  border-radius: 3px;
+  margin: 0 auto 16px;
+}
+
+.focus-card-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #555;
+  z-index: 2;
+  transition: background 0.15s;
+}
+
+.focus-card-close:hover {
+  background: #e0e0e0;
+}
+
+.focus-card-content {
+  font-size: 1.3rem;
+  line-height: 1.8;
+  color: #222;
+  padding: 8px 0;
+}
+
+.focus-card-content p {
+  margin-bottom: 1em;
+}
+
+.focus-card-content strong {
+  color: #333;
+  font-weight: 700;
+}
+
+.focus-card-content ul,
+.focus-card-content ol {
+  margin-left: 1.2em;
+  margin-bottom: 1em;
+}
+
+.focus-card-content li {
+  margin-bottom: 0.5em;
+}
+
+.focus-card-content h1,
+.focus-card-content h2,
+.focus-card-content h3 {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+/* ===== Toggle Switch (Profile) ===== */
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ccc;
+  border-radius: 26px;
+  transition: background 0.25s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.25s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--color-primary);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(22px);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

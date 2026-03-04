@@ -79,6 +79,11 @@ export default function ChatSession() {
   const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
   const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
   const isSpeaking = playingMsgIdx !== null;
+  const [focusCardMsgIdx, setFocusCardMsgIdx] = useState<number | null>(null);
+  const lastTapRef = useRef<{ idx: number; time: number }>({ idx: -1, time: 0 });
+  const focusCardTouchStartY = useRef<number>(0);
+  const focusCardTranslateY = useRef<number>(0);
+  const focusCardRef = useRef<HTMLDivElement>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -184,6 +189,11 @@ export default function ChatSession() {
       // Auto-play first turn in virtual teacher mode
       if (virtualTeacherOn && locState.firstTurn.message) {
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
+      }
+      // Auto-open focus card on first turn
+      if (user?.focus_mode && !virtualTeacherOn) {
+        setFocusCardMsgIdx(0);
+        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 0);
       }
     } else if (locState?.conversationHistory) {
       // Resumed session
@@ -324,6 +334,13 @@ export default function ChatSession() {
       // Auto-play TTS in virtual teacher mode
       if (virtualTeacherOn && response.next_turn.message) {
         playTeacherAudio(response.next_turn.audio_text || response.next_turn.message);
+      }
+
+      // Auto-open focus card on new tutor response
+      if (user?.focus_mode && !virtualTeacherOn && response.next_turn.message) {
+        const newIdx = messages.length + 1; // +1 because student msg was just added
+        setFocusCardMsgIdx(newIdx);
+        playTeacherAudio(response.next_turn.audio_text || response.next_turn.message, newIdx);
       }
 
       // Update concepts discussed for clarify_doubts mode
@@ -541,6 +558,49 @@ export default function ChatSession() {
     setPlayingMsgIdx(null);
   };
 
+  const handleTeacherDoubleTap = (idx: number) => {
+    const now = Date.now();
+    if (lastTapRef.current.idx === idx && now - lastTapRef.current.time < 300) {
+      setFocusCardMsgIdx(idx);
+      if (user?.focus_mode && messages[idx]) {
+        playTeacherAudio(messages[idx].audioText || messages[idx].content, idx);
+      }
+      lastTapRef.current = { idx: -1, time: 0 };
+    } else {
+      lastTapRef.current = { idx, time: now };
+    }
+  };
+
+  const closeFocusCard = () => {
+    setFocusCardMsgIdx(null);
+    stopAudio();
+  };
+
+  const handleFocusTouchStart = (e: React.TouchEvent) => {
+    focusCardTouchStartY.current = e.touches[0].clientY;
+    focusCardTranslateY.current = 0;
+  };
+
+  const handleFocusTouchMove = (e: React.TouchEvent) => {
+    const dy = e.touches[0].clientY - focusCardTouchStartY.current;
+    if (dy > 0) {
+      focusCardTranslateY.current = dy;
+      if (focusCardRef.current) {
+        focusCardRef.current.style.transform = `translateY(${dy}px)`;
+      }
+    }
+  };
+
+  const handleFocusTouchEnd = () => {
+    if (focusCardTranslateY.current > 120) {
+      closeFocusCard();
+    }
+    if (focusCardRef.current) {
+      focusCardRef.current.style.transform = '';
+    }
+    focusCardTranslateY.current = 0;
+  };
+
   if (replayLoading) {
     return (
       <div className="app">
@@ -746,7 +806,11 @@ export default function ChatSession() {
           ) : sessionMode !== 'exam' ? (
           <div className="messages">
             {messages.map((msg, idx) => (
-              <div key={idx} className={`message ${msg.role}`} {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message' } : {})}>
+              <div
+                key={idx}
+                className={`message ${msg.role}`}
+                {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message', onClick: () => handleTeacherDoubleTap(idx) } : {})}
+              >
                 <div className="message-content">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
@@ -1096,6 +1160,31 @@ export default function ChatSession() {
           isOpen={devToolsOpen}
           onClose={() => setDevToolsOpen(false)}
         />
+      )}
+
+      {/* Focus Card Overlay */}
+      {focusCardMsgIdx !== null && messages[focusCardMsgIdx] && (
+        <div className="focus-card-backdrop" onClick={closeFocusCard}>
+          <div
+            ref={focusCardRef}
+            className="focus-card"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleFocusTouchStart}
+            onTouchMove={handleFocusTouchMove}
+            onTouchEnd={handleFocusTouchEnd}
+          >
+            <div className="focus-card-drag-handle" />
+            <button className="focus-card-close" onClick={closeFocusCard} aria-label="Close focus card">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <div className="focus-card-content">
+              <ReactMarkdown>{messages[focusCardMsgIdx].content}</ReactMarkdown>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -21,7 +21,8 @@ class ProfileService:
                        board: Optional[str] = None, school_name: Optional[str] = None,
                        about_me: Optional[str] = None,
                        text_language_preference: Optional[str] = None,
-                       audio_language_preference: Optional[str] = None):
+                       audio_language_preference: Optional[str] = None,
+                       focus_mode: Optional[bool] = None):
         fields = {}
         if name is not None:
             fields["name"] = name
@@ -41,6 +42,8 @@ class ProfileService:
             fields["text_language_preference"] = text_language_preference
         if audio_language_preference is not None:
             fields["audio_language_preference"] = audio_language_preference
+        if focus_mode is not None:
+            fields["focus_mode"] = focus_mode
 
         user = self.user_repo.update_profile(user_id, **fields)
 

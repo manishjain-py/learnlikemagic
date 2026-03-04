@@ -31,6 +31,7 @@ def _user_to_response(user) -> UserProfileResponse:
         about_me=user.about_me,
         text_language_preference=user.text_language_preference or 'en',
         audio_language_preference=user.audio_language_preference or 'en',
+        focus_mode=user.focus_mode or False,
         onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )
@@ -62,6 +63,7 @@ async def update_profile(
         about_me=request.about_me,
         text_language_preference=request.text_language_preference,
         audio_language_preference=request.audio_language_preference,
+        focus_mode=request.focus_mode,
     )
 
     # If personality-triggering fields changed and enrichment exists, trigger regen

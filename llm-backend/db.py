@@ -92,6 +92,9 @@ def migrate():
         # Add user_id to study_plans for per-student personalized plans
         _apply_study_plan_user_column(db_manager)
 
+        # Add focus_mode column to users
+        _apply_focus_mode_column(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -503,6 +506,20 @@ def _apply_study_plan_user_column(db_manager):
             "ON study_plans(user_id, guideline_id)"
         ))
         print("  ✓ study_plans user_id migration complete")
+
+        conn.commit()
+
+
+def _apply_focus_mode_column(db_manager):
+    """Add focus_mode column to users table if it doesn't exist."""
+    inspector = inspect(db_manager.engine)
+    existing_columns = {col["name"] for col in inspector.get_columns("users")}
+
+    with db_manager.engine.connect() as conn:
+        if "focus_mode" not in existing_columns:
+            print("  Adding focus_mode column to users...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN focus_mode BOOLEAN DEFAULT FALSE NOT NULL"))
+            print("  ✓ focus_mode column added")
 
         conn.commit()
 

@@ -18,6 +18,7 @@ class UserProfileResponse(BaseModel):
     about_me: Optional[str] = None
     text_language_preference: Optional[str] = 'en'
     audio_language_preference: Optional[str] = 'en'
+    focus_mode: bool = False
     onboarding_complete: bool
     auth_provider: str
 
@@ -33,6 +34,7 @@ class UpdateProfileRequest(BaseModel):
     about_me: Optional[str] = None
     text_language_preference: Optional[Literal['en', 'hi', 'hinglish']] = None
     audio_language_preference: Optional[Literal['en', 'hi', 'hinglish']] = None
+    focus_mode: Optional[bool] = None
 
 
 class ChangePasswordRequest(BaseModel):
