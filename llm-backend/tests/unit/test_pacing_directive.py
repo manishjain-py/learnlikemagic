@@ -16,16 +16,19 @@ def _make_session(turn_count=5, mastery=None, trend="steady", is_complete=False)
 
 
 def _make_session_with_step(turn_count=3, step_type="explain", concept="Addition",
-                            mastery=None, has_pending_question=False, concepts_covered=None):
+                            mastery=None, has_pending_question=False, concepts_covered=None,
+                            concepts_explained=None, content_hint=None):
     """Create a mock session with a current step for explain-first tests."""
     session = MagicMock()
     session.turn_count = turn_count
     session.mastery_estimates = mastery or {}
     session.last_question = MagicMock() if has_pending_question else None
     session.concepts_covered_set = concepts_covered or set()
+    session.concepts_explained = concepts_explained or set()
     session.current_step_data = MagicMock()
     session.current_step_data.type = step_type
     session.current_step_data.concept = concept
+    session.current_step_data.content_hint = content_hint
     return session
 
 
@@ -99,7 +102,7 @@ class TestExplainFirstDirective:
         session = _make_session_with_step(turn_count=2, step_type="explain", concept="Addition")
         result = agent._compute_explain_first_directive(session)
         assert "TEACHING PHASE" in result
-        assert "EXPLAIN" in result
+        assert "Addition" in result
 
     def test_check_step_new_concept_returns_teaching_phase(self):
         """On a check step with no mastery, should inject brief explanation guidance."""
@@ -162,3 +165,65 @@ class TestExplainFirstDirective:
         )
         result = agent._compute_explain_first_directive(session)
         assert "TEACHING PHASE" in result
+
+    def test_concept_already_explained_returns_empty(self):
+        """If concept is in concepts_explained, no explain-first needed."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            concepts_explained={"Addition"}
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_content_hint_included_in_directive(self):
+        """Content hint should be included in the explain-first directive."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            content_hint="Combining groups of objects"
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert "TEACHING PHASE" in result
+        assert "Combining groups of objects" in result
+
+    def test_no_content_hint_still_works(self):
+        """Directive should work fine without a content hint."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            content_hint=None
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert "TEACHING PHASE" in result
+        assert "content hint" not in result.lower()
+
+    def test_concept_explained_takes_priority_over_zero_mastery(self):
+        """concepts_explained should be checked before mastery — if explained, skip."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            mastery={"Addition": 0.0},
+            concepts_explained={"Addition"}
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_concept_name_in_directive(self):
+        """The concept name should appear in the directive for context."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=3, step_type="explain", concept="Multiplication"
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert "Multiplication" in result
+
+    def test_check_step_mentions_concept_explained_signal(self):
+        """Check step directive should tell tutor to set concept_explained."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="check", concept="Fractions"
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert "concept_explained" in result
+        assert "Fractions" in result

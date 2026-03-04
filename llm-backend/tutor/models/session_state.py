@@ -132,6 +132,14 @@ class SessionState(BaseModel):
         description="Set of concept names covered in this session"
     )
 
+    # Explanation tracking — concepts where the tutor has completed its explanation
+    # before moving to test questions. A concept is "explained" when the tutor
+    # signals it has adequately taught the idea and is ready to assess understanding.
+    concepts_explained: set[str] = Field(
+        default_factory=set,
+        description="Concepts where the tutor has completed its explanation phase"
+    )
+
     # Exam state
     exam_questions: list[ExamQuestion] = Field(default_factory=list)
     exam_current_question_idx: int = Field(default=0)
@@ -156,7 +164,7 @@ class SessionState(BaseModel):
     conversation_history: list[Message] = Field(default_factory=list)
     full_conversation_log: list[Message] = Field(default_factory=list)
 
-    @field_validator("concepts_covered_set", mode="before")
+    @field_validator("concepts_covered_set", "concepts_explained", mode="before")
     @classmethod
     def _coerce_to_set(cls, v):
         if isinstance(v, list):

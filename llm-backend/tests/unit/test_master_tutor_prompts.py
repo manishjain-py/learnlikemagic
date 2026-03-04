@@ -318,6 +318,7 @@ class TestSummarizeOutput:
             question_asked="Can you draw 1/2 of a pizza?",
             expected_answer="Half a pizza",
             question_concept="What is a fraction",
+            concept_explained="What is a fraction",
             turn_summary="Student understood basic fraction concept",
             reasoning="Student showed clear understanding.",
         )
@@ -327,6 +328,7 @@ class TestSummarizeOutput:
         assert summary["answer_correct"] is True
         assert summary["mastery_updates"] == {"What is a fraction": 0.8}
         assert summary["question_asked"] is True
+        assert summary["concept_explained"] == "What is a fraction"
         assert summary["response_length"] > 0
 
     def test_summarize_output_no_question(self):
@@ -341,6 +343,7 @@ class TestSummarizeOutput:
         assert summary["intent"] == "continuation"
         assert summary["question_asked"] is False
         assert summary["answer_correct"] is None
+        assert summary["concept_explained"] is None
 
 
 # ---------------------------------------------------------------------------

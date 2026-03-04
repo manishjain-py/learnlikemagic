@@ -79,6 +79,18 @@ class TutorTurnOutput(BaseModel):
         default=None, description="Which concept the question tests"
     )
 
+    # Explanation tracking
+    concept_explained: Optional[str] = Field(
+        default=None,
+        description=(
+            "When you have finished explaining a concept and the student appears to "
+            "understand (or you've given a thorough explanation), set this to the concept "
+            "name. This signals that you're ready to move from teaching to testing. "
+            "Do NOT set this on the same turn you start explaining — only after the "
+            "explanation feels complete."
+        ),
+    )
+
     # Session completion
     session_complete: bool = Field(
         default=False,
@@ -225,14 +237,10 @@ class MasterTutorAgent(BaseAgent):
         return " ".join(parts)
 
     def _compute_explain_first_directive(self, session: SessionState) -> str:
-        """Inject an EXPLAIN FIRST directive when the current concept is new and unexplained.
+        """Inject an EXPLAIN FIRST directive when the current concept needs teaching.
 
-        The tutor should teach a concept before testing the student on it.
-        This fires when:
-        - The current step exists and is an 'explain' or 'check' type
-        - The concept has no mastery data yet (never been assessed)
-        - There is no pending question (we're not mid-question-lifecycle)
-        - It's not the first turn (first turn has its own explain-focused pacing)
+        Uses `concepts_explained` (tutor-signaled) as the primary check for whether
+        a concept has been taught. Falls back to mastery data and coverage set.
         """
         if session.turn_count <= 1:
             return ""
@@ -242,9 +250,13 @@ class MasterTutorAgent(BaseAgent):
             return ""
 
         concept = step.concept
-        concept_mastery = session.mastery_estimates.get(concept)
 
-        # If the concept has already been assessed (any mastery score), skip
+        # If the tutor has already signaled this concept is explained, skip
+        if concept in session.concepts_explained:
+            return ""
+
+        # If the concept has real mastery data (student has been assessed), skip
+        concept_mastery = session.mastery_estimates.get(concept)
         if concept_mastery is not None and concept_mastery > 0.0:
             return ""
 
@@ -252,27 +264,33 @@ class MasterTutorAgent(BaseAgent):
         if session.last_question is not None:
             return ""
 
-        # Check if this concept has been covered in prior turns
+        # If concept was covered (e.g. via step advancement), skip
         if concept in session.concepts_covered_set:
             return ""
+
+        # Build the content hint context
+        hint_context = ""
+        if step.content_hint:
+            hint_context = f' The content hint for this step is: "{step.content_hint}" — use this as a starting point for your explanation.'
 
         # Concept is new and unexplained — tell the tutor to teach first
         if step.type == "explain":
             return (
-                "TEACHING PHASE: This concept is NEW to the student — they haven't learned it yet. "
-                "EXPLAIN it first before asking any test questions. Use a simple, fun everyday "
-                "example the student can relate to. You can break the explanation across multiple "
-                "turns if needed. Only move to questions once you've taught the idea and the "
-                "student signals they understand (or you've given a clear explanation). "
-                "You may ask light comprehension checks ('Does that make sense?', 'Can you "
-                "picture that?') but do NOT ask quiz-style questions yet."
+                f"TEACHING PHASE: The concept \"{concept}\" is NEW to the student — they "
+                "haven't learned it yet. Follow the explanation approach from your guidelines: "
+                "hook them with something relatable, introduce the core idea simply, build on it, "
+                "then check if they understand. Spread this across multiple messages — don't rush. "
+                "Do NOT ask quiz-style test questions yet. Light comprehension checks are fine "
+                "('Does that make sense?', 'Can you picture that?'). When you feel the explanation "
+                f"is complete, set `concept_explained` to \"{concept}\".{hint_context}"
             )
         elif step.type == "check":
             return (
-                "TEACHING PHASE: This is a CHECK step, but the student has no prior mastery of "
-                "this concept. Before checking understanding, give a brief, friendly explanation "
-                "of the concept (2-3 sentences with an example), then transition to your check "
-                "question naturally."
+                f"TEACHING PHASE: This is a CHECK step for \"{concept}\", but the student hasn't "
+                "learned this concept yet. Before checking understanding, give a brief, friendly "
+                "explanation (2-3 sentences with a concrete example), then transition naturally "
+                f"to your check question. Set `concept_explained` to \"{concept}\" in this turn "
+                "since you're explaining and checking together."
             )
 
         return ""
@@ -497,6 +515,7 @@ class MasterTutorAgent(BaseAgent):
                 "advance_to_step": output.advance_to_step,
                 "mastery_updates": {u.concept: u.score for u in output.mastery_updates},
                 "question_asked": output.question_asked is not None,
+                "concept_explained": output.concept_explained,
                 "response_length": len(output.response),
             }
         return super()._summarize_output(output)

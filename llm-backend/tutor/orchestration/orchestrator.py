@@ -231,6 +231,7 @@ class TeacherOrchestrator:
                     "answer_correct": tutor_output.answer_correct,
                     "advance_to_step": tutor_output.advance_to_step,
                     "question_asked": tutor_output.question_asked is not None,
+                    "concept_explained": tutor_output.concept_explained,
                     "session_complete": tutor_output.session_complete,
                 },
             )
@@ -356,26 +357,33 @@ class TeacherOrchestrator:
             session.add_misconception(current_concept, misconception)
             changed = True
 
-        # 3. Question lifecycle
+        # 3. Track concept explanation completion
+        if output.concept_explained:
+            session.concepts_explained.add(output.concept_explained)
+            changed = True
+
+        # 4. Question lifecycle
         if self._handle_question_lifecycle(session, output, current_concept):
             changed = True
 
-        # 4. Advance step + coverage tracking
+        # 5. Advance step + coverage tracking
         if output.advance_to_step and output.advance_to_step > session.current_step:
             for step_id in range(session.current_step, output.advance_to_step):
                 step = session.topic.study_plan.get_step(step_id) if session.topic else None
                 if step:
                     session.concepts_covered_set.add(step.concept)
+                    # Skipped concepts are implicitly "explained" (student doesn't need them)
+                    session.concepts_explained.add(step.concept)
             while session.current_step < output.advance_to_step:
                 session.advance_step()
             changed = True
 
-        # 5. Track off-topic
+        # 6. Track off-topic
         if output.intent == "off_topic":
             session.off_topic_count += 1
             changed = True
 
-        # 6. Handle session completion (only honor on final step to prevent premature endings)
+        # 7. Handle session completion (only honor on final step to prevent premature endings)
         if output.session_complete:
             total = session.topic.study_plan.total_steps if session.topic else 0
             if session.current_step >= total:
