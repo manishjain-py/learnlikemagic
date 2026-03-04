@@ -2459,6 +2459,39 @@ body {
   background: #e0e0e0;
 }
 
+.focus-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.focus-audio-btn {
+  background: #f0f0f0;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #555;
+  transition: background 0.15s, color 0.15s;
+}
+
+.focus-audio-btn:hover {
+  background: #e0e0e0;
+}
+
+.focus-audio-btn.playing {
+  background: var(--color-primary);
+  color: white;
+}
+
+.focus-audio-btn.playing:hover {
+  background: #5568d0;
+}
+
 .focus-counter {
   font-size: 0.85rem;
   color: #999;
