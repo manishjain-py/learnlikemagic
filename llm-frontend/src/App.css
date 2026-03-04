@@ -1,3 +1,24 @@
+:root {
+  --color-primary: #667eea;
+  --color-accent: #764ba2;
+  --gradient-brand: linear-gradient(135deg, #667eea, #764ba2);
+  --color-error: #e53e3e;
+  --color-success: #38a169;
+  --color-warning: #dd6b20;
+  --color-text: #333;
+  --color-text-secondary: #666;
+  --color-text-muted: #999;
+  --color-border: #e2e8f0;
+  --color-bg: #f5f5f5;
+  --color-bg-tinted: #f8f9ff;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --content-max-width: 600px;
+  --font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -5,12 +26,10 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #f5f5f5;
+  background: var(--color-bg);
 }
 
 .app {
@@ -1080,6 +1099,218 @@ body {
   color: #999;
 }
 
+/* ── AppShell content area ── */
+
+.app-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.app-content-inner {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+}
+
+/* Nav dropdown menu items */
+.nav-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.nav-dropdown-item:hover {
+  background: var(--color-bg-tinted);
+}
+
+.nav-dropdown-item--danger {
+  color: var(--color-error);
+}
+
+/* ── Shared page utility classes ── */
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}
+
+.page-subtitle {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.content-back-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.content-back-link:hover {
+  color: var(--color-accent);
+}
+
+.page-loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-muted);
+}
+
+.page-empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+
+.page-empty-state-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.page-empty-state-title {
+  font-size: 1.1rem;
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+
+.page-empty-state-desc {
+  color: var(--color-text-muted);
+  margin-bottom: 20px;
+}
+
+/* Mode filter buttons (history page) */
+.mode-filter-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.mode-filter-btn {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: white;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+}
+
+.mode-filter-btn--active {
+  border: 2px solid var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+/* Mode badge (history page) */
+.mode-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: white;
+  margin-left: 8px;
+}
+
+/* Exam Review classes */
+.exam-review-date {
+  font-size: 0.8rem;
+  color: #718096;
+  margin-bottom: 12px;
+}
+
+.exam-review-score {
+  text-align: center;
+  margin: 12px 0 16px;
+}
+
+.exam-review-score-value {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.exam-review-score-pct {
+  font-size: 0.9rem;
+  color: #718096;
+}
+
+.exam-review-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.exam-review-question {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.exam-review-question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.exam-review-question-num {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.exam-review-question-score {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.exam-review-question-text {
+  font-size: 0.85rem;
+  color: #2d3748;
+  margin-bottom: 6px;
+}
+
+.exam-review-answer {
+  font-size: 0.8rem;
+  color: #4a5568;
+  margin-bottom: 4px;
+}
+
+.exam-review-rationale {
+  font-size: 0.8rem;
+  color: #718096;
+  font-style: italic;
+  border-top: 1px solid var(--color-border);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+.exam-review-next-steps {
+  margin-bottom: 12px;
+}
+
+.exam-review-next-steps ul {
+  padding-left: 1.5rem;
+}
+
 /* OTP Input */
 .otp-container {
   display: flex;
@@ -1196,9 +1427,6 @@ body {
 }
 
 /* Profile Page */
-.profile-page {
-  max-width: 480px;
-}
 
 .profile-header {
   margin-bottom: 1rem;
@@ -1231,9 +1459,6 @@ body {
 }
 
 /* Session History */
-.history-page {
-  max-width: 520px;
-}
 
 .stats-grid {
   display: grid;
@@ -1322,10 +1547,6 @@ body {
 /* ──────────────────────────────────────────────
    Scorecard Page
    ────────────────────────────────────────────── */
-
-.scorecard-page {
-  max-width: 520px;
-}
 
 /* Stats line */
 .scorecard-stats-line {
@@ -1753,10 +1974,6 @@ body {
 }
 
 /* ── Enrichment Page ── */
-
-.enrichment-page {
-  max-width: 520px;
-}
 
 .enrichment-progress {
   margin-bottom: 1.5rem;

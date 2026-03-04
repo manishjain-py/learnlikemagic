@@ -217,10 +217,8 @@ export default function EnrichmentPage() {
 
   if (loading) {
     return (
-      <div className="auth-page">
-        <div className="auth-container" style={{ textAlign: 'center', padding: '3rem' }}>
-          Loading...
-        </div>
+      <div className="app-content-inner">
+        <p className="page-loading">Loading...</p>
       </div>
     );
   }
@@ -233,18 +231,17 @@ export default function EnrichmentPage() {
   ];
 
   return (
-    <div className="auth-page">
-      <div className="auth-container enrichment-page">
-        <div className="profile-header">
-          <button className="auth-back-btn" onClick={() => navigate('/profile')}>
-            &larr; Back to Profile
-          </button>
-          <h2 className="auth-title">Help us know {kidName} better</h2>
-          <p className="auth-subtitle">
-            The more we know, the more personalized the learning experience.
-            Fill in any sections you'd like &mdash; all optional!
-          </p>
-        </div>
+    <div className="app-content-inner">
+      <div className="profile-header">
+        <button className="content-back-link" onClick={() => navigate('/profile')}>
+          &larr; Back to Profile
+        </button>
+        <h2 className="page-title">Help us know {kidName} better</h2>
+        <p className="page-subtitle">
+          The more we know, the more personalized the learning experience.
+          Fill in any sections you'd like &mdash; all optional!
+        </p>
+      </div>
 
         {/* Progress indicator */}
         <div className="enrichment-progress">
@@ -398,7 +395,6 @@ export default function EnrichmentPage() {
             <p>Fill in any sections above and click Save — we'll create a personalized learning profile for {kidName}!</p>
           </div>
         )}
-      </div>
     </div>
   );
 }

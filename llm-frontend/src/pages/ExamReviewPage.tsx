@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getExamReview, ExamReviewResponse } from '../api';
-import { useStudentProfile } from '../hooks/useStudentProfile';
 import '../App.css';
 
 export default function ExamReviewPage() {
@@ -12,7 +11,6 @@ export default function ExamReviewPage() {
     topic: string;
     sessionId: string;
   }>();
-  const { grade } = useStudentProfile();
 
   const [data, setData] = useState<ExamReviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,28 +34,17 @@ export default function ExamReviewPage() {
 
   if (loading) {
     return (
-      <div className="app">
-        <header className="header">
-          <h1>Learn Like Magic</h1>
-          <p className="subtitle">Loading exam review...</p>
-        </header>
-        <div className="chat-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <p>Loading...</p>
-        </div>
+      <div className="app-content-inner">
+        <p className="page-loading">Loading exam review...</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="app">
-        <header className="header">
-          <h1>Learn Like Magic</h1>
-        </header>
-        <div className="chat-container" style={{ padding: '2rem', textAlign: 'center' }}>
-          <p style={{ color: '#e53e3e', marginBottom: '16px' }}>{error || 'Failed to load exam review'}</p>
-          <button onClick={handleBack} className="back-button">Go Back</button>
-        </div>
+      <div className="app-content-inner">
+        <div className="auth-error">{error || 'Failed to load exam review'}</div>
+        <button onClick={handleBack} className="content-back-link">Go Back</button>
       </div>
     );
   }
@@ -67,81 +54,69 @@ export default function ExamReviewPage() {
   const totalQuestions = feedback ? feedback.total : data.questions.length;
   const percentage = feedback ? feedback.percentage : (totalQuestions > 0 ? (totalScore / totalQuestions) * 100 : 0);
 
+  const getScoreColor = (pct: number) =>
+    pct >= 70 ? '#38a169' : pct >= 40 ? '#dd6b20' : '#e53e3e';
+
   return (
-    <div className="app">
-      <header className="header">
-        <h1>Learn Like Magic</h1>
-        <p className="subtitle">
-          Grade {grade}{subject && ` \u2022 ${subject}`}{chapter && ` \u2022 ${chapter}`}{topic && ` \u2022 ${topic}`}
+    <div className="app-content-inner">
+      <button className="content-back-link" onClick={handleBack}>
+        &larr; Back
+      </button>
+
+      <h2 className="page-title">Exam Review</h2>
+      {data.created_at && (
+        <p className="exam-review-date">
+          {new Date(data.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
         </p>
-      </header>
+      )}
 
-      <div className="chat-container">
-        <div className="summary-card" style={{ flex: 1, overflowY: 'auto' }}>
-          <button className="back-button" onClick={handleBack} style={{ marginBottom: '12px' }}>
-            ← Back
-          </button>
-
-          <h2>Exam Review</h2>
-          {data.created_at && (
-            <p style={{ fontSize: '0.8rem', color: '#718096', marginBottom: '12px' }}>
-              {new Date(data.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-            </p>
-          )}
-
-          <div style={{ textAlign: 'center', margin: '12px 0 16px' }}>
-            <div style={{
-              fontSize: '2rem',
-              fontWeight: 700,
-              color: percentage >= 70 ? '#38a169' : percentage >= 40 ? '#dd6b20' : '#e53e3e',
-            }}>
-              {totalScore % 1 === 0 ? totalScore.toFixed(0) : totalScore.toFixed(1)}/{totalQuestions}
-            </div>
-            <div style={{ fontSize: '0.9rem', color: '#718096' }}>{percentage.toFixed(1)}%</div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-            {data.questions.map((r) => {
-              const scoreColor = r.score >= 0.8 ? '#38a169' : r.score >= 0.2 ? '#dd6b20' : '#e53e3e';
-              return (
-                <div key={r.question_idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#fafafa' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Q{r.question_idx + 1}</span>
-                    <span style={{ fontWeight: 700, color: scoreColor, fontSize: '0.9rem' }}>
-                      {r.score % 1 === 0 ? r.score.toFixed(0) : r.score.toFixed(1)}/1
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', color: '#2d3748', marginBottom: '6px' }}>{r.question_text}</p>
-                  <div style={{ fontSize: '0.8rem', color: '#4a5568', marginBottom: '4px' }}>
-                    <strong>Your answer:</strong> {r.student_answer || '(no answer)'}
-                  </div>
-                  {r.expected_answer && (
-                    <div style={{ fontSize: '0.8rem', color: '#4a5568', marginBottom: '4px' }}>
-                      <strong>Expected:</strong> {r.expected_answer}
-                    </div>
-                  )}
-                  {r.marks_rationale && (
-                    <div style={{ fontSize: '0.8rem', color: '#718096', fontStyle: 'italic', borderTop: '1px solid #e2e8f0', paddingTop: '6px', marginTop: '6px' }}>
-                      {r.marks_rationale}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {feedback && feedback.next_steps && feedback.next_steps.length > 0 && (
-            <div style={{ marginBottom: '12px' }}>
-              <strong>Next Steps:</strong>
-              <ul>
-                {feedback.next_steps.map((s: string, i: number) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+      <div className="exam-review-score">
+        <div className="exam-review-score-value" style={{ color: getScoreColor(percentage) }}>
+          {totalScore % 1 === 0 ? totalScore.toFixed(0) : totalScore.toFixed(1)}/{totalQuestions}
         </div>
+        <div className="exam-review-score-pct">{percentage.toFixed(1)}%</div>
       </div>
+
+      <div className="exam-review-questions">
+        {data.questions.map((r) => {
+          const scoreColor = r.score >= 0.8 ? '#38a169' : r.score >= 0.2 ? '#dd6b20' : '#e53e3e';
+          return (
+            <div key={r.question_idx} className="exam-review-question">
+              <div className="exam-review-question-header">
+                <span className="exam-review-question-num">Q{r.question_idx + 1}</span>
+                <span className="exam-review-question-score" style={{ color: scoreColor }}>
+                  {r.score % 1 === 0 ? r.score.toFixed(0) : r.score.toFixed(1)}/1
+                </span>
+              </div>
+              <p className="exam-review-question-text">{r.question_text}</p>
+              <div className="exam-review-answer">
+                <strong>Your answer:</strong> {r.student_answer || '(no answer)'}
+              </div>
+              {r.expected_answer && (
+                <div className="exam-review-answer">
+                  <strong>Expected:</strong> {r.expected_answer}
+                </div>
+              )}
+              {r.marks_rationale && (
+                <div className="exam-review-rationale">
+                  {r.marks_rationale}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {feedback && feedback.next_steps && feedback.next_steps.length > 0 && (
+        <div className="exam-review-next-steps">
+          <strong>Next Steps:</strong>
+          <ul>
+            {feedback.next_steps.map((s: string, i: number) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

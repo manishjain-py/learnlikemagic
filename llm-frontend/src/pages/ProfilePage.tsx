@@ -12,7 +12,7 @@ const BOARDS = ['CBSE', 'ICSE', 'State Board', 'Other'];
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { user, token, logout, refreshProfile } = useAuth();
+  const { user, token, refreshProfile } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
   const [preferredName, setPreferredName] = useState(user?.preferred_name || '');
@@ -64,174 +64,158 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
   return (
-    <div className="auth-page">
-      <div className="auth-container profile-page">
-        <div className="profile-header">
-          <button className="auth-back-btn" onClick={() => navigate('/')}>
-            ← Back
-          </button>
-          <h2 className="auth-title">Profile & Settings</h2>
+    <div className="app-content-inner">
+      <h2 className="page-title">Profile & Settings</h2>
+
+      {error && <div className="auth-error">{error}</div>}
+      {success && <div className="auth-success">{success}</div>}
+
+      <form onSubmit={handleSave} className="auth-form">
+        <div className="auth-field">
+          <label>Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!editing}
+          />
         </div>
 
-        {error && <div className="auth-error">{error}</div>}
-        {success && <div className="auth-success">{success}</div>}
+        <div className="auth-field">
+          <label>Preferred name</label>
+          <input
+            type="text"
+            value={preferredName}
+            onChange={(e) => setPreferredName(e.target.value)}
+            placeholder="What should we call you?"
+            disabled={!editing}
+          />
+        </div>
 
-        <form onSubmit={handleSave} className="auth-form">
-          <div className="auth-field">
-            <label>Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={!editing}
-            />
-          </div>
+        <div className="auth-field">
+          <label>Age</label>
+          <input
+            type="number"
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
+            min={5}
+            max={18}
+            disabled={!editing}
+          />
+        </div>
 
-          <div className="auth-field">
-            <label>Preferred name</label>
-            <input
-              type="text"
-              value={preferredName}
-              onChange={(e) => setPreferredName(e.target.value)}
-              placeholder="What should we call you?"
-              disabled={!editing}
-            />
-          </div>
+        <div className="auth-field">
+          <label>Grade</label>
+          <select
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            disabled={!editing}
+          >
+            <option value="">Select grade</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </div>
 
-          <div className="auth-field">
-            <label>Age</label>
-            <input
-              type="number"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              min={5}
-              max={18}
-              disabled={!editing}
-            />
-          </div>
+        <div className="auth-field">
+          <label>Board</label>
+          <select
+            value={board}
+            onChange={(e) => setBoard(e.target.value)}
+            disabled={!editing}
+          >
+            <option value="">Select board</option>
+            {BOARDS.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
 
-          <div className="auth-field">
-            <label>Grade</label>
-            <select
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              disabled={!editing}
-            >
-              <option value="">Select grade</option>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="auth-field">
-            <label>Board</label>
-            <select
-              value={board}
-              onChange={(e) => setBoard(e.target.value)}
-              disabled={!editing}
-            >
-              <option value="">Select board</option>
-              {BOARDS.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="auth-field">
-            <label>School (optional)</label>
-            <input
-              type="text"
-              value={schoolName}
-              onChange={(e) => setSchoolName(e.target.value)}
-              placeholder="School name"
-              disabled={!editing}
-            />
-          </div>
-
-          <div className="profile-section">
-            <h3>Language Preferences</h3>
-            <div className="auth-field">
-              <label>Text language</label>
-              <select
-                value={textLang}
-                onChange={(e) => setTextLang(e.target.value)}
-                disabled={!editing}
-              >
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="hinglish">Hinglish (Hindi + English)</option>
-              </select>
-            </div>
-            <div className="auth-field">
-              <label>Audio language</label>
-              <select
-                value={audioLang}
-                onChange={(e) => setAudioLang(e.target.value)}
-                disabled={!editing}
-              >
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="hinglish">Hinglish (Hindi + English)</option>
-              </select>
-            </div>
-          </div>
-
-          {editing ? (
-            <div className="profile-actions">
-              <button type="submit" className="auth-btn auth-btn-primary" disabled={loading}>
-                {loading ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button
-                type="button"
-                className="auth-btn auth-btn-outline"
-                onClick={() => setEditing(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="auth-btn auth-btn-outline"
-              onClick={() => setEditing(true)}
-            >
-              Edit Profile
-            </button>
-          )}
-        </form>
-
-        {/* Enrichment CTA */}
-        <div
-          className="enrichment-cta"
-          onClick={() => navigate('/profile/enrichment')}
-          style={{ cursor: 'pointer' }}
-        >
-          <div className="enrichment-cta-content">
-            <h3>Help us know {user?.preferred_name || user?.name || 'your child'} better</h3>
-            <p>Tell us about their interests, learning style, and personality to personalize their experience.</p>
-          </div>
-          <span className="enrichment-cta-arrow">&rarr;</span>
+        <div className="auth-field">
+          <label>School (optional)</label>
+          <input
+            type="text"
+            value={schoolName}
+            onChange={(e) => setSchoolName(e.target.value)}
+            placeholder="School name"
+            disabled={!editing}
+          />
         </div>
 
         <div className="profile-section">
-          <h3>Account</h3>
-          <p className="profile-info">
-            Signed in via {user?.auth_provider || 'email'}
-            {user?.email && ` (${user.email})`}
-            {user?.phone && ` (${user.phone})`}
-          </p>
+          <h3>Language Preferences</h3>
+          <div className="auth-field">
+            <label>Text language</label>
+            <select
+              value={textLang}
+              onChange={(e) => setTextLang(e.target.value)}
+              disabled={!editing}
+            >
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+              <option value="hinglish">Hinglish (Hindi + English)</option>
+            </select>
+          </div>
+          <div className="auth-field">
+            <label>Audio language</label>
+            <select
+              value={audioLang}
+              onChange={(e) => setAudioLang(e.target.value)}
+              disabled={!editing}
+            >
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+              <option value="hinglish">Hinglish (Hindi + English)</option>
+            </select>
+          </div>
         </div>
 
-        <button className="auth-btn auth-btn-danger" onClick={handleLogout}>
-          Log Out
-        </button>
+        {editing ? (
+          <div className="profile-actions">
+            <button type="submit" className="auth-btn auth-btn-primary" disabled={loading}>
+              {loading ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button
+              type="button"
+              className="auth-btn auth-btn-outline"
+              onClick={() => setEditing(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="auth-btn auth-btn-outline"
+            onClick={() => setEditing(true)}
+          >
+            Edit Profile
+          </button>
+        )}
+      </form>
+
+      {/* Enrichment CTA */}
+      <div
+        className="enrichment-cta"
+        onClick={() => navigate('/profile/enrichment')}
+        style={{ cursor: 'pointer' }}
+      >
+        <div className="enrichment-cta-content">
+          <h3>Help us know {user?.preferred_name || user?.name || 'your child'} better</h3>
+          <p>Tell us about their interests, learning style, and personality to personalize their experience.</p>
+        </div>
+        <span className="enrichment-cta-arrow">&rarr;</span>
+      </div>
+
+      <div className="profile-section">
+        <h3>Account</h3>
+        <p className="profile-info">
+          Signed in via {user?.auth_provider || 'email'}
+          {user?.email && ` (${user.email})`}
+          {user?.phone && ` (${user.phone})`}
+        </p>
       </div>
     </div>
   );

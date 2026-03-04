@@ -21,6 +21,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import OnboardingGuard from './components/OnboardingGuard';
+import AppShell from './components/AppShell';
 
 // Auth pages
 import LoginPage from './pages/LoginPage';
@@ -40,7 +41,6 @@ import SessionHistoryPage from './pages/SessionHistoryPage';
 import ScorecardPage from './pages/ScorecardPage';
 
 // Learn pages
-import LearnLayout from './pages/LearnLayout';
 import SubjectSelect from './pages/SubjectSelect';
 import ChapterSelect from './pages/ChapterSelect';
 import TopicSelect from './pages/TopicSelect';
@@ -79,21 +79,32 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Learn routes (protected, nested under LearnLayout) */}
-          <Route path="/learn" element={
+          {/* All authenticated post-onboarding routes under AppShell */}
+          <Route element={
             <ProtectedRoute>
               <OnboardingGuard>
-                <LearnLayout />
+                <AppShell />
               </OnboardingGuard>
             </ProtectedRoute>
           }>
-            <Route index element={<SubjectSelect />} />
-            <Route path=":subject" element={<ChapterSelect />} />
-            <Route path=":subject/:chapter" element={<TopicSelect />} />
-            <Route path=":subject/:chapter/:topic" element={<ModeSelectPage />} />
+            {/* Learn routes */}
+            <Route path="/learn" element={<SubjectSelect />} />
+            <Route path="/learn/:subject" element={<ChapterSelect />} />
+            <Route path="/learn/:subject/:chapter" element={<TopicSelect />} />
+            <Route path="/learn/:subject/:chapter/:topic" element={<ModeSelectPage />} />
+            <Route path="/learn/:subject/:chapter/:topic/exam-review/:sessionId" element={<ExamReviewPage />} />
+
+            {/* Profile & settings */}
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/profile/enrichment" element={<EnrichmentPage />} />
+
+            {/* History & scorecard */}
+            <Route path="/history" element={<SessionHistoryPage />} />
+            <Route path="/scorecard" element={<ScorecardPage />} />
+            <Route path="/report-card" element={<ScorecardPage />} />
           </Route>
 
-          {/* Session routes nested under learn context */}
+          {/* Chat session routes — OUTSIDE AppShell (own nav-bar) */}
           <Route path="/learn/:subject/:chapter/:topic/teach/:sessionId" element={
             <ProtectedRoute>
               <OnboardingGuard>
@@ -115,13 +126,6 @@ function App() {
               </OnboardingGuard>
             </ProtectedRoute>
           } />
-          <Route path="/learn/:subject/:chapter/:topic/exam-review/:sessionId" element={
-            <ProtectedRoute>
-              <OnboardingGuard>
-                <ExamReviewPage />
-              </OnboardingGuard>
-            </ProtectedRoute>
-          } />
 
           {/* Backward compat: old session URL */}
           <Route path="/session/:sessionId" element={
@@ -134,36 +138,6 @@ function App() {
 
           {/* Backward compat: redirect / to /learn */}
           <Route path="/" element={<Navigate to="/learn" replace />} />
-
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          } />
-
-          <Route path="/profile/enrichment" element={
-            <ProtectedRoute>
-              <EnrichmentPage />
-            </ProtectedRoute>
-          } />
-
-          <Route path="/history" element={
-            <ProtectedRoute>
-              <SessionHistoryPage />
-            </ProtectedRoute>
-          } />
-
-          <Route path="/scorecard" element={
-            <ProtectedRoute>
-              <ScorecardPage />
-            </ProtectedRoute>
-          } />
-
-          <Route path="/report-card" element={
-            <ProtectedRoute>
-              <ScorecardPage />
-            </ProtectedRoute>
-          } />
 
           {/* Admin routes */}
           <Route path="/admin" element={<Navigate to="/admin/books-v2" replace />} />

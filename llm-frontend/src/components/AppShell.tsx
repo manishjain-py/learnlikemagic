@@ -1,33 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getModelConfig } from '../api';
 import '../App.css';
 
-const menuItemStyle: React.CSSProperties = {
-  display: 'block',
-  width: '100%',
-  padding: '10px 16px',
-  border: 'none',
-  background: 'none',
-  textAlign: 'left' as const,
-  fontSize: '0.9rem',
-  cursor: 'pointer',
-  color: '#333',
-};
-
-export default function LearnLayout() {
+export default function AppShell() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [modelLabel, setModelLabel] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    getModelConfig()
-      .then((config) => setModelLabel(config.tutor?.description || config.tutor?.model_id || ''))
-      .catch(() => setModelLabel(''));
-  }, []);
 
   // Close menu on outside click
   useEffect(() => {
@@ -71,21 +51,25 @@ export default function LearnLayout() {
           </button>
           {showUserMenu && (
             <div className="nav-dropdown">
-              <button onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
-                style={menuItemStyle}>Profile</button>
-              <button onClick={() => { setShowUserMenu(false); navigate('/history'); }}
-                style={menuItemStyle}>My Sessions</button>
-              <button onClick={() => { setShowUserMenu(false); navigate('/scorecard'); }}
-                style={menuItemStyle}>My Scorecard</button>
-              <button onClick={handleLogout}
-                style={{ ...menuItemStyle, color: '#e53e3e' }}>Log Out</button>
+              <button className="nav-dropdown-item" onClick={() => { setShowUserMenu(false); navigate('/profile'); }}>
+                Profile
+              </button>
+              <button className="nav-dropdown-item" onClick={() => { setShowUserMenu(false); navigate('/history'); }}>
+                My Sessions
+              </button>
+              <button className="nav-dropdown-item" onClick={() => { setShowUserMenu(false); navigate('/scorecard'); }}>
+                My Scorecard
+              </button>
+              <button className="nav-dropdown-item nav-dropdown-item--danger" onClick={handleLogout}>
+                Log Out
+              </button>
             </div>
           )}
         </div>
       </nav>
 
-      <div className="selection-container">
-        <Outlet context={{ modelLabel }} />
+      <div className="app-content">
+        <Outlet />
       </div>
     </div>
   );

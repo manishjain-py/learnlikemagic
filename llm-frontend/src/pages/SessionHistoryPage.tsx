@@ -109,150 +109,128 @@ export default function SessionHistoryPage() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-container history-page">
-        <button className="auth-back-btn" onClick={() => navigate('/')}>
-          ← Back
+    <div className="app-content-inner">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 className="page-title">My Sessions</h2>
+        <button
+          className="auth-link"
+          onClick={() => navigate('/scorecard')}
+          style={{ fontSize: '0.85rem' }}
+        >
+          View Scorecard &rarr;
         </button>
+      </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="auth-title">My Sessions</h2>
+      {/* Stats summary */}
+      {stats && stats.total_sessions > 0 && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span className="stat-value">{stats.total_sessions}</span>
+            <span className="stat-label">Sessions</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{(stats.average_mastery * 100).toFixed(0)}%</span>
+            <span className="stat-label">Avg Mastery</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{stats.topics_covered.length}</span>
+            <span className="stat-label">Topics</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{stats.total_steps}</span>
+            <span className="stat-label">Steps</span>
+          </div>
+        </div>
+      )}
+
+      <div className="mode-filter-group">
+        {['all', 'teach_me', 'clarify_doubts', 'exam'].map((mode) => (
           <button
-            className="auth-link"
-            onClick={() => navigate('/scorecard')}
-            style={{ fontSize: '0.85rem' }}
+            key={mode}
+            onClick={() => setModeFilter(mode)}
+            className={`mode-filter-btn${modeFilter === mode ? ' mode-filter-btn--active' : ''}`}
           >
-            View Scorecard &rarr;
+            {mode === 'all' ? 'All' : getModeLabel(mode)}
+          </button>
+        ))}
+      </div>
+
+      {/* Session list */}
+      {loading ? (
+        <p className="page-loading">Loading...</p>
+      ) : sessions.length === 0 ? (
+        <div className="page-empty-state">
+          <p className="page-empty-state-title">No sessions yet</p>
+          <p className="page-empty-state-desc">Start learning to see your history here</p>
+          <button
+            className="auth-btn auth-btn-primary"
+            onClick={() => navigate('/')}
+            style={{ marginTop: '16px' }}
+          >
+            Start a Session
           </button>
         </div>
-
-        {/* Stats summary */}
-        {stats && stats.total_sessions > 0 && (
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-value">{stats.total_sessions}</span>
-              <span className="stat-label">Sessions</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{(stats.average_mastery * 100).toFixed(0)}%</span>
-              <span className="stat-label">Avg Mastery</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{stats.topics_covered.length}</span>
-              <span className="stat-label">Topics</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{stats.total_steps}</span>
-              <span className="stat-label">Steps</span>
-            </div>
-          </div>
-        )}
-
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-              {['all', 'teach_me', 'clarify_doubts', 'exam'].map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setModeFilter(mode)}
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: '16px',
-                    border: modeFilter === mode ? '2px solid #667eea' : '1px solid #ddd',
-                    background: modeFilter === mode ? '#667eea' : 'white',
-                    color: modeFilter === mode ? 'white' : '#666',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {mode === 'all' ? 'All' : getModeLabel(mode)}
-                </button>
-              ))}
-            </div>
-
-        {/* Session list */}
-        {loading ? (
-          <p style={{ textAlign: 'center', padding: '2rem' }}>Loading...</p>
-        ) : sessions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-            <p style={{ fontSize: '1.1rem', color: '#666' }}>No sessions yet</p>
-            <p style={{ color: '#999', marginTop: '8px' }}>Start learning to see your history here</p>
-            <button
-              className="auth-btn auth-btn-primary"
-              onClick={() => navigate('/')}
-              style={{ marginTop: '16px' }}
-            >
-              Start a Session
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="session-list">
-              {sessions
-                .filter((s) => modeFilter === 'all' || s.mode === modeFilter)
-                .map((session) => (
-                <div key={session.session_id} className="session-card">
-                  <div className="session-card-header">
-                    <span className="session-topic">
-                      {session.topic_name || 'Unknown Topic'}
-                    </span>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '2px 8px',
-                        borderRadius: '10px',
-                        fontSize: '0.7rem',
-                        fontWeight: 500,
-                        background: getModeBadgeColor(session.mode || 'teach_me'),
-                        color: 'white',
-                        marginLeft: '8px',
-                      }}
-                    >
-                      {getModeLabel(session.mode || 'teach_me')}
-                    </span>
-                    <span
-                      className="session-mastery"
-                      style={{ color: getMasteryColor(session.mastery) }}
-                    >
-                      {session.mode === 'exam' && session.exam_score !== undefined
-                        ? `${session.exam_score}/${session.exam_total}`
-                        : session.mode === 'clarify_doubts' && session.concepts_discussed
-                        ? `${session.concepts_discussed.length} concepts`
-                        : `${(session.mastery * 100).toFixed(0)}%`}
-                    </span>
-                  </div>
-                  <div className="session-card-meta">
-                    {session.subject && (
-                      <span className="session-subject">{session.subject}</span>
-                    )}
-                    <span className="session-date">{formatDate(session.created_at)}</span>
-                    <span className="session-steps">{session.step_idx} steps</span>
-                  </div>
+      ) : (
+        <>
+          <div className="session-list">
+            {sessions
+              .filter((s) => modeFilter === 'all' || s.mode === modeFilter)
+              .map((session) => (
+              <div key={session.session_id} className="session-card">
+                <div className="session-card-header">
+                  <span className="session-topic">
+                    {session.topic_name || 'Unknown Topic'}
+                  </span>
+                  <span
+                    className="mode-badge"
+                    style={{ background: getModeBadgeColor(session.mode || 'teach_me') }}
+                  >
+                    {getModeLabel(session.mode || 'teach_me')}
+                  </span>
+                  <span
+                    className="session-mastery"
+                    style={{ color: getMasteryColor(session.mastery) }}
+                  >
+                    {session.mode === 'exam' && session.exam_score !== undefined
+                      ? `${session.exam_score}/${session.exam_total}`
+                      : session.mode === 'clarify_doubts' && session.concepts_discussed
+                      ? `${session.concepts_discussed.length} concepts`
+                      : `${(session.mastery * 100).toFixed(0)}%`}
+                  </span>
                 </div>
-              ))}
-            </div>
-
-            {/* Pagination */}
-            {total > 10 && (
-              <div className="pagination">
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage(page - 1)}
-                  className="auth-link"
-                >
-                  Previous
-                </button>
-                <span>Page {page} of {Math.ceil(total / 10)}</span>
-                <button
-                  disabled={page * 10 >= total}
-                  onClick={() => setPage(page + 1)}
-                  className="auth-link"
-                >
-                  Next
-                </button>
+                <div className="session-card-meta">
+                  {session.subject && (
+                    <span className="session-subject">{session.subject}</span>
+                  )}
+                  <span className="session-date">{formatDate(session.created_at)}</span>
+                  <span className="session-steps">{session.step_idx} steps</span>
+                </div>
               </div>
-            )}
-          </>
-        )}
-      </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {total > 10 && (
+            <div className="pagination">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(page - 1)}
+                className="auth-link"
+              >
+                Previous
+              </button>
+              <span>Page {page} of {Math.ceil(total / 10)}</span>
+              <button
+                disabled={page * 10 >= total}
+                onClick={() => setPage(page + 1)}
+                className="auth-link"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

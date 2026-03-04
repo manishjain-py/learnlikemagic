@@ -16,7 +16,7 @@ import {
 } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 
-// ── Sub-components ─────────────────────────────────
+// -- Sub-components --
 
 function SubjectCards({
   subjects,
@@ -125,11 +125,11 @@ function SubjectDetailView({
 }) {
   return (
     <>
-      <button className="auth-back-btn" onClick={onBack}>
+      <button className="content-back-link" onClick={onBack}>
         &larr; Report Card
       </button>
       <div className="scorecard-subject-header">
-        <h2 className="auth-title">{subject.subject}</h2>
+        <h2 className="page-title">{subject.subject}</h2>
       </div>
 
       <div className="scorecard-section">
@@ -148,7 +148,7 @@ function SubjectDetailView({
   );
 }
 
-// ── Main Page ──────────────────────────────────────
+// -- Main Page --
 
 export default function ScorecardPage() {
   const navigate = useNavigate();
@@ -207,14 +207,9 @@ export default function ScorecardPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="auth-page">
-        <div className="auth-container scorecard-page">
-          <button className="auth-back-btn" onClick={() => navigate('/learn')}>
-            &larr; Back
-          </button>
-          <h2 className="auth-title">My Report Card</h2>
-          <p style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>Loading...</p>
-        </div>
+      <div className="app-content-inner">
+        <h2 className="page-title">My Report Card</h2>
+        <p className="page-loading">Loading...</p>
       </div>
     );
   }
@@ -222,17 +217,12 @@ export default function ScorecardPage() {
   // Error state
   if (error) {
     return (
-      <div className="auth-page">
-        <div className="auth-container scorecard-page">
-          <button className="auth-back-btn" onClick={() => navigate('/learn')}>
-            &larr; Back
-          </button>
-          <h2 className="auth-title">My Report Card</h2>
-          <div className="auth-error">{error}</div>
-          <button className="auth-btn auth-btn-primary" onClick={fetchScorecard}>
-            Retry
-          </button>
-        </div>
+      <div className="app-content-inner">
+        <h2 className="page-title">My Report Card</h2>
+        <div className="auth-error">{error}</div>
+        <button className="auth-btn auth-btn-primary" onClick={fetchScorecard}>
+          Retry
+        </button>
       </div>
     );
   }
@@ -240,27 +230,20 @@ export default function ScorecardPage() {
   // Empty state
   if (!data || data.total_sessions === 0) {
     return (
-      <div className="auth-page">
-        <div className="auth-container scorecard-page">
-          <button className="auth-back-btn" onClick={() => navigate('/learn')}>
-            &larr; Back
+      <div className="app-content-inner">
+        <h2 className="page-title">My Report Card</h2>
+        <div className="page-empty-state">
+          <div className="page-empty-state-icon">&#128202;</div>
+          <p className="page-empty-state-title">Your report card is empty!</p>
+          <p className="page-empty-state-desc">
+            Complete a learning session to see your progress across subjects and topics.
+          </p>
+          <button
+            className="auth-btn auth-btn-primary"
+            onClick={() => navigate('/learn')}
+          >
+            Start Learning
           </button>
-          <h2 className="auth-title">My Report Card</h2>
-          <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>&#128202;</div>
-            <p style={{ fontSize: '1.1rem', color: '#333', marginBottom: '8px' }}>
-              Your report card is empty!
-            </p>
-            <p style={{ color: '#888', marginBottom: '20px' }}>
-              Complete a learning session to see your progress across subjects and topics.
-            </p>
-            <button
-              className="auth-btn auth-btn-primary"
-              onClick={() => navigate('/learn')}
-            >
-              Start Learning
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -269,35 +252,28 @@ export default function ScorecardPage() {
   // Subject detail view
   if (selectedSubject) {
     return (
-      <div className="auth-page">
-        <div className="auth-container scorecard-page">
-          <SubjectDetailView
-            subject={selectedSubject}
-            onBack={() => setSelectedSubject(null)}
-            onPractice={handlePracticeAgain}
-            practicing={practicing}
-          />
-        </div>
+      <div className="app-content-inner">
+        <SubjectDetailView
+          subject={selectedSubject}
+          onBack={() => setSelectedSubject(null)}
+          onPractice={handlePracticeAgain}
+          practicing={practicing}
+        />
       </div>
     );
   }
 
   // Overview
   return (
-    <div className="auth-page">
-      <div className="auth-container scorecard-page">
-        <button className="auth-back-btn" onClick={() => navigate('/learn')}>
-          &larr; Back
-        </button>
-        <h2 className="auth-title">My Report Card</h2>
-        <p className="scorecard-stats-line">
-          {data.total_sessions} session{data.total_sessions !== 1 ? 's' : ''}
-          {' \u00B7 '}
-          {data.total_chapters_studied} chapter{data.total_chapters_studied !== 1 ? 's' : ''} studied
-        </p>
+    <div className="app-content-inner">
+      <h2 className="page-title">My Report Card</h2>
+      <p className="scorecard-stats-line">
+        {data.total_sessions} session{data.total_sessions !== 1 ? 's' : ''}
+        {' \u00B7 '}
+        {data.total_chapters_studied} chapter{data.total_chapters_studied !== 1 ? 's' : ''} studied
+      </p>
 
-        <SubjectCards subjects={data.subjects} onSelect={setSelectedSubject} />
-      </div>
+      <SubjectCards subjects={data.subjects} onSelect={setSelectedSubject} />
     </div>
   );
 }
