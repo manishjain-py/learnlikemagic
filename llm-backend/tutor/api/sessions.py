@@ -23,7 +23,7 @@ from shared.models import (
     ExamReviewResponse,
     ExamReviewQuestion,
 )
-from tutor.services import SessionService, ScorecardService
+from tutor.services import SessionService, ReportCardService
 from tutor.models.agent_logs import get_agent_log_store
 from tutor.models.session_state import SessionState
 from tutor.models.messages import (
@@ -110,8 +110,8 @@ def get_report_card(
     db: DBSession = Depends(get_db),
 ):
     """Get student report card with coverage and exam data."""
-    service = ScorecardService(db)
-    return service.get_scorecard(current_user.id)
+    service = ReportCardService(db)
+    return service.get_report_card(current_user.id)
 
 
 @router.get("/topic-progress", response_model=TopicProgressResponse)
@@ -120,7 +120,7 @@ def get_topic_progress(
     db: DBSession = Depends(get_db),
 ):
     """Get lightweight topic progress for topic selection indicators."""
-    service = ScorecardService(db)
+    service = ReportCardService(db)
     return service.get_topic_progress(current_user.id)
 
 

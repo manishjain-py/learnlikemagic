@@ -38,7 +38,7 @@ import OnboardingFlow from './pages/OnboardingFlow';
 import ProfilePage from './pages/ProfilePage';
 import EnrichmentPage from './pages/EnrichmentPage';
 import SessionHistoryPage from './pages/SessionHistoryPage';
-import ScorecardPage from './pages/ScorecardPage';
+import ReportCardPage from './pages/ReportCardPage';
 
 // Learn pages
 import SubjectSelect from './pages/SubjectSelect';
@@ -98,10 +98,9 @@ function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/profile/enrichment" element={<EnrichmentPage />} />
 
-            {/* History & scorecard */}
+            {/* History & report card */}
             <Route path="/history" element={<SessionHistoryPage />} />
-            <Route path="/scorecard" element={<ScorecardPage />} />
-            <Route path="/report-card" element={<ScorecardPage />} />
+            <Route path="/report-card" element={<ReportCardPage />} />
           </Route>
 
           {/* Chat session routes — OUTSIDE AppShell (own nav-bar) */}

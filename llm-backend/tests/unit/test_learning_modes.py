@@ -1,5 +1,5 @@
 """
-Tests for learning modes feature: session state modes, scorecard revision nudge,
+Tests for learning modes feature: session state modes, report card revision nudge,
 exam service, and new REST endpoints (resumable, pause, resume, end-exam).
 """
 
@@ -21,7 +21,7 @@ from tutor.models.study_plan import (
     StudyPlanStep,
 )
 from tutor.models.messages import StudentContext
-from tutor.services.scorecard_service import ScorecardService
+from tutor.services.report_card_service import ReportCardService
 from tutor.services.exam_service import ExamService, ExamGenerationError
 
 
@@ -423,16 +423,16 @@ class TestExamFeedbackModel:
 
 
 # ===========================================================================
-# 2. ScorecardService._get_revision_nudge tests
+# 2. ReportCardService._get_revision_nudge tests
 # ===========================================================================
 
 class TestGetRevisionNudge:
-    """Tests for ScorecardService._get_revision_nudge as a standalone method."""
+    """Tests for ReportCardService._get_revision_nudge as a standalone method."""
 
     def _make_service(self):
-        """Create a ScorecardService with a mocked DB session."""
+        """Create a ReportCardService with a mocked DB session."""
         mock_db = MagicMock()
-        return ScorecardService(mock_db)
+        return ReportCardService(mock_db)
 
     def test_returns_none_when_last_studied_is_none(self):
         svc = self._make_service()

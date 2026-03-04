@@ -1,4 +1,4 @@
-"""Scorecard aggregation service — builds student progress report from session data.
+"""Report card aggregation service — builds student progress report from session data.
 
 Returns only deterministic metrics:
 - Coverage completion % (teach_me sessions only)
@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session as DBSession
 
 from shared.models.entities import Session as SessionModel, TeachingGuideline
 
-logger = logging.getLogger("tutor.scorecard_service")
+logger = logging.getLogger("tutor.report_card_service")
 
 
-class ScorecardService:
+class ReportCardService:
     """Aggregates session data into a deterministic student report card."""
 
     def __init__(self, db: DBSession):
@@ -24,7 +24,7 @@ class ScorecardService:
 
     # ── Public API ──────────────────────────────────────────────
 
-    def get_scorecard(self, user_id: str) -> dict:
+    def get_report_card(self, user_id: str) -> dict:
         """
         Build the complete report card for a student.
 
@@ -35,7 +35,7 @@ class ScorecardService:
         """
         sessions = self._load_user_sessions(user_id)
         if not sessions:
-            return self._empty_scorecard()
+            return self._empty_report_card()
 
         guideline_lookup = self._build_guideline_lookup(sessions)
         grouped = self._group_sessions(sessions, guideline_lookup)
@@ -309,7 +309,7 @@ class ScorecardService:
 
         return subjects_data
 
-    def _empty_scorecard(self) -> dict:
+    def _empty_report_card(self) -> dict:
         """Return empty report card for users with no sessions."""
         return {
             "total_sessions": 0,

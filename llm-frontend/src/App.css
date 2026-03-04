@@ -1556,22 +1556,22 @@ body {
 }
 
 /* ──────────────────────────────────────────────
-   Scorecard Page
+   Report Card Page
    ────────────────────────────────────────────── */
 
 /* Stats line */
-.scorecard-stats-line {
+.reportcard-stats-line {
   font-size: 0.9rem;
   color: #888;
   margin-bottom: 1.5rem;
 }
 
 /* Sections */
-.scorecard-section {
+.reportcard-section {
   margin-bottom: 1.5rem;
 }
 
-.scorecard-section-title {
+.reportcard-section-title {
   font-size: 0.85rem;
   font-weight: 600;
   color: #888;
@@ -1581,13 +1581,13 @@ body {
 }
 
 /* Subject cards grid */
-.scorecard-subject-grid {
+.reportcard-subject-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
 }
 
-.scorecard-subject-card {
+.reportcard-subject-card {
   padding: 16px;
   background: white;
   border: 2px solid #e0e0e0;
@@ -1600,26 +1600,26 @@ body {
   gap: 8px;
 }
 
-.scorecard-subject-card:hover {
+.reportcard-subject-card:hover {
   border-color: #667eea;
   background: #f8f9ff;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
 }
 
-.scorecard-subject-card-header {
+.reportcard-subject-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.scorecard-subject-name {
+.reportcard-subject-name {
   font-weight: 600;
   font-size: 1rem;
   color: #333;
 }
 
-.scorecard-subject-meta {
+.reportcard-subject-meta {
   font-size: 0.8rem;
   color: #888;
 }
@@ -1640,13 +1640,13 @@ body {
 }
 
 /* Coverage & exam score labels */
-.scorecard-coverage {
+.reportcard-coverage {
   font-size: 0.8rem;
   font-weight: 600;
   color: #667eea;
 }
 
-.scorecard-exam-score {
+.reportcard-exam-score {
   font-size: 0.8rem;
   font-weight: 600;
   color: #38a169;
@@ -1656,7 +1656,7 @@ body {
 }
 
 /* Subject detail header */
-.scorecard-subject-header {
+.reportcard-subject-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1664,7 +1664,7 @@ body {
 }
 
 /* Chapter section */
-.scorecard-chapter-section {
+.reportcard-chapter-section {
   background: white;
   border: 1px solid #eee;
   border-radius: 10px;
@@ -1672,33 +1672,33 @@ body {
   margin-bottom: 10px;
 }
 
-.scorecard-chapter-header {
+.reportcard-chapter-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
 }
 
-.scorecard-chapter-name {
+.reportcard-chapter-name {
   font-weight: 600;
   font-size: 0.95rem;
   color: #333;
 }
 
 /* Topic rows */
-.scorecard-topic-list {
+.reportcard-topic-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.scorecard-topic-row {
+.reportcard-topic-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.scorecard-topic-toggle {
+.reportcard-topic-toggle {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1710,27 +1710,27 @@ body {
   text-align: left;
 }
 
-.scorecard-topic-name {
+.reportcard-topic-name {
   font-size: 0.9rem;
   color: #333;
   font-weight: 500;
 }
 
-.scorecard-topic-right {
+.reportcard-topic-right {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 /* Topic detail */
-.scorecard-topic-detail {
+.reportcard-topic-detail {
   padding: 6px 0 4px;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.scorecard-topic-meta {
+.reportcard-topic-meta {
   font-size: 0.8rem;
   color: #888;
   margin: 8px 0;

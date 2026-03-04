@@ -88,8 +88,8 @@ export default function AppShell() {
               <button className="nav-dropdown-item" onClick={() => { setShowUserMenu(false); navigate('/history'); }}>
                 My Sessions
               </button>
-              <button className="nav-dropdown-item" onClick={() => { setShowUserMenu(false); navigate('/scorecard'); }}>
-                My Scorecard
+              <button className="nav-dropdown-item" onClick={() => { setShowUserMenu(false); navigate('/report-card'); }}>
+                My Report Card
               </button>
               <button className="nav-dropdown-item nav-dropdown-item--danger" onClick={handleLogout}>
                 Log Out

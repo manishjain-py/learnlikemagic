@@ -1078,11 +1078,11 @@ export default function ChatSession() {
                     Back to Topic
                   </button>
                   <button
-                    onClick={() => navigate('/scorecard')}
+                    onClick={() => navigate('/report-card')}
                     className="restart-button"
                     style={{ marginTop: '10px', background: 'white', color: '#667eea', border: '2px solid #667eea' }}
                   >
-                    View Scorecard
+                    View Report Card
                   </button>
                 </>
               )}

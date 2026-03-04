@@ -304,33 +304,33 @@
       ]
     },
     {
-      "name": "Scorecard",
-      "route": "/scorecard",
+      "name": "Report Card",
+      "route": "/report-card",
       "scenarios": [
         {
-          "id": "scorecard-001",
-          "name": "Scorecard overview page loads with mastery ring",
+          "id": "reportcard-001",
+          "name": "Report card overview page loads with mastery ring",
           "steps": [
-            { "action": "navigate", "url": "/scorecard" },
-            { "action": "waitForSelector", "selector": ".scorecard-page, .empty-state, h2", "timeout": 15000 },
-            { "action": "screenshot", "label": "scorecard-overview" }
+            { "action": "navigate", "url": "/report-card" },
+            { "action": "waitForSelector", "selector": ".reportcard-page, .empty-state, h2", "timeout": 15000 },
+            { "action": "screenshot", "label": "reportcard-overview" }
           ],
           "assertions": [
             { "type": "visible", "selector": "button" }
           ]
         },
         {
-          "id": "scorecard-detail-001",
+          "id": "reportcard-detail-001",
           "name": "Click subject card to see chapter/topic detail",
           "steps": [
-            { "action": "navigate", "url": "/scorecard" },
-            { "action": "waitForSelector", "selector": "[data-testid='scorecard-subject-card']", "timeout": 15000 },
-            { "action": "click", "selector": "[data-testid='scorecard-subject-card']:first-child" },
-            { "action": "waitForSelector", "selector": ".scorecard-chapter-section", "timeout": 10000 },
-            { "action": "screenshot", "label": "scorecard-subject-detail" }
+            { "action": "navigate", "url": "/report-card" },
+            { "action": "waitForSelector", "selector": "[data-testid='reportcard-subject-card']", "timeout": 15000 },
+            { "action": "click", "selector": "[data-testid='reportcard-subject-card']:first-child" },
+            { "action": "waitForSelector", "selector": ".reportcard-chapter-section", "timeout": 10000 },
+            { "action": "screenshot", "label": "reportcard-subject-detail" }
           ],
           "assertions": [
-            { "type": "visible", "selector": ".scorecard-chapter-section" }
+            { "type": "visible", "selector": ".reportcard-chapter-section" }
           ]
         }
       ]
