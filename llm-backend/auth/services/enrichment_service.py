@@ -11,33 +11,21 @@ from auth.models.enrichment_schemas import (
     EnrichmentProfileRequest,
     EnrichmentProfileResponse,
     EnrichmentUpdateResponse,
-    MyWorldEntry,
-    PersonalityTrait,
 )
 from shared.models.entities import KidEnrichmentProfile
 
 logger = logging.getLogger(__name__)
 
-# DB columns grouped by PRD section number (1-9)
+# DB columns for the 4 enrichment sections shown in the UI
 _SECTION_CHECKS = [
     # Section 1: Interests & Hobbies
     lambda p: bool(p.interests),
-    # Section 2: My World
-    lambda p: bool(p.my_world),
-    # Section 3: How They Learn
+    # Section 2: How They Learn
     lambda p: bool(p.learning_styles),
-    # Section 4: What Motivates
+    # Section 3: What Motivates
     lambda p: bool(p.motivations),
-    # Section 5: Superpowers
-    lambda p: bool(p.strengths),
-    # Section 6: Areas to Grow
+    # Section 4: Challenges
     lambda p: bool(p.growth_areas),
-    # Section 7: Personality
-    lambda p: bool(p.personality_traits),
-    # Section 8: Favorites & Fun Facts (any of 4 fields)
-    lambda p: bool(p.favorite_media) or bool(p.favorite_characters) or bool(p.memorable_experience) or bool(p.aspiration),
-    # Section 9: Parent's Notes
-    lambda p: bool(p.parent_notes),
 ]
 
 
@@ -72,16 +60,9 @@ class EnrichmentService:
 
         return EnrichmentProfileResponse(
             interests=profile.interests,
-            my_world=[MyWorldEntry(**e) for e in profile.my_world] if profile.my_world else None,
             learning_styles=profile.learning_styles,
             motivations=profile.motivations,
-            strengths=profile.strengths,
             growth_areas=profile.growth_areas,
-            personality_traits=[PersonalityTrait(**e) for e in profile.personality_traits] if profile.personality_traits else None,
-            favorite_media=profile.favorite_media,
-            favorite_characters=profile.favorite_characters,
-            memorable_experience=profile.memorable_experience,
-            aspiration=profile.aspiration,
             parent_notes=profile.parent_notes,
             attention_span=profile.attention_span,
             pace_preference=profile.pace_preference,
@@ -98,13 +79,7 @@ class EnrichmentService:
         fields = {}
         for field_name, value in request.model_dump(exclude_unset=True).items():
             if value is not None:
-                # Convert Pydantic models to dicts for JSONB storage
-                if field_name == "my_world":
-                    fields[field_name] = [e.model_dump() if hasattr(e, 'model_dump') else e for e in value]
-                elif field_name == "personality_traits":
-                    fields[field_name] = [e.model_dump() if hasattr(e, 'model_dump') else e for e in value]
-                else:
-                    fields[field_name] = value
+                fields[field_name] = value
 
         if not fields:
             profile = self.enrichment_repo.get_by_user_id(user_id)
@@ -166,16 +141,16 @@ class EnrichmentService:
             return True
 
     def has_meaningful_data(self, profile: KidEnrichmentProfile) -> bool:
-        """Returns True if any enrichment data exists (sections or session preferences)."""
+        """Returns True if any enrichment data exists (sections, open textbox, or session preferences)."""
         if not profile:
             return False
-        # Any of the 9 sections or session preferences counts
+        # Any of the 4 sections, open textbox, or session preferences counts
         if any(check(profile) for check in _SECTION_CHECKS):
             return True
-        return bool(profile.attention_span) or bool(profile.pace_preference)
+        return bool(profile.parent_notes) or bool(profile.attention_span) or bool(profile.pace_preference)
 
     def _count_sections_filled(self, profile: KidEnrichmentProfile) -> int:
-        """Count how many of the 9 sections have data."""
+        """Count how many of the 4 sections have data."""
         if not profile:
             return 0
         return sum(1 for check in _SECTION_CHECKS if check(profile))

@@ -9,6 +9,7 @@ from database import get_db
 from auth.services.auth_service import AuthService
 from auth.middleware.auth_middleware import _verify_cognito_token
 from auth.models.schemas import UserProfileResponse
+from auth.api.profile_routes import _user_to_response
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
@@ -35,19 +36,7 @@ async def sync_user(
     service = AuthService(db)
     user = service.sync_user(claims=claims)
 
-    return UserProfileResponse(
-        id=user.id,
-        email=user.email,
-        phone=user.phone,
-        name=user.name,
-        age=user.age,
-        grade=user.grade,
-        board=user.board,
-        school_name=user.school_name,
-        about_me=user.about_me,
-        onboarding_complete=user.onboarding_complete,
-        auth_provider=user.auth_provider,
-    )
+    return _user_to_response(user)
 
 
 class PhoneProvisionRequest(BaseModel):

@@ -247,16 +247,9 @@ class KidEnrichmentProfile(Base):
     id = Column(String, primary_key=True)
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
     interests = Column(JSONB, nullable=True)           # string[]
-    my_world = Column(JSONB, nullable=True)            # {name, relationship}[]
     learning_styles = Column(JSONB, nullable=True)     # string[]
     motivations = Column(JSONB, nullable=True)         # string[]
-    strengths = Column(JSONB, nullable=True)           # string[]
     growth_areas = Column(JSONB, nullable=True)        # string[]
-    personality_traits = Column(JSONB, nullable=True)  # {trait, value}[]
-    favorite_media = Column(JSONB, nullable=True)      # string[]
-    favorite_characters = Column(JSONB, nullable=True) # string[]
-    memorable_experience = Column(Text, nullable=True)
-    aspiration = Column(Text, nullable=True)
     parent_notes = Column(Text, nullable=True)
     attention_span = Column(String, nullable=True)     # short/medium/long
     pace_preference = Column(String, nullable=True)    # slow/balanced/fast

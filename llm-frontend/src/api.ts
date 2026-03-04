@@ -435,28 +435,11 @@ export async function getExamReview(sessionId: string): Promise<ExamReviewRespon
 // Kid Enrichment Profile & Personality
 // ──────────────────────────────────────────────
 
-export interface MyWorldEntry {
-  name: string;
-  relationship: string;
-}
-
-export interface PersonalityTrait {
-  trait: string;
-  value: string;
-}
-
 export interface EnrichmentProfileResponse {
   interests: string[] | null;
-  my_world: MyWorldEntry[] | null;
   learning_styles: string[] | null;
   motivations: string[] | null;
-  strengths: string[] | null;
   growth_areas: string[] | null;
-  personality_traits: PersonalityTrait[] | null;
-  favorite_media: string[] | null;
-  favorite_characters: string[] | null;
-  memorable_experience: string | null;
-  aspiration: string | null;
   parent_notes: string | null;
   attention_span: string | null;
   pace_preference: string | null;

@@ -9,10 +9,8 @@ from shared.models.entities import KidEnrichmentProfile
 
 # All enrichment fields including session preferences (used for hash computation)
 ENRICHMENT_FIELDS = [
-    "interests", "my_world", "learning_styles", "motivations",
-    "strengths", "growth_areas", "personality_traits",
-    "favorite_media", "favorite_characters", "memorable_experience",
-    "aspiration", "parent_notes", "attention_span", "pace_preference",
+    "interests", "learning_styles", "motivations",
+    "growth_areas", "parent_notes", "attention_span", "pace_preference",
 ]
 
 

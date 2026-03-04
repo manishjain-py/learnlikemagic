@@ -56,7 +56,7 @@ export default function LearnLayout() {
           </svg>
         </button>
 
-        <span className="nav-center">Subjects</span>
+        <span className="nav-center">Learn Like Magic</span>
 
         <div className="nav-user-menu" ref={menuRef}>
           <button

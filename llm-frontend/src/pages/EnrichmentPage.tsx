@@ -1,5 +1,5 @@
 /**
- * EnrichmentPage — 9-section enrichment form + personality card.
+ * EnrichmentPage — Simplified enrichment form (4 sections + open textbox) + personality card.
  * Parents fill this to help personalize the tutoring experience.
  */
 
@@ -11,16 +11,10 @@ import {
   updateEnrichmentProfile,
   getPersonality,
   regeneratePersonality,
-  EnrichmentProfileResponse,
   PersonalityApiResponse,
-  MyWorldEntry,
-  PersonalityTrait,
 } from '../api';
 import SectionCard from '../components/enrichment/SectionCard';
 import ChipSelector from '../components/enrichment/ChipSelector';
-import PeopleEditor from '../components/enrichment/PeopleEditor';
-import PersonalitySliders from '../components/enrichment/PersonalitySliders';
-import FavoritesSection from '../components/enrichment/FavoritesSection';
 import SessionPreferences from '../components/enrichment/SessionPreferences';
 
 // Predefined options for each chip section
@@ -47,12 +41,6 @@ const MOTIVATION_OPTIONS = [
   { label: 'Enjoys creating and being imaginative', value: 'creative' },
   { label: 'Likes earning rewards and achievements', value: 'achievement' },
   { label: 'Loves helping and teaching others', value: 'social' },
-];
-
-const STRENGTH_OPTIONS = [
-  'Quick thinker', 'Creative', 'Great memory', 'Good with numbers',
-  'Strong reader', 'Problem solver', 'Storyteller', 'Artistic',
-  'Curious', 'Patient', 'Good listener', 'Detail-oriented',
 ];
 
 const GROWTH_OPTIONS = [
@@ -99,18 +87,11 @@ export default function EnrichmentPage() {
   const { user } = useAuth();
   const kidName = user?.preferred_name || user?.name || 'your child';
 
-  // Form state
+  // Form state (4 sections + open textbox + session preferences)
   const [interests, setInterests] = useState<string[]>([]);
-  const [myWorld, setMyWorld] = useState<MyWorldEntry[]>([]);
   const [learningStyles, setLearningStyles] = useState<string[]>([]);
   const [motivations, setMotivations] = useState<string[]>([]);
-  const [strengths, setStrengths] = useState<string[]>([]);
   const [growthAreas, setGrowthAreas] = useState<string[]>([]);
-  const [personalityTraits, setPersonalityTraits] = useState<PersonalityTrait[]>([]);
-  const [favoriteMedia, setFavoriteMedia] = useState<string[]>([]);
-  const [favoriteCharacters, setFavoriteCharacters] = useState<string[]>([]);
-  const [memorableExperience, setMemorableExperience] = useState('');
-  const [aspiration, setAspiration] = useState('');
   const [parentNotes, setParentNotes] = useState('');
   const [attentionSpan, setAttentionSpan] = useState('');
   const [pacePreference, setPacePreference] = useState('');
@@ -130,20 +111,28 @@ export default function EnrichmentPage() {
     loadProfile();
   }, []);
 
+  // Auto-poll personality status while generating
+  useEffect(() => {
+    if (!personality || personality.status !== 'generating') return;
+    const interval = setInterval(async () => {
+      try {
+        const p = await getPersonality();
+        setPersonality(p);
+        if (p.status !== 'generating') clearInterval(interval);
+      } catch {
+        // ignore polling errors
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [personality?.status]);
+
   const loadProfile = async () => {
     try {
       const profile = await getEnrichmentProfile();
       setInterests(profile.interests || []);
-      setMyWorld(profile.my_world || []);
       setLearningStyles(profile.learning_styles || []);
       setMotivations(profile.motivations || []);
-      setStrengths(profile.strengths || []);
       setGrowthAreas(profile.growth_areas || []);
-      setPersonalityTraits(profile.personality_traits || []);
-      setFavoriteMedia(profile.favorite_media || []);
-      setFavoriteCharacters(profile.favorite_characters || []);
-      setMemorableExperience(profile.memorable_experience || '');
-      setAspiration(profile.aspiration || '');
       setParentNotes(profile.parent_notes || '');
       setAttentionSpan(profile.attention_span || '');
       setPacePreference(profile.pace_preference || '');
@@ -171,16 +160,9 @@ export default function EnrichmentPage() {
     try {
       const result = await updateEnrichmentProfile({
         interests,
-        my_world: myWorld.filter((e) => e.name.trim()),
         learning_styles: learningStyles,
         motivations,
-        strengths,
         growth_areas: growthAreas,
-        personality_traits: personalityTraits,
-        favorite_media: favoriteMedia,
-        favorite_characters: favoriteCharacters,
-        memorable_experience: memorableExperience || undefined,
-        aspiration: aspiration || undefined,
         parent_notes: parentNotes || undefined,
         attention_span: attentionSpan || undefined,
         pace_preference: pacePreference || undefined,
@@ -202,12 +184,11 @@ export default function EnrichmentPage() {
     setOpenSection(openSection === sectionIndex ? null : sectionIndex);
   };
 
-  // Migration: copy about_me into parent_notes (persisted when user clicks Save)
+  // Migration: copy about_me into the open textbox
   const handleMigrateAboutMe = () => {
     if (user?.about_me) {
       setParentNotes(user.about_me);
       setHasAboutMe(false);
-      setOpenSection(8); // Open Parent's Notes section
     }
   };
 
@@ -227,14 +208,9 @@ export default function EnrichmentPage() {
   const isSectionFilled = (index: number): boolean => {
     switch (index) {
       case 0: return interests.length > 0;
-      case 1: return myWorld.some((e) => e.name.trim());
-      case 2: return learningStyles.length > 0;
-      case 3: return motivations.length > 0;
-      case 4: return strengths.length > 0;
-      case 5: return growthAreas.length > 0;
-      case 6: return personalityTraits.length > 0;
-      case 7: return favoriteMedia.length > 0 || favoriteCharacters.length > 0 || !!memorableExperience || !!aspiration;
-      case 8: return !!parentNotes;
+      case 1: return learningStyles.length > 0;
+      case 2: return motivations.length > 0;
+      case 3: return growthAreas.length > 0;
       default: return false;
     }
   };
@@ -251,14 +227,9 @@ export default function EnrichmentPage() {
 
   const sections = [
     { title: `What does ${kidName} enjoy doing?`, helper: "We'll use these interests to make examples and stories relatable." },
-    { title: `${kidName}'s world`, helper: "Tell us about important people in their life \u2014 we'll use their names in examples and stories." },
     { title: `How ${kidName} learns best`, helper: 'Every child learns differently. What works best?' },
     { title: `What motivates ${kidName}`, helper: "What makes their eyes light up when learning?" },
-    { title: `${kidName}'s superpowers`, helper: 'What comes naturally? What are they proud of?' },
-    { title: 'Areas to grow', helper: 'What do they find challenging? No judgment \u2014 this helps us focus our support.' },
-    { title: `${kidName}'s personality`, helper: "Help us match our teaching style to their temperament." },
-    { title: 'Favorites & fun facts', helper: "The fun stuff! These help us make learning feel personal." },
-    { title: "Parent's notes", helper: 'Anything else we should know? Tips from the expert \u2014 you!' },
+    { title: 'Challenges', helper: 'What do they find challenging? No judgment — this helps us focus our support.' },
   ];
 
   return (
@@ -280,10 +251,10 @@ export default function EnrichmentPage() {
           <div className="enrichment-progress-bar">
             <div
               className="enrichment-progress-fill"
-              style={{ width: `${(sectionsFilledCount / 9) * 100}%` }}
+              style={{ width: `${(sectionsFilledCount / 4) * 100}%` }}
             />
           </div>
-          <span className="enrichment-progress-text">{sectionsFilledCount} of 9 sections filled</span>
+          <span className="enrichment-progress-text">{sectionsFilledCount} of 4 sections filled</span>
         </div>
 
         {/* Migration banner */}
@@ -291,12 +262,12 @@ export default function EnrichmentPage() {
           <div className="enrichment-migration-banner">
             <p>We found your earlier note about {kidName}. Want to use it as a starting point?</p>
             <button className="auth-btn auth-btn-outline" onClick={handleMigrateAboutMe}>
-              Use it in Parent's Notes
+              Use it below
             </button>
           </div>
         )}
 
-        {/* 9 Sections */}
+        {/* 4 Sections */}
         {sections.map((section, index) => (
           <SectionCard
             key={index}
@@ -310,51 +281,32 @@ export default function EnrichmentPage() {
               <ChipSelector options={INTEREST_OPTIONS} selected={interests} onChange={setInterests} allowCustom />
             )}
             {index === 1 && (
-              <PeopleEditor entries={myWorld} onChange={setMyWorld} />
-            )}
-            {index === 2 && (
               <LabeledChipSelector options={LEARNING_STYLE_OPTIONS} selected={learningStyles} onChange={setLearningStyles} />
             )}
-            {index === 3 && (
+            {index === 2 && (
               <LabeledChipSelector options={MOTIVATION_OPTIONS} selected={motivations} onChange={setMotivations} />
             )}
-            {index === 4 && (
-              <ChipSelector options={STRENGTH_OPTIONS} selected={strengths} onChange={setStrengths} allowCustom />
-            )}
-            {index === 5 && (
+            {index === 3 && (
               <ChipSelector options={GROWTH_OPTIONS} selected={growthAreas} onChange={setGrowthAreas} allowCustom />
-            )}
-            {index === 6 && (
-              <PersonalitySliders traits={personalityTraits} onChange={setPersonalityTraits} />
-            )}
-            {index === 7 && (
-              <FavoritesSection
-                favoriteMedia={favoriteMedia}
-                favoriteCharacters={favoriteCharacters}
-                memorableExperience={memorableExperience}
-                aspiration={aspiration}
-                onChange={(field, value) => {
-                  if (field === 'favorite_media') setFavoriteMedia(value);
-                  else if (field === 'favorite_characters') setFavoriteCharacters(value);
-                  else if (field === 'memorable_experience') setMemorableExperience(value);
-                  else if (field === 'aspiration') setAspiration(value);
-                }}
-              />
-            )}
-            {index === 8 && (
-              <div className="auth-field">
-                <textarea
-                  value={parentNotes}
-                  onChange={(e) => setParentNotes(e.target.value)}
-                  placeholder="E.g., 'She learns faster in the morning', 'He gets anxious during tests', 'She loves it when you relate things to cooking'..."
-                  maxLength={1000}
-                  rows={4}
-                />
-                <span className="enrichment-char-count">{parentNotes.length}/1000</span>
-              </div>
             )}
           </SectionCard>
         ))}
+
+        {/* Open-ended textbox */}
+        <div className="enrichment-open-textbox">
+          <h3 className="enrichment-open-textbox-title">Anything else we should know?</h3>
+          <p className="enrichment-open-textbox-helper">
+            Tips from the expert — you! Anything about {kidName}'s learning style, personality, or preferences.
+          </p>
+          <textarea
+            value={parentNotes}
+            onChange={(e) => setParentNotes(e.target.value)}
+            placeholder={`E.g., 'She learns faster in the morning', 'He gets anxious during tests', 'She loves it when you relate things to cooking'...`}
+            maxLength={1000}
+            rows={4}
+          />
+          <span className="enrichment-char-count">{parentNotes.length}/1000</span>
+        </div>
 
         {/* Session Preferences */}
         <div className="enrichment-session-section">
@@ -425,7 +377,7 @@ export default function EnrichmentPage() {
         {personality && personality.status === 'generating' && (
           <div className="enrichment-personality-card enrichment-personality-generating">
             <h3>Creating {kidName}'s learning profile...</h3>
-            <p>This takes a few seconds. Refresh to see the result.</p>
+            <p>This takes a few seconds. It will appear here automatically.</p>
           </div>
         )}
         {personality && personality.status === 'failed' && (

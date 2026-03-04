@@ -57,9 +57,12 @@ body {
 .nav-center {
   flex: 1;
   text-align: center;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #333;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1942,102 +1945,6 @@ body {
 }
 
 /* People editor */
-.enrichment-people {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.enrichment-person-card {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.enrichment-person-name {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-family: inherit;
-}
-
-.enrichment-person-rel {
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  background: white;
-}
-
-.enrichment-person-remove {
-  background: none;
-  border: none;
-  color: #e53e3e;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-}
-
-.enrichment-person-remove:hover {
-  background: #fff5f5;
-}
-
-.enrichment-add-btn {
-  padding: 0.5rem 1rem;
-  border: 1px dashed #d1d5db;
-  border-radius: 8px;
-  background: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: #888;
-  font-family: inherit;
-}
-
-.enrichment-add-btn:hover {
-  border-color: #667eea;
-  color: #667eea;
-}
-
-/* Personality sliders */
-.enrichment-sliders {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.enrichment-slider-pair {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.enrichment-slider-option {
-  flex: 1;
-  padding: 0.6rem 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: white;
-  font-size: 0.8rem;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.15s;
-  color: #555;
-}
-
-.enrichment-slider-option:hover {
-  border-color: #667eea;
-}
-
-.enrichment-slider-selected {
-  background: #667eea;
-  border-color: #667eea;
-  color: white;
-}
-
 /* Tag input */
 .enrichment-tag-input {
   display: flex;
@@ -2085,6 +1992,43 @@ body {
   font-size: 0.75rem;
   color: #aaa;
   text-align: right;
+}
+
+/* Open-ended textbox */
+.enrichment-open-textbox {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.enrichment-open-textbox-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 0.25rem;
+}
+
+.enrichment-open-textbox-helper {
+  font-size: 0.82rem;
+  color: #888;
+  margin-bottom: 0.75rem;
+}
+
+.enrichment-open-textbox textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.enrichment-open-textbox textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
 }
 
 /* Session preferences section */

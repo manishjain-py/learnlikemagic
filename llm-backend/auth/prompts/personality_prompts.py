@@ -90,37 +90,14 @@ def build_enrichment_data_section(profile_dict: dict) -> str:
     if profile_dict.get("interests"):
         sections.append(f"- Interests & Hobbies: {', '.join(profile_dict['interests'])}")
 
-    if profile_dict.get("my_world"):
-        people = [f"  - {p['name']} ({p['relationship']})" for p in profile_dict["my_world"]]
-        sections.append("- Important People:\n" + "\n".join(people))
-
     if profile_dict.get("learning_styles"):
         sections.append(f"- Learning Styles: {', '.join(profile_dict['learning_styles'])}")
 
     if profile_dict.get("motivations"):
         sections.append(f"- Motivations: {', '.join(profile_dict['motivations'])}")
 
-    if profile_dict.get("strengths"):
-        sections.append(f"- Strengths: {', '.join(profile_dict['strengths'])}")
-
     if profile_dict.get("growth_areas"):
-        sections.append(f"- Growth Areas: {', '.join(profile_dict['growth_areas'])}")
-
-    if profile_dict.get("personality_traits"):
-        traits = [f"  - {t['trait']}: {t['value']}" for t in profile_dict["personality_traits"]]
-        sections.append("- Personality Traits:\n" + "\n".join(traits))
-
-    if profile_dict.get("favorite_media"):
-        sections.append(f"- Favorite Movies/Shows: {', '.join(profile_dict['favorite_media'])}")
-
-    if profile_dict.get("favorite_characters"):
-        sections.append(f"- Favorite Books/Characters: {', '.join(profile_dict['favorite_characters'])}")
-
-    if profile_dict.get("memorable_experience"):
-        sections.append(f"- Memorable Experience: {profile_dict['memorable_experience']}")
-
-    if profile_dict.get("aspiration"):
-        sections.append(f"- Aspiration: {profile_dict['aspiration']}")
+        sections.append(f"- Challenges: {', '.join(profile_dict['growth_areas'])}")
 
     if profile_dict.get("parent_notes"):
         sections.append(f"- Parent's Notes: {profile_dict['parent_notes']}")

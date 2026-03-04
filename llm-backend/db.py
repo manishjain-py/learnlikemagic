@@ -86,6 +86,9 @@ def migrate():
         # Kid enrichment & personality tables + LLM config seed
         _apply_kid_enrichment_tables(db_manager)
 
+        # Drop unused enrichment columns (simplified from 9 to 4 sections)
+        _drop_unused_enrichment_columns(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -438,6 +441,24 @@ def _apply_kid_enrichment_tables(db_manager):
                     "'Kid personality derivation from enrichment profile')"
                 ), {"provider": tutor_row[0], "model_id": tutor_row[1]})
                 print("  ✓ Seeded personality_derivation LLM config (copied from tutor)")
+        conn.commit()
+
+
+def _drop_unused_enrichment_columns(db_manager):
+    """Drop columns removed when enrichment was simplified from 9 to 4 sections."""
+    columns_to_drop = [
+        "my_world", "strengths", "personality_traits",
+        "favorite_media", "favorite_characters", "memorable_experience", "aspiration",
+    ]
+    inspector = inspect(db_manager.engine)
+    if "kid_enrichment_profiles" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("kid_enrichment_profiles")}
+    with db_manager.engine.connect() as conn:
+        for col in columns_to_drop:
+            if col in existing:
+                conn.execute(text(f"ALTER TABLE kid_enrichment_profiles DROP COLUMN {col}"))
+                print(f"  ✓ Dropped kid_enrichment_profiles.{col}")
         conn.commit()
 
 
