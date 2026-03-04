@@ -845,6 +845,10 @@ body {
   margin-bottom: 2rem;
 }
 
+.auth-logo-icon {
+  margin-bottom: 0.75rem;
+}
+
 .auth-logo h1 {
   font-size: 1.8rem;
   color: #333;
