@@ -22,9 +22,10 @@ export default function LoginPage() {
         <div className="auth-buttons">
           <button
             className="auth-btn auth-btn-phone"
-            onClick={() => navigate('/login/phone')}
+            disabled
+            style={{ opacity: 0.5, cursor: 'not-allowed' }}
           >
-            Continue with Phone
+            Continue with Phone (coming soon)
           </button>
 
           <button
