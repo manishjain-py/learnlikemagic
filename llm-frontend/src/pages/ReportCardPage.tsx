@@ -1,5 +1,5 @@
 /**
- * ScorecardPage — Deterministic student report card.
+ * ReportCardPage — Deterministic student report card.
  *
  * Shows coverage % and exam scores per topic. No AI-interpreted metrics.
  */
@@ -26,20 +26,20 @@ function SubjectCards({
   onSelect: (s: ReportCardSubject) => void;
 }) {
   return (
-    <div className="scorecard-section">
-      <h3 className="scorecard-section-title">Subjects</h3>
-      <div className="scorecard-subject-grid">
+    <div className="reportcard-section">
+      <h3 className="reportcard-section-title">Subjects</h3>
+      <div className="reportcard-subject-grid">
         {subjects.map((subject) => (
           <button
             key={subject.subject}
-            className="scorecard-subject-card"
-            data-testid="scorecard-subject-card"
+            className="reportcard-subject-card"
+            data-testid="reportcard-subject-card"
             onClick={() => onSelect(subject)}
           >
-            <div className="scorecard-subject-card-header">
-              <span className="scorecard-subject-name">{subject.subject}</span>
+            <div className="reportcard-subject-card-header">
+              <span className="reportcard-subject-name">{subject.subject}</span>
             </div>
-            <span className="scorecard-subject-meta">
+            <span className="reportcard-subject-meta">
               {subject.chapters.length} chapter{subject.chapters.length !== 1 ? 's' : ''}
             </span>
           </button>
@@ -61,21 +61,21 @@ function ChapterSection({
   practicing: boolean;
 }) {
   return (
-    <div className="scorecard-chapter-section">
-      <div className="scorecard-chapter-header">
-        <span className="scorecard-chapter-name">{chapter.chapter}</span>
+    <div className="reportcard-chapter-section">
+      <div className="reportcard-chapter-header">
+        <span className="reportcard-chapter-name">{chapter.chapter}</span>
       </div>
-      <div className="scorecard-topic-list">
+      <div className="reportcard-topic-list">
         {chapter.topics.map((st) => (
-          <div key={st.topic_key} className="scorecard-topic-row">
-            <div className="scorecard-topic-toggle">
-              <span className="scorecard-topic-name">{st.topic}</span>
-              <span className="scorecard-topic-right">
-                <span className="scorecard-coverage">
+          <div key={st.topic_key} className="reportcard-topic-row">
+            <div className="reportcard-topic-toggle">
+              <span className="reportcard-topic-name">{st.topic}</span>
+              <span className="reportcard-topic-right">
+                <span className="reportcard-coverage">
                   {(st.coverage ?? 0).toFixed(0)}% covered
                 </span>
                 {st.latest_exam_score != null && st.latest_exam_total != null && (
-                  <span className="scorecard-exam-score">
+                  <span className="reportcard-exam-score">
                     {st.latest_exam_score}/{st.latest_exam_total}
                   </span>
                 )}
@@ -87,9 +87,9 @@ function ChapterSection({
                 style={{ width: `${Math.min(st.coverage ?? 0, 100)}%` }}
               />
             </div>
-            <div className="scorecard-topic-detail">
+            <div className="reportcard-topic-detail">
               {st.last_studied && (
-                <span className="scorecard-topic-meta">
+                <span className="reportcard-topic-meta">
                   Last studied: {new Date(st.last_studied).toLocaleDateString('en-IN', {
                     month: 'short', day: 'numeric', year: 'numeric',
                   })}
@@ -128,12 +128,12 @@ function SubjectDetailView({
       <button className="content-back-link" onClick={onBack}>
         &larr; Report Card
       </button>
-      <div className="scorecard-subject-header">
+      <div className="reportcard-subject-header">
         <h2 className="page-title">{subject.subject}</h2>
       </div>
 
-      <div className="scorecard-section">
-        <h3 className="scorecard-section-title">Chapters</h3>
+      <div className="reportcard-section">
+        <h3 className="reportcard-section-title">Chapters</h3>
         {subject.chapters.map((chapter) => (
           <ChapterSection
             key={chapter.chapter_key}
@@ -150,7 +150,7 @@ function SubjectDetailView({
 
 // -- Main Page --
 
-export default function ScorecardPage() {
+export default function ReportCardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [data, setData] = useState<ReportCardResponse | null>(null);
@@ -160,10 +160,10 @@ export default function ScorecardPage() {
   const [practicing, setPracticing] = useState(false);
 
   useEffect(() => {
-    fetchScorecard();
+    fetchReportCard();
   }, []);
 
-  const fetchScorecard = async () => {
+  const fetchReportCard = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -220,7 +220,7 @@ export default function ScorecardPage() {
       <div className="app-content-inner">
         <h2 className="page-title">My Report Card</h2>
         <div className="auth-error">{error}</div>
-        <button className="auth-btn auth-btn-primary" onClick={fetchScorecard}>
+        <button className="auth-btn auth-btn-primary" onClick={fetchReportCard}>
           Retry
         </button>
       </div>
@@ -267,7 +267,7 @@ export default function ScorecardPage() {
   return (
     <div className="app-content-inner">
       <h2 className="page-title">My Report Card</h2>
-      <p className="scorecard-stats-line">
+      <p className="reportcard-stats-line">
         {data.total_sessions} session{data.total_sessions !== 1 ? 's' : ''}
         {' \u00B7 '}
         {data.total_chapters_studied} chapter{data.total_chapters_studied !== 1 ? 's' : ''} studied

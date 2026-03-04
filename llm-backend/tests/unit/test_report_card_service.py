@@ -1,6 +1,6 @@
-"""Unit tests for tutor/services/scorecard_service.py
+"""Unit tests for tutor/services/report_card_service.py
 
-Tests deterministic scorecard aggregation (coverage + exam score only)
+Tests deterministic report card aggregation (coverage + exam score only)
 using an in-memory SQLite database.
 """
 
@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from shared.models.entities import Session as SessionModel, TeachingGuideline, User
-from tutor.services.scorecard_service import ScorecardService
+from tutor.services.report_card_service import ReportCardService
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def _create_session(
     created_at=None,
     session_id=None,
 ):
-    """Create a session with realistic state_json for scorecard testing."""
+    """Create a session with realistic state_json for report card testing."""
     if mastery_estimates is None:
         mastery_estimates = {"concept_a": 0.8, "concept_b": 0.7}
     if concepts_covered_set is None:
@@ -128,16 +128,16 @@ def _create_session(
 
 
 # ===========================================================================
-# Empty Scorecard
+# Empty Report Card
 # ===========================================================================
 
-class TestScorecardEmpty:
-    """Test scorecard for users with no sessions."""
+class TestReportCardEmpty:
+    """Test report card for users with no sessions."""
 
-    def test_empty_scorecard_returns_zeros(self, db_session):
+    def test_empty_report_card_returns_zeros(self, db_session):
         _create_user(db_session)
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 0
         assert result["total_chapters_studied"] == 0
@@ -147,8 +147,8 @@ class TestScorecardEmpty:
         assert "needs_practice" not in result
 
     def test_nonexistent_user_returns_empty(self, db_session):
-        service = ScorecardService(db_session)
-        result = service.get_scorecard("nonexistent-user")
+        service = ReportCardService(db_session)
+        result = service.get_report_card("nonexistent-user")
 
         assert result["total_sessions"] == 0
         assert result["total_chapters_studied"] == 0
@@ -158,16 +158,16 @@ class TestScorecardEmpty:
 # Single Session Structure
 # ===========================================================================
 
-class TestScorecardSingleSession:
-    """Test scorecard with one session."""
+class TestReportCardSingleSession:
+    """Test report card with one session."""
 
     def test_single_session_creates_one_subject(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(db_session, mastery=0.8)
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 1
         assert len(result["subjects"]) == 1
@@ -178,8 +178,8 @@ class TestScorecardSingleSession:
         _create_guideline(db_session)
         _create_session(db_session, mastery=0.8)
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         subject = result["subjects"][0]
         assert "score" not in subject
@@ -195,8 +195,8 @@ class TestScorecardSingleSession:
             concepts_covered_set=["concept_a"],
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["coverage"] == 50.0  # 1 of 2 concepts covered
@@ -206,7 +206,7 @@ class TestScorecardSingleSession:
 # Coverage (teach_me only)
 # ===========================================================================
 
-class TestScorecardCoverage:
+class TestReportCardCoverage:
     """Test coverage computation from teach_me sessions only."""
 
     def test_coverage_from_teach_me_session(self, db_session):
@@ -219,8 +219,8 @@ class TestScorecardCoverage:
             concepts_covered_set=["c1", "c2"],
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["coverage"] == pytest.approx(66.7, abs=0.1)  # 2/3
@@ -236,8 +236,8 @@ class TestScorecardCoverage:
             concepts_covered_set=["c1", "c2"],
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         # clarify_doubts session creates a subject entry but coverage stays 0
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
@@ -264,8 +264,8 @@ class TestScorecardCoverage:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["coverage"] == 75.0  # 3 of 4 concepts
@@ -293,8 +293,8 @@ class TestScorecardCoverage:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         # covered = {c1, c2}, plan = {c1, c2, c3} (latest), coverage = 2/3 ≈ 66.7%
@@ -311,8 +311,8 @@ class TestScorecardCoverage:
             concepts_covered_set=["c1"],
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["coverage"] == 0.0
@@ -322,7 +322,7 @@ class TestScorecardCoverage:
 # Exam Score
 # ===========================================================================
 
-class TestScorecardExamScore:
+class TestReportCardExamScore:
     """Test latest exam score passthrough."""
 
     def test_latest_exam_shown(self, db_session):
@@ -350,8 +350,8 @@ class TestScorecardExamScore:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["latest_exam_score"] == 7
@@ -367,8 +367,8 @@ class TestScorecardExamScore:
             concepts_covered_set=["c1"],
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["latest_exam_score"] is None
@@ -397,8 +397,8 @@ class TestScorecardExamScore:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["last_studied"] == now.isoformat()
@@ -428,8 +428,8 @@ class TestScorecardExamScore:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["latest_exam_score"] == 8
@@ -440,7 +440,7 @@ class TestScorecardExamScore:
 # No Aggregate Scores
 # ===========================================================================
 
-class TestScorecardNoAggregateScores:
+class TestReportCardNoAggregateScores:
     """Verify no aggregate scores, strengths, or needs_practice in output."""
 
     def test_no_overall_score(self, db_session):
@@ -448,8 +448,8 @@ class TestScorecardNoAggregateScores:
         _create_guideline(db_session)
         _create_session(db_session)
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert "overall_score" not in result
 
@@ -458,8 +458,8 @@ class TestScorecardNoAggregateScores:
         _create_guideline(db_session)
         _create_session(db_session)
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert "strengths" not in result
         assert "needs_practice" not in result
@@ -476,8 +476,8 @@ class TestScorecardNoAggregateScores:
         _create_session(db_session, guideline_id="g2",
                         topic_name="Fractions - B")
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         subject = result["subjects"][0]
         assert "score" not in subject
@@ -489,8 +489,8 @@ class TestScorecardNoAggregateScores:
         _create_guideline(db_session)
         _create_session(db_session)
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         subject = result["subjects"][0]
         assert "trend" not in subject
@@ -500,7 +500,7 @@ class TestScorecardNoAggregateScores:
 # Guideline Lookup
 # ===========================================================================
 
-class TestScorecardGuidelineLookup:
+class TestReportCardGuidelineLookup:
     """Test chapter/topic hierarchy resolution."""
 
     def test_hierarchy_from_guideline_table(self, db_session):
@@ -513,8 +513,8 @@ class TestScorecardGuidelineLookup:
         _create_session(db_session, guideline_id="g1",
                         topic_name="Fractions - Comparing Fractions")
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         chapter = result["subjects"][0]["chapters"][0]
         assert chapter["chapter_key"] == "fractions"
@@ -527,8 +527,8 @@ class TestScorecardGuidelineLookup:
         _create_session(db_session, guideline_id="nonexistent",
                         topic_name="Geometry - Shapes")
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         chapter = result["subjects"][0]["chapters"][0]
         assert chapter["chapter"] == "Geometry"
@@ -547,8 +547,8 @@ class TestScorecardGuidelineLookup:
         _create_session(db_session, guideline_id="g1",
                         topic_name="old - names")
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         chapter = result["subjects"][0]["chapters"][0]
         assert chapter["chapter"] == "New Chapter Title"
@@ -560,7 +560,7 @@ class TestScorecardGuidelineLookup:
 # Resilience
 # ===========================================================================
 
-class TestScorecardResilience:
+class TestReportCardResilience:
     """Test graceful handling of malformed/legacy data."""
 
     def test_malformed_state_json_skipped_not_500(self, db_session):
@@ -579,8 +579,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 1
         assert result["subjects"] == []
@@ -601,8 +601,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 1
         assert result["subjects"] == []
@@ -628,8 +628,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 2
         assert len(result["subjects"]) == 1
@@ -654,8 +654,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["coverage"] == 0.0  # no plan concepts → 0%
@@ -682,8 +682,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["latest_exam_score"] is None  # exam_total=0, so not recorded
@@ -710,8 +710,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["latest_exam_score"] == 0  # defaults to 0
@@ -734,8 +734,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 1
         assert result["subjects"] == []
@@ -754,8 +754,8 @@ class TestScorecardResilience:
         db_session.add(session)
         db_session.commit()
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         assert result["total_sessions"] == 1
         assert result["subjects"] == []
@@ -774,8 +774,8 @@ class TestScorecardResilience:
         _create_session(db_session, guideline_id="g2", subject="Science",
                         topic_name="Plants - Parts")
 
-        service = ScorecardService(db_session)
-        result = service.get_scorecard(USER_ID)
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
 
         subject_names = [s["subject"] for s in result["subjects"]]
         assert "Mathematics" in subject_names
@@ -791,7 +791,7 @@ class TestTopicProgress:
 
     def test_empty_user_returns_empty(self, db_session):
         _create_user(db_session)
-        service = ScorecardService(db_session)
+        service = ReportCardService(db_session)
         result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"] == {}
@@ -806,7 +806,7 @@ class TestTopicProgress:
             concepts_covered_set=["c1"],
         )
 
-        service = ScorecardService(db_session)
+        service = ReportCardService(db_session)
         result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["status"] == "studied"
@@ -823,7 +823,7 @@ class TestTopicProgress:
             concepts_covered_set=["c1"],
         )
 
-        service = ScorecardService(db_session)
+        service = ReportCardService(db_session)
         result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"] == {}
@@ -845,7 +845,7 @@ class TestTopicProgress:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
+        service = ReportCardService(db_session)
         result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["session_count"] == 2
@@ -867,7 +867,7 @@ class TestTopicProgress:
             created_at=now,
         )
 
-        service = ScorecardService(db_session)
+        service = ReportCardService(db_session)
         result = service.get_topic_progress(USER_ID)
 
         assert result["user_progress"]["g1"]["coverage"] == 100.0

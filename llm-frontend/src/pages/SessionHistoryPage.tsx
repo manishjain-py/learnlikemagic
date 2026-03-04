@@ -114,10 +114,10 @@ export default function SessionHistoryPage() {
         <h2 className="page-title">My Sessions</h2>
         <button
           className="auth-link"
-          onClick={() => navigate('/scorecard')}
+          onClick={() => navigate('/report-card')}
           style={{ fontSize: '0.85rem' }}
         >
-          View Scorecard &rarr;
+          View Report Card &rarr;
         </button>
       </div>
 
