@@ -11,32 +11,32 @@ The report card is **deterministic only** — it shows coverage completion perce
 | Method | Path | Auth | Response Model | Description |
 |--------|------|------|----------------|-------------|
 | `GET` | `/sessions/report-card` | Required | `ReportCardResponse` | Full student report card with coverage and exam data |
-| `GET` | `/sessions/subtopic-progress` | Required | `SubtopicProgressResponse` | Lightweight progress map for curriculum picker badges |
+| `GET` | `/sessions/topic-progress` | Required | `TopicProgressResponse` | Lightweight progress map for curriculum picker badges |
 
-Both endpoints are in `tutor/api/sessions.py` and delegate to `ScorecardService`.
+Both endpoints are in `tutor/api/sessions.py` and delegate to `ReportCardService`.
 
 ---
 
-## ScorecardService
+## ReportCardService
 
-**File:** `tutor/services/scorecard_service.py`
+**File:** `tutor/services/report_card_service.py`
 
-**Class:** `ScorecardService(db)`
+**Class:** `ReportCardService(db)`
 
 ### Public Methods
 
-- `get_scorecard(user_id)` → Full report card dict (used by `/report-card`)
-- `get_subtopic_progress(user_id)` → `{user_progress: {guideline_id: {coverage, session_count, status}}}`
+- `get_report_card(user_id)` → Full report card dict (used by `/report-card`)
+- `get_topic_progress(user_id)` → `{user_progress: {guideline_id: {coverage, session_count, status}}}`
 
 ### Private Methods
 
 | Method | Purpose |
 |--------|---------|
 | `_load_user_sessions(user_id)` | Query sessions for user (columns: `id`, `state_json`, `subject`, `mastery`, `created_at`), ordered `created_at ASC`, `id ASC` |
-| `_build_guideline_lookup(sessions)` | Batch-query `teaching_guidelines` to build `guideline_id → {topic, subtopic, keys}` map |
-| `_group_sessions(sessions, guideline_lookup)` | Group sessions into subject/topic/subtopic hierarchy; accumulate coverage from teach_me sessions; track latest exam score from exam sessions |
-| `_build_report(grouped)` | Build flat report structure with coverage computation per subtopic |
-| `_empty_scorecard()` | Return zero-valued report card for users with no sessions |
+| `_build_guideline_lookup(sessions)` | Batch-query `teaching_guidelines` to build `guideline_id → {chapter, topic, chapter_key, topic_key}` map |
+| `_group_sessions(sessions, guideline_lookup)` | Group sessions into subject/chapter/topic hierarchy; accumulate coverage from teach_me sessions; track latest exam score from exam sessions |
+| `_build_report(grouped)` | Build flat report structure with coverage computation per topic |
+| `_empty_report_card()` | Return zero-valued report card for users with no sessions |
 
 ---
 
@@ -49,22 +49,22 @@ Sessions (DB)
 Load all sessions for user (ordered created_at ASC, id ASC)
     │
     v
-Batch-query teaching_guidelines → build guideline_id → {topic, subtopic, keys} lookup
+Batch-query teaching_guidelines → build guideline_id → {chapter, topic, chapter_key, topic_key} lookup
     │
     v
 Parse each session's state_json → extract:
-  - subject, topic hierarchy
+  - subject, chapter/topic hierarchy
   - learning mode (teach_me / clarify_doubts / exam)
   - For teach_me: concepts_covered_set, plan concepts from mastery_estimates keys
   - For exam (finished only): exam_total_correct, len(exam_questions)
     │
     v
-Group into subject → topic_key → subtopic_key
+Group into subject → chapter_key → topic_key
   - Only teach_me sessions contribute to coverage accumulation
   - Latest finished exam wins for exam score
     │
     v
-Build report (per subtopic):
+Build report (per topic):
   coverage    = |concepts covered ∩ plan concepts| / |plan concepts| × 100
   exam score  = latest finished exam's correct/total (or null if no exams)
   last_studied = date of most recent teach_me or finished exam session
@@ -75,14 +75,14 @@ Build report (per subtopic):
 Coverage is computed in `_build_report` from accumulated data:
 
 ```python
-plan_concepts = set(sub_info.get("plan_concepts", []))
-covered = set(sub_info.get("concepts_covered", []))
+plan_concepts = set(topic_info.get("plan_concepts", []))
+covered = set(topic_info.get("concepts_covered", []))
 coverage = round(len(covered & plan_concepts) / len(plan_concepts) * 100, 1)
 ```
 
 Key details:
 - Only **Teach Me** sessions contribute to coverage. Clarify Doubts and Exam sessions are excluded.
-- `concepts_covered` is a **union** across all Teach Me sessions for the subtopic.
+- `concepts_covered` is a **union** across all Teach Me sessions for the topic.
 - `plan_concepts` comes from the **latest** Teach Me session's `mastery_estimates` keys (not a union). This prevents denominator drift when the study plan is updated.
 - If `plan_concepts` is empty, coverage is 0.
 
@@ -105,11 +105,11 @@ if mode == "exam" and state.get("exam_finished", False):
 - Only records exams where `exam_finished == True` and `exam_total > 0`
 - Since sessions are processed in chronological order, the latest exam naturally overwrites earlier ones
 - Type guards handle legacy data: `exam_total_correct` may be float or string (cast via `isinstance`); `exam_questions` may be non-list (guarded with `isinstance`)
-- A finished exam also updates `last_studied` for the subtopic
+- A finished exam also updates `last_studied` for the topic
 
 ### Cross-Session Accumulation
 
-The `_group_sessions` method accumulates data across all sessions for the same subtopic:
+The `_group_sessions` method accumulates data across all sessions for the same topic:
 
 | Accumulated Field | Source | Logic |
 |-------------------|--------|-------|
@@ -119,7 +119,7 @@ The `_group_sessions` method accumulates data across all sessions for the same s
 | `latest_exam_score` | `state.exam_total_correct` (exam, finished only) | Latest finished exam's correct count |
 | `latest_exam_total` | `len(state.exam_questions)` (exam, finished only) | Latest finished exam's total questions |
 
-### Subtopic Progress (Lightweight)
+### Topic Progress (Lightweight)
 
 Used by the curriculum picker to show coverage indicators:
 
@@ -137,18 +137,18 @@ Used by the curriculum picker to show coverage indicators:
 ```python
 {
     "total_sessions": int,
-    "total_topics_studied": int,
+    "total_chapters_studied": int,
     "subjects": [
         {
             "subject": str,
-            "topics": [
+            "chapters": [
                 {
-                    "topic": str,
-                    "topic_key": str,
-                    "subtopics": [
+                    "chapter": str,
+                    "chapter_key": str,
+                    "topics": [
                         {
-                            "subtopic": str,
-                            "subtopic_key": str,
+                            "topic": str,
+                            "topic_key": str,
                             "guideline_id": str | None,
                             "coverage": float,                # 0-100%, teach_me only
                             "latest_exam_score": int | None,  # X in X/Y
@@ -163,7 +163,7 @@ Used by the curriculum picker to show coverage indicators:
 }
 ```
 
-### SubtopicProgressResponse (`/sessions/subtopic-progress`)
+### TopicProgressResponse (`/sessions/topic-progress`)
 
 ```python
 {
@@ -181,26 +181,26 @@ Used by the curriculum picker to show coverage indicators:
 
 ## Topic Hierarchy Resolution
 
-The service resolves topic/subtopic names from two sources, in order of preference:
+The service resolves chapter/topic names from two sources, in order of preference:
 
-1. **TeachingGuideline table** — If the session's `topic_id` matches a guideline, use `topic_title`/`subtopic_title` (with fallback to `topic`/`subtopic`), plus `topic_key`/`subtopic_key`
-2. **Topic name splitting** — If no guideline match, split `topic_name` on `" - "` to derive topic and subtopic
-3. **Raw name** — If no separator found, use the full `topic_name` as both topic and subtopic
+1. **TeachingGuideline table** — If the session's `topic_id` matches a guideline, use `chapter_title`/`topic_title` (with fallback to `chapter`/`topic`), plus `chapter_key`/`topic_key`
+2. **Topic name splitting** — If no guideline match, split `topic_name` on `" - "` to derive chapter and topic
+3. **Raw name** — If no separator found, use the full `topic_name` as both chapter and topic
 
 ---
 
 ## Frontend
 
-**File:** `llm-frontend/src/pages/ScorecardPage.tsx`
+**File:** `llm-frontend/src/pages/ReportCardPage.tsx`
 
 The frontend calls `getReportCard()` which hits `/sessions/report-card`. It renders the report card in two views:
 
-- **Overview** — Title "My Report Card", session/topic counts, subject cards grid
-- **Subject Detail** — Back navigation, expandable topic/subtopic tree with coverage bars, exam scores, last-studied dates, and "Practice Again" buttons
+- **Overview** — Title "My Report Card", session/chapter counts, subject cards grid
+- **Subject Detail** — Back navigation, chapter sections with topic rows showing coverage bars, exam scores, last-studied dates, and "Practice Again" buttons
 
 ### Practice Again Flow
 
-1. User taps "Practice Again" on a subtopic
+1. User taps "Practice Again" on a topic
 2. Frontend calls `createSession()` with `guideline_id`
 3. Navigates to `/session/{session_id}` with `location.state = {firstTurn, mode, subject}`
 
@@ -208,26 +208,25 @@ The frontend calls `getReportCard()` which hits `/sessions/report-card`. It rend
 
 | Path | Component | Description |
 |------|-----------|-------------|
-| `/scorecard` | `ScorecardPage` | Primary report card view |
-| `/report-card` | `ScorecardPage` | Alias route, same component |
+| `/report-card` | `ReportCardPage` | Report card view |
 
-Both routes are protected (require authentication). The page is titled "My Report Card" regardless of which URL is used.
+The route is protected (requires authentication). The page is titled "My Report Card".
 
 ### Frontend API
 
 | Function | Endpoint | Return Type |
 |----------|----------|-------------|
 | `getReportCard()` | `GET /sessions/report-card` | `ReportCardResponse` |
-| `getSubtopicProgress()` | `GET /sessions/subtopic-progress` | `Record<string, SubtopicProgress>` |
+| `getTopicProgress()` | `GET /sessions/topic-progress` | `Record<string, TopicProgress>` |
 
 Types are defined in `llm-frontend/src/api.ts`.
 
 ### Navigation Entry Points
 
 The report card is accessible from:
-- User menu in `LearnLayout.tsx` ("My Scorecard" button, navigates to `/scorecard`)
-- Session history page (`SessionHistoryPage.tsx`, "View Scorecard" link)
-- End-of-session screen in `ChatSession.tsx` (button navigates to `/scorecard`)
+- User menu in `AppShell.tsx` ("My Report Card" button, navigates to `/report-card`)
+- Session history page (`SessionHistoryPage.tsx`, link navigates to `/report-card`)
+- End-of-session screen in `ChatSession.tsx` (button navigates to `/report-card`)
 
 ---
 
@@ -235,9 +234,9 @@ The report card is accessible from:
 
 | File | Purpose |
 |------|---------|
-| `tutor/services/scorecard_service.py` | Aggregation logic: coverage computation, exam score tracking, hierarchy grouping |
-| `tutor/api/sessions.py` | `/report-card` and `/subtopic-progress` endpoints |
-| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardTopic`, `ReportCardSubtopic`, `SubtopicProgressResponse`, `SubtopicProgressEntry`) |
-| `llm-frontend/src/pages/ScorecardPage.tsx` | Report card UI (overview + subject detail) |
+| `tutor/services/report_card_service.py` | Aggregation logic: coverage computation, exam score tracking, hierarchy grouping |
+| `tutor/api/sessions.py` | `/report-card` and `/topic-progress` endpoints |
+| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`) |
+| `llm-frontend/src/pages/ReportCardPage.tsx` | Report card UI (overview + subject detail) |
 | `llm-frontend/src/api.ts` | Frontend API functions and TypeScript types |
-| `tests/unit/test_scorecard_service.py` | Unit tests for coverage, exam score, hierarchy resolution, and resilience |
+| `tests/unit/test_report_card_service.py` | Unit tests for coverage, exam score, hierarchy resolution, and resilience |

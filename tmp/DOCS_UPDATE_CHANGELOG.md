@@ -1,7 +1,16 @@
 # Documentation Update Changelog
 
-**Date:** 2026-02-27
+**Date:** 2026-03-04
 **Trigger:** `/update-all-docs` skill execution
+
+---
+
+## Newly Created Docs
+
+| Doc | Reason |
+|-----|--------|
+| `docs/functional/book-guidelines.md` | Entire book ingestion V2 module (31 Python files), study plans module, and admin frontend had zero documentation. No existing doc was a fit. Created 119-line functional doc. |
+| `docs/technical/book-guidelines.md` | Same module — created 441-line technical doc covering V2 pipeline architecture, 24 API endpoints, 19 services, S3 structure, state machines. |
 
 ---
 
@@ -11,102 +20,79 @@
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/app-overview.md` | Added Session History and Profile to Core Features table; added steps 9-10 to student journey |
-| `docs/technical/architecture-overview.md` | Added `gpt-5.3-codex` to Available Models; updated Tech Stack; added `/history` route to diagram; added `shared/api/` to module list; expanded backend module structure tree (shared subdirs, middleware, evaluation flat structure); corrected router prefixes (health, LLM config); expanded frontend structure (admin components, devtools files) |
+| `docs/functional/app-overview.md` | Added "Parents" as target user (enrichment system); added Voice Output (TTS) feature; added Exam Review feature; renamed "Scorecard" → "Report Card"; added Enrichment Profile feature; added Parents section to user journey; updated student journey (topic → chapter hierarchy, exam review step) |
+| `docs/technical/architecture-overview.md` | Updated system architecture diagram (new shared services, DB tables, routes); added Google Cloud TTS to tech stack; updated auth module description (enrichment/personality); added OCR service and S3 client; updated routers table (TTS, enrichment, V2 book sub-routers, removed stale entries); removed stale TutorApp.tsx/LearnLayout.tsx, added AppShell.tsx; added ExamReviewPage, EnrichmentPage, ReportCardPage; updated all routes; added google_cloud_tts_api_key to config; added ocr_service.py to key files |
 
 ### Agent 2 — Learning Session
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/learning-session.md` | Fixed exam mid-session behavior (correctness NOT revealed mid-exam); added past discussions limit (5 most recent); added per-question review in exam results; added session replay on revisit |
-| `docs/technical/learning-session.md` | Rewrote architecture diagram (branching by mode); documented TutorTurnOutput intent values per mode; **CRITICAL: marked mode-specific prompts (clarify_doubts, exam) as defined-but-not-wired** — all modes use master tutor prompts; clarified sanitization is log-only; documented exam mid-turn non-reveal; added concepts_covered_set in clarify doubts; rewrote exam completion logic (is_complete vs exam_finished); added ACCELERATE avg_mastery >= 0.65 condition; clarified SIMPLIFY real-data guard; fixed CONSOLIDATE to current-question wrong attempts; added Prompt Source column to LLM Calls table; clarified WebSocket welcome fallback; updated Key Files (ConfigurationError, extract_json_from_text, merge_misconceptions) |
+| `docs/functional/learning-session.md` | Expanded exam question types to 6; updated to fractional scoring (0-1 scale); added duplicate exam guard; added exam review feature; added personality profile personalization; added structured explanation lifecycle; added personalized study plans; renamed "Voice Input" → "Voice Input and Output" (TTS); new Language Support section; new Attention Span Awareness section |
+| `docs/technical/learning-session.md` | Updated architecture diagram (TRANSLATE step, audio_text); expanded TutorTurnOutput schema (audio_text, answer_score, explanation phases); updated orchestration flow (translation, clarify prompts, fractional scoring); updated system prompt (12 rules, language instructions); clarify prompts now "actively wired"; added EXPLAIN pacing directives and attention span; updated REST endpoints (topic-progress, exam-review, TTS); updated WebSocket (audio_text); updated session creation (personalized plans, explanation init, duplicate guard); added ExplanationPhase model; updated ExamQuestion (fractional scoring); added study plan personalization; split audio into Transcription/TTS; updated key files (report_card, language_utils, tts) |
 
 ### Agent 3 — Evaluation
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/evaluation.md` | No changes needed — fully accurate |
-| `docs/technical/evaluation.md` | Added Simulator Models table (gpt-4o / claude-opus-4-6 defaults); added `uses_emoji` to persona field list; expanded provider names with model labels; clarified topic context nested structure (guidelines → learning_objectives, common_misconceptions); documented frontend model badge config source |
+| `docs/functional/evaluation.md` | No changes needed — already accurate |
+| `docs/technical/evaluation.md` | Added missing `GET /api/evaluation/guidelines` endpoint; corrected model badge mapping (tutor vs evaluator badges have different provider sets) |
 
-### Agent 4 — Scorecard
+### Agent 4 — Scorecard → Report Card
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/scorecard.md` | Added end-of-session screen as third navigation entry point |
-| `docs/technical/scorecard.md` | Updated exam score tracking code snippet with type guards and last_studied; added column selection detail to _load_user_sessions; expanded schema class names (all 6 Pydantic models listed) |
+| `docs/functional/scorecard.md` | Renamed "topic/subtopic" → "chapter/topic" throughout; updated "My Scorecard" → "My Report Card"; removed `/scorecard` URL alias; updated Practice Again to reference topics |
+| `docs/technical/scorecard.md` | Renamed ScorecardService → ReportCardService, file scorecard_service.py → report_card_service.py; renamed methods get_scorecard → get_report_card, get_subtopic_progress → get_topic_progress; corrected API /sessions/subtopic-progress → /sessions/topic-progress; updated hierarchy terminology throughout; updated response schema classes; updated frontend references (ScorecardPage → ReportCardPage); removed /scorecard alias |
 
 ### Agent 5 — Book & Guidelines
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/book-guidelines.md` | Added Background Jobs & Progress section; added bulk upload option (up to 200 images); added single-page upload block during bulk OCR; added Retry OCR action; updated extraction/finalization as background jobs; added heartbeat monitoring |
-| `docs/technical/book-guidelines.md` | Updated architecture diagram (useJobPolling, BackgroundTaskRunner, raw/ S3); split Phase 2 into 2a/2b/2c (single, bulk, retry); marked Phases 4-5 as background; **NEW section: Background Task Infrastructure** (job state machine, heartbeat stale detection, row-level locking, resume support, error classification); added bulk upload request/background thread docs; updated Phase 4 to background job model with resume; updated Phase 5 to background job; added 4 new API endpoints (bulk upload, retry OCR, job polling); added Job Polling section with useJobPolling hook; updated book_jobs table (ocr_batch type, 7 new progress columns); added raw/ to S3 structure; expanded Key Files (background_task_runner, useJobPolling) |
+| `docs/functional/book-guidelines.md` | **NEWLY CREATED** — Admin workflow: create book, define TOC, upload pages with OCR, process chapters, review topics, sync to teaching database; chapter status state machine; study plan generation |
+| `docs/technical/book-guidelines.md` | **NEWLY CREATED** — Full V2 pipeline architecture; 19 backend services; 24 API endpoints across 5 route groups; 7 data flow diagrams; database tables; state machines; S3 directory structure; processing constants |
 
 ### Agent 6 — Auth & Onboarding
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/auth-and-onboarding.md` | Fixed "first name" → "name" in onboarding; added user menu access (profile, history, scorecard, logout) |
-| `docs/technical/auth-and-onboarding.md` | Added post-login navigation flow (/ → /learn → OnboardingGuard); enhanced route guard table (/learn nested routes, /scorecard + /report-card); **NEW section: Student Profile Derivation** (useStudentProfile hook, field mapping, defaults); added ChangePasswordResponse to schemas; added useStudentProfile.ts and LearnLayout.tsx to Key Files |
+| `docs/functional/auth-and-onboarding.md` | Marked phone login as "coming soon" (disabled); added preferred name step (6 steps total); updated progress dots to 6; profile page renamed "Profile & Settings" with focus mode, language prefs; added enrichment CTA on profile; new Enrichment Profile section; new Navigation & User Menu section (AppShell) |
+| `docs/technical/auth-and-onboarding.md` | Updated auth diagram (phone disabled); added 4 User model columns (preferred_name, text/audio language, focus_mode); new KidEnrichmentProfile model; new KidPersonality model; added 4 enrichment API endpoints; new Enrichment & Personality data flow; updated onboarding API (preferred_name); documented UserProfile interface; rewrote route guard table (AppShell, new session URLs); added 11 new key files; removed stale LearnLayout |
 
 ### Agent 7 — Infrastructure
 
 | Doc | Changes |
 |-----|---------|
-| `docs/technical/dev-workflow.md` | Rewrote frontend testing section (Vitest + React Testing Library now configured); added .coveragerc omissions (database.py, CI usage); updated sample_goal fixture (guideline_id); expanded Playwright config (retries, screenshots, trace, reports); added .coveragerc and frontend test commands to tables |
-| `docs/technical/deployment.md` | Corrected Secrets Manager count (3-4, Anthropic conditional); added manual deploy workflow limitation (missing VITE_COGNITO_ vars); documented App Runner health check (/health, 10s interval, 5s timeout); noted CloudFront PriceClass_100; added Dockerfile and .coveragerc to Key Files |
-| `docs/technical/database.md` | **Rewrote BookJob table** (default status pending, added ocr_batch type, new state machine pending→running→completed/failed, 7 new progress columns, updated partial index); added migration step 4 (_apply_book_job_columns) |
+| `docs/technical/database.md` | Added 4 missing User columns; corrected Sessions index to composite; added user_id to Study Plans; added 2 new tables (kid_enrichment_profiles, kid_personalities); added personality_derivation LLM config seed; expanded relationships; added 8 new migration steps |
+| `docs/technical/deployment.md` | Updated Secrets Manager label (Gemini/TTS); added App Runner runtime env vars and secrets documentation; updated infrastructure details |
+| `docs/technical/dev-workflow.md` | Added GOOGLE_CLOUD_TTS_API_KEY to optional env vars; fixed fixtures table (topic → chapter) |
 
----
+### Master Index & CLAUDE.md
 
-## Newly Created Docs
-
-None — all discovered functionality was adequately covered by existing docs.
+| Doc | Changes |
+|-----|---------|
+| `docs/DOCUMENTATION_GUIDELINES.md` | Updated scorecard index entries to "Report card" |
+| `CLAUDE.md` | Updated scorecard index entries to "Report card"; book-guidelines entries added by Agent 5 |
 
 ---
 
 ## Coverage Matrix
 
-| Backend Module | Functional Doc | Technical Doc |
-|---------------|---------------|---------------|
-| `tutor/` | learning-session.md | learning-session.md |
-| `evaluation/` | evaluation.md | evaluation.md |
-| `auth/` | auth-and-onboarding.md | auth-and-onboarding.md |
-| `book_ingestion/` | book-guidelines.md | book-guidelines.md |
-| `study_plans/` | book-guidelines.md | book-guidelines.md |
-| `shared/` | app-overview.md | architecture-overview.md |
-| `api/` (docs, test_scenarios) | app-overview.md | architecture-overview.md |
-| `scripts/` | N/A (dev-only) | dev-workflow.md |
-| `tests/` | N/A (dev-only) | dev-workflow.md |
-
-| Frontend Area | Functional Doc | Technical Doc |
-|--------------|---------------|---------------|
-| Learn flow (subject/topic/subtopic) | learning-session.md | learning-session.md, architecture-overview.md |
-| Chat session | learning-session.md | learning-session.md |
-| Auth pages | auth-and-onboarding.md | auth-and-onboarding.md |
-| Profile/Onboarding | auth-and-onboarding.md | auth-and-onboarding.md |
-| Report Card | scorecard.md | scorecard.md |
-| Session History | app-overview.md | architecture-overview.md |
-| Admin Books/Guidelines | book-guidelines.md | book-guidelines.md |
-| Admin Evaluation | evaluation.md | evaluation.md |
-| Admin LLM Config | app-overview.md | architecture-overview.md |
-| Admin Test Scenarios | app-overview.md | architecture-overview.md |
-| Admin Docs Viewer | app-overview.md | architecture-overview.md |
-
-| API Group | Prefix | Technical Doc |
-|-----------|--------|--------------|
-| health | `/` | architecture-overview.md |
-| curriculum | `/curriculum` | learning-session.md |
-| sessions | `/sessions` | learning-session.md |
-| transcription | `/transcribe` | learning-session.md |
-| evaluation | `/api/evaluation` | evaluation.md |
-| admin (books) | `/admin` | book-guidelines.md |
-| admin/guidelines | `/admin/guidelines` | book-guidelines.md |
-| auth | `/auth` | auth-and-onboarding.md |
-| profile | `/profile` | auth-and-onboarding.md |
-| docs | `/api/docs` | architecture-overview.md |
-| llm-config | `/api/admin` | architecture-overview.md |
-| test-scenarios | `/api/test-scenarios` | architecture-overview.md |
+| Feature / Module | Functional Doc | Technical Doc |
+|---|---|---|
+| App overview & user journey | `functional/app-overview.md` | `technical/architecture-overview.md` |
+| Learning session (tutor) | `functional/learning-session.md` | `technical/learning-session.md` |
+| Evaluation | `functional/evaluation.md` | `technical/evaluation.md` |
+| Report card | `functional/scorecard.md` | `technical/scorecard.md` |
+| Book ingestion & guidelines | `functional/book-guidelines.md` | `technical/book-guidelines.md` |
+| Study plans | `functional/book-guidelines.md` | `technical/book-guidelines.md` |
+| Auth & onboarding | `functional/auth-and-onboarding.md` | `technical/auth-and-onboarding.md` |
+| Enrichment & personality | `functional/auth-and-onboarding.md` | `technical/auth-and-onboarding.md` |
+| Voice (STT + TTS) | `functional/learning-session.md` | `technical/learning-session.md` |
+| Language support | `functional/learning-session.md` | `technical/learning-session.md` |
+| Database schema | N/A (infrastructure) | `technical/database.md` |
+| Dev workflow & testing | N/A (infrastructure) | `technical/dev-workflow.md` |
+| Deployment & CI/CD | N/A (infrastructure) | `technical/deployment.md` |
+| Shared services & architecture | N/A (cross-cutting) | `technical/architecture-overview.md` |
 
 ---
 
@@ -114,6 +100,6 @@ None — all discovered functionality was adequately covered by existing docs.
 
 | Item | Rationale |
 |------|-----------|
-| Dedicated frontend technical doc | Frontend structure is documented in `architecture-overview.md`. Individual page/component docs would be excessive for current codebase size. |
-| Dedicated devtools doc | Dev-only feature, adequately covered in architecture overview's frontend structure tree. |
-| Mode-specific prompt wiring | Agent 2 identified that `clarify_doubts_prompts.py` and `exam_prompts.py` define templates never imported outside their files. Documented as a finding — this is a code gap to address separately, not a doc gap. |
+| `docs/technical/ai-agent-files.md` | Managed by separate `/update-agent-files` skill |
+| `docs/archive/*` | Historical records; not updated by this skill |
+| Admin devtools frontend | Internal debugging tool, not user-facing |

@@ -1,6 +1,6 @@
 # Auth & Onboarding — Technical
 
-Authentication architecture, Cognito integration, and user management APIs.
+Authentication architecture, Cognito integration, user management APIs, enrichment, and personality derivation.
 
 ---
 
@@ -13,7 +13,7 @@ User signs in
     │
     v
 Cognito Auth
-(email/phone/Google)
+(email/Google)
     │
     v
 Get ID Token + Access Token
@@ -53,6 +53,10 @@ All subsequent API calls ───────────►  Verify access tok
 5. **Sync**: `POST /auth/sync` with ID token → backend creates/updates `User` row, returns `UserProfile`
 
 ### Phone/OTP
+
+Phone auth infrastructure exists in the backend (`POST /auth/phone/provision` endpoint, `provision_phone_user` in AuthService) and frontend (`sendOTP`, `verifyOTP` in AuthContext), but the phone login button is currently disabled on the `LoginPage` UI with a "coming soon" label.
+
+When enabled, the flow works as:
 
 1. **Provision**: `POST /auth/phone/provision` → backend creates Cognito user server-side via admin API (needed because client-side signUp can't skip required email/name schema attributes; uses a placeholder email `phone_{digits}@placeholder.local`). Idempotent — silently skips if user already exists. Also sets a random permanent password to move the user out of `FORCE_CHANGE_PASSWORD` state.
 2. **Initiate auth**: `CognitoUser.initiateAuth()` → Cognito custom auth challenge → sends OTP via SMS
@@ -106,8 +110,17 @@ On app mount:
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/profile` | Access Token | Get current user profile |
-| `PUT` | `/profile` | Access Token | Update profile fields (partial update) |
+| `PUT` | `/profile` | Access Token | Update profile fields (partial update). Also triggers personality regeneration if enrichment data exists and personality-triggering fields changed (name, preferred_name, age, grade, board). |
 | `PUT` | `/profile/password` | Access Token | Change password (email accounts only) |
+
+### Enrichment (`/profile/enrichment` and `/profile/personality`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/profile/enrichment` | Access Token | Get kid's enrichment profile (returns empty object if none exists) |
+| `PUT` | `/profile/enrichment` | Access Token | Create/update enrichment profile (partial update). Triggers async personality regeneration if data changed. |
+| `GET` | `/profile/personality` | Access Token | Get latest derived personality + status |
+| `POST` | `/profile/personality/regenerate` | Access Token | Force personality regeneration (requires existing enrichment data) |
 
 ---
 
@@ -118,6 +131,7 @@ The onboarding wizard sends `PUT /profile` after each step with just that field'
 | Step | Payload |
 |------|---------|
 | Name | `{"name": "..."}` |
+| Preferred Name | `{"preferred_name": "..."}` |
 | Age | `{"age": 12}` |
 | Grade | `{"grade": 7}` |
 | Board | `{"board": "CBSE"}` |
@@ -150,17 +164,88 @@ The `auth_provider` field (`email`, `phone`, or `google`) is derived server-side
 | `email` | VARCHAR | Email address (unique, nullable, indexed) |
 | `phone` | VARCHAR | Phone number (unique, nullable) |
 | `auth_provider` | VARCHAR | `email`, `phone`, or `google` |
-| `name` | VARCHAR | Display name |
+| `name` | VARCHAR | Full display name |
+| `preferred_name` | VARCHAR | How the tutor greets the student (e.g., first name or nickname) |
 | `age` | INT | Student age |
 | `grade` | INT | School grade |
 | `board` | VARCHAR | Education board |
 | `school_name` | VARCHAR | School name |
 | `about_me` | TEXT | Self-description |
+| `text_language_preference` | VARCHAR | Language for text responses (`en`, `hi`, `hinglish`) |
+| `audio_language_preference` | VARCHAR | Language for audio responses (`en`, `hi`, `hinglish`) |
+| `focus_mode` | BOOL | Full-screen audio mode for younger students (default false) |
 | `is_active` | BOOL | Account active flag (default true) |
 | `onboarding_complete` | BOOL | Onboarding wizard completed (auto-set by ProfileService) |
 | `created_at` | DATETIME | Account creation timestamp |
 | `updated_at` | DATETIME | Last update timestamp (auto-updated) |
 | `last_login_at` | DATETIME | Last login timestamp (updated on each sync) |
+
+## Enrichment Model
+
+**Table:** `kid_enrichment_profiles` (SQLAlchemy: `shared/models/entities.py`)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key (UUID) |
+| `user_id` | VARCHAR | FK to `users.id` (unique — one per user) |
+| `interests` | JSONB | Array of interest strings |
+| `learning_styles` | JSONB | Array of learning style values |
+| `motivations` | JSONB | Array of motivation values |
+| `growth_areas` | JSONB | Array of growth area strings |
+| `parent_notes` | TEXT | Free-text notes from parent (max 1000 chars) |
+| `attention_span` | VARCHAR | `short`, `medium`, or `long` |
+| `pace_preference` | VARCHAR | `slow`, `balanced`, or `fast` |
+| `created_at` | DATETIME | Creation timestamp |
+| `updated_at` | DATETIME | Last update timestamp |
+
+## Personality Model
+
+**Table:** `kid_personalities` (SQLAlchemy: `shared/models/entities.py`)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key (UUID) |
+| `user_id` | VARCHAR | FK to `users.id` (multiple versions per user) |
+| `personality_json` | JSONB | LLM-derived personality (teaching_approach, example_themes, encouragement_strategy, growth_focus) |
+| `tutor_brief` | TEXT | Compact text summary for tutor prompt injection |
+| `status` | VARCHAR | `generating`, `ready`, or `failed` |
+| `inputs_hash` | VARCHAR | SHA256 hash of inputs used for generation (deduplication) |
+| `generator_model` | VARCHAR | LLM model used for generation |
+| `version` | INT | Version number (latest = active) |
+| `created_at` | DATETIME | Creation timestamp |
+
+---
+
+## Enrichment & Personality Flow
+
+```
+Parent fills enrichment form
+    │
+    v
+PUT /profile/enrichment
+    │
+    v
+EnrichmentService.update_profile()
+    ├── Upsert enrichment data
+    ├── Compute inputs_hash (SHA256 of enrichment + basic profile fields)
+    └── Compare hash with latest personality
+            │
+            v (if changed and has data)
+        Background task: _debounced_regenerate()
+            ├── Sleep 5s (debounce)
+            ├── Re-check hash (skip if parent saved again)
+            └── PersonalityService.generate_personality()
+                    ├── Create KidPersonality row (status=generating)
+                    ├── Call LLM with enrichment + profile data
+                    ├── Parse personality_json + tutor_brief
+                    └── Update status to ready (or failed)
+```
+
+**Profile update trigger**: When `PUT /profile` changes personality-triggering fields (`name`, `preferred_name`, `age`, `grade`, `board`), it also triggers personality regeneration if enrichment data exists and the hash changed.
+
+**Debounce**: The `_debounced_regenerate` background task sleeps 5 seconds before regenerating. If the parent saves again within that window, the hash changes and the earlier task becomes a no-op (the newer task handles it).
+
+**Frontend polling**: When personality status is `generating`, the `EnrichmentPage` polls `GET /profile/personality` every 5 seconds until the status changes.
 
 ---
 
@@ -176,6 +261,8 @@ Global auth state provider. Exposes:
 
 **Internal:** `syncUser(idToken, accessToken)` — calls `POST /auth/sync` with ID token, stores access token in state and `api.ts` module via `setAccessToken()`
 
+**UserProfile interface** includes: `id`, `email`, `phone`, `name`, `preferred_name`, `age`, `grade`, `board`, `school_name`, `about_me`, `text_language_preference`, `audio_language_preference`, `focus_mode`, `onboarding_complete`, `auth_provider`
+
 ### Route Guards
 
 | Component | Purpose |
@@ -189,14 +276,28 @@ Global auth state provider. Exposes:
 
 | Route | `ProtectedRoute` | `OnboardingGuard` | Notes |
 |-------|:-:|:-:|-------|
-| `/learn` (+ nested child routes) | Yes | Yes | Wrapped in `LearnLayout` which provides header with user menu (profile, history, scorecard, logout). Child routes: index (`SubjectSelect`), `:subject`, `:subject/:topic`, `:subject/:topic/:subtopic` |
-| `/session/:sessionId` | Yes | Yes | Chat sessions require completed onboarding |
+| `/learn` (+ nested child routes) | Yes | Yes | Wrapped in `AppShell` which provides header with user menu. Child routes: `/learn` (`SubjectSelect`), `/learn/:subject` (`ChapterSelect`), `/learn/:subject/:chapter` (`TopicSelect`), `/learn/:subject/:chapter/:topic` (`ModeSelectPage`), `/learn/:subject/:chapter/:topic/exam-review/:sessionId` (`ExamReviewPage`) |
+| `/learn/:subject/:chapter/:topic/teach/:sessionId` | Yes | Yes | Teach-mode chat session (outside `AppShell`, own nav) |
+| `/learn/:subject/:chapter/:topic/exam/:sessionId` | Yes | Yes | Exam-mode chat session (outside `AppShell`, own nav) |
+| `/learn/:subject/:chapter/:topic/clarify/:sessionId` | Yes | Yes | Clarify-mode chat session (outside `AppShell`, own nav) |
+| `/session/:sessionId` | Yes | Yes | Legacy session URL (backward compat) |
 | `/onboarding` | Yes | No | Must be authenticated but onboarding is in progress |
-| `/profile` | Yes | No | Accessible before onboarding is complete |
-| `/history` | Yes | No | Session history |
-| `/scorecard`, `/report-card` | Yes | No | Progress reports (both render `ScorecardPage`) |
+| `/profile` | Yes | Yes | Wrapped in `AppShell` with `OnboardingGuard` |
+| `/profile/enrichment` | Yes | Yes | Enrichment form for parents |
+| `/history` | Yes | Yes | Session history |
+| `/report-card` | Yes | Yes | Report card |
 | `/login/*`, `/signup/*`, `/forgot-password`, `/auth/callback` | No | No | Public auth routes |
 | `/admin/*` | No | No | Admin routes (no auth required currently) |
+
+### AppShell
+
+The `AppShell` component (`components/AppShell.tsx`) provides the shared layout for all post-onboarding authenticated routes. It includes:
+
+- A top navigation bar with a home button, app logo/name, and user menu
+- User menu dropdown with: Profile, My Sessions, My Report Card, Log Out
+- An `<Outlet />` for rendering child routes
+
+All routes under `AppShell` are wrapped in both `ProtectedRoute` and `OnboardingGuard`.
 
 ### Token Management
 
@@ -217,9 +318,7 @@ The `useStudentProfile` hook (`hooks/useStudentProfile.ts`) bridges auth/profile
 | `board` | `user.board` | `"CBSE"` |
 | `grade` | `user.grade` | `3` |
 | `studentId` | `user.id` | `"s1"` |
-| `studentName` | `user.name` | `""` |
-
-Used by `LearnLayout` to display board/grade/country in the header, and by learn pages to filter curriculum.
+| `studentName` | `user.preferred_name` or `user.name` | `""` |
 
 ### Auth Middleware (Backend)
 
@@ -247,7 +346,8 @@ Used by `LearnLayout` to display board/grade/country in the header, and by learn
 | `llm-frontend/src/contexts/AuthContext.tsx` | Global auth state, all auth flows, syncUser |
 | `llm-frontend/src/components/ProtectedRoute.tsx` | Auth route guard |
 | `llm-frontend/src/components/OnboardingGuard.tsx` | Onboarding route guard |
-| `llm-frontend/src/pages/LoginPage.tsx` | Auth method selection (3 buttons) |
+| `llm-frontend/src/components/AppShell.tsx` | Shared layout with nav bar and user menu for authenticated routes |
+| `llm-frontend/src/pages/LoginPage.tsx` | Auth method selection (email, Google active; phone disabled) |
 | `llm-frontend/src/pages/EmailLoginPage.tsx` | Email/password login form |
 | `llm-frontend/src/pages/PhoneLoginPage.tsx` | Phone number entry with country code selector |
 | `llm-frontend/src/pages/OTPVerifyPage.tsx` | 6-digit OTP verification with auto-submit |
@@ -255,25 +355,34 @@ Used by `LearnLayout` to display board/grade/country in the header, and by learn
 | `llm-frontend/src/pages/EmailVerifyPage.tsx` | Email verification code entry with auto-login |
 | `llm-frontend/src/pages/ForgotPasswordPage.tsx` | Two-step password reset (send code, set new password) |
 | `llm-frontend/src/pages/OAuthCallbackPage.tsx` | Google OAuth redirect handler, token exchange, error display with retry |
-| `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard (5 steps + done screen) |
-| `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with logout |
+| `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard (6 steps + done screen: name, preferred name, age, grade, board, about) |
+| `llm-frontend/src/pages/ProfilePage.tsx` | Profile & Settings: view/edit profile, language prefs, focus mode, enrichment CTA |
+| `llm-frontend/src/pages/EnrichmentPage.tsx` | Enrichment form (4 chip sections + open textbox + session preferences) with personality card |
 | `llm-frontend/src/config/auth.ts` | Cognito configuration (env vars) |
-| `llm-frontend/src/api.ts` | API client with access token management |
-| `llm-frontend/src/hooks/useStudentProfile.ts` | Derives student profile (board, grade, country) from AuthContext for learn flow |
-| `llm-frontend/src/pages/LearnLayout.tsx` | Learn flow layout with user menu (profile, history, scorecard, logout) |
+| `llm-frontend/src/api.ts` | API client with access token management and enrichment/personality API functions |
+| `llm-frontend/src/hooks/useStudentProfile.ts` | Derives student profile (board, grade, country, preferred name) from AuthContext for learn flow |
+| `llm-frontend/src/components/enrichment/SectionCard.tsx` | Collapsible section card for enrichment form |
+| `llm-frontend/src/components/enrichment/ChipSelector.tsx` | Multi-select chip selector with optional custom input |
+| `llm-frontend/src/components/enrichment/SessionPreferences.tsx` | Attention span + pace preference selectors |
 
 ### Backend
 
 | File | Purpose |
 |------|---------|
 | `llm-backend/auth/api/auth_routes.py` | `/auth/sync`, `/auth/phone/provision`, `/auth/admin/user` endpoints |
-| `llm-backend/auth/api/profile_routes.py` | `/profile` GET, PUT, and `/profile/password` endpoints |
+| `llm-backend/auth/api/profile_routes.py` | `/profile` GET, PUT, and `/profile/password` endpoints. PUT also triggers personality regen. |
+| `llm-backend/auth/api/enrichment_routes.py` | `/profile/enrichment` GET/PUT, `/profile/personality` GET, `/profile/personality/regenerate` POST |
 | `llm-backend/auth/services/auth_service.py` | User sync, phone provisioning, auth provider detection, user deletion |
-| `llm-backend/auth/services/profile_service.py` | Profile updates, auto-completion of onboarding |
+| `llm-backend/auth/services/profile_service.py` | Profile updates (including preferred_name, language prefs, focus_mode), auto-completion of onboarding |
+| `llm-backend/auth/services/enrichment_service.py` | Enrichment profile CRUD, inputs hash computation, personality trigger logic |
+| `llm-backend/auth/services/personality_service.py` | LLM-based personality generation from enrichment + profile data |
 | `llm-backend/auth/repositories/user_repository.py` | User CRUD operations |
+| `llm-backend/auth/repositories/enrichment_repository.py` | KidEnrichmentProfile CRUD with upsert |
+| `llm-backend/auth/repositories/personality_repository.py` | KidPersonality CRUD (versioned, latest = active) |
 | `llm-backend/auth/middleware/auth_middleware.py` | JWT verification, JWKS caching, `get_current_user`/`get_optional_user` |
-| `llm-backend/auth/models/schemas.py` | Pydantic request/response models (UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest, ChangePasswordResponse) |
-| `llm-backend/shared/models/entities.py` | User SQLAlchemy model |
+| `llm-backend/auth/models/schemas.py` | Pydantic models: UserProfileResponse, UpdateProfileRequest, ChangePasswordRequest, ChangePasswordResponse |
+| `llm-backend/auth/models/enrichment_schemas.py` | Pydantic models: EnrichmentProfileRequest/Response, EnrichmentUpdateResponse, PersonalityResponse |
+| `llm-backend/shared/models/entities.py` | User, KidEnrichmentProfile, KidPersonality SQLAlchemy models |
 
 ---
 

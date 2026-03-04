@@ -56,18 +56,20 @@ A student-led Q&A session where you ask questions and the tutor answers them dir
 A knowledge test with a set of questions (typically 7) covering the subtopic's concepts. The exam assesses what you know without teaching.
 
 - Questions span three difficulty levels: easy (~30%), medium (~50%), and hard (~20%)
-- Questions cover different types: conceptual, procedural, and application
+- Questions cover different types: conceptual, procedural, application, real-world scenarios, error-spotting, and reasoning
 - After each answer, the tutor acknowledges it and moves to the next question — it does not reveal whether you were correct or teach during the exam
-- Answers are scored behind the scenes as correct, partially correct, or incorrect — you see the full results only at the end
+- Each answer is scored on a scale from 0 to 1, with partial credit for partially correct answers (e.g., getting 1 of 3 parts right scores approximately 0.3) — you see the full results only at the end
 - A question counter shows how many questions you've answered out of the total
 - You can end the exam early using the "End Exam Early" button and still get your results
+- You cannot start a second exam on the same subtopic if you already have an incomplete exam in progress
 - At the end, you see a results summary with:
-  - Score and percentage
-  - Per-question review showing which you got correct, partially correct, or incorrect
+  - Score and percentage (e.g., "5.3/7 — 75.7%")
+  - Per-question review showing your score and a brief rationale explaining what you got right or wrong
   - Strengths (concepts you got right)
   - Weak areas (concepts to review)
   - Patterns (overall performance observations)
   - Suggested next steps (e.g., "Review these concepts in Teach Me")
+- You can revisit a completed exam later to see the detailed review of each question, including the expected answer and scoring rationale
 
 ---
 
@@ -97,7 +99,7 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 7. **End naturally** — When the lesson is done, the tutor checks if you want to continue. If you say goodbye, it wraps up warmly in a few sentences.
 
-8. **Personalized** — If you've set up a profile (name, age, interests), the tutor uses your name and adapts its examples and language to your age level.
+8. **Personalized** — If you've set up a profile (name, age, interests), the tutor uses your name and adapts its examples and language to your age level. If a personality profile has been built from your onboarding, the tutor uses it to tailor its tone, analogies, and approach to what resonates with you.
 
 ---
 
@@ -105,9 +107,11 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 Each Teach Me session follows a study plan made up of steps:
 
-- **Explain** steps — The tutor introduces a concept
+- **Explain** steps — The tutor introduces a concept through a structured explanation that builds progressively: a curiosity hook, core idea with an everyday example, building blocks one at a time, and an informal understanding check before moving on. If you already know the concept, the tutor recognizes this and skips ahead.
 - **Check** steps — The tutor asks questions to verify understanding
 - **Practice** steps — The tutor gives problems to solve
+
+The study plan is personalized to you. If you have a profile, the platform generates a plan tailored to your learning style, interests, and level. Otherwise, a standard plan is used.
 
 The tutor tracks your mastery of each concept as you go. A progress bar shows your current step, and a coverage bar shows how much of the topic you've covered.
 
@@ -168,9 +172,29 @@ From the session completion screen, you can start a new session or view your sco
 
 ---
 
-## Voice Input
+## Voice Input and Output
 
 You can use your microphone to speak your answers instead of typing. Tap the microphone button to start recording, speak your answer, then tap again to stop. Your speech is transcribed to text and placed in the input field, where you can edit it before sending.
+
+The tutor can also speak its responses aloud. Each tutor message has an audio version that you can play using the speaker button. The spoken version is generated using text-to-speech and is designed to sound like a friendly tutor speaking naturally.
+
+---
+
+## Language Support
+
+The tutor supports multiple languages for both text and audio:
+
+- **English** — Default for both text and audio
+- **Hindi** — Text in Devanagari script, audio in Hindi (Roman script for TTS)
+- **Hinglish** — A natural Hindi-English mix commonly used in Indian classrooms, with Hindi for conversational glue and English for technical terms
+
+Your language preferences for text and audio are set independently in your profile. If you type in Hindi or Hinglish, the tutor automatically understands and translates your input before processing.
+
+---
+
+## Attention Span Awareness
+
+If your profile includes attention span information (from the onboarding questionnaire), the tutor adjusts its session length accordingly. For shorter attention spans, the tutor begins wrapping up earlier and suggests continuing in a future session. For longer attention spans, the tutor can sustain extended sessions.
 
 ---
 

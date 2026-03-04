@@ -205,6 +205,7 @@ Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `anthrop
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/evaluation/guidelines` | List teaching guidelines (filterable by country, board, grade, subject, status) |
 | `POST` | `/api/evaluation/start` | Start evaluation run in background |
 | `GET` | `/api/evaluation/status` | Get current evaluation status (polling) |
 | `GET` | `/api/evaluation/runs` | List all evaluation runs |
@@ -328,7 +329,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 
 **Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display (coherence, non_repetition, natural_flow, engagement, responsiveness, pacing, grade_appropriateness, topic_coverage, session_arc, overall_naturalness). The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data -- legacy dimensions without scores simply show 0.
 
-The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels (e.g., `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", `anthropic-haiku` to "Claude Haiku 4.5"). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge only maps `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (does not include `anthropic-haiku`). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

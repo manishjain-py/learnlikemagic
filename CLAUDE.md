@@ -20,13 +20,15 @@ learnlikemagic/
 | `docs/functional/app-overview.md` | What the app is, user journey, UX philosophy | App context, onboarding new people |
 | `docs/functional/learning-session.md` | Tutoring experience from student POV | Understanding the tutor feature |
 | `docs/functional/evaluation.md` | Tutor quality testing from admin POV | Understanding evaluation |
-| `docs/functional/scorecard.md` | Student progress report | Understanding scorecard |
+| `docs/functional/scorecard.md` | Student report card (progress & scores) | Understanding report card |
 | `docs/functional/auth-and-onboarding.md` | Login, signup, onboarding | Understanding auth flows |
+| `docs/functional/book-guidelines.md` | Book ingestion, guidelines, study plans from admin POV | Understanding book pipeline |
 | `docs/technical/architecture-overview.md` | Full-stack architecture, tech stack, conventions | Code organization, adding new code |
 | `docs/technical/learning-session.md` | Tutor pipeline technical details | Working on tutor code |
 | `docs/technical/evaluation.md` | Evaluation pipeline technical details | Working on evaluation |
-| `docs/technical/scorecard.md` | Scorecard service technical details | Working on scorecard |
+| `docs/technical/scorecard.md` | Report card service, API, aggregation | Working on report card |
 | `docs/technical/auth-and-onboarding.md` | Auth architecture, Cognito, APIs | Working on auth |
+| `docs/technical/book-guidelines.md` | Book ingestion V2 pipeline, APIs, data flow | Working on book ingestion or guidelines |
 | `docs/technical/dev-workflow.md` | Local setup, testing, git workflow | Dev environment, testing |
 | `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |
 | `docs/technical/database.md` | DB schema, migrations | Database changes |

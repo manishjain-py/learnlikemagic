@@ -16,7 +16,7 @@ AWS infrastructure, Terraform, CI/CD, and production operations.
 |       v                                                      |
 |  RDS Aurora Serverless v2 (PostgreSQL 15.10)     [Database]  |
 |                                                              |
-|  Secrets Manager (OpenAI, Gemini, Anthropic, DB password)    |
+|  Secrets Manager (OpenAI, Gemini/TTS, Anthropic, DB password)|
 |  Cognito (Authentication)                                    |
 |  S3 Books Bucket (Book ingestion storage)                    |
 +-------------------------------------------------------------+
@@ -51,6 +51,8 @@ docker inspect IMAGE_ID --format='{{.Architecture}}'  # must be: amd64
 Use `make build-prod` (not `make build-local`) for AWS deployments.
 
 **Dockerfile:** Uses `python:3.11-slim`, copies `entrypoint.sh` as CMD. The entrypoint script checks for required env vars (`DATABASE_URL`, `OPENAI_API_KEY`) before starting Uvicorn.
+
+**App Runner runtime env vars:** `API_HOST`, `API_PORT`, `DATABASE_URL`, `LLM_MODEL`, `ENVIRONMENT`, `TUTOR_LLM_PROVIDER`. **Runtime secrets (from Secrets Manager):** `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY` (shares Gemini secret), `ANTHROPIC_API_KEY` (conditional).
 
 **Build note:** `make build-prod` copies `docs/` into the backend build context before building, then removes it after. The CI/CD pipeline does the same via `cp -r docs/ llm-backend/docs/` and also copies `e2e/scenarios.json` into `llm-backend/e2e/`.
 
@@ -271,7 +273,7 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 | Aurora | PostgreSQL 15.10, 0.5-2 ACU, 7-day backup retention |
 | ECR | Keep last 10 images, scan on push, AES256 encryption |
 | CloudFront | HTTPS redirect, gzip+brotli, SPA routing via CloudFront Function, OAI for S3 access, PriceClass_100 (North America + Europe) |
-| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window |
+| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window. Gemini secret also serves `GOOGLE_CLOUD_TTS_API_KEY` in App Runner |
 
 **Estimated cost (low traffic):** ~$10-30/month
 

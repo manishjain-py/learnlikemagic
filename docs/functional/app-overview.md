@@ -11,6 +11,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 ## Target Users
 
 - **Students** (K-12, primarily grades 1-12) — The primary users. Everything is designed for them.
+- **Parents** — Fill in enrichment details about their child (interests, learning style, motivations) to help personalize the tutoring experience.
 - **Admins** — Upload curriculum content, review teaching guidelines, run quality evaluations, configure AI models, and monitor tutor performance.
 
 ---
@@ -22,9 +23,12 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Learning Sessions** | Interactive tutoring conversations on any topic in the curriculum |
 | **Learning Modes** | Three ways to learn: Teach Me, Clarify Doubts, and Exam |
 | **Voice Input** | Students can speak their answers instead of typing |
+| **Voice Output** | The tutor can read responses aloud using text-to-speech |
+| **Exam Review** | After finishing an exam, students can review each question, their answer, the correct answer, and explanations |
 | **Session Pause & Resume** | Pause a teaching session and pick up where you left off later |
 | **Session History** | View past learning sessions with mastery scores and learning stats |
-| **Scorecard** | Progress report showing mastery across subjects, topics, and subtopics |
+| **Report Card** | Progress report showing coverage and exam scores per subject, chapter, and topic |
+| **Enrichment Profile** | Parent-filled profile capturing interests, learning style, motivations, and growth areas to personalize the tutor |
 | **Profile** | View and edit personal details like name, grade, board, and school |
 | **Book & Guidelines** | Admin tool to upload textbooks and extract teaching guidelines |
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
@@ -42,7 +46,7 @@ After choosing a subtopic, students pick how they want to learn:
 |------|-------------|
 | **Teach Me** | The tutor teaches the topic step-by-step from scratch. Tracks progress and coverage. Can be paused and resumed later. |
 | **Clarify Doubts** | The student asks their own questions about the topic. The tutor answers and tracks which concepts were discussed. |
-| **Exam** | The tutor quizzes the student with questions and tracks correct answers. Can be ended early to see results. |
+| **Exam** | The tutor quizzes the student with questions and tracks correct answers. Can be ended early to see results. After the exam, a review page shows each question with the student's answer and the correct answer. |
 
 If a student previously paused a Teach Me session on the same subtopic, a **Resume** option appears showing how much was already covered.
 
@@ -55,14 +59,23 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 1. **Sign up** — Using phone, email, or Google
 2. **Onboard** — Share your name, age, grade, and board
 3. **Pick a subject** — Choose a subject from the curriculum
-4. **Pick a topic** — Choose a topic within that subject
-5. **Pick a subtopic** — Choose a specific subtopic to study
+4. **Pick a chapter** — Choose a chapter within that subject
+5. **Pick a topic** — Choose a specific topic to study
 6. **Choose a mode** — Teach Me, Clarify Doubts, or Exam (or resume a paused session)
 7. **Learn** — Interact with the tutor through text or voice; pause to come back later or end early to see results
-8. **Review progress** — Check your scorecard to see strengths and areas to practice
-9. **View session history** — Browse past sessions with mastery scores and learning stats
-10. **Manage profile** — Update your name, grade, board, school, and other details
-11. **Practice again** — Jump back into topics that need more work
+8. **Review exam results** — After an exam, review each question with answers and explanations
+9. **Review progress** — Check your report card to see coverage and exam scores across subjects
+10. **View session history** — Browse past sessions with mastery scores and learning stats
+11. **Manage profile** — Update your name, grade, board, school, and other details
+12. **Practice again** — Jump back into topics that need more work
+
+### Parents
+
+1. **Open enrichment profile** — Navigate to the enrichment page from the student's profile
+2. **Fill in details** — Share the child's interests, preferred learning style, what motivates them, and areas for growth
+3. **Add notes** — Optionally add free-text notes about anything else the tutor should know
+4. **Set session preferences** — Choose preferred language and session length
+5. **View personality summary** — See the AI-generated personality summary that the tutor uses to personalize sessions
 
 ### Admins
 
