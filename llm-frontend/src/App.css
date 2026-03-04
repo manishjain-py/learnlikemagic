@@ -75,7 +75,10 @@ body {
 
 .nav-center {
   flex: 1;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-size: 0.95rem;
   font-weight: 600;
   background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
@@ -85,6 +88,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.nav-logo {
+  flex-shrink: 0;
 }
 
 .nav-breadcrumb {
@@ -836,6 +843,10 @@ body {
 .auth-logo {
   text-align: center;
   margin-bottom: 2rem;
+}
+
+.auth-logo-icon {
+  margin-bottom: 0.75rem;
 }
 
 .auth-logo h1 {
