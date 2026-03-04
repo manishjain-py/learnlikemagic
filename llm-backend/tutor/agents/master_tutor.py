@@ -116,9 +116,12 @@ class MasterTutorAgent(BaseAgent):
 
         if turn == 1:
             return (
-                "PACING: FIRST TURN — Keep opening to 2-3 sentences MAX. Ask ONE simple "
-                "question to gauge level. Don't explain the topic yet. No tables, no "
-                "multi-step walkthroughs. Just a brief hook and one question."
+                "PACING: FIRST TURN — Explain the first concept in a simple, engaging way. "
+                "Use one core idea with a fun, relatable everyday example (food, toys, games). "
+                "Keep it to 3-5 sentences — short enough to hold attention, long enough to "
+                "actually teach something. Do NOT ask a test question yet. End by checking "
+                "if they follow so far ('Does that make sense?' / 'Can you picture that?'). "
+                "No tables, no multi-step walkthroughs."
             )
 
         # Also accelerate if most concepts are strong (early fast-track detection)
@@ -220,6 +223,59 @@ class MasterTutorAgent(BaseAgent):
             parts.append("⚠️ Responses getting shorter — possible disengagement. Re-engage: try a different angle or ask what they think.")
 
         return " ".join(parts)
+
+    def _compute_explain_first_directive(self, session: SessionState) -> str:
+        """Inject an EXPLAIN FIRST directive when the current concept is new and unexplained.
+
+        The tutor should teach a concept before testing the student on it.
+        This fires when:
+        - The current step exists and is an 'explain' or 'check' type
+        - The concept has no mastery data yet (never been assessed)
+        - There is no pending question (we're not mid-question-lifecycle)
+        - It's not the first turn (first turn has its own explain-focused pacing)
+        """
+        if session.turn_count <= 1:
+            return ""
+
+        step = session.current_step_data
+        if not step:
+            return ""
+
+        concept = step.concept
+        concept_mastery = session.mastery_estimates.get(concept)
+
+        # If the concept has already been assessed (any mastery score), skip
+        if concept_mastery is not None and concept_mastery > 0.0:
+            return ""
+
+        # If there's a pending question, the student is mid-answer — don't override
+        if session.last_question is not None:
+            return ""
+
+        # Check if this concept has been covered in prior turns
+        if concept in session.concepts_covered_set:
+            return ""
+
+        # Concept is new and unexplained — tell the tutor to teach first
+        if step.type == "explain":
+            return (
+                "TEACHING PHASE: This concept is NEW to the student — they haven't learned it yet. "
+                "EXPLAIN it first before asking any test questions. Use a simple, fun everyday "
+                "example the student can relate to. You can break the explanation across multiple "
+                "turns if needed. Only move to questions once you've taught the idea and the "
+                "student signals they understand (or you've given a clear explanation). "
+                "You may ask light comprehension checks ('Does that make sense?', 'Can you "
+                "picture that?') but do NOT ask quiz-style questions yet."
+            )
+        elif step.type == "check":
+            return (
+                "TEACHING PHASE: This is a CHECK step, but the student has no prior mastery of "
+                "this concept. Before checking understanding, give a brief, friendly explanation "
+                "of the concept (2-3 sentences with an example), then transition to your check "
+                "question naturally."
+            )
+
+        return ""
 
     def build_prompt(self, context: AgentContext) -> str:
         session = self._session
@@ -397,6 +453,9 @@ class MasterTutorAgent(BaseAgent):
 
         # Compute dynamic signals
         pacing_directive = self._compute_pacing_directive(session)
+        explain_first = self._compute_explain_first_directive(session)
+        if explain_first:
+            pacing_directive += "\n" + explain_first
         student_style = self._compute_student_style(session)
 
         conversation = format_conversation_history(session.conversation_history, max_turns=10)

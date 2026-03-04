@@ -1,4 +1,4 @@
-"""Tests for MasterTutorAgent._compute_pacing_directive"""
+"""Tests for MasterTutorAgent._compute_pacing_directive and _compute_explain_first_directive"""
 
 from unittest.mock import MagicMock
 from tutor.agents.master_tutor import MasterTutorAgent
@@ -15,6 +15,20 @@ def _make_session(turn_count=5, mastery=None, trend="steady", is_complete=False)
     return session
 
 
+def _make_session_with_step(turn_count=3, step_type="explain", concept="Addition",
+                            mastery=None, has_pending_question=False, concepts_covered=None):
+    """Create a mock session with a current step for explain-first tests."""
+    session = MagicMock()
+    session.turn_count = turn_count
+    session.mastery_estimates = mastery or {}
+    session.last_question = MagicMock() if has_pending_question else None
+    session.concepts_covered_set = concepts_covered or set()
+    session.current_step_data = MagicMock()
+    session.current_step_data.type = step_type
+    session.current_step_data.concept = concept
+    return session
+
+
 def _make_agent():
     agent = MasterTutorAgent(llm_service=MagicMock())
     return agent
@@ -26,7 +40,7 @@ class TestPacingDirective:
         session = _make_session(turn_count=1)
         result = agent._compute_pacing_directive(session)
         assert "FIRST TURN" in result
-        assert "2-3 sentences" in result
+        assert "Explain" in result
 
     def test_first_turn_not_zero(self):
         """turn_count=0 is pre-increment state, should NOT be first turn."""
@@ -74,3 +88,77 @@ class TestPacingDirective:
         result = agent._compute_pacing_directive(session)
         assert "STEADY" in result
         assert "SIMPLIFY" not in result
+
+
+class TestExplainFirstDirective:
+    """Tests for MasterTutorAgent._compute_explain_first_directive."""
+
+    def test_explain_step_new_concept_returns_teaching_phase(self):
+        """On an explain step with no mastery data, should inject TEACHING PHASE."""
+        agent = _make_agent()
+        session = _make_session_with_step(turn_count=2, step_type="explain", concept="Addition")
+        result = agent._compute_explain_first_directive(session)
+        assert "TEACHING PHASE" in result
+        assert "EXPLAIN" in result
+
+    def test_check_step_new_concept_returns_teaching_phase(self):
+        """On a check step with no mastery, should inject brief explanation guidance."""
+        agent = _make_agent()
+        session = _make_session_with_step(turn_count=2, step_type="check", concept="Addition")
+        result = agent._compute_explain_first_directive(session)
+        assert "TEACHING PHASE" in result
+        assert "CHECK" in result
+
+    def test_practice_step_returns_empty(self):
+        """Practice steps should not get explain-first directive."""
+        agent = _make_agent()
+        session = _make_session_with_step(turn_count=2, step_type="practice", concept="Addition")
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_concept_with_mastery_returns_empty(self):
+        """If concept already has mastery > 0, no explain-first needed."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            mastery={"Addition": 0.5}
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_pending_question_returns_empty(self):
+        """If there's a pending question, don't override with explain-first."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            has_pending_question=True
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_first_turn_returns_empty(self):
+        """First turn has its own pacing directive, so explain-first should not fire."""
+        agent = _make_agent()
+        session = _make_session_with_step(turn_count=1, step_type="explain", concept="Addition")
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_concept_already_covered_returns_empty(self):
+        """If concept is in concepts_covered_set, don't re-explain."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            concepts_covered={"Addition"}
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert result == ""
+
+    def test_zero_mastery_still_triggers(self):
+        """Mastery of 0.0 (initialized but no real signal) should still trigger."""
+        agent = _make_agent()
+        session = _make_session_with_step(
+            turn_count=2, step_type="explain", concept="Addition",
+            mastery={"Addition": 0.0}
+        )
+        result = agent._compute_explain_first_directive(session)
+        assert "TEACHING PHASE" in result
