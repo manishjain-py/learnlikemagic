@@ -153,6 +153,103 @@ class StudyPlanGeneratorService:
             logger.error(f"Failed to generate study plan: {str(e)}", exc_info=True)
             raise
 
+    def generate_plan_with_feedback(
+        self,
+        guideline: TeachingGuideline,
+        student_context: Optional["StudentContext"],
+        feedback_text: str,
+        concepts_covered: List[str],
+        current_step: int,
+        total_steps: int,
+    ) -> Dict[str, Any]:
+        """Generate a new study plan adjusted for mid-session feedback.
+
+        Same as generate_plan() but appends feedback context to the personality section.
+        Skips the reviewer pass for speed.
+        """
+        try:
+            prompt_template = self.prompt_loader.load("study_plan_generator")
+
+            chapter = guideline.chapter_title or guideline.chapter
+            topic = guideline.topic_title or guideline.topic
+            guideline_text = guideline.guideline or guideline.description or ""
+
+            personality_section = self._build_personality_section(student_context)
+            feedback_section = self._build_feedback_section(
+                feedback_text, concepts_covered, current_step, total_steps
+            )
+
+            prompt = prompt_template.format(
+                chapter=chapter,
+                topic=topic,
+                grade=guideline.grade,
+                guideline_text=guideline_text,
+                student_personality_section=personality_section + feedback_section,
+            )
+
+            logger.info(json.dumps({
+                "step": "STUDY_PLAN_FEEDBACK_GENERATION",
+                "status": "starting",
+                "guideline_id": guideline.id,
+                "topic": topic,
+                "model": self.llm_service.model_id,
+            }))
+
+            response = self.llm_service.call(
+                prompt=prompt,
+                reasoning_effort="high",
+                json_schema=self._study_plan_schema,
+                schema_name="StudyPlan"
+            )
+
+            plan_json = self.llm_service.parse_json_response(response["output_text"])
+            validated_plan = StudyPlan.model_validate(plan_json)
+            plan_dict = validated_plan.model_dump()
+            self._validate_plan_schema(plan_dict)
+
+            reasoning_obj = response.get("reasoning")
+            reasoning_str = ""
+            if reasoning_obj is not None:
+                if hasattr(reasoning_obj, "summary"):
+                    reasoning_str = str(reasoning_obj.summary) if reasoning_obj.summary else ""
+                elif hasattr(reasoning_obj, "text"):
+                    reasoning_str = str(reasoning_obj.text) if reasoning_obj.text else ""
+                else:
+                    reasoning_str = str(reasoning_obj)
+
+            logger.info(json.dumps({
+                "step": "STUDY_PLAN_FEEDBACK_GENERATION",
+                "status": "complete",
+                "guideline_id": guideline.id,
+            }))
+
+            return {
+                "plan": plan_dict,
+                "reasoning": reasoning_str,
+                "model": self.llm_service.model_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate feedback plan: {str(e)}", exc_info=True)
+            raise
+
+    @staticmethod
+    def _build_feedback_section(
+        feedback_text: str,
+        concepts_covered: List[str],
+        current_step: int,
+        total_steps: int,
+    ) -> str:
+        """Build the feedback context string to append to the prompt."""
+        covered_str = ", ".join(concepts_covered) if concepts_covered else "None yet"
+        return (
+            f"\n## Mid-Session Feedback (IMPORTANT - adjust the plan based on this)\n"
+            f"- The student/parent provided this feedback: \"{feedback_text}\"\n"
+            f"- Concepts already covered: {covered_str}\n"
+            f"- Progress: step {current_step} of {total_steps}\n"
+            f"- Do NOT repeat covered concepts. Adjust remaining plan per feedback.\n"
+        )
+
     @staticmethod
     def _build_personality_section(student_context: Optional["StudentContext"]) -> str:
         """Build the student personality section for the prompt template."""

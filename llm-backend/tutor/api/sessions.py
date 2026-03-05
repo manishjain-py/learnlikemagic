@@ -398,6 +398,74 @@ def end_exam_early(
         raise e.to_http_exception()
 
 
+class FeedbackRequest(BaseModel):
+    feedback_text: str
+    action: str = "continue"  # "continue" or "restart"
+
+
+class FeedbackResponse(BaseModel):
+    success: bool
+    message: str
+    new_total_steps: int
+    feedback_count: int
+
+
+@router.post("/{session_id}/feedback", response_model=FeedbackResponse)
+def submit_feedback(
+    session_id: str,
+    request: FeedbackRequest,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Submit mid-session feedback to trigger study plan regeneration."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode == "exam":
+        raise HTTPException(status_code=400, detail="Feedback not available in exam mode")
+
+    if not request.feedback_text or not request.feedback_text.strip():
+        raise HTTPException(status_code=400, detail="Feedback text is required")
+
+    if request.action not in ("continue", "restart"):
+        raise HTTPException(status_code=400, detail="Action must be 'continue' or 'restart'")
+
+    # Rate limit: max 3 feedbacks per session
+    from shared.models.entities import SessionFeedback
+    feedback_count = (
+        db.query(SessionFeedback)
+        .filter(SessionFeedback.session_id == session_id)
+        .count()
+    )
+    if feedback_count >= 3:
+        raise HTTPException(status_code=429, detail="Maximum feedback limit reached (3 per session)")
+
+    session_state = SessionState.model_validate_json(session_row.state_json)
+    expected_version = session_row.state_version or 1
+
+    try:
+        service = SessionService(db)
+        result = service.process_feedback(
+            session_id=session_id,
+            user_id=current_user.id,
+            guideline_id=session_row.guideline_id,
+            feedback_text=request.feedback_text.strip(),
+            session_state=session_state,
+            expected_version=expected_version,
+            action=request.action,
+        )
+        return FeedbackResponse(**result)
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+    except Exception as e:
+        import traceback
+        logger.error(f"Error processing feedback: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error processing feedback: {e}")
+
+
 @router.get("/{session_id}/summary", response_model=SummaryResponse)
 def get_summary(
     session_id: str,

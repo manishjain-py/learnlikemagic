@@ -512,6 +512,27 @@ class MasterTutorAgent(BaseAgent):
                 "this score was awarded. Also set `answer_correct` based on whether the core answer is right."
             )
 
+        # Check for recent feedback in turn timeline
+        recent_timeline = session.session_summary.turn_timeline[-3:] if session.session_summary.turn_timeline else []
+        has_restart = any("[FEEDBACK-RESTART]" in entry for entry in recent_timeline)
+        has_continue_feedback = any("[FEEDBACK]" in entry for entry in recent_timeline)
+        if has_restart:
+            feedback_notice = (
+                "\n## IMPORTANT: Session Was Restarted\n"
+                "The session was restarted with a new study plan based on parent/student feedback. "
+                "This is a fresh start — greet the student warmly, briefly acknowledge the change "
+                "(e.g., \"Let's take a fresh look at this!\"), and begin teaching from step 1.\n\n"
+            )
+            awaiting_answer_section = feedback_notice + awaiting_answer_section
+        elif has_continue_feedback:
+            feedback_notice = (
+                "\n## IMPORTANT: Study Plan Was Just Updated\n"
+                "The study plan was adjusted based on parent/student feedback. "
+                "Acknowledge naturally (e.g., \"Let's try a different approach!\") "
+                "and continue with the current step.\n\n"
+            )
+            awaiting_answer_section = feedback_notice + awaiting_answer_section
+
         # Compute dynamic signals
         pacing_directive = self._compute_pacing_directive(session)
         student_style = self._compute_student_style(session)

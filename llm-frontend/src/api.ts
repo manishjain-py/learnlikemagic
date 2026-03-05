@@ -489,6 +489,29 @@ export async function regeneratePersonality(): Promise<void> {
 }
 
 // ──────────────────────────────────────────────
+// Mid-session feedback
+// ──────────────────────────────────────────────
+
+export interface FeedbackResponse {
+  success: boolean;
+  message: string;
+  new_total_steps: number;
+  feedback_count: number;
+}
+
+export async function submitFeedback(sessionId: string, feedbackText: string, action: 'continue' | 'restart' = 'continue'): Promise<FeedbackResponse> {
+  const response = await apiFetch(`/sessions/${sessionId}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify({ feedback_text: feedbackText, action }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail || response.statusText);
+  }
+  return response.json();
+}
+
+// ──────────────────────────────────────────────
 // Audio transcription
 // ──────────────────────────────────────────────
 

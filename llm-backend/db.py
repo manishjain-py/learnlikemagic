@@ -95,6 +95,9 @@ def migrate():
         # Add focus_mode column to users
         _apply_focus_mode_column(db_manager)
 
+        # Session feedback table (created by create_all, this is a no-op placeholder)
+        _apply_session_feedback_table(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -525,6 +528,15 @@ def _apply_focus_mode_column(db_manager):
             conn.execute(text("UPDATE users SET focus_mode = TRUE WHERE focus_mode = FALSE"))
 
         conn.commit()
+
+
+def _apply_session_feedback_table(db_manager):
+    """Ensure session_feedback table exists (created by Base.metadata.create_all)."""
+    inspector = inspect(db_manager.engine)
+    if "session_feedback" in inspector.get_table_names():
+        print("  ✓ session_feedback table already exists")
+    else:
+        print("  ✓ session_feedback table created")
 
 
 def _seed_llm_config(db_manager):
