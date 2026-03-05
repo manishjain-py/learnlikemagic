@@ -22,7 +22,7 @@ export default function ProfilePage() {
   const [schoolName, setSchoolName] = useState(user?.school_name || '');
   const [textLang, setTextLang] = useState(user?.text_language_preference || 'en');
   const [audioLang, setAudioLang] = useState(user?.audio_language_preference || 'en');
-  const [focusMode, setFocusMode] = useState(user?.focus_mode || false);
+  const [focusMode, setFocusMode] = useState(user?.focus_mode !== undefined ? user.focus_mode : true);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

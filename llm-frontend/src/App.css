@@ -2453,16 +2453,30 @@ body {
   cursor: pointer;
   color: #555;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
 
 .focus-exit-btn:hover {
   background: #e0e0e0;
 }
 
+.focus-breadcrumb {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: #666;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+
 .focus-header-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .focus-audio-btn {

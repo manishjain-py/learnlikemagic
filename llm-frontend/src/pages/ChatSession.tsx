@@ -124,7 +124,7 @@ export default function ChatSession() {
         setFocusCardIdx(focusCards.length - 1);
         // Auto-play TTS for new card
         const newCard = focusCards[focusCards.length - 1];
-        if (newCard && user?.focus_mode && !virtualTeacherOn) {
+        if (newCard && (user?.focus_mode !== false) && !virtualTeacherOn) {
           playTeacherAudio(newCard.tutorMsg.audioText || newCard.tutorMsg.content, newCard.tutorIdx);
         }
       }
@@ -225,7 +225,7 @@ export default function ChatSession() {
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
       }
       // Auto-open focus carousel on first turn
-      if (user?.focus_mode && !virtualTeacherOn) {
+      if ((user?.focus_mode !== false) && !virtualTeacherOn) {
         setFocusCardIdx(0);
         prevFocusCardsLen.current = 1;
         focusDismissedRef.current = false;
@@ -597,7 +597,7 @@ export default function ChatSession() {
         setFocusCardIdx(cardIdx);
         focusDismissedRef.current = false;
         prevFocusCardsLen.current = focusCards.length;
-        if (user?.focus_mode && messages[idx]) {
+        if ((user?.focus_mode !== false) && messages[idx]) {
           playTeacherAudio(messages[idx].audioText || messages[idx].content, idx);
         }
       }
@@ -1227,6 +1227,13 @@ export default function ChatSession() {
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
+            {(subject || chapter || topic) && (
+              <span className="focus-breadcrumb">
+                {subject && <>{subject}</>}
+                {chapter && <> &rsaquo; {chapter}</>}
+                {topic && <> &rsaquo; {topic}</>}
+              </span>
+            )}
             <div className="focus-header-right">
               <button
                 className={`focus-audio-btn${playingMsgIdx === focusCards[focusCardIdx]?.tutorIdx ? ' playing' : ''}`}

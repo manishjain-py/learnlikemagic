@@ -31,7 +31,7 @@ def _user_to_response(user) -> UserProfileResponse:
         about_me=user.about_me,
         text_language_preference=user.text_language_preference or 'en',
         audio_language_preference=user.audio_language_preference or 'en',
-        focus_mode=user.focus_mode or False,
+        focus_mode=user.focus_mode if user.focus_mode is not None else True,
         onboarding_complete=user.onboarding_complete,
         auth_provider=user.auth_provider,
     )

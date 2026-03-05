@@ -518,8 +518,11 @@ def _apply_focus_mode_column(db_manager):
     with db_manager.engine.connect() as conn:
         if "focus_mode" not in existing_columns:
             print("  Adding focus_mode column to users...")
-            conn.execute(text("ALTER TABLE users ADD COLUMN focus_mode BOOLEAN DEFAULT FALSE NOT NULL"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN focus_mode BOOLEAN DEFAULT TRUE NOT NULL"))
             print("  ✓ focus_mode column added")
+        else:
+            # Flip existing users who never changed it to the new default (true)
+            conn.execute(text("UPDATE users SET focus_mode = TRUE WHERE focus_mode = FALSE"))
 
         conn.commit()
 

@@ -18,7 +18,7 @@ class UserProfileResponse(BaseModel):
     about_me: Optional[str] = None
     text_language_preference: Optional[str] = 'en'
     audio_language_preference: Optional[str] = 'en'
-    focus_mode: bool = False
+    focus_mode: bool = True
     onboarding_complete: bool
     auth_provider: str
 

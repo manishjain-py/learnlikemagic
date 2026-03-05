@@ -26,7 +26,7 @@ class User(Base):
     about_me = Column(Text, nullable=True)
     text_language_preference = Column(String, nullable=True)
     audio_language_preference = Column(String, nullable=True)
-    focus_mode = Column(Boolean, default=False, nullable=False)
+    focus_mode = Column(Boolean, default=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_complete = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
