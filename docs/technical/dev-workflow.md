@@ -16,7 +16,7 @@ cp .env.example .env  # Edit with your credentials
 
 **Required `.env` variables:** `OPENAI_API_KEY`, `DATABASE_URL`
 
-**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`
+**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`
 
 Configuration is managed by `config.py` using pydantic-settings, which loads from the `.env` file automatically.
 
@@ -113,7 +113,7 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 | `db_session` | In-memory SQLite session, fresh per test function |
 | `client` | FastAPI `TestClient` |
 | `sample_student` | `Student` domain object (grade 3, standard style, English) |
-| `sample_goal` | `Goal` domain object (Fractions, CBSE Grade 3, guideline_id `g1`) |
+| `sample_goal` | `Goal` domain object (chapter: Fractions, CBSE Grade 3, guideline_id `g1`) |
 | `sample_tutor_state` | `TutorState` with sample student + goal |
 | `sample_grading_result` | `GradingResult` with score 0.85 |
 | `mock_llm_provider` | Mock LLM provider (no real API calls) |

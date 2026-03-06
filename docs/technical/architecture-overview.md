@@ -10,25 +10,30 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ┌─────────────────────────────────────────────────────────────────┐
 │  Frontend (React + TypeScript + Vite)                           │
 │  S3 + CloudFront                                                │
-│  Routes: /learn/*, /session/:id, /login/*, /profile,            │
-│          /scorecard, /history, /admin/*                         │
+│  Routes: /learn/*, /learn/.../teach/:id, /learn/.../exam/:id,   │
+│          /learn/.../clarify/:id, /login/*, /profile,            │
+│          /report-card, /history, /admin/*                       │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST API + WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐
 │  Backend (FastAPI + Python)                                     │
 │  AWS App Runner                                                 │
 │                                                                 │
-│  Modules: tutor, book_ingestion_v2, study_plans, evaluation, auth│
+│  Modules: tutor, book_ingestion_v2, study_plans, evaluation,    │
+│           auth (+ enrichment, personality)                      │
 │  Root API: api/ (docs, test_scenarios)                          │
 │  Shared: llm_service, llm_config_service, anthropic_adapter,    │
-│          api, models, utils, repositories, prompts              │
+│          ocr_service, s3_client, api, models, utils,            │
+│          repositories, prompts                                  │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
 │  Database (Aurora Serverless v2 PostgreSQL)                      │
 │  Tables: users, sessions, events, contents,                     │
 │          teaching_guidelines, study_plans, books, llm_config,    │
-│          book_chapters, chapter_pages, chapter_topics            │
+│          session_feedback, kid_enrichment_profiles,              │
+│          kid_personalities, book_chapters, chapter_pages,        │
+│          chapter_processing_jobs, chapter_chunks, chapter_topics │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -46,7 +51,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | SQLAlchemy | ORM | Mature, flexible, database-agnostic |
 | OpenAI | LLM provider (GPT-5.3, GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
-| Google | LLM provider (Gemini) | Additional provider option for flexibility |
+| Google | LLM provider (Gemini) + Cloud TTS | Additional provider option, text-to-speech |
 
 ### Frontend
 
@@ -77,17 +82,44 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ```
 llm-backend/
 ├── tutor/                # Runtime tutoring sessions (teach, clarify, exam)
-├── book_ingestion_v2/    # Book upload & guideline extraction (V2 pipeline)
+│   ├── api/              # sessions, curriculum, transcription, tts endpoints
+│   ├── agents/           # master_tutor, safety, base_agent
+│   ├── orchestration/    # orchestrator
+│   ├── services/         # session_service, exam_service, report_card_service, topic_adapter
+│   ├── models/           # session_state, messages, study_plan, agent_logs
+│   ├── prompts/          # master_tutor, exam, clarify_doubts, orchestrator, language_utils
+│   └── utils/            # schema_utils, state_utils, prompt_utils
+├── book_ingestion_v2/    # Book upload, TOC extraction, chapter processing, topic sync (V2 pipeline)
+│   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes
+│   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
+│   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
+│   │                     #   chapter_finalization_service, topic_sync_service
+│   ├── repositories/     # chapter_repository, chapter_page_repository, chunk_repository,
+│   │                     #   processing_job_repository, topic_repository
+│   ├── models/           # schemas, database, processing_models
+│   ├── utils/            # chunk_builder
+│   └── prompts/
 ├── study_plans/          # Study plan generation
+│   ├── api/
+│   ├── services/         # generator_service, reviewer_service, orchestrator
+│   └── models/
 ├── evaluation/           # Session evaluation pipeline (flat structure)
-├── auth/                 # Authentication & user profiles
+│   ├── api.py, evaluator.py, session_runner.py, student_simulator.py
+│   ├── report_generator.py, run_evaluation.py, config.py
+├── auth/                 # Authentication, user profiles, enrichment, personality
+│   ├── api/              # auth_routes, profile_routes, enrichment_routes
+│   ├── services/         # auth_service, profile_service, enrichment_service, personality_service
+│   ├── repositories/     # user_repository, enrichment_repository, personality_repository
+│   ├── models/           # schemas, enrichment_schemas
+│   ├── middleware/        # auth_middleware
+│   └── prompts/          # personality_prompts
 ├── shared/               # Cross-module utilities
 │   ├── api/              # Health checks, LLM config admin endpoints
-│   ├── services/         # LLM service, Anthropic adapter, LLM config service
-│   ├── repositories/     # Session, event, guideline, LLM config repos
+│   ├── services/         # LLM service, Anthropic adapter, LLM config service, OCR service
+│   ├── repositories/     # Session, event, guideline, book, LLM config repos
 │   ├── models/           # Domain models, ORM entities, Pydantic schemas
 │   ├── prompts/          # Shared prompt loader
-│   └── utils/            # Constants, exceptions, formatting helpers
+│   └── utils/            # Constants, exceptions, formatting helpers, S3 client
 ├── api/                  # Root-level API (docs, test scenarios)
 ├── scripts/              # Utility scripts
 ├── tests/
@@ -119,16 +151,21 @@ Most modules follow the layered internal structure:
 |--------|--------|---------|
 | health | (none) | Root endpoint, `/health`, `/health/db`, `/config/models` |
 | curriculum | `/curriculum` | Curriculum hierarchy API |
-| sessions | `/sessions` | Session management, scorecard, WebSocket |
+| sessions | `/sessions` | Session management, report card, topic progress, exam review, WebSocket |
 | transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
+| tts | `/text-to-speech` | Text-to-speech via Google Cloud TTS (English, Hindi, Hinglish) |
 | evaluation | `/api/evaluation` | Evaluation pipeline |
-| admin books | `/admin` | Book ingestion admin (`/admin/books/*`) |
-| admin guidelines | `/admin/guidelines` | Guidelines admin + study plan generation |
 | auth | `/auth` | Auth sync (Cognito to local DB) |
 | profile | `/profile` | User profile CRUD |
+| enrichment | `/profile` | Enrichment profile + personality endpoints (`/profile/enrichment`, `/profile/personality`) |
 | docs | `/api/docs` | Documentation API for admin viewer |
 | llm config | `/api/admin` | LLM model configuration (`/api/admin/llm-config/*`) |
 | test scenarios | `/api/test-scenarios` | E2E test scenario results and screenshots |
+| v2 book routes | `/admin/v2/books` | Book CRUD (V2) |
+| v2 toc routes | `/admin/v2/books` | Table of contents extraction (V2) |
+| v2 page routes | `/admin/v2/books/{id}/chapters/{id}/pages` | Chapter page management (V2) |
+| v2 processing routes | `/admin/v2/books/{id}/chapters/{id}` | Chapter processing, topic extraction, jobs (V2) |
+| v2 sync routes | `/admin/v2/books/{id}` | Sync processed topics to curriculum + results (V2) |
 
 ---
 
@@ -144,32 +181,38 @@ llm-frontend/src/
 │   ├── OTPVerifyPage.tsx, EmailSignupPage.tsx, EmailVerifyPage.tsx
 │   ├── ForgotPasswordPage.tsx, OAuthCallbackPage.tsx
 │   ├── OnboardingFlow.tsx
-│   ├── LearnLayout.tsx       # Shared layout for /learn/* (header, nav menu)
 │   ├── SubjectSelect.tsx     # Subject picker (/learn)
 │   ├── ChapterSelect.tsx     # Chapter picker (/learn/:subject)
 │   ├── TopicSelect.tsx       # Topic picker (/learn/:subject/:chapter)
 │   ├── ModeSelectPage.tsx    # Mode picker (/learn/:subject/:chapter/:topic)
-│   ├── ChatSession.tsx       # Chat UI (/session/:sessionId)
+│   ├── ChatSession.tsx       # Chat UI (/learn/.../teach|exam|clarify/:sessionId)
+│   ├── ExamReviewPage.tsx    # Post-exam question-by-question review
 │   ├── ProfilePage.tsx
+│   ├── EnrichmentPage.tsx    # Parent enrichment profile form + personality card
 │   ├── SessionHistoryPage.tsx
-│   └── ScorecardPage.tsx
+│   └── ReportCardPage.tsx    # Student report card (coverage %, exam scores)
 ├── hooks/
 │   └── useStudentProfile.ts  # Student profile hook (board, grade, country)
 ├── contexts/
 │   └── AuthContext.tsx    # Global auth state (Cognito SDK)
 ├── components/
+│   ├── AppShell.tsx          # Shared layout for authenticated pages (nav bar, user menu)
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
-│   └── ModeSelection.tsx # Learning mode picker (teach/clarify/exam/resume)
+│   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/exam/resume)
+│   └── enrichment/           # Enrichment form components
+│       ├── SectionCard.tsx
+│       ├── ChipSelector.tsx
+│       └── SessionPreferences.tsx
 ├── features/
 │   ├── admin/            # Admin pages + components
-│   │   ├── pages/
-│   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
-│   │   │   ├── CreateBookV2.tsx      # Create new book (V2)
-│   │   │   ├── BookV2Detail.tsx      # Book detail + chapters (V2)
-│   │   │   ├── EvaluationDashboard.tsx
-│   │   │   ├── DocsViewer.tsx        # In-app documentation browser
-│   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
-│   │   │   └── TestScenariosPage.tsx # E2E test results viewer
+│   │   └── pages/
+│   │       ├── BookV2Dashboard.tsx   # V2 book management dashboard
+│   │       ├── CreateBookV2.tsx      # Create new book (V2)
+│   │       ├── BookV2Detail.tsx      # Book detail + chapters (V2)
+│   │       ├── EvaluationDashboard.tsx
+│   │       ├── DocsViewer.tsx        # In-app documentation browser
+│   │       ├── LLMConfigPage.tsx     # LLM model config admin
+│   │       └── TestScenariosPage.tsx # E2E test results viewer
 │   └── devtools/         # Debug tools (shown in chat session)
 │       ├── api/devToolsApi.ts         # Dev tools API client
 │       ├── components/
@@ -178,7 +221,8 @@ llm-frontend/src/
 │       │   ├── GuidelinesPanel.tsx    # Active guidelines viewer
 │       │   └── StudyPlanPanel.tsx     # Active study plan viewer
 │       └── types/index.ts            # Dev tools type definitions
-└── config/               # Cognito config, constants
+└── config/
+    └── auth.ts           # Cognito config
 ```
 
 ### Route Map
@@ -194,17 +238,22 @@ llm-frontend/src/
 | `/forgot-password` | ForgotPasswordPage | Public | Password reset |
 | `/auth/callback` | OAuthCallbackPage | Public | Google OAuth callback |
 | `/` | (redirect) | — | Redirects to `/learn` |
-| `/learn` | LearnLayout > SubjectSelect | Protected + Onboarding | Subject picker |
-| `/learn/:subject` | LearnLayout > ChapterSelect | Protected + Onboarding | Chapter picker |
-| `/learn/:subject/:chapter` | LearnLayout > TopicSelect | Protected + Onboarding | Topic picker |
-| `/learn/:subject/:chapter/:topic` | LearnLayout > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/exam/resume) |
-| `/session/:sessionId` | ChatSession | Protected + Onboarding | Chat session UI |
-| `/profile` | ProfilePage | Protected | Profile management |
-| `/history` | SessionHistoryPage | Protected | Past sessions |
-| `/scorecard` | ScorecardPage | Protected | Student scorecard |
-| `/report-card` | ScorecardPage | Protected | Alias for scorecard |
+| `/learn` | AppShell > SubjectSelect | Protected + Onboarding | Subject picker |
+| `/learn/:subject` | AppShell > ChapterSelect | Protected + Onboarding | Chapter picker |
+| `/learn/:subject/:chapter` | AppShell > TopicSelect | Protected + Onboarding | Topic picker |
+| `/learn/:subject/:chapter/:topic` | AppShell > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/exam/resume) |
+| `/learn/:subject/:chapter/:topic/teach/:sessionId` | ChatSession | Protected + Onboarding | Teach Me chat session |
+| `/learn/:subject/:chapter/:topic/exam/:sessionId` | ChatSession | Protected + Onboarding | Exam chat session |
+| `/learn/:subject/:chapter/:topic/clarify/:sessionId` | ChatSession | Protected + Onboarding | Clarify Doubts chat session |
+| `/learn/:subject/:chapter/:topic/exam-review/:sessionId` | AppShell > ExamReviewPage | Protected + Onboarding | Post-exam review with answers |
+| `/session/:sessionId` | ChatSession | Protected + Onboarding | Legacy session URL (backward compat) |
+| `/profile` | AppShell > ProfilePage | Protected + Onboarding | Profile management |
+| `/profile/enrichment` | AppShell > EnrichmentPage | Protected + Onboarding | Parent enrichment profile + personality |
+| `/history` | AppShell > SessionHistoryPage | Protected + Onboarding | Past sessions |
+| `/report-card` | AppShell > ReportCardPage | Protected + Onboarding | Student report card |
 | `/onboarding` | OnboardingFlow | Protected | First-time setup |
 | `/admin` | (redirect) | Unprotected | Redirects to `/admin/books-v2` |
+| `/admin/books` | (redirect) | Unprotected | Redirects to `/admin/books-v2` |
 | `/admin/books-v2` | BookV2Dashboard | Unprotected | Book management (V2) |
 | `/admin/books-v2/new` | CreateBookV2 | Unprotected | Create new book (V2) |
 | `/admin/books-v2/:id` | BookV2Detail | Unprotected | Book detail + chapters (V2) |
@@ -279,6 +328,7 @@ Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own ro
 | `shared/services/llm_service.py` | Centralized LLM call interface; routes to OpenAI, Anthropic, or Gemini based on provider |
 | `shared/services/anthropic_adapter.py` | Claude adapter: thinking budgets, tool_use structured output |
 | `shared/services/llm_config_service.py` | Reads/writes LLM config from `llm_config` DB table |
+| `shared/services/ocr_service.py` | OCR via OpenAI Vision API for textbook page image extraction |
 | `shared/repositories/llm_config_repository.py` | CRUD for `llm_config` table |
 | `shared/api/llm_config_routes.py` | Admin API endpoints for LLM config (list, update, options) |
 
@@ -300,7 +350,7 @@ Centralized via Pydantic `BaseSettings` in `config.py`. Reads from `.env` file +
 | Group | Key Settings |
 |-------|-------------|
 | Database | `database_url`, `db_pool_size` (5), `db_max_overflow` (10), `db_pool_timeout` (30) |
-| LLM API Keys | `openai_api_key`, `anthropic_api_key`, `gemini_api_key` |
+| LLM API Keys | `openai_api_key`, `anthropic_api_key`, `gemini_api_key`, `google_cloud_tts_api_key` |
 | AWS | `aws_region`, `aws_s3_bucket` |
 | Cognito | `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_region` |
 | Logging | `log_level` (INFO), `log_format` (json/text) |

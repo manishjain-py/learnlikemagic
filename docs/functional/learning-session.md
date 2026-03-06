@@ -17,7 +17,9 @@ A learning session is a one-on-one conversation between a student and the AI tut
 5. **Resume (if available)** — If you have a paused Teach Me session for this subtopic, a "Resume" option appears at the top of the mode selection, showing your coverage percentage so you can pick up where you left off
 6. **Start learning** — The tutor greets you and begins
 
-You can also start a session from the scorecard by tapping "Practice Again" on any subtopic.
+You can also start a session from the report card by tapping "Practice Again" on any subtopic.
+
+The study plan for each Teach Me session is personalized to your learning profile. If you have a personality profile and enrichment data on file, the tutor uses your interests, attention span, and learning style to tailor the plan.
 
 ---
 
@@ -53,21 +55,23 @@ A student-led Q&A session where you ask questions and the tutor answers them dir
 
 ### Exam
 
-A knowledge test with a set of questions (typically 7) covering the subtopic's concepts. The exam assesses what you know without teaching.
+A knowledge test with a set of questions (typically 7) covering the subtopic's concepts. The exam assesses what you know without teaching. You can only have one incomplete exam per subtopic at a time — if you already have an unfinished exam, you must complete or end it before starting a new one. Questions are personalized with your name, interests, and familiar people when a personality profile is available.
 
 - Questions span three difficulty levels: easy (~30%), medium (~50%), and hard (~20%)
-- Questions cover different types: conceptual, procedural, and application
+- Questions cover different types: conceptual, procedural, application, real-world scenarios, error-spotting, and reasoning
 - After each answer, the tutor acknowledges it and moves to the next question — it does not reveal whether you were correct or teach during the exam
-- Answers are scored behind the scenes as correct, partially correct, or incorrect — you see the full results only at the end
+- Answers are scored behind the scenes on a 0-to-1 scale with partial credit — you see the full results only at the end
+- Each answer includes a brief rationale explaining what you got right or wrong
 - A question counter shows how many questions you've answered out of the total
 - You can end the exam early using the "End Exam Early" button and still get your results
 - At the end, you see a results summary with:
-  - Score and percentage
-  - Per-question review showing which you got correct, partially correct, or incorrect
+  - Score and percentage (fractional — e.g., 5.3/7)
+  - Per-question review showing your score and a rationale for how it was graded
   - Strengths (concepts you got right)
   - Weak areas (concepts to review)
   - Patterns (overall performance observations)
   - Suggested next steps (e.g., "Review these concepts in Teach Me")
+- You can revisit completed exams later to see a detailed review of each question, your answer, the expected answer, and the grading rationale
 
 ---
 
@@ -97,7 +101,9 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 7. **End naturally** — When the lesson is done, the tutor checks if you want to continue. If you say goodbye, it wraps up warmly in a few sentences.
 
-8. **Personalized** — If you've set up a profile (name, age, interests), the tutor uses your name and adapts its examples and language to your age level.
+8. **Personalized** — If you've set up a profile (name, age, interests), the tutor uses your name and adapts its examples and language to your age level. When a full personality profile is available (from onboarding enrichment), the tutor's entire tone, examples, and style are tailored to who you are.
+
+9. **Attention-aware** — The tutor is aware of your attention span (short, medium, or long). When the session reaches the attention limit, the tutor begins wrapping up and suggests continuing next time rather than pushing on.
 
 ---
 
@@ -105,7 +111,11 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 Each Teach Me session follows a study plan made up of steps:
 
-- **Explain** steps — The tutor introduces a concept
+- **Explain** steps — The tutor introduces a concept through a structured explanation:
+  1. **Hook** — A curiosity-building opening that connects to your world
+  2. **Core explanation** — One idea at a time, with everyday examples, built progressively across multiple turns
+  3. **Informal check** — Before moving on, the tutor asks you to explain the concept back in your own words
+  - If you already know the concept, the tutor detects this and skips ahead
 - **Check** steps — The tutor asks questions to verify understanding
 - **Practice** steps — The tutor gives problems to solve
 
@@ -164,13 +174,38 @@ After the session, you see a results summary with your score, strengths, weak ar
 
 ### After Any Session
 
-From the session completion screen, you can start a new session or view your scorecard to see overall progress. If you return to a completed session later (e.g., via a bookmark or page refresh), the full conversation and results are restored.
+From the session completion screen, you can start a new session or view your report card to see overall progress. If you return to a completed session later (e.g., via a bookmark or page refresh), the full conversation and results are restored.
 
 ---
 
-## Voice Input
+## Mid-Session Feedback
 
-You can use your microphone to speak your answers instead of typing. Tap the microphone button to start recording, speak your answer, then tap again to stop. Your speech is transcribed to text and placed in the input field, where you can edit it before sending.
+During a Teach Me or Clarify Doubts session, you (or a parent) can submit feedback to adjust how the tutor is teaching. For example: "My child finds this too hard" or "Please use more visual examples."
+
+- The tutor regenerates the study plan based on the feedback
+- You can choose to **continue** from where you are (remaining steps are replaced) or **restart** the session with a completely new plan
+- The tutor acknowledges the change naturally and adjusts its approach
+- Feedback is limited to 3 submissions per session
+
+---
+
+## Voice Input and Audio
+
+You can use your microphone to speak your answers instead of typing. Tap the microphone button to start recording, speak your answer, then tap again to stop. Your speech is transcribed to text and placed in the input field, where you can edit it before sending. You can write or speak in Hindi or Hinglish (Hindi-English mix) — the tutor understands and translates it automatically.
+
+The tutor can also read its responses aloud using text-to-speech. The spoken version is tailored to your language preference — it can speak in English, Hindi, or Hinglish depending on your settings.
+
+---
+
+## Language Support
+
+The tutor supports three language modes for both text and audio, configured in your profile:
+
+- **English** — All responses in English
+- **Hindi** — Responses in Hindi (Devanagari script for text, Roman transliteration for audio)
+- **Hinglish** — A natural Hindi-English mix commonly used in Indian schools
+
+Text and audio language can be set independently — for example, you can read in English but listen in Hinglish.
 
 ---
 
@@ -182,3 +217,4 @@ You can use your microphone to speak your answers instead of typing. Tap the mic
 - If the tutor detects you're disengaging (responses getting shorter), it adjusts its approach
 - When you change your answer, the tutor asks what made you change before evaluating
 - When you use an unexpected strategy, the tutor explores your reasoning before correcting
+- The tutor formats responses for readability: bold key terms, bullet points for lists, short paragraphs, and blank lines between ideas

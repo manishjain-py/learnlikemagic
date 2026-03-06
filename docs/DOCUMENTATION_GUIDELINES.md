@@ -25,7 +25,8 @@ docs/
 │   ├── auth-and-onboarding.md        # Cognito, auth flows, user management
 │   ├── dev-workflow.md               # Local setup, testing, git workflow
 │   ├── deployment.md                 # AWS infra, Terraform, CI/CD
-│   └── database.md                   # Tables, schema, migrations
+│   ├── database.md                   # Tables, schema, migrations
+│   └── new-machine-setup.md          # New machine dev environment setup
 └── archive/                          # Preserved historical docs
     ├── SESSION_LOG_TUTOR_REWRITE.md
     └── feature-development/          # PRDs, implementation plans, trackers
@@ -60,6 +61,7 @@ docs/
 | `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |
 | `docs/technical/database.md` | DB schema, migrations | Database changes |
 | `docs/technical/ai-agent-files.md` | Agent context file inventory, update policy | Understanding/updating agent files |
+| `docs/technical/new-machine-setup.md` | New machine dev environment setup | Setting up a new dev machine |
 
 ---
 

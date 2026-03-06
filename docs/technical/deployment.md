@@ -271,7 +271,7 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 | Aurora | PostgreSQL 15.10, 0.5-2 ACU, 7-day backup retention |
 | ECR | Keep last 10 images, scan on push, AES256 encryption |
 | CloudFront | HTTPS redirect, gzip+brotli, SPA routing via CloudFront Function, OAI for S3 access, PriceClass_100 (North America + Europe) |
-| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window |
+| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window. Note: `GOOGLE_CLOUD_TTS_API_KEY` reuses the Gemini secret ARN in App Runner |
 
 **Estimated cost (low traffic):** ~$10-30/month
 
