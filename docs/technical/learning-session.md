@@ -453,9 +453,25 @@ Study plans are loaded from the database and converted to the tutor's internal m
 DB StudyPlan.plan_json → topic_adapter.convert_guideline_to_topic() → Topic model
 ```
 
-Study plan steps have types: `explain`, `check`, `practice`. Step type is inferred from the plan item's title/description keywords or defaults to a pattern (explain, check, explain, check, ..., practice at end).
+Study plan steps have types: `explain`, `check`, `practice`. Step type is inferred from the plan item's title/description keywords or defaults to a pattern (explain, check, explain, check, ..., practice at end). Explain steps can include sub-plan fields: `explanation_approach`, `explanation_building_blocks` (ordered sub-ideas to cover across turns), `explanation_analogy`, and `min_explanation_turns`.
 
-If no study plan exists in the DB, a default 4-step plan is generated: explain → check → explain → practice.
+Plan resolution order at session creation:
+1. Personalized plan for this user + guideline (from `study_plans` table)
+2. Any existing plan for this guideline (fallback)
+3. For `teach_me` mode with an authenticated user: generate a personalized plan on-the-fly via `StudyPlanGeneratorService` using the student's personality context
+4. If no plan exists at all, a default 4-step plan is generated: explain → check → explain → practice
+
+### Mid-Session Feedback
+
+The `POST /sessions/{id}/feedback` endpoint allows study plan regeneration during an active session:
+
+- Accepts `feedback_text` (free-form) and `action` ("continue" or "restart")
+- Rate limited to 3 feedback submissions per session (tracked in `session_feedbacks` table)
+- Generates a new plan via `StudyPlanGeneratorService.generate_plan_with_feedback()` with context: feedback text, concepts already covered, current position
+- **Continue**: splices new remaining steps from current position forward, filtering out already-covered concepts
+- **Restart**: replaces entire plan and resets session state (step, mastery, misconceptions, explanation phases, conversation history) to step 1; generates a new welcome message
+- Both actions upsert the `study_plans` table and persist via CAS
+- A `[FEEDBACK]` or `[FEEDBACK-RESTART]` marker is added to the turn timeline, which triggers a contextual notice in the next turn prompt so the tutor acknowledges the change naturally
 
 ---
 
@@ -463,25 +479,35 @@ If no study plan exists in the DB, a default 4-step plan is generated: explain �
 
 | Call | Model | Purpose | Output | Prompt Source |
 |------|-------|---------|--------|---------------|
+| Input Translation | Configurable (DB) | Hinglish/Hindi → English | JSON `{english: str}` | Inline in `orchestrator.py` |
 | Safety | Configurable (DB) | Content moderation | SafetyOutput (strict) | `templates.py` SAFETY_TEMPLATE |
-| Master Tutor | Configurable (DB) | All teaching (teach_me, clarify_doubts, exam evaluation) | TutorTurnOutput (strict) | `master_tutor_prompts.py` (shared across all modes) |
-| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | Plain text | `orchestrator_prompts.py` |
-| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | Plain text | Inline in `orchestrator.py` |
-| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | Plain text | Inline in `orchestrator.py` |
+| Master Tutor (teach_me) | Configurable (DB) | Structured lesson teaching | TutorTurnOutput (strict) | `master_tutor_prompts.py` |
+| Master Tutor (clarify) | Configurable (DB) | Doubt-clearing Q&A | TutorTurnOutput (strict) | `clarify_doubts_prompts.py` |
+| Master Tutor (exam) | Configurable (DB) | Exam answer evaluation | TutorTurnOutput (strict) | `master_tutor_prompts.py` (with exam context injected) |
+| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | JSON `{response, audio_text}` | `orchestrator_prompts.py` |
+| Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | JSON `{response, audio_text}` | Inline in `orchestrator.py` |
+| Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | JSON `{response, audio_text}` | Inline in `orchestrator.py` |
 | Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text | Inline in `orchestrator.py` |
 | Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) | `exam_prompts.py` EXAM_QUESTION_GENERATION_PROMPT |
+| Study Plan Gen | Configurable (DB, `study_plan_generator`) | Generate/regenerate personalized study plan | Structured JSON | `StudyPlanGeneratorService` |
 
-LLM provider/model is resolved at session creation from the `llm_config` DB table via `LLMConfigService.get_config("tutor")`. The Anthropic adapter maps structured output to tool_use, and reasoning effort to thinking budgets.
+LLM provider/model is resolved at session creation from the `llm_config` DB table via `LLMConfigService.get_config("tutor")`. Study plan generation uses a separate config key `study_plan_generator`. The Anthropic adapter maps structured output to tool_use, and reasoning effort to thinking budgets.
 
 ---
 
-## Transcription
+## Transcription and TTS
 
-Audio transcription is handled by a separate endpoint (`POST /transcribe`) using OpenAI Whisper:
+**Audio Transcription** is handled by a separate endpoint (`POST /transcribe`) using OpenAI Whisper:
 - Accepts audio files up to 25 MB
 - Supported formats: webm, ogg, mp4, mpeg, wav, flac
 - Returns `{text: str}` — the transcribed text
 - Used by the frontend's voice input feature
+
+**Text-to-Speech** is handled by `POST /text-to-speech` using Google Cloud TTS:
+- Accepts text up to 5,000 characters and a `language` parameter (`en`, `hi`, or `hinglish`)
+- Uses Indian voices: `en-IN-Neural2-A` for English, `hi-IN-Neural2-D` for Hindi/Hinglish
+- Returns MP3 audio stream
+- Tutor responses include an `audio_text` field specifically crafted for TTS — this is a spoken version of the response in the student's audio language preference, which may differ from the displayed text language
 
 ---
 
@@ -492,33 +518,34 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 | File | Purpose |
 |------|---------|
 | `base_agent.py` | BaseAgent ABC: execute(), build_prompt(), LLM call with strict schema |
-| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model, pacing/style computation, personalization block |
+| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model (with audio_text, answer_score, marks_rationale, explanation phase fields), pacing/style computation (explanation-aware + attention span), personalization block (tutor_brief or name/age fallback), mode-specific prompt routing (clarify uses dedicated prompts) |
 | `safety.py` | SafetyAgent: fast content moderation gate |
 
 ### Orchestration (`tutor/orchestration/`)
 
 | File | Purpose |
 |------|---------|
-| `orchestrator.py` | TeacherOrchestrator: safety → mode router → master_tutor → state updates. Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with partial scoring). Exam feedback builder. Separate welcome generators per mode (`generate_welcome_message`, `generate_clarify_welcome`, `generate_exam_welcome`). Post-completion response generator. |
+| `orchestrator.py` | TeacherOrchestrator: input translation → safety → mode router → master_tutor → state updates. Input translation (`_translate_to_english`). Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with fractional scoring and marks_rationale). `_handle_explanation_phase()` for explanation lifecycle. Exam feedback builder. Separate welcome generators per mode returning `(message, audio_text)` tuples with language-aware prompts. Post-completion response generator. |
 
 ### Models (`tutor/models/`)
 
 | File | Purpose |
 |------|---------|
-| `session_state.py` | SessionState, Question, Misconception, SessionSummary, ExamQuestion, ExamFeedback, create_session() |
-| `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep |
-| `messages.py` | Message, StudentContext, WebSocket DTOs (ClientMessage, ServerMessage, SessionStateDTO), factory functions |
+| `session_state.py` | SessionState, ExplanationPhase, Question, Misconception, SessionSummary, ExamQuestion (with score, marks_rationale), ExamFeedback (with float score), create_session() |
+| `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep (with explanation sub-plan fields: approach, building_blocks, analogy, min_turns) |
+| `messages.py` | Message (with audio_text), StudentContext (with text/audio language prefs, tutor_brief, personality_json, attention_span), WebSocket DTOs (ClientMessage, ServerMessage with audio_text, SessionStateDTO), factory functions |
 | `agent_logs.py` | AgentLogEntry, AgentLogStore (in-memory, thread-safe) |
 
 ### Prompts (`tutor/prompts/`)
 
 | File | Purpose |
 |------|---------|
-| `master_tutor_prompts.py` | System prompt (study plan + guidelines + rules + personalization) and turn prompt. Used for ALL modes. |
-| `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode. **Defined but not yet wired** — clarify mode currently uses master tutor prompts. |
-| `exam_prompts.py` | Exam question generation prompt (actively used by ExamService) and evaluation prompts (**evaluation prompts defined but not yet wired** — exam eval uses master tutor prompts). |
+| `master_tutor_prompts.py` | System prompt (study plan + guidelines + 12 rules + personalization + language instructions) and turn prompt (with explanation context, feedback notices). Used for teach_me and exam modes. |
+| `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode. **Actively wired** — clarify mode uses these via `MasterTutorAgent._build_system_prompt()` and `_build_clarify_turn_prompt()`. Direct answer rules, session closure rules, concept tracking. |
+| `exam_prompts.py` | Exam question generation prompt (actively used by ExamService, includes personalization section) and evaluation prompts (**evaluation prompts defined but not yet wired** — exam eval uses master tutor prompts with exam context injected). |
 | `orchestrator_prompts.py` | Welcome message (Teach Me) and session summary prompts |
 | `templates.py` | PromptTemplate class, SAFETY_TEMPLATE, format helpers |
+| `language_utils.py` | `get_response_language_instruction()` and `get_audio_language_instruction()` — generate prompt instructions for text/audio language based on student preferences (en/hi/hinglish) |
 
 ### Utils (`tutor/utils/`)
 
@@ -532,12 +559,13 @@ Audio transcription is handled by a separate endpoint (`POST /transcribe`) using
 
 | File | Purpose |
 |------|---------|
-| `tutor/services/session_service.py` | Session creation (all modes), step processing, pause/resume, end clarify, end exam, summary, CAS persistence |
-| `tutor/services/exam_service.py` | Exam question generation via LLM with retry. ExamGenerationError (LearnLikeMagicException subclass) |
+| `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation and duplicate exam guard), step processing, pause/resume, end clarify, end exam, mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
+| `tutor/services/exam_service.py` | Exam question generation via LLM with retry and personalization. ExamGenerationError (LearnLikeMagicException subclass) |
 | `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model |
-| `tutor/services/scorecard_service.py` | Scorecard aggregation, subtopic progress |
-| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint |
+| `tutor/services/report_card_service.py` | Report card aggregation, topic progress |
+| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint, feedback endpoint, exam-review endpoint, guideline sessions endpoint |
 | `tutor/api/transcription.py` | Audio transcription endpoint (OpenAI Whisper) |
+| `tutor/api/tts.py` | Text-to-speech endpoint (Google Cloud TTS, Hindi/English/Hinglish voices) |
 | `tutor/api/curriculum.py` | Curriculum discovery endpoints |
 | `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError, ConfigurationError) |
 | `shared/services/llm_service.py` | LLM wrapper (OpenAI Responses API, Chat Completions, Gemini, Anthropic) |
