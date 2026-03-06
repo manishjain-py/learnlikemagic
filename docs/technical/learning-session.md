@@ -240,10 +240,12 @@ Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong
 **Server emits:**
 ```json
 {"type": "typing", "payload": {}}
-{"type": "assistant", "payload": {"message": "..."}}
+{"type": "assistant", "payload": {"message": "...", "audio_text": "..."}}
 {"type": "state_update", "payload": {"state": {...}}}
 {"type": "error", "payload": {"error": "..."}}
 ```
+
+The `audio_text` field contains the spoken version of the response for TTS (in the student's audio language preference).
 
 The `state_update` payload includes (via `SessionStateDTO`):
 - `session_id`, `current_step`, `total_steps`, `current_concept`, `progress_percentage`
