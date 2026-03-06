@@ -71,30 +71,28 @@ export interface CreateSessionRequest {
   mode?: 'teach_me' | 'clarify_doubts' | 'exam';
 }
 
-export interface VisualAnimationStep {
-  action: string; // 'appear' | 'highlight' | 'merge' | 'label' | 'fade'
-  target: string; // 'group1' | 'group2' | 'result' | 'all' | 'part_N'
-  label?: string;
+export interface VisualRow {
+  type: 'emoji_group' | 'text' | 'arrow' | 'divider' | 'columns' | 'fraction_bar';
+  // emoji_group
+  emoji?: string;
+  count?: number;
+  // text / arrow
+  text?: string;
+  style?: 'heading' | 'label' | 'result' | 'caption';
+  color?: string;
+  // columns
+  columns?: VisualRow[];
+  // fraction_bar
+  total_parts?: number;
+  highlighted_parts?: number;
+  fraction_label?: string;
+  // animation
   delay_ms?: number;
 }
 
 export interface VisualExplanation {
-  scene_type: string; // 'addition' | 'subtraction' | 'fraction' | 'multiplication' | 'counting'
   title?: string;
-  // Addition/subtraction/counting
-  group1_count?: number;
-  group2_count?: number;
-  result_count?: number;
-  object_emoji?: string;
-  // Fraction
-  total_parts?: number;
-  highlighted_parts?: number;
-  fraction_label?: string;
-  // Multiplication
-  rows?: number;
-  cols?: number;
-  // Animation
-  animation_steps?: VisualAnimationStep[];
+  rows: VisualRow[];
   narration?: string;
 }
 

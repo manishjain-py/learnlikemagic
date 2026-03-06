@@ -24,39 +24,42 @@ from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
 
 
-class VisualAnimationStep(BaseModel):
-    """A single step in a visual animation sequence."""
-    action: str = Field(description="What happens: 'appear', 'highlight', 'merge', 'label', 'fade'")
-    target: str = Field(description="Which group/element: 'group1', 'group2', 'result', 'all', or a part index like 'part_3'")
-    label: Optional[str] = Field(default=None, description="Text label to display during this step")
-    delay_ms: int = Field(default=600, description="Delay before this step in milliseconds")
+class VisualRow(BaseModel):
+    """A single row in a visual explanation. Each row is rendered as a centered horizontal block."""
+    type: str = Field(
+        description="Row type: "
+        "'emoji_group' — a row of repeated emoji (set emoji + count), "
+        "'text' — a styled text line (set text + optional style 'heading'|'label'|'result'|'caption'), "
+        "'arrow' — a downward arrow with optional label, "
+        "'divider' — a thin horizontal line, "
+        "'columns' — side-by-side sections (set columns list), "
+        "'fraction_bar' — a partitioned bar (set total_parts + highlighted_parts + optional fraction_label)"
+    )
+    # emoji_group fields
+    emoji: Optional[str] = Field(default=None, description="Emoji character to repeat (e.g., '📘', '🍎')")
+    count: Optional[int] = Field(default=None, description="How many emoji to show")
+    # text fields
+    text: Optional[str] = Field(default=None, description="Text content for 'text' or 'arrow' rows")
+    style: Optional[str] = Field(default=None, description="Text style: 'heading', 'label', 'result', 'caption'. Default is 'label'")
+    color: Optional[str] = Field(default=None, description="Optional CSS color (e.g., '#22C55E', 'green')")
+    # columns fields
+    columns: Optional[list["VisualRow"]] = Field(default=None, description="For 'columns' type: list of VisualRow items to render side by side")
+    # fraction_bar fields
+    total_parts: Optional[int] = Field(default=None, description="Total segments in fraction bar")
+    highlighted_parts: Optional[int] = Field(default=None, description="Highlighted segments in fraction bar")
+    fraction_label: Optional[str] = Field(default=None, description="Label like '3/4' for fraction bar")
+    # animation
+    delay_ms: Optional[int] = Field(default=None, description="Delay before showing this row (ms). Rows appear sequentially; default 600ms per row")
 
 
 class VisualExplanation(BaseModel):
-    """Structured visual explanation that the frontend renders as an animation."""
-    scene_type: str = Field(
-        description="Type of visual: 'addition', 'subtraction', 'fraction', 'multiplication', 'number_line', 'counting'. "
-        "Use null/omit if no visual is helpful for this turn."
+    """Generic structured visual explanation rendered by the frontend.
+    Composed of ordered rows — works for ANY subject, not just math."""
+    title: Optional[str] = Field(default=None, description="Short title displayed at top (e.g., '2 + 1 = 3', 'Parts of a Plant')")
+    rows: list[VisualRow] = Field(
+        description="Ordered list of visual rows to render top-to-bottom. Each row appears with a short animation delay."
     )
-    title: Optional[str] = Field(default=None, description="Short title for the visual (e.g., '4 + 4 = 8')")
-    # Addition/subtraction/counting fields
-    group1_count: Optional[int] = Field(default=None, description="Number of objects in first group")
-    group2_count: Optional[int] = Field(default=None, description="Number of objects in second group")
-    result_count: Optional[int] = Field(default=None, description="Total/result count")
-    object_emoji: Optional[str] = Field(default=None, description="Emoji to represent objects (e.g., '🍎', '⭐')")
-    # Fraction fields
-    total_parts: Optional[int] = Field(default=None, description="Total equal parts in the fraction bar")
-    highlighted_parts: Optional[int] = Field(default=None, description="Number of parts to highlight")
-    fraction_label: Optional[str] = Field(default=None, description="Fraction label like '3/4'")
-    # Multiplication fields
-    rows: Optional[int] = Field(default=None, description="Number of rows in multiplication array")
-    cols: Optional[int] = Field(default=None, description="Number of columns in multiplication array")
-    # Animation steps
-    animation_steps: list[VisualAnimationStep] = Field(
-        default_factory=list,
-        description="Ordered animation steps. If empty, the frontend uses a default animation sequence for the scene_type."
-    )
-    narration: Optional[str] = Field(default=None, description="Short narration text synced with the visual")
+    narration: Optional[str] = Field(default=None, description="Short narration text shown at the end of the animation")
 
 
 class MasteryUpdate(BaseModel):
@@ -142,9 +145,10 @@ class TutorTurnOutput(BaseModel):
     visual_explanation: Optional[VisualExplanation] = Field(
         default=None,
         description="Optional structured visual explanation to render as an animation. "
-        "Include ONLY when a visual would genuinely help the student understand the concept better — "
-        "e.g., counting, addition, subtraction, fractions, multiplication arrays. "
-        "Do NOT include for every turn — only when explaining a concept that benefits from visual representation. "
+        "Works for ANY subject — describe what to show as a list of rows. "
+        "Include when a visual would help the student understand: diagrams, groupings, "
+        "labeled parts, processes, comparisons, math operations, etc. "
+        "Do NOT include for every turn — only when a visual genuinely aids understanding. "
         "Set to null when no visual is needed."
     )
 

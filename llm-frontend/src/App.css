@@ -2808,6 +2808,7 @@ body {
 
 /* ─── Visual Explanation ─────────────────────────── */
 
+/* ─── Visual Explanation: Generic ─────────────────── */
 .visual-explanation {
   margin-top: 10px;
   background: #FAFBFF;
@@ -2827,29 +2828,15 @@ body {
 
 .visual-canvas {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
+  gap: 6px;
 }
 
-.visual-svg {
+.visual-row {
+  display: flex;
+  justify-content: center;
   width: 100%;
-  max-width: 320px;
-  height: auto;
-}
-
-.visual-group-label {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.visual-operator {
-  font-size: 28px;
-  font-weight: 700;
-}
-
-.visual-result-label {
-  font-size: 20px;
-  font-weight: 700;
 }
 
 .visual-narration {
@@ -2860,6 +2847,7 @@ body {
   font-style: italic;
 }
 
+/* Collapsed / start button */
 .visual-explanation--collapsed {
   background: none;
   border: none;
@@ -2912,7 +2900,130 @@ body {
   border-color: #94A3B8;
 }
 
-/* Animations */
+/* ─── Row types ──────────────────────────────────── */
+
+/* Emoji group */
+.visual-emoji-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.visual-emoji-item {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+/* Text rows */
+.visual-text {
+  text-align: center;
+  width: 100%;
+}
+
+.visual-text--heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1E293B;
+}
+
+.visual-text--label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.visual-text--result {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #22C55E;
+}
+
+.visual-text--caption {
+  font-size: 0.8rem;
+  color: #64748B;
+  font-style: italic;
+}
+
+/* Arrow */
+.visual-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #94A3B8;
+}
+
+.visual-arrow-label {
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+/* Divider */
+.visual-divider {
+  width: 60%;
+  height: 1px;
+  background: #E2E8F0;
+  margin: 4px auto;
+}
+
+/* Columns */
+.visual-columns {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.visual-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Fraction bar */
+.visual-fraction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.visual-fraction-bar {
+  display: flex;
+  width: 80%;
+  max-width: 280px;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 2px solid #94A3B8;
+}
+
+.visual-fraction-part {
+  flex: 1;
+  background: #E2E8F0;
+  border-right: 1px solid #94A3B8;
+}
+
+.visual-fraction-part:last-child {
+  border-right: none;
+}
+
+.visual-fraction-part--filled {
+  background: #4F9CF7;
+}
+
+.visual-fraction-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #8B5CF6;
+}
+
+/* ─── Animations ─────────────────────────────────── */
 @keyframes visualFadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }

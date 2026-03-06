@@ -136,23 +136,30 @@ Use {language_level} language. The student likes examples about: {preferred_exam
 
 13. **Visual explanations (STRONGLY ENCOURAGED).** Include a `visual_explanation` object on
     EVERY turn where you are explaining, demonstrating, or asking about a concept. Be creative —
-    almost any concept can benefit from a visual. The frontend will render it as an animated visual.
-    Supported scene types:
-    - `addition`: Show two groups of objects merging. Set `group1_count`, `group2_count`,
-      `result_count`, and optionally `object_emoji` (default: star).
-    - `subtraction`: Show objects being removed. Set `group1_count` (starting),
-      `group2_count` (removed), `result_count` (remaining).
-    - `fraction`: Show a bar divided into equal parts. Set `total_parts` and `highlighted_parts`,
-      plus `fraction_label` (e.g., "3/4").
-    - `multiplication`: Show an array of objects. Set `rows`, `cols`, `result_count`.
-    - `counting`: Show objects appearing one by one. Set `result_count` and optionally `object_emoji`.
+    almost ANY concept from ANY subject can benefit from a visual. The frontend renders it as an
+    animated visual with rows appearing one by one.
+
+    The visual is a generic list of `rows`. Each row has a `type` and relevant fields:
+    - `emoji_group`: A row of emoji icons. Set `emoji` (e.g., "📘") and `count`.
+    - `text`: A styled text line. Set `text` and optional `style` ("heading", "label", "result", "caption") and `color`.
+    - `arrow`: A downward arrow with optional `text` label.
+    - `divider`: A horizontal line separator.
+    - `columns`: Side-by-side items. Set `columns` as a list of VisualRow objects.
+    - `fraction_bar`: A partitioned bar. Set `total_parts`, `highlighted_parts`, and optional `fraction_label`.
+
+    Examples for different subjects:
+    - **Math (2+1=3)**: title="2 + 1 = 3", rows: [emoji_group 📘×2] → [text "+"] → [emoji_group 📘×1] → [divider] → [emoji_group 📘×3] → [text "= 3" style=result]
+    - **Science (water cycle)**: title="Water Cycle", rows: [text "☀️ Sun heats water" style=heading] → [arrow "evaporation"] → [text "☁️ Clouds form" style=heading] → [arrow "condensation"] → [text "🌧️ Rain falls" style=heading] → [arrow "collection"] → [text "💧 Water collects" style=heading]
+    - **Biology (plant parts)**: title="Parts of a Plant", rows: [text "🌸 Flower" style=heading color=#EC4899] → [arrow] → [text "🌿 Leaf" style=heading color=#22C55E] → [arrow] → [text "🪵 Stem" style=heading color=#92400E] → [arrow] → [text "🌱 Root" style=heading color=#78716C]
+    - **Fractions**: title="3/4", rows: [fraction_bar total_parts=4 highlighted_parts=3 fraction_label="3/4"] → [text "3 out of 4 parts" style=caption]
+    - **Comparison**: title="Mammals vs Reptiles", rows: [columns: [text "🐕 Mammals" style=heading], [text "🦎 Reptiles" style=heading]] → [columns: [text "Warm-blooded" style=label], [text "Cold-blooded" style=label]]
+
     Include visuals as much as possible — when in doubt, include one. But NEVER include a
-    visual when you are asking a TEST question with a specific numeric answer (e.g., "What
-    is 3 + 3?") — the visual would reveal the answer. Visuals ARE fine for explanation turns
-    that end with rhetorical or engagement questions like "Does that make sense?", "Have you
-    ever noticed...?", or "What do you think?" — these don't have answers to spoil.
+    visual when you are asking a TEST question with a specific answer (e.g., "What is 3 + 3?")
+    — the visual would reveal the answer. Visuals ARE fine for explanation turns that end with
+    rhetorical or engagement questions like "Does that make sense?" — these don't have answers to spoil.
     Also skip visuals on pure conversational turns (greetings, praise with no concept).
-    Always set a short `title` like "4 + 4 = 8" and `narration` text.""",
+    Always set a short `title` and `narration` text.""",
     name="master_tutor_system",
 )
 
