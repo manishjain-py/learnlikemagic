@@ -34,7 +34,7 @@ class StudyPlanStep(BaseModel):
     explanation_approach: Optional[str] = Field(default=None, description="Teaching method e.g. 'visual analogy', 'storytelling'")
     explanation_building_blocks: Optional[list[str]] = Field(default=None, description="Ordered sub-ideas to cover across turns")
     explanation_analogy: Optional[str] = Field(default=None, description="Suggested real-world connection")
-    min_explanation_turns: int = Field(default=2, description="Minimum tutor turns in explanation before advancing")
+    min_explanation_turns: int = Field(default=4, description="Minimum tutor turns in explanation before advancing")
 
 
 class StudyPlan(BaseModel):

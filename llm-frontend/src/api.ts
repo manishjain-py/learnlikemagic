@@ -71,6 +71,33 @@ export interface CreateSessionRequest {
   mode?: 'teach_me' | 'clarify_doubts' | 'exam';
 }
 
+export interface VisualAnimationStep {
+  action: string; // 'appear' | 'highlight' | 'merge' | 'label' | 'fade'
+  target: string; // 'group1' | 'group2' | 'result' | 'all' | 'part_N'
+  label?: string;
+  delay_ms?: number;
+}
+
+export interface VisualExplanation {
+  scene_type: string; // 'addition' | 'subtraction' | 'fraction' | 'multiplication' | 'counting'
+  title?: string;
+  // Addition/subtraction/counting
+  group1_count?: number;
+  group2_count?: number;
+  result_count?: number;
+  object_emoji?: string;
+  // Fraction
+  total_parts?: number;
+  highlighted_parts?: number;
+  fraction_label?: string;
+  // Multiplication
+  rows?: number;
+  cols?: number;
+  // Animation
+  animation_steps?: VisualAnimationStep[];
+  narration?: string;
+}
+
 export interface Turn {
   message: string;
   audio_text?: string | null;
@@ -78,6 +105,7 @@ export interface Turn {
   step_idx: number;
   mastery_score: number;
   is_complete?: boolean;
+  visual_explanation?: VisualExplanation | null;
   concepts_discussed?: string[];
   exam_progress?: {
     current_question: number;

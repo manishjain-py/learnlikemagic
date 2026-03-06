@@ -717,9 +717,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         ).model_dump()
                     )
                 else:
-                    await websocket.send_json(
-                        create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
-                    )
+                    assistant_msg = create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
+                    if result.visual_explanation:
+                        assistant_msg["payload"]["visual_explanation"] = result.visual_explanation
+                    await websocket.send_json(assistant_msg)
 
                 state_dto = SessionStateDTO(
                     session_id=session.session_id,

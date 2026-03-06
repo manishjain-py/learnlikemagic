@@ -228,6 +228,9 @@ class SessionService:
             "is_complete": session.exam_finished if session.mode == "exam" else session.is_complete,
         }
 
+        if turn_result.visual_explanation:
+            next_turn["visual_explanation"] = turn_result.visual_explanation
+
         if session.mode == "exam":
             next_turn["exam_progress"] = {
                 "current_question": min(session.exam_current_question_idx + 1, len(session.exam_questions)),

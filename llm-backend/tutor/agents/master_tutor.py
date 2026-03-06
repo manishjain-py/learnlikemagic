@@ -24,6 +24,41 @@ from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
 
 
+class VisualAnimationStep(BaseModel):
+    """A single step in a visual animation sequence."""
+    action: str = Field(description="What happens: 'appear', 'highlight', 'merge', 'label', 'fade'")
+    target: str = Field(description="Which group/element: 'group1', 'group2', 'result', 'all', or a part index like 'part_3'")
+    label: Optional[str] = Field(default=None, description="Text label to display during this step")
+    delay_ms: int = Field(default=600, description="Delay before this step in milliseconds")
+
+
+class VisualExplanation(BaseModel):
+    """Structured visual explanation that the frontend renders as an animation."""
+    scene_type: str = Field(
+        description="Type of visual: 'addition', 'subtraction', 'fraction', 'multiplication', 'number_line', 'counting'. "
+        "Use null/omit if no visual is helpful for this turn."
+    )
+    title: Optional[str] = Field(default=None, description="Short title for the visual (e.g., '4 + 4 = 8')")
+    # Addition/subtraction/counting fields
+    group1_count: Optional[int] = Field(default=None, description="Number of objects in first group")
+    group2_count: Optional[int] = Field(default=None, description="Number of objects in second group")
+    result_count: Optional[int] = Field(default=None, description="Total/result count")
+    object_emoji: Optional[str] = Field(default=None, description="Emoji to represent objects (e.g., '🍎', '⭐')")
+    # Fraction fields
+    total_parts: Optional[int] = Field(default=None, description="Total equal parts in the fraction bar")
+    highlighted_parts: Optional[int] = Field(default=None, description="Number of parts to highlight")
+    fraction_label: Optional[str] = Field(default=None, description="Fraction label like '3/4'")
+    # Multiplication fields
+    rows: Optional[int] = Field(default=None, description="Number of rows in multiplication array")
+    cols: Optional[int] = Field(default=None, description="Number of columns in multiplication array")
+    # Animation steps
+    animation_steps: list[VisualAnimationStep] = Field(
+        default_factory=list,
+        description="Ordered animation steps. If empty, the frontend uses a default animation sequence for the scene_type."
+    )
+    narration: Optional[str] = Field(default=None, description="Short narration text synced with the visual")
+
+
 class MasteryUpdate(BaseModel):
     """A single mastery score update for a concept."""
     concept: str = Field(description="The concept name")
@@ -103,6 +138,16 @@ class TutorTurnOutput(BaseModel):
         description="Set to true when the student has completed the final step and demonstrated understanding. This ends the session.",
     )
 
+    # Visual explanation (optional — only when a visual would genuinely help)
+    visual_explanation: Optional[VisualExplanation] = Field(
+        default=None,
+        description="Optional structured visual explanation to render as an animation. "
+        "Include ONLY when a visual would genuinely help the student understand the concept better — "
+        "e.g., counting, addition, subtraction, fractions, multiplication arrays. "
+        "Do NOT include for every turn — only when explaining a concept that benefits from visual representation. "
+        "Set to null when no visual is needed."
+    )
+
     # Turn summary
     turn_summary: str = Field(description="One-sentence summary of this turn (max 80 chars)")
     reasoning: str = Field(default="", description="Your internal reasoning (not shown to student)")
@@ -172,12 +217,11 @@ class MasterTutorAgent(BaseAgent):
                     "or defer to 'next session'. Challenge them. Keep responses concise."
                 )
             return (
-                "PACING: ACCELERATE — Student is acing this. Skip steps aggressively — "
-                "jump ahead in the plan, skip explanations entirely, go straight to hard "
-                "problems. Minimal scaffolding: 1-2 sentences max before the challenge. "
-                "No analogies or walkthroughs unless they ask. If they request harder "
-                "material, go BEYOND the study plan — larger numbers, edge cases, puzzles. "
-                "Cut praise to brief acknowledgments."
+                "PACING: ACCELERATE — Student is doing well. Keep explanations concise "
+                "but still TEACH before testing — explain the next concept briefly (1-2 sentences) "
+                "then check understanding. Don't skip explanations entirely — condense them. "
+                "If they request harder material, go BEYOND the study plan — larger numbers, "
+                "edge cases, puzzles. Cut praise to brief acknowledgments."
             )
 
         has_real_data = any(v > 0 for v in mastery_values)
@@ -232,11 +276,14 @@ class MasterTutorAgent(BaseAgent):
         if ep.phase == "explaining":
             if blocks_remaining:
                 next_block = blocks_remaining[0]
+                remaining_count = len(blocks_remaining)
                 return (
                     f"PACING: EXPLAIN (building) — Continue explaining. Cover the next idea: "
-                    f"'{next_block}'. Use a different representation (story, real-world example, "
+                    f"'{next_block}'. ({remaining_count} building block(s) remaining — do NOT skip ahead "
+                    f"to questions.) Use a different representation (story, real-world example, "
                     f"visual description). ONE idea per turn. Add this to "
-                    f"explanation_building_blocks_covered. Keep explanation_phase_update='explaining'."
+                    f"explanation_building_blocks_covered. Keep explanation_phase_update='explaining'. "
+                    f"Do NOT set advance_to_step or ask test questions yet."
                 )
             else:
                 return (

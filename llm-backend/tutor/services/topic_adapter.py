@@ -139,10 +139,10 @@ def _infer_step_type(item: dict, index: int, total: int) -> str:
         if any(kw in text for kw in ["check", "quiz", "assess", "test", "verify"]):
             return "check"
 
-    # Pattern: explain, check, explain, check, ... practice at end
+    # Pattern: explain-heavy — explain, explain, check, explain, explain, check, ... practice at end
     if index == total:
         return "practice"
-    elif index % 2 == 0:
+    elif index % 3 == 0:
         return "check"
     else:
         return "explain"
@@ -158,26 +158,47 @@ def _generate_default_plan(guideline: GuidelineResponse) -> StudyPlan:
             concept=topic_name,
             content_hint=f"Introduce {topic_name} with a concrete example",
             explanation_approach="real-world analogy",
-            explanation_building_blocks=[f"What is {topic_name}", f"Why {topic_name} matters"],
+            explanation_building_blocks=[
+                f"What is {topic_name}",
+                f"Why {topic_name} matters in everyday life",
+                f"Simple example of {topic_name}",
+                f"Key vocabulary and notation for {topic_name}",
+            ],
             explanation_analogy=f"Everyday example that connects {topic_name} to the student's life",
         ),
         StudyPlanStep(
             step_id=2,
+            type="explain",
+            concept=topic_name,
+            content_hint=f"Deepen understanding of {topic_name} with a different angle",
+            explanation_approach="progressive building",
+            explanation_building_blocks=[
+                f"How {topic_name} works step by step",
+                f"A worked example with {topic_name}",
+                f"What can go wrong — common mistakes with {topic_name}",
+            ],
+            explanation_analogy=f"A different angle on {topic_name} using something the student already knows",
+        ),
+        StudyPlanStep(
+            step_id=3,
             type="check",
             concept=topic_name,
             question_type="conceptual",
         ),
         StudyPlanStep(
-            step_id=3,
+            step_id=4,
             type="explain",
             concept=topic_name,
-            content_hint=f"Deepen understanding of {topic_name}",
-            explanation_approach="progressive building",
-            explanation_building_blocks=[f"How {topic_name} works step by step", f"Special cases of {topic_name}"],
-            explanation_analogy=f"A different angle on {topic_name} using something the student already knows",
+            content_hint=f"Extend {topic_name} to more complex scenarios",
+            explanation_approach="worked examples",
+            explanation_building_blocks=[
+                f"Applying {topic_name} to new situations",
+                f"Connecting {topic_name} to other concepts",
+                f"Common pitfalls and edge cases with {topic_name}",
+            ],
         ),
         StudyPlanStep(
-            step_id=4,
+            step_id=5,
             type="practice",
             concept=topic_name,
             question_count=2,
