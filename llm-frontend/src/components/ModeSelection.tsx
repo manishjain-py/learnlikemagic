@@ -62,24 +62,6 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
       ) : (
         <>
           {/* Resume cards */}
-          {incompleteTeachMe && (
-            <button
-              className="selection-card resume-card"
-              onClick={() => onResume(incompleteTeachMe.session_id, 'teach_me')}
-              style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: 'white',
-                marginBottom: '10px',
-                width: '100%',
-              }}
-            >
-              <strong>Resume Lesson</strong>
-              <span style={{ display: 'block', fontSize: '0.85rem', marginTop: '4px' }}>
-                {incompleteTeachMe.coverage != null ? `${incompleteTeachMe.coverage.toFixed(0)}% covered` : 'In progress'} — pick up where you left off
-              </span>
-            </button>
-          )}
-
           {incompleteExam && (
             <button
               className="selection-card resume-card"
@@ -101,7 +83,29 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
           )}
 
           <div className="selection-grid" data-testid="mode-selection" style={{ gridTemplateColumns: '1fr' }}>
-            {!incompleteTeachMe && (
+            {incompleteTeachMe ? (
+              <>
+                <button
+                  className="selection-card resume-card"
+                  onClick={() => onResume(incompleteTeachMe.session_id, 'teach_me')}
+                  style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                  }}
+                >
+                  <strong>Continue Lesson</strong>
+                  <span style={{ display: 'block', fontSize: '0.85rem', marginTop: '4px' }}>
+                    {incompleteTeachMe.coverage != null ? `${incompleteTeachMe.coverage.toFixed(0)}% covered` : 'In progress'} — pick up where you left off
+                  </span>
+                </button>
+                <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
+                  <strong>Start Fresh</strong>
+                  <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                    Start a new lesson from scratch
+                  </span>
+                </button>
+              </>
+            ) : (
               <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
                 <strong>Teach Me</strong>
                 <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>

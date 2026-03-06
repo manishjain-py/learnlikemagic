@@ -297,10 +297,12 @@ class SessionState(BaseModel):
             return True  # student demonstrated prior knowledge
         if ep.informal_check_passed:
             return True
-        # Check minimum turns
+        # Check minimum turns AND building blocks coverage
         step = self.current_step_data
-        min_turns = step.min_explanation_turns if step and hasattr(step, 'min_explanation_turns') else 2
-        if ep.tutor_turns_in_phase >= min_turns and ep.phase == "informal_check":
+        min_turns = step.min_explanation_turns if step and hasattr(step, 'min_explanation_turns') else 4
+        blocks = step.explanation_building_blocks if step and hasattr(step, 'explanation_building_blocks') else None
+        blocks_all_covered = not blocks or all(b in ep.building_blocks_covered for b in blocks)
+        if ep.tutor_turns_in_phase >= min_turns and ep.phase == "informal_check" and blocks_all_covered:
             return True
         return False
 

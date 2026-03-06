@@ -2829,7 +2829,6 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 120px;
 }
 
 .visual-svg {
@@ -2859,6 +2858,37 @@ body {
   text-align: center;
   margin-top: 8px;
   font-style: italic;
+}
+
+.visual-explanation--collapsed {
+  background: none;
+  border: none;
+  padding: 4px 0;
+}
+
+.visual-start-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #4F9CF7, #8B5CF6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(79, 156, 247, 0.3);
+}
+
+.visual-start-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 156, 247, 0.4);
+}
+
+.visual-start-btn:active {
+  transform: translateY(0);
 }
 
 .visual-replay-btn {
@@ -2895,9 +2925,9 @@ body {
 }
 
 .visual-fade-in {
-  animation: visualFadeIn 0.4s ease-out both;
+  animation: visualFadeIn 0.6s ease-out both;
 }
 
 .visual-pop-in {
-  animation: visualPopIn 0.35s ease-out both;
+  animation: visualPopIn 0.5s ease-out both;
 }

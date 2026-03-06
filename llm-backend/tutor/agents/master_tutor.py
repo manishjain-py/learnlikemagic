@@ -217,12 +217,11 @@ class MasterTutorAgent(BaseAgent):
                     "or defer to 'next session'. Challenge them. Keep responses concise."
                 )
             return (
-                "PACING: ACCELERATE — Student is acing this. Skip steps aggressively — "
-                "jump ahead in the plan, skip explanations entirely, go straight to hard "
-                "problems. Minimal scaffolding: 1-2 sentences max before the challenge. "
-                "No analogies or walkthroughs unless they ask. If they request harder "
-                "material, go BEYOND the study plan — larger numbers, edge cases, puzzles. "
-                "Cut praise to brief acknowledgments."
+                "PACING: ACCELERATE — Student is doing well. Keep explanations concise "
+                "but still TEACH before testing — explain the next concept briefly (1-2 sentences) "
+                "then check understanding. Don't skip explanations entirely — condense them. "
+                "If they request harder material, go BEYOND the study plan — larger numbers, "
+                "edge cases, puzzles. Cut praise to brief acknowledgments."
             )
 
         has_real_data = any(v > 0 for v in mastery_values)
@@ -277,11 +276,14 @@ class MasterTutorAgent(BaseAgent):
         if ep.phase == "explaining":
             if blocks_remaining:
                 next_block = blocks_remaining[0]
+                remaining_count = len(blocks_remaining)
                 return (
                     f"PACING: EXPLAIN (building) — Continue explaining. Cover the next idea: "
-                    f"'{next_block}'. Use a different representation (story, real-world example, "
+                    f"'{next_block}'. ({remaining_count} building block(s) remaining — do NOT skip ahead "
+                    f"to questions.) Use a different representation (story, real-world example, "
                     f"visual description). ONE idea per turn. Add this to "
-                    f"explanation_building_blocks_covered. Keep explanation_phase_update='explaining'."
+                    f"explanation_building_blocks_covered. Keep explanation_phase_update='explaining'. "
+                    f"Do NOT set advance_to_step or ask test questions yet."
                 )
             else:
                 return (

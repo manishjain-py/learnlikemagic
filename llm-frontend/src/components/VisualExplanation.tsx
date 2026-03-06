@@ -21,8 +21,9 @@ const COLORS = {
 };
 
 export default function VisualExplanation({ visual }: Props) {
-  const [phase, setPhase] = useState(0); // animation phase counter
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [started, setStarted] = useState(false);
+  const [phase, setPhase] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalPhases = getTotalPhases(visual);
@@ -45,10 +46,30 @@ export default function VisualExplanation({ visual }: Props) {
     };
   }, [phase, isPlaying, advance, visual]);
 
+  const startAnimation = () => {
+    setPhase(0);
+    setStarted(true);
+    setIsPlaying(true);
+  };
+
   const replay = () => {
     setPhase(0);
     setIsPlaying(true);
   };
+
+  if (!started) {
+    return (
+      <div className="visual-explanation visual-explanation--collapsed">
+        <button className="visual-start-btn" onClick={startAnimation}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
+          </svg>
+          {visual.title ? `Visualise: ${visual.title}` : 'Visualise'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="visual-explanation">
@@ -88,8 +109,8 @@ function getTotalPhases(visual: VisualExplanationType): number {
 }
 
 function getDelay(visual: VisualExplanationType, _phase: number): number {
-  if (visual.scene_type === 'counting') return 500;
-  return 700;
+  if (visual.scene_type === 'counting') return 900;
+  return 1200;
 }
 
 function renderScene(visual: VisualExplanationType, phase: number): React.ReactNode {
@@ -122,15 +143,24 @@ function renderAddition(visual: VisualExplanationType, phase: number) {
   const merged = phase >= 2;
   const showTotal = phase >= 3;
 
-  const maxPerRow = 5;
+  const preMaxPerRow = 5;
+  const mergedMaxPerRow = 8;
+
+  // Calculate dynamic heights
+  const preRows = Math.max(Math.ceil(g1 / preMaxPerRow), Math.ceil(g2 / preMaxPerRow));
+  const preHeight = 30 + preRows * 36 + 20;
+  const mergedRows = Math.ceil(total / mergedMaxPerRow);
+  const mergedGridBottom = 30 + mergedRows * 36;
+  const mergedHeight = mergedGridBottom + (showTotal ? 40 : 10);
+  const viewHeight = merged ? mergedHeight : Math.max(preHeight, 90);
 
   return (
-    <svg viewBox="0 0 320 200" className="visual-svg">
+    <svg viewBox={`0 0 320 ${viewHeight}`} className="visual-svg">
       {/* Group 1 */}
       {showGroup1 && !merged && (
         <g>
           <text x="80" y="20" textAnchor="middle" className="visual-group-label" fill={COLORS.group1}>{g1}</text>
-          {renderObjectGrid(emoji, g1, 20, 30, maxPerRow, COLORS.group1, 'g1')}
+          {renderObjectGrid(emoji, g1, 20, 30, preMaxPerRow, COLORS.group1, 'g1')}
         </g>
       )}
 
@@ -143,16 +173,16 @@ function renderAddition(visual: VisualExplanationType, phase: number) {
       {showGroup2 && !merged && (
         <g>
           <text x="240" y="20" textAnchor="middle" className="visual-group-label" fill={COLORS.group2}>{g2}</text>
-          {renderObjectGrid(emoji, g2, 180, 30, maxPerRow, COLORS.group2, 'g2')}
+          {renderObjectGrid(emoji, g2, 180, 30, preMaxPerRow, COLORS.group2, 'g2')}
         </g>
       )}
 
       {/* Merged result */}
       {merged && (
         <g className="visual-fade-in">
-          {renderObjectGrid(emoji, total, 40, 30, 8, COLORS.result, 'merged')}
+          {renderObjectGrid(emoji, total, 40, 30, mergedMaxPerRow, COLORS.result, 'merged')}
           {showTotal && (
-            <text x="160" y="185" textAnchor="middle" className="visual-result-label" fill={COLORS.result}>
+            <text x="160" y={mergedGridBottom + 25} textAnchor="middle" className="visual-result-label" fill={COLORS.result}>
               = {total}
             </text>
           )}
@@ -177,9 +207,12 @@ function renderSubtraction(visual: VisualExplanationType, phase: number) {
   const showResult = phase >= 3;
 
   const count = removed ? remaining : start;
+  const gridRows = Math.ceil(start / maxPerRow);
+  const gridBottom = 30 + gridRows * 40;
+  const viewHeight = gridBottom + (showResult ? 40 : 10);
 
   return (
-    <svg viewBox="0 0 320 200" className="visual-svg">
+    <svg viewBox={`0 0 320 ${viewHeight}`} className="visual-svg">
       {showAll && (
         <g>
           {Array.from({ length: count }).map((_, i) => {
@@ -217,7 +250,7 @@ function renderSubtraction(visual: VisualExplanationType, phase: number) {
         </g>
       )}
       {showResult && (
-        <text x="160" y="185" textAnchor="middle" className="visual-result-label" fill={COLORS.result}>
+        <text x="160" y={gridBottom + 25} textAnchor="middle" className="visual-result-label" fill={COLORS.result}>
           {start} - {remove} = {remaining}
         </text>
       )}
@@ -392,9 +425,12 @@ function renderCounting(visual: VisualExplanationType, phase: number) {
   const showFinal = phase >= total;
 
   const maxPerRow = 5;
+  const gridRows = Math.ceil(total / maxPerRow);
+  const gridBottom = 20 + gridRows * 50;
+  const viewHeight = gridBottom + (showFinal ? 35 : 5);
 
   return (
-    <svg viewBox="0 0 320 180" className="visual-svg">
+    <svg viewBox={`0 0 320 ${viewHeight}`} className="visual-svg">
       {Array.from({ length: visibleCount }).map((_, i) => {
         const col = i % maxPerRow;
         const row = Math.floor(i / maxPerRow);
@@ -411,7 +447,7 @@ function renderCounting(visual: VisualExplanationType, phase: number) {
       {showFinal && (
         <text
           x="160"
-          y="165"
+          y={gridBottom + 20}
           textAnchor="middle"
           className="visual-result-label visual-fade-in"
           fill={COLORS.result}
