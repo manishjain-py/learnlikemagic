@@ -1,7 +1,7 @@
 # Ops And Testing Runbook
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-03-06
+Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 
 ## Local Backend
 ```bash
@@ -39,6 +39,9 @@ make build-prod
 make push
 make deploy
 make check-arch
+make ecr-login
+make tag-ecr
+make clean
 ```
 
 ## Frontend Command Surface
@@ -47,6 +50,8 @@ cd llm-frontend
 npm run dev
 npm run build
 npm run preview
+npm run test
+npm run test:watch
 ```
 
 ## E2E Command Surface
@@ -61,8 +66,8 @@ npm run report
 ```
 
 ## Test Inventory
-- Backend unit test files: `48`
-- Backend integration test files: `8`
+- Backend unit test files: `38`
+- Backend integration test files: `3`
 - E2E runner: `e2e/tests/scenarios.spec.ts`
 - E2E scenario source: `e2e/scenarios.json`
 - E2E outputs: `reports/e2e-runner/`

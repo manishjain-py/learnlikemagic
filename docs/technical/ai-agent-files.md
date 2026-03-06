@@ -1,6 +1,6 @@
 # AI Agent Context Files
 
-How the ~31 files that give AI agents project context are organized, what each one does, and when they need updating.
+How the ~32 files that give AI agents project context are organized, what each one does, and when they need updating.
 
 ---
 
@@ -13,7 +13,7 @@ This repo contains a set of context files that AI coding agents (Claude Code, Ge
 | Root (`/`) | Identity, persona, workspace rules, long-term memory |
 | `.agent/` | Internal operator manual — repo map, API inventory, ops runbook, change playbooks |
 | `.claude/commands/` | Automated skills invoked via `/command-name` |
-| `.claude/`, `infra/.claude/` | Tool permissions and environment settings |
+| `.claude/` | Tool permissions and environment settings |
 | `memory/` | Daily session logs |
 
 Agents follow a **boot order** defined in `AGENTS.md` and `.agent/00-start-here.md`:
@@ -39,6 +39,7 @@ Agents follow a **boot order** defined in `AGENTS.md` and `.agent/00-start-here.
 | `.claude.md` | Detailed Claude Code instructions: architecture, deployment, code quality, testing checklist | Manual — update when stack or workflow changes significantly |
 | `AGENTS.md` | Workspace-wide rules: boot order, memory management, safety, external actions, group chat | Manual — update when adding new agent workflows or rules |
 | `GEMINI.md` | Gemini CLI mandates: boot order, research rules, execution validation, git ops | Manual — mirrors AGENTS.md for Gemini; update in parallel |
+| `TOOLS.md` | Local tool-specific notes: user's setup specifics, environment details | Manual — update when local tooling or environment changes |
 
 ### Codebase Reference Pack (`.agent/`)
 
@@ -70,6 +71,7 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | `e2e-updater.md` | Generate/update `e2e/scenarios.json` from functional docs and codebase | Manual — update when E2E scenario format changes |
 | `unit-test-runner.md` | Run pytest with coverage, build HTML report, email | Manual — update when test infrastructure changes |
 | `unit-test-updater.md` | Generate/clean unit tests by priority tier to reach 80% coverage | Manual — update when test strategy changes |
+| `video-to-gif.md` | Convert video files to animated GIFs | Manual — update when conversion workflow changes |
 
 ### Memory
 
@@ -84,7 +86,6 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | File | Purpose | Update Trigger |
 |------|---------|----------------|
 | `.claude/settings.local.json` | Claude Code permission allowlist: 70+ bash commands, read paths, web access | Manual — update when new tools or paths are needed |
-| `infra/.claude/settings.local.json` | Minimal permission allowlist for infra subdir (read + python) | Manual — update when infra tooling changes |
 
 ---
 
