@@ -1,7 +1,7 @@
 # Backend API And Flow
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-03-06
+Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 
 ## Boot Sequence
 1. `main.py` validates required settings (`OPENAI_API_KEY`, `DATABASE_URL`)
@@ -14,6 +14,7 @@ Code baseline: `main@973d1ea`
 
 ### Health + model config snapshot
 - `GET /`
+- `GET /health`
 - `GET /health/db`
 - `GET /config/models`
 
@@ -25,11 +26,13 @@ Code baseline: `main@973d1ea`
 - `GET /sessions/history`
 - `GET /sessions/stats`
 - `GET /sessions/report-card`
-- `GET /sessions/subtopic-progress`
+- `GET /sessions/topic-progress`
 - `GET /sessions/resumable?guideline_id=...`
+- `GET /sessions/guideline/{guideline_id}`
 - `GET /sessions/{session_id}`
 - `GET /sessions/{session_id}/summary`
 - `GET /sessions/{session_id}/replay`
+- `GET /sessions/{session_id}/exam-review`
 - `GET /sessions/{session_id}/agent-logs`
 - `POST /sessions`
 - `POST /sessions/{session_id}/step`
@@ -37,12 +40,16 @@ Code baseline: `main@973d1ea`
 - `POST /sessions/{session_id}/resume`
 - `POST /sessions/{session_id}/end-clarify`
 - `POST /sessions/{session_id}/end-exam`
+- `POST /sessions/{session_id}/feedback`
 
 ### Session WebSocket
 - `WS /sessions/ws/{session_id}`
 
 ### Audio transcription
 - `POST /transcribe`
+
+### Text-to-speech
+- `POST /text-to-speech`
 
 ### Auth/profile
 - `POST /auth/sync`
@@ -51,42 +58,48 @@ Code baseline: `main@973d1ea`
 - `GET /profile`
 - `PUT /profile`
 - `PUT /profile/password`
+- `GET /profile/enrichment`
+- `PUT /profile/enrichment`
+- `GET /profile/personality`
+- `POST /profile/personality/regenerate`
 
-### Book ingestion admin (`/admin`)
-- `POST /admin/books`
-- `GET /admin/books`
-- `GET /admin/books/{book_id}`
-- `DELETE /admin/books/{book_id}`
-- `POST /admin/books/{book_id}/pages`
-- `PUT /admin/books/{book_id}/pages/{page_num}/approve`
-- `DELETE /admin/books/{book_id}/pages/{page_num}`
-- `GET /admin/books/{book_id}/pages/{page_num}`
-- `POST /admin/books/{book_id}/generate-guidelines`
-- `POST /admin/books/{book_id}/finalize`
-- `GET /admin/books/{book_id}/guidelines`
-- `GET /admin/books/{book_id}/guidelines/{topic_key}/{subtopic_key}`
-- `PUT /admin/books/{book_id}/guidelines/approve`
-- `DELETE /admin/books/{book_id}/guidelines`
+### Book ingestion V2 — books (`/admin/v2/books`)
+- `POST /admin/v2/books`
+- `GET /admin/v2/books`
+- `GET /admin/v2/books/{book_id}`
+- `DELETE /admin/v2/books/{book_id}`
 
-### Guideline review + study plans (`/admin/guidelines`)
-- `GET /admin/guidelines/books`
-- `GET /admin/guidelines/books/{book_id}/topics`
-- `GET /admin/guidelines/books/{book_id}/subtopics/{subtopic_key}`
-- `PUT /admin/guidelines/books/{book_id}/subtopics/{subtopic_key}`
-- `GET /admin/guidelines/books/{book_id}/page-assignments`
-- `POST /admin/guidelines/books/{book_id}/extract`
-- `POST /admin/guidelines/books/{book_id}/finalize`
-- `POST /admin/guidelines/books/{book_id}/sync-to-database`
-- `GET /admin/guidelines/review`
-- `GET /admin/guidelines/review/filters`
-- `GET /admin/guidelines/books/{book_id}/review`
-- `POST /admin/guidelines/{guideline_id}/approve`
-- `DELETE /admin/guidelines/{guideline_id}`
-- `POST /admin/guidelines/{guideline_id}/generate-study-plan`
-- `GET /admin/guidelines/{guideline_id}/study-plan`
-- `POST /admin/guidelines/bulk-generate-study-plans`
+### Book ingestion V2 — TOC (`/admin/v2/books/{book_id}/toc`)
+- `POST /admin/v2/books/{book_id}/toc/extract`
+- `POST /admin/v2/books/{book_id}/toc`
+- `GET /admin/v2/books/{book_id}/toc`
+- `PUT /admin/v2/books/{book_id}/toc/{chapter_id}`
+- `DELETE /admin/v2/books/{book_id}/toc/{chapter_id}`
+
+### Book ingestion V2 — pages (`/admin/v2/books/{book_id}/chapters/{chapter_id}/pages`)
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/pages`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/pages`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}/detail`
+- `DELETE /admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}`
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/pages/{page_num}/retry-ocr`
+
+### Book ingestion V2 — processing + topics (`/admin/v2/books/{book_id}/chapters/{chapter_id}`)
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/process`
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/reprocess`
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/refinalize`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/jobs/latest`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/jobs/{job_id}`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/topics`
+- `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/topics/{topic_key}`
+
+### Book ingestion V2 — sync + results (`/admin/v2/books/{book_id}`)
+- `POST /admin/v2/books/{book_id}/sync`
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/sync`
+- `GET /admin/v2/books/{book_id}/results`
 
 ### Evaluation
+- `GET /api/evaluation/guidelines`
 - `POST /api/evaluation/start`
 - `POST /api/evaluation/evaluate-session`
 - `GET /api/evaluation/status`

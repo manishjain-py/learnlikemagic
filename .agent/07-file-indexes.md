@@ -1,7 +1,7 @@
 # File Indexes
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-03-06
+Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 
 ## Backend High-Signal Files
 - App bootstrap: `llm-backend/main.py`
@@ -15,10 +15,11 @@ Code baseline: `main@973d1ea`
 - Orchestrator: `llm-backend/tutor/orchestration/orchestrator.py`
 - Master tutor agent: `llm-backend/tutor/agents/master_tutor.py`
 - Session state model: `llm-backend/tutor/models/session_state.py`
-- Scorecard aggregation: `llm-backend/tutor/services/scorecard_service.py`
-- Ingestion routes: `llm-backend/book_ingestion/api/routes.py`
-- Ingestion orchestrator: `llm-backend/book_ingestion/services/guideline_extraction_orchestrator.py`
-- Study plan admin APIs: `llm-backend/study_plans/api/admin.py`
+- Report card aggregation: `llm-backend/tutor/services/report_card_service.py`
+- Ingestion book routes: `llm-backend/book_ingestion_v2/api/book_routes.py`
+- Ingestion processing routes: `llm-backend/book_ingestion_v2/api/processing_routes.py`
+- Topic extraction orchestrator: `llm-backend/book_ingestion_v2/services/topic_extraction_orchestrator.py`
+- Study plan orchestrator: `llm-backend/study_plans/services/orchestrator.py`
 - Evaluation APIs: `llm-backend/evaluation/api.py`
 - Evaluation runner: `llm-backend/evaluation/session_runner.py`
 - Evaluation judge: `llm-backend/evaluation/evaluator.py`
@@ -46,7 +47,6 @@ Code baseline: `main@973d1ea`
 - Playwright config: `e2e/playwright.config.ts`
 - Dynamic test runner: `e2e/tests/scenarios.spec.ts`
 - Scenario definitions: `e2e/scenarios.json`
-- Report builder: `reports/e2e-runner/build_report.py`
 
 ## Infra + CI High-Signal Files
 - Terraform root: `infra/terraform/main.tf`

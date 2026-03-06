@@ -1,7 +1,7 @@
 # Change Playbooks
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-03-06
+Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 
 ## Add Or Change Backend Endpoint
 1. Schema/model update (`shared/models/schemas.py` or module-specific model)
@@ -28,9 +28,9 @@ Validation:
 - Preserve token contract: ID token for `/auth/sync`, access token for protected APIs
 
 ## Change Ingestion Or Guideline Pipeline
-- API: `book_ingestion/api/routes.py`, `study_plans/api/admin.py`
-- Core flow: `book_ingestion/services/*`
-- Sync/review behavior: `study_plans/api/admin.py`, DB sync services
+- API: `book_ingestion_v2/api/book_routes.py`, `book_ingestion_v2/api/toc_routes.py`, `book_ingestion_v2/api/page_routes.py`, `book_ingestion_v2/api/processing_routes.py`, `book_ingestion_v2/api/sync_routes.py`
+- Core flow: `book_ingestion_v2/services/*`
+- Sync/review behavior: `book_ingestion_v2/api/sync_routes.py`, DB sync services
 - Validate S3 pathing + index writes + review status effects
 
 ## Change Evaluation Pipeline

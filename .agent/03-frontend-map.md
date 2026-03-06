@@ -1,7 +1,7 @@
 # Frontend Map
 
-Last audited: 2026-02-26
-Code baseline: `main@973d1ea`
+Last audited: 2026-03-06
+Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 
 ## Stack
 - React 18 + TypeScript + Vite
@@ -24,20 +24,25 @@ Code baseline: `main@973d1ea`
 - `/onboarding`
 - `/learn`
 - `/learn/:subject`
-- `/learn/:subject/:topic`
-- `/learn/:subject/:topic/:subtopic`
-- `/session/:sessionId`
+- `/learn/:subject/:chapter`
+- `/learn/:subject/:chapter/:topic`
+- `/learn/:subject/:chapter/:topic/exam-review/:sessionId`
+- `/learn/:subject/:chapter/:topic/teach/:sessionId`
+- `/learn/:subject/:chapter/:topic/exam/:sessionId`
+- `/learn/:subject/:chapter/:topic/clarify/:sessionId`
+- `/session/:sessionId` (backward compat)
 - `/profile`
+- `/profile/enrichment`
 - `/history`
-- `/scorecard`
 - `/report-card`
 - `/` redirects to `/learn`
 
 ### Admin routes (currently no route-level auth guard)
-- `/admin/books`
-- `/admin/books/new`
-- `/admin/books/:id`
-- `/admin/guidelines`
+- `/admin` redirects to `/admin/books-v2`
+- `/admin/books` redirects to `/admin/books-v2`
+- `/admin/books-v2`
+- `/admin/books-v2/new`
+- `/admin/books-v2/:id`
 - `/admin/evaluation`
 - `/admin/docs`
 - `/admin/llm-config`
@@ -52,15 +57,15 @@ Code baseline: `main@973d1ea`
 
 ## API Surface In Frontend Code
 - Student API: `src/api.ts`
-- Admin API: `src/features/admin/api/adminApi.ts`
+- Admin API (evaluation, docs, llm-config, test-scenarios): `src/features/admin/api/adminApi.ts`
+- Admin API (book ingestion V2): `src/features/admin/api/adminApiV2.ts`
 - Devtools API: `src/features/devtools/api/devToolsApi.ts`
 
 ## Main UI Domains
-- Learning flow: subject -> topic -> subtopic -> mode -> chat
-- Profile and onboarding
-- Session history and scorecard
-- Admin ingestion workflow
-- Admin guideline review and study plan generation
+- Learning flow: subject -> chapter -> topic -> mode -> chat
+- Profile, enrichment, and onboarding
+- Session history and report card
+- Admin book ingestion V2 workflow
 - Admin evaluation dashboard
 - Admin docs/test scenario browsers
 - Devtools drawer (agent logs/session state)
