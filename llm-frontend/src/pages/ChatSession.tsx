@@ -11,10 +11,12 @@ import {
   submitFeedback,
   Turn,
   SummaryResponse,
+  VisualExplanation as VisualExplanationType,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
+import VisualExplanationComponent from '../components/VisualExplanation';
 import '../App.css';
 
 interface Message {
@@ -22,6 +24,7 @@ interface Message {
   content: string;
   audioText?: string | null;
   hints?: string[];
+  visualExplanation?: VisualExplanationType | null;
 }
 
 interface ExamQuestionDraft {
@@ -218,6 +221,7 @@ export default function ChatSession() {
         content: locState.firstTurn.message,
         audioText: locState.firstTurn.audio_text,
         hints: locState.firstTurn.hints,
+        visualExplanation: locState.firstTurn.visual_explanation,
       }]);
       setStepIdx(locState.firstTurn.step_idx);
       setMastery(locState.firstTurn.mastery_score);
@@ -375,6 +379,7 @@ export default function ChatSession() {
           content: response.next_turn.message,
           audioText: response.next_turn.audio_text,
           hints: response.next_turn.hints,
+          visualExplanation: response.next_turn.visual_explanation,
         },
       ]);
       setStepIdx(response.next_turn.step_idx);
@@ -966,6 +971,9 @@ export default function ChatSession() {
                 <div className="message-content">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
+                {msg.role === 'teacher' && msg.visualExplanation && (
+                  <VisualExplanationComponent visual={msg.visualExplanation} />
+                )}
                 {msg.role === 'teacher' && (
                   <button
                     className={`audio-play-btn${playingMsgIdx === idx ? ' playing' : ''}`}

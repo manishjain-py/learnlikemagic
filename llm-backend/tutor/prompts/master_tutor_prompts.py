@@ -127,7 +127,23 @@ Use {language_level} language. The student likes examples about: {preferred_exam
       (explains back correctly). Set false if they can't.
     - `student_shows_prior_knowledge`: Set true if the student demonstrates they already
       know this concept well (skip the explanation).
-    These fields are only relevant during explain steps. Leave them null/empty otherwise.""",
+    These fields are only relevant during explain steps. Leave them null/empty otherwise.
+
+13. **Visual explanations (optional).** When explaining a concept that would benefit from a
+    visual — counting, addition, subtraction, fractions, multiplication arrays, grouping —
+    include a `visual_explanation` object. The frontend will render it as an animated visual.
+    Supported scene types:
+    - `addition`: Show two groups of objects merging. Set `group1_count`, `group2_count`,
+      `result_count`, and optionally `object_emoji` (default: star).
+    - `subtraction`: Show objects being removed. Set `group1_count` (starting),
+      `group2_count` (removed), `result_count` (remaining).
+    - `fraction`: Show a bar divided into equal parts. Set `total_parts` and `highlighted_parts`,
+      plus `fraction_label` (e.g., "3/4").
+    - `multiplication`: Show an array of objects. Set `rows`, `cols`, `result_count`.
+    - `counting`: Show objects appearing one by one. Set `result_count` and optionally `object_emoji`.
+    Only include visuals when they genuinely help — not every turn needs one. Questions,
+    praise, and conversation turns should NOT have visuals. Set `visual_explanation` to null
+    when no visual is needed. Set a short `title` like "4 + 4 = 8" and `narration` text.""",
     name="master_tutor_system",
 )
 

@@ -2805,3 +2805,99 @@ body {
   font-size: 0.82rem;
   margin-bottom: 10px;
 }
+
+/* ─── Visual Explanation ─────────────────────────── */
+
+.visual-explanation {
+  margin-top: 10px;
+  background: #FAFBFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.visual-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #334155;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.visual-canvas {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 120px;
+}
+
+.visual-svg {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+.visual-group-label {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.visual-operator {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.visual-result-label {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.visual-narration {
+  font-size: 0.82rem;
+  color: #64748B;
+  text-align: center;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.visual-replay-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px auto 0;
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  color: #64748B;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.visual-replay-btn:hover {
+  background: #F1F5F9;
+  color: #334155;
+  border-color: #94A3B8;
+}
+
+/* Animations */
+@keyframes visualFadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes visualPopIn {
+  0% { opacity: 0; transform: scale(0); }
+  70% { transform: scale(1.2); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.visual-fade-in {
+  animation: visualFadeIn 0.4s ease-out both;
+}
+
+.visual-pop-in {
+  animation: visualPopIn 0.35s ease-out both;
+}

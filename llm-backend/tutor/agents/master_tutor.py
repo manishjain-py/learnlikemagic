@@ -24,6 +24,41 @@ from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
 
 
+class VisualAnimationStep(BaseModel):
+    """A single step in a visual animation sequence."""
+    action: str = Field(description="What happens: 'appear', 'highlight', 'merge', 'label', 'fade'")
+    target: str = Field(description="Which group/element: 'group1', 'group2', 'result', 'all', or a part index like 'part_3'")
+    label: Optional[str] = Field(default=None, description="Text label to display during this step")
+    delay_ms: int = Field(default=600, description="Delay before this step in milliseconds")
+
+
+class VisualExplanation(BaseModel):
+    """Structured visual explanation that the frontend renders as an animation."""
+    scene_type: str = Field(
+        description="Type of visual: 'addition', 'subtraction', 'fraction', 'multiplication', 'number_line', 'counting'. "
+        "Use null/omit if no visual is helpful for this turn."
+    )
+    title: Optional[str] = Field(default=None, description="Short title for the visual (e.g., '4 + 4 = 8')")
+    # Addition/subtraction/counting fields
+    group1_count: Optional[int] = Field(default=None, description="Number of objects in first group")
+    group2_count: Optional[int] = Field(default=None, description="Number of objects in second group")
+    result_count: Optional[int] = Field(default=None, description="Total/result count")
+    object_emoji: Optional[str] = Field(default=None, description="Emoji to represent objects (e.g., '🍎', '⭐')")
+    # Fraction fields
+    total_parts: Optional[int] = Field(default=None, description="Total equal parts in the fraction bar")
+    highlighted_parts: Optional[int] = Field(default=None, description="Number of parts to highlight")
+    fraction_label: Optional[str] = Field(default=None, description="Fraction label like '3/4'")
+    # Multiplication fields
+    rows: Optional[int] = Field(default=None, description="Number of rows in multiplication array")
+    cols: Optional[int] = Field(default=None, description="Number of columns in multiplication array")
+    # Animation steps
+    animation_steps: list[VisualAnimationStep] = Field(
+        default_factory=list,
+        description="Ordered animation steps. If empty, the frontend uses a default animation sequence for the scene_type."
+    )
+    narration: Optional[str] = Field(default=None, description="Short narration text synced with the visual")
+
+
 class MasteryUpdate(BaseModel):
     """A single mastery score update for a concept."""
     concept: str = Field(description="The concept name")
@@ -101,6 +136,16 @@ class TutorTurnOutput(BaseModel):
     session_complete: bool = Field(
         default=False,
         description="Set to true when the student has completed the final step and demonstrated understanding. This ends the session.",
+    )
+
+    # Visual explanation (optional — only when a visual would genuinely help)
+    visual_explanation: Optional[VisualExplanation] = Field(
+        default=None,
+        description="Optional structured visual explanation to render as an animation. "
+        "Include ONLY when a visual would genuinely help the student understand the concept better — "
+        "e.g., counting, addition, subtraction, fractions, multiplication arrays. "
+        "Do NOT include for every turn — only when explaining a concept that benefits from visual representation. "
+        "Set to null when no visual is needed."
     )
 
     # Turn summary

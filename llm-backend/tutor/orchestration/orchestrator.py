@@ -30,6 +30,7 @@ class TurnResult(BaseModel):
     intent: str = Field(description="Detected intent")
     specialists_called: List[str] = Field(default_factory=list)
     state_changed: bool = Field(default=False)
+    visual_explanation: Optional[Dict[str, Any]] = Field(default=None, description="Structured visual explanation for frontend rendering")
 
 
 class TeacherOrchestrator:
@@ -285,6 +286,7 @@ class TeacherOrchestrator:
                 intent=tutor_output.intent,
                 specialists_called=["master_tutor"],
                 state_changed=state_changed,
+                visual_explanation=tutor_output.visual_explanation.model_dump() if tutor_output.visual_explanation else None,
             )
 
         except Exception as e:
@@ -603,6 +605,7 @@ class TeacherOrchestrator:
             intent=tutor_output.intent,
             specialists_called=["master_tutor"],
             state_changed=True,
+            visual_explanation=tutor_output.visual_explanation.model_dump() if tutor_output.visual_explanation else None,
         )
 
     async def _process_exam_turn(
