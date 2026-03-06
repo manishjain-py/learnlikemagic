@@ -130,40 +130,45 @@ TutorTurnOutput {
 
 ## Prompt System
 
-### System Prompt (set once per session)
+### System Prompt (teach_me — set once per session)
 
 Contains:
 - Student profile (grade, language level, preferred examples)
-- Personalization block (student name, age, about_me — when available from user profile)
-- Study plan (steps with types and concepts)
-- Topic guidelines (teaching approach, common misconceptions)
-- 10 teaching rules (follow plan, advance when ready, track questions, guide discovery with escalating strategy changes, never repeat, match energy, update mastery, be real with calibrated praise, end naturally, never leak internals)
+- Personalization block: uses `tutor_brief` (rich personality prose from enrichment profile) when available, falling back to basic name/age/about_me from user profile
+- Study plan (steps with types, concepts, content hints)
+- Topic guidelines (curriculum scope, common misconceptions)
+- 12 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking
+- Response and audio language instructions (from `language_utils.py`)
 
-### Turn Prompt (per turn)
+### Turn Prompt (teach_me — per turn)
 
 Contains:
 - Current step info (type, concept, content hint)
+- Explanation context (when on an explain step: approach, building blocks covered/remaining, current phase, turns spent)
 - Current mastery estimates
 - Known misconceptions (with recurring misconception alerts)
 - Turn timeline (session narrative so far, last 5 entries)
-- Pacing directive (dynamic)
+- Pacing directive (dynamic — includes explanation-aware pacing and attention span warnings)
 - Student style (dynamic)
 - Awaiting answer section (if question pending, includes attempt number and escalating strategy)
+- Exam question context (when in exam mode: question text, expected answer, fractional scoring instructions)
+- Feedback notices (when study plan was recently updated via mid-session feedback)
 - Recent conversation history (max 10 messages)
 - Current student message
 
 ### Mode-Specific Prompts
 
-**Clarify Doubts**:
-- Currently uses the same master tutor prompts (`master_tutor_prompts.py`) — mode-specific behavior is driven by the orchestrator's `_process_clarify_turn()` routing, which does not use step advancement or question lifecycle
-- `clarify_doubts_prompts.py` defines dedicated system/turn prompt templates (direct answers, session closure rules, concept tracking) but these are not yet wired into the pipeline
+**Clarify Doubts** (`clarify_doubts_prompts.py`):
+- Uses dedicated prompt templates: `CLARIFY_DOUBTS_SYSTEM_PROMPT` (system) and `CLARIFY_DOUBTS_TURN_PROMPT` (per turn). The `MasterTutorAgent._build_system_prompt()` detects `mode == "clarify_doubts"` and renders the clarify-specific system prompt; `_build_turn_prompt()` delegates to `_build_clarify_turn_prompt()`.
+- System prompt: direct answers (no Socratic method), session closure rules (respect "I'm done"), concept tracking against study plan concepts, curriculum scope boundary
+- Turn prompt: concepts discussed so far, conversation history, student message, structured output instructions (intent, mastery_updates for concept tracking, session_complete for closure)
 - `mastery_updates` used to track which study plan concepts were substantively discussed
 - `answer_correct` always null in clarify mode; `advance_to_step` never set
 
 **Exam** (`exam_prompts.py`):
-- Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard) — used by `ExamService.generate_questions()`
-- Evaluation: currently uses the same master tutor prompts — mode-specific behavior driven by `_process_exam_turn()`. The evaluation system/turn prompt templates in `exam_prompts.py` exist but are not yet wired into the pipeline.
-- Evaluation feedback is stored on `ExamQuestion.feedback` but NOT shown to the student mid-exam. The orchestrator constructs its own neutral "Got it" response between questions.
+- Question generation prompt: difficulty distribution (~30% easy, ~50% medium, ~20% hard), question types (conceptual, procedural, application, real_world, error_spotting, reasoning) — used by `ExamService.generate_questions()`. Includes personalization section using `personality_json` (interests, people to reference).
+- Evaluation: uses master tutor prompts with exam-specific context injected into the awaiting answer section (question text, expected answer, fractional scoring instructions with `answer_score` and `marks_rationale`). The evaluation system/turn prompt templates in `exam_prompts.py` exist but are not yet wired into the pipeline.
+- Evaluation feedback is stored on `ExamQuestion.feedback` and `ExamQuestion.marks_rationale` but NOT shown to the student mid-exam. The orchestrator shows the next question between answers. Final results include per-question scores and rationales.
 
 ### Dynamic Signals
 
@@ -171,7 +176,12 @@ Contains:
 
 | Signal | Condition | Directive |
 |--------|-----------|-----------|
-| TURN 1 | First turn | Keep opening to 2-3 sentences, ask ONE simple question |
+| TURN 1 | First turn | Curiosity-building hook, inviting question, set explanation_phase_update='opening' |
+| EXPLAIN (opening) | Explain step, phase=opening | Begin core explanation, one idea, everyday example, set phase='explaining' |
+| EXPLAIN (building) | Explain step, phase=explaining, blocks remaining | Cover next building block with varied representation, one per turn |
+| EXPLAIN (summarize) | Explain step, phase=explaining, all blocks covered | Summarize key idea, ask informal understanding check, set phase='informal_check' |
+| EXPLAIN (check) | Explain step, phase=informal_check | Evaluate student's response, set student_shows_understanding accordingly |
+| EXPLAIN (done) | Explain step, phase=informal_check, check passed | Acknowledge and transition, set phase='complete' |
 | ACCELERATE | avg_mastery >= 0.8 & improving (or 60%+ concepts >= 0.7 & improving) | Skip steps aggressively, minimal scaffolding |
 | EXTEND | Aced plan & is_complete | Push to harder territory |
 | SIMPLIFY | (avg_mastery < 0.4 with real data) or trend == struggling | Shorter sentences, 1-2 ideas per response |
@@ -179,6 +189,8 @@ Contains:
 | STEADY | Default | One idea at a time |
 
 Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mastery >= 0.7 AND avg_mastery >= 0.65 AND trend is improving, the system forces the accelerate path.
+
+Note: STEADY appends an attention span warning when the student's attention span (from enrichment profile) is reached. Thresholds: short=8 turns, medium=14 turns, long=20 turns. The tutor is prompted to start wrapping up.
 
 **Student Style** (`_compute_student_style`):
 - Analyzes avg words/message, emoji usage, question-asking
@@ -199,17 +211,21 @@ Note: ACCELERATE has early fast-track detection — if 60%+ of concepts have mas
 | `POST` | `/sessions/{id}/resume` | Resume a paused session (returns conversation history) |
 | `POST` | `/sessions/{id}/end-clarify` | End a Clarify Doubts session (marks complete server-side) |
 | `POST` | `/sessions/{id}/end-exam` | End an exam early and get results |
+| `POST` | `/sessions/{id}/feedback` | Submit mid-session feedback to regenerate study plan (max 3/session) |
 | `GET` | `/sessions/{id}/summary` | Session performance summary |
 | `GET` | `/sessions` | List all sessions for current user |
 | `GET` | `/sessions/history` | Paginated session history (filterable by subject) |
 | `GET` | `/sessions/stats` | Aggregated learning stats |
 | `GET` | `/sessions/report-card` | Student report card with coverage and exam data |
-| `GET` | `/sessions/subtopic-progress` | Lightweight progress map |
+| `GET` | `/sessions/topic-progress` | Lightweight topic progress map |
 | `GET` | `/sessions/resumable?guideline_id=X` | Find a paused Teach Me session for a subtopic |
+| `GET` | `/sessions/guideline/{id}` | List sessions for a guideline (filterable by mode, completion) |
+| `GET` | `/sessions/{id}/exam-review` | Detailed exam review (per-question scores, rationales, answers) |
 | `GET` | `/sessions/{id}/replay` | Full conversation JSON |
 | `GET` | `/sessions/{id}` | Full session state (debug) |
 | `GET` | `/sessions/{id}/agent-logs` | Agent execution logs |
 | `POST` | `/transcribe` | Audio transcription via OpenAI Whisper |
+| `POST` | `/text-to-speech` | Text-to-speech via Google Cloud TTS (Hindi/English/Hinglish voice) |
 
 ### WebSocket Endpoint
 
