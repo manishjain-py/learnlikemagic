@@ -272,10 +272,14 @@ Body: {
 ```
 
 Flow:
-- Load guideline → Load study plan → Convert via topic_adapter → Create SessionState (with mode)
-- Build StudentContext from user profile when authenticated (name, age, about_me for personalization)
-- For `exam` mode: generate exam questions via ExamService before welcome
-- Generate mode-specific welcome message (each mode has its own welcome generator)
+- Load guideline
+- Build StudentContext from user profile when authenticated (name, age, about_me, tutor_brief from personality profile, personality_json, attention_span from enrichment, text/audio language preferences)
+- Load personalized study plan from DB (user_id + guideline_id), falling back to any plan for that guideline
+- For `teach_me`: if no plan exists, generate a personalized plan via `StudyPlanGeneratorService` using the student's personality context
+- Convert via topic_adapter → Create SessionState (with mode)
+- For `teach_me`: initialize explanation phase if first step is `explain` type
+- For `exam` mode: guard against duplicate incomplete exams (409 if one exists with progress), then generate exam questions via ExamService before welcome
+- Generate mode-specific welcome message (each mode has its own welcome generator) — returns `(message, audio_text)` tuple with language-appropriate content
 - For `exam`: append first question to welcome message
 - Persist session to DB (with state_version=1)
 - For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent, only sessions with at least one concept discussed)
@@ -302,11 +306,14 @@ class SessionState(BaseModel):
     conversation_history: List[Message]  # Sliding window (max 10)
     full_conversation_log: List[Message]
     session_summary: SessionSummary
-    student_context: StudentContext      # grade, board, language_level, name, age, about_me
+    student_context: StudentContext      # grade, board, language, personality, attention span
     pace_preference: str                 # slow/normal/fast
     allow_extension: bool                # Continue past study plan
     is_paused: bool                      # Whether Teach Me session is paused
     concepts_covered_set: set[str]       # Concepts covered in this session
+    # Explanation tracking
+    explanation_phases: dict[str, ExplanationPhase]  # Per-concept explanation lifecycle
+    current_explanation_concept: Optional[str]        # Active explanation concept
     # Clarify Doubts state
     concepts_discussed: list[str]        # Concepts discussed in Q&A
     clarify_complete: bool               # Whether student ended the Clarify session
