@@ -897,10 +897,14 @@ export default function ChatSession() {
                 />
                 {/* Subtitle overlay */}
                 {messages.length > 0 && (() => {
-                  const lastTeacherMsg = messages.filter((m) => m.role === 'teacher').slice(-1)[0]?.content || '';
+                  const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
+                  const lastTeacherMsg = lastTeacher?.content || '';
                   return lastTeacherMsg ? (
                     <div className="teacher-subtitle">
                       <ReactMarkdown>{lastTeacherMsg}</ReactMarkdown>
+                      {lastTeacher?.visualExplanation && (
+                        <VisualExplanationComponent visual={lastTeacher.visualExplanation} />
+                      )}
                     </div>
                   ) : null;
                 })()}
@@ -1387,6 +1391,9 @@ export default function ChatSession() {
                 <div key={ci} className="focus-slide">
                   <div className="focus-tutor-msg">
                     <ReactMarkdown>{card.tutorMsg.content}</ReactMarkdown>
+                    {card.tutorMsg.visualExplanation && (
+                      <VisualExplanationComponent visual={card.tutorMsg.visualExplanation} />
+                    )}
                   </div>
                   {card.studentMsg && (
                     <div className="focus-student-msg">
