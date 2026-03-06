@@ -32,6 +32,10 @@ Schema, tables, migrations, and connection management.
 | `board` | VARCHAR | Education board |
 | `school_name` | VARCHAR | School name |
 | `about_me` | TEXT | Self-description |
+| `text_language_preference` | VARCHAR | Preferred language for text content |
+| `audio_language_preference` | VARCHAR | Preferred language for audio content |
+| `preferred_name` | VARCHAR | Preferred display name (nickname) |
+| `focus_mode` | BOOL | Focus mode enabled (default true) |
 | `is_active` | BOOL | Account active flag (default true) |
 | `onboarding_complete` | BOOL | Onboarding wizard completed (default false) |
 | `last_login_at` | DATETIME | Last login timestamp |
@@ -63,9 +67,9 @@ Schema, tables, migrations, and connection management.
 | `created_at` | DATETIME | Timestamp |
 | `updated_at` | DATETIME | Timestamp |
 
-**Indexes:** `idx_sessions_user_id` (user_id), `idx_sessions_subject` (subject), `idx_sessions_mode` (mode), `idx_sessions_guideline_id` (guideline_id)
+**Indexes:** `idx_session_user_guideline` (user_id, guideline_id, mode)
 
-**Partial unique index:** `idx_sessions_one_paused_per_user_guideline` on (user_id, guideline_id) WHERE is_paused = TRUE -- enforces at most one paused session per user per guideline.
+**Partial unique index (migration-created):** `idx_sessions_one_paused_per_user_guideline` on (user_id, guideline_id) WHERE is_paused = TRUE -- enforces at most one paused session per user per guideline. Additional migration-created indexes: `idx_sessions_user_id`, `idx_sessions_subject`, `idx_sessions_mode`, `idx_sessions_guideline_id`.
 
 ### Events
 
@@ -145,7 +149,8 @@ Schema, tables, migrations, and connection management.
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | VARCHAR | Primary key |
-| `guideline_id` | VARCHAR | FK --> teaching_guidelines (unique, 1:1, CASCADE delete) |
+| `guideline_id` | VARCHAR | FK --> teaching_guidelines (CASCADE delete) |
+| `user_id` | VARCHAR | FK --> users (CASCADE delete, nullable -- null for generic plans) |
 | `plan_json` | TEXT | Study plan steps (serialized JSON) |
 | `generator_model` | VARCHAR | Model used to generate |
 | `reviewer_model` | VARCHAR | Model used to review |
@@ -157,7 +162,7 @@ Schema, tables, migrations, and connection management.
 | `created_at` | DATETIME | Timestamp |
 | `updated_at` | DATETIME | Timestamp |
 
-**Indexes:** `idx_study_plans_guideline` (guideline_id)
+**Indexes:** `idx_study_plans_guideline` (guideline_id), `idx_study_plans_user_guideline` (user_id, guideline_id) UNIQUE
 
 ### LLM Config
 
@@ -184,6 +189,67 @@ Centralized model configuration per component. Single source of truth for which 
 | `eval_evaluator` | openai | gpt-5.2 | Evaluation judge (scores tutor quality) |
 | `eval_simulator` | openai | gpt-5.2 | Student simulator for evaluations |
 | `book_ingestion_v2` | openai | gpt-5.2 | Book ingestion V2 pipeline (chunk extraction, consolidation, merge) |
+| `personality_derivation` | openai | gpt-5.2 | Kid personality derivation from enrichment profile |
+
+### Session Feedback
+
+**Table:** `session_feedback` | **Model:** `SessionFeedback` (`shared/models/entities.py`)
+
+Mid-session feedback from parents/students that can trigger study plan regeneration.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key |
+| `user_id` | VARCHAR | FK --> users (CASCADE delete) |
+| `guideline_id` | VARCHAR | FK --> teaching_guidelines (CASCADE delete) |
+| `session_id` | VARCHAR | FK --> sessions (SET NULL on delete, nullable) |
+| `feedback_text` | TEXT | Feedback content |
+| `step_at_feedback` | INT | Step index when feedback was given |
+| `total_steps_at_feedback` | INT | Total steps in plan when feedback was given |
+| `plan_regenerated` | BOOL | Whether the plan was regenerated (default false) |
+| `created_at` | DATETIME | Timestamp |
+
+**Indexes:** `idx_session_feedback_user_guideline` (user_id, guideline_id), `idx_session_feedback_session` (session_id)
+
+### Kid Enrichment Profiles
+
+**Table:** `kid_enrichment_profiles` | **Model:** `KidEnrichmentProfile` (`shared/models/entities.py`)
+
+Raw enrichment data collected from parents (one per kid). Uses JSONB columns for flexible list data.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key |
+| `user_id` | VARCHAR | FK --> users (unique, 1:1) |
+| `interests` | JSONB | String array of interests |
+| `learning_styles` | JSONB | String array of learning styles |
+| `motivations` | JSONB | String array of motivations |
+| `growth_areas` | JSONB | String array of growth areas |
+| `parent_notes` | TEXT | Free-text parent notes |
+| `attention_span` | VARCHAR | `short`, `medium`, or `long` |
+| `pace_preference` | VARCHAR | `slow`, `balanced`, or `fast` |
+| `created_at` | DATETIME | Timestamp |
+| `updated_at` | DATETIME | Timestamp |
+
+### Kid Personalities
+
+**Table:** `kid_personalities` | **Model:** `KidPersonality` (`shared/models/entities.py`)
+
+LLM-derived personality versions (multiple per kid, latest version = active).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key |
+| `user_id` | VARCHAR | FK --> users |
+| `personality_json` | JSONB | Structured personality data |
+| `tutor_brief` | TEXT | Compact tutor-facing personality summary |
+| `status` | VARCHAR | `generating`, `ready`, or `failed` |
+| `inputs_hash` | VARCHAR | Hash of enrichment inputs (for change detection) |
+| `generator_model` | VARCHAR | LLM model used for derivation |
+| `version` | INT | Version counter (default 1) |
+| `created_at` | DATETIME | Timestamp |
+
+**Indexes:** `idx_kid_personalities_user_version` (user_id, version)
 
 ### Books
 
@@ -225,7 +291,11 @@ See `book_ingestion_v2/models/database.py` for the full V2 pipeline tables:
 
 ```
 users ──1:N──> sessions ──1:N──> events
-teaching_guidelines ──1:1──> study_plans
+users ──1:N──> study_plans
+users ──1:1──> kid_enrichment_profiles
+users ──1:N──> kid_personalities
+users ──1:N──> session_feedback
+teaching_guidelines ──1:N──> study_plans (per-user plans)
 books ──1:N──> book_chapters ──1:N──> chapter_pages
 books ──1:N──> book_chapters ──1:N──> chapter_topics
 llm_config (standalone, no FKs)
@@ -233,7 +303,13 @@ llm_config (standalone, no FKs)
 
 - `Session.user_id` --> `User.id` (nullable -- anonymous sessions supported)
 - `Event.session_id` --> `Session.id`
-- `StudyPlan.guideline_id` --> `TeachingGuideline.id` (unique constraint, 1:1, CASCADE delete)
+- `StudyPlan.guideline_id` --> `TeachingGuideline.id` (CASCADE delete)
+- `StudyPlan.user_id` --> `User.id` (CASCADE delete, nullable -- null for generic plans; unique on user_id + guideline_id)
+- `SessionFeedback.user_id` --> `User.id` (CASCADE delete)
+- `SessionFeedback.guideline_id` --> `TeachingGuideline.id` (CASCADE delete)
+- `SessionFeedback.session_id` --> `Session.id` (SET NULL on delete, nullable)
+- `KidEnrichmentProfile.user_id` --> `User.id` (unique, 1:1)
+- `KidPersonality.user_id` --> `User.id`
 
 ---
 
@@ -246,11 +322,20 @@ Custom imperative migration (not Alembic):
 1. `Base.metadata.create_all()` -- Creates new tables (idempotent for existing)
 2. `_apply_session_columns()` -- Adds `user_id` and `subject` columns to sessions if missing
 3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows
-4. `_apply_v2_tables()` -- Creates V2 pipeline tables and unique constraints
-5. `_rename_topic_subtopic_columns()` -- Renames topic/subtopic columns to chapter/topic in teaching_guidelines (idempotent)
-6. `_drop_v1_tables()` -- Drops `book_guidelines` and `book_jobs` tables if they exist
-7. `_drop_v1_guideline_columns()` -- Drops unused V1 columns from teaching_guidelines (`objectives_json`, `examples_json`, `misconceptions_json`, `assessments_json`, `evidence_summary`, `confidence`)
-8. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+4. `_apply_user_language_columns()` -- Adds `text_language_preference` and `audio_language_preference` to users if missing
+5. `_apply_user_preferred_name_column()` -- Adds `preferred_name` to users if missing
+6. `_apply_sequencing_columns()` -- Adds `chapter_sequence`, `topic_sequence`, `chapter_storyline` to teaching_guidelines if missing
+7. `_apply_v2_tables()` -- Creates V2 pipeline tables, unique constraints, and seeds `book_ingestion_v2` LLM config
+8. `_rename_topic_subtopic_columns()` -- Renames topic/subtopic columns to chapter/topic in teaching_guidelines (idempotent)
+9. `_drop_v1_tables()` -- Drops `book_guidelines` and `book_jobs` tables if they exist
+10. `_drop_v1_guideline_columns()` -- Drops unused V1 columns from teaching_guidelines (`objectives_json`, `examples_json`, `misconceptions_json`, `assessments_json`, `evidence_summary`, `confidence`)
+11. `_remove_v1_llm_config()` -- Removes the old `book_ingestion` LLM config entry (replaced by `book_ingestion_v2`)
+12. `_apply_kid_enrichment_tables()` -- Seeds `personality_derivation` LLM config entry (tables created by `create_all`)
+13. `_drop_unused_enrichment_columns()` -- Drops columns removed when enrichment was simplified from 9 to 4 sections
+14. `_apply_study_plan_user_column()` -- Adds `user_id` to study_plans, drops old single-column unique constraint on guideline_id, creates composite unique index on (user_id, guideline_id)
+15. `_apply_focus_mode_column()` -- Adds `focus_mode` column to users (default true)
+16. `_apply_session_feedback_table()` -- Verifies session_feedback table exists (created by `create_all`)
+17. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 
 ```bash
 # Run migrations
@@ -300,7 +385,7 @@ python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guide
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, LLMConfig, Book) |
+| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality) |
 | `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob) |
 | `db.py` | Migration CLI and migration functions |
 | `database.py` | DatabaseManager, connection pooling, `get_db()` dependency |

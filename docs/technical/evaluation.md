@@ -197,7 +197,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `anthropic-haiku` (Claude Haiku 4.5)
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display purposes, but the evaluation pipeline's model routing only checks `== "anthropic"` -- using `anthropic-haiku` as a provider would incorrectly route to the OpenAI client and fail.
 
 ---
 
@@ -205,6 +205,7 @@ Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `anthrop
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/evaluation/guidelines` | List teaching guidelines (filterable by country, board, grade, subject, status) |
 | `POST` | `/api/evaluation/start` | Start evaluation run in background |
 | `GET` | `/api/evaluation/status` | Get current evaluation status (polling) |
 | `GET` | `/api/evaluation/runs` | List all evaluation runs |
@@ -328,7 +329,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 
 **Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display (coherence, non_repetition, natural_flow, engagement, responsiveness, pacing, grade_appropriateness, topic_coverage, session_arc, overall_naturalness). The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data -- legacy dimensions without scores simply show 0.
 
-The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels (e.g., `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", `anthropic-haiku` to "Claude Haiku 4.5"). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

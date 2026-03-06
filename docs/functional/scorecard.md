@@ -1,6 +1,6 @@
 # Report Card
 
-The report card is a student's progress overview. It shows what they have studied, how much of each subtopic they have covered, and their latest exam results.
+The report card is a student's progress overview. It shows what they have studied, how much of each topic they have covered, and their latest exam results.
 
 ---
 
@@ -8,25 +8,25 @@ The report card is a student's progress overview. It shows what they have studie
 
 ### Overview
 
-- **Total sessions and topics studied** — Quick stats at the top
-- **Subject cards** — One card per subject showing how many topics it contains; tap a card to see details
+- **Total sessions and chapters studied** — Quick stats at the top
+- **Subject cards** — One card per subject showing how many chapters it contains; tap a card to see details
 
 ### Subject Detail
 
 Tap any subject card to see a detailed breakdown:
 
-- **Topics** — Each topic lists its subtopics
-- **Subtopics** — Each subtopic shows:
+- **Chapters** — Each chapter lists its topics
+- **Topics** — Each topic shows:
   - A coverage percentage and progress bar showing how much of the study plan has been worked through
-  - Latest exam score (if the student has taken an exam on this subtopic)
-  - The date the student last studied this subtopic
+  - Latest exam score (if the student has taken an exam on this topic)
+  - The date the student last studied this topic
   - A "Practice Again" button to start a new session
 
 ---
 
 ## Coverage
 
-Coverage measures what fraction of a subtopic's study plan the student has worked through. It accumulates across multiple Teach Me sessions — if a student covers some concepts in one session and different concepts in the next, coverage reflects the total.
+Coverage measures what fraction of a topic's study plan the student has worked through. It accumulates across multiple Teach Me sessions — if a student covers some concepts in one session and different concepts in the next, coverage reflects the total.
 
 Only Teach Me sessions contribute to coverage. Clarify Doubts and Exam sessions do not change the coverage percentage.
 
@@ -36,17 +36,17 @@ The denominator (total concepts in the plan) comes from the most recent session'
 
 ## Exam Scores
 
-When a student completes an exam on a subtopic, the report card shows the score from the most recent exam (for example, "7/10"). Only completed exams are counted — if a student starts an exam but does not finish, it does not appear.
+When a student completes an exam on a topic, the report card shows the score from the most recent exam (for example, "7/10"). Only completed exams are counted — if a student starts an exam but does not finish, it does not appear.
 
-If a student takes multiple exams on the same subtopic, only the latest result is displayed.
+If a student takes multiple exams on the same topic, only the latest result is displayed.
 
 ---
 
 ## Practice Again
 
-From any subtopic in the report card, students can tap "Practice Again" to start a new Teach Me session on that subtopic. This creates a new session and takes the student directly into the learning experience.
+From any topic in the report card, students can tap "Practice Again" to start a new Teach Me session on that topic. This creates a new session and takes the student directly into the learning experience.
 
-The button is only available for subtopics that are linked to a teaching guideline.
+The button is only available for topics that are linked to a teaching guideline.
 
 ---
 
@@ -60,5 +60,5 @@ When a student has no completed sessions, the report card shows an encouraging m
 
 - The report card updates automatically after each completed session
 - Coverage only counts Teach Me sessions; exams and Clarify Doubts sessions do not contribute
-- The report card is accessible from the user menu ("My Scorecard"), the session history page, and the end-of-session screen
-- Both the `/scorecard` and `/report-card` URLs show the same report card page
+- The report card is accessible from the user menu ("My Report Card"), the session history page, and the end-of-session screen
+- The report card URL is `/report-card`

@@ -10,6 +10,9 @@ Architecture, agents, orchestration, and APIs for the tutoring pipeline.
 Student Message
     │
     v
+INPUT TRANSLATION (Hinglish/Hindi → English)
+    │
+    v
 SAFETY AGENT (fast gate)
     │
     v
@@ -18,6 +21,7 @@ MODE ROUTER ──────────────────────�
     │ teach_me              clarify_doubts / exam  │
     v                                              v
 MASTER TUTOR                              MASTER TUTOR
+(mode-specific prompts)               (mode-specific prompts)
     │                                              │
     v                                              v
 SANITIZATION CHECK (log-only)        MODE-SPECIFIC STATE
@@ -25,13 +29,15 @@ SANITIZATION CHECK (log-only)        MODE-SPECIFIC STATE
     v                                              │
 STATE UPDATES                                      v
 (mastery, misconceptions,                   Response
- step advance, coverage)
+ explanation phase, step                  (+ audio_text)
+ advance, coverage)
     │
     v
 Response to Student
+(+ audio_text for TTS)
 ```
 
-Two-agent pipeline: a fast safety check followed by a single master tutor call that handles all teaching. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode.
+Three-step pipeline: input translation (Hinglish/Hindi to English), a fast safety check, then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech.
 
 ---
 
@@ -66,17 +72,25 @@ Provider and model are configured via the `llm_config` DB table, read at session
 ```python
 TutorTurnOutput {
     response: str              # Student-facing text
+    audio_text: str            # Hinglish/Hindi spoken version for TTS (Roman script)
     intent: str                # teach_me: answer/answer_change/question/confusion/novel_strategy/off_topic/continuation
                                # clarify_doubts: question/followup/done/off_topic
                                # exam: exam_answer/exam_complete
     answer_correct: bool|None  # true/false/null
     misconceptions_detected: list[str]
     mastery_signal: str|None   # strong/adequate/needs_remediation
+    answer_score: float|None   # Fractional score 0.0-1.0 (exam mode partial credit)
+    marks_rationale: str|None  # Brief justification for score (1-2 sentences)
     advance_to_step: int|None  # Step number or null
     mastery_updates: list[MasteryUpdate]  # [{concept, score}]
     question_asked: str|None   # Question text
     expected_answer: str|None
     question_concept: str|None
+    # Explanation phase tracking (explain steps only)
+    explanation_phase_update: str|None       # opening/explaining/informal_check/complete/skip
+    explanation_building_blocks_covered: list[str]  # Building blocks covered this turn
+    student_shows_understanding: bool|None   # Informal check result
+    student_shows_prior_knowledge: bool|None # Skip explanation if student knows it
     session_complete: bool     # True when final step mastered
     turn_summary: str          # One-line summary (max 80 chars)
     reasoning: str             # Internal reasoning (not shown to student)

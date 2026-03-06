@@ -11,6 +11,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 ## Target Users
 
 - **Students** (K-12, primarily grades 1-12) — The primary users. Everything is designed for them.
+- **Parents** — Fill out an enrichment profile about their child to help personalize tutoring.
 - **Admins** — Upload curriculum content, review teaching guidelines, run quality evaluations, configure AI models, and monitor tutor performance.
 
 ---
@@ -22,11 +23,14 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Learning Sessions** | Interactive tutoring conversations on any topic in the curriculum |
 | **Learning Modes** | Three ways to learn: Teach Me, Clarify Doubts, and Exam |
 | **Voice Input** | Students can speak their answers instead of typing |
+| **Voice Output** | The tutor can read responses aloud (text-to-speech) in English, Hindi, or Hinglish |
+| **Exam Review** | After finishing an exam, students see a detailed breakdown of each question with correct answers and explanations |
 | **Session Pause & Resume** | Pause a teaching session and pick up where you left off later |
 | **Session History** | View past learning sessions with mastery scores and learning stats |
-| **Scorecard** | Progress report showing mastery across subjects, topics, and subtopics |
+| **Report Card** | Progress report showing coverage percentage and exam scores per subject, chapter, and topic |
+| **Enrichment Profile** | Parents describe their child's interests, learning style, strengths, challenges, and preferences to personalize tutoring |
 | **Profile** | View and edit personal details like name, grade, board, and school |
-| **Book & Guidelines** | Admin tool to upload textbooks and extract teaching guidelines |
+| **Book & Guidelines** | Admin tool to upload textbooks, extract table of contents, process chapters, and sync topics to the curriculum |
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
 | **Test Scenarios** | Admin tool to view end-to-end test results and screenshots |
@@ -42,7 +46,7 @@ After choosing a subtopic, students pick how they want to learn:
 |------|-------------|
 | **Teach Me** | The tutor teaches the topic step-by-step from scratch. Tracks progress and coverage. Can be paused and resumed later. |
 | **Clarify Doubts** | The student asks their own questions about the topic. The tutor answers and tracks which concepts were discussed. |
-| **Exam** | The tutor quizzes the student with questions and tracks correct answers. Can be ended early to see results. |
+| **Exam** | The tutor quizzes the student with questions and tracks correct answers. Can be ended early to see results. After finishing, shows a detailed exam review. |
 
 If a student previously paused a Teach Me session on the same subtopic, a **Resume** option appears showing how much was already covered.
 
@@ -55,21 +59,28 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 1. **Sign up** — Using phone, email, or Google
 2. **Onboard** — Share your name, age, grade, and board
 3. **Pick a subject** — Choose a subject from the curriculum
-4. **Pick a topic** — Choose a topic within that subject
-5. **Pick a subtopic** — Choose a specific subtopic to study
+4. **Pick a chapter** — Choose a chapter within that subject
+5. **Pick a topic** — Choose a specific topic to study
 6. **Choose a mode** — Teach Me, Clarify Doubts, or Exam (or resume a paused session)
-7. **Learn** — Interact with the tutor through text or voice; pause to come back later or end early to see results
-8. **Review progress** — Check your scorecard to see strengths and areas to practice
-9. **View session history** — Browse past sessions with mastery scores and learning stats
-10. **Manage profile** — Update your name, grade, board, school, and other details
-11. **Practice again** — Jump back into topics that need more work
+7. **Learn** — Interact with the tutor through text or voice; listen to responses read aloud; pause to come back later or end early to see results
+8. **Review exam results** — After an exam, see a question-by-question breakdown with answers and explanations
+9. **Check report card** — View coverage and exam scores across subjects, chapters, and topics
+10. **View session history** — Browse past sessions with mastery scores and learning stats
+11. **Manage profile** — Update your name, grade, board, school, and other details
+12. **Practice again** — Jump back into topics that need more work
+
+### Parents
+
+1. **Open enrichment profile** — Navigate to the enrichment page from the student's profile
+2. **Describe your child** — Fill in interests, hobbies, learning style, strengths, challenges, and session preferences
+3. **View personality summary** — The system generates a personality snapshot based on the enrichment data to personalize tutoring
 
 ### Admins
 
 1. **Upload books** — Add textbook pages to the system
-2. **Generate guidelines** — AI extracts teaching guidelines from book pages
-3. **Review & approve** — Check guidelines for accuracy and approve them
-4. **Generate study plans** — AI creates step-by-step teaching plans from guidelines
+2. **Extract table of contents** — AI identifies chapters from book pages
+3. **Process chapters** — AI extracts topics, guidelines, and study plans from chapter pages
+4. **Sync to curriculum** — Push processed topics into the live curriculum
 5. **Run evaluations** — Test the tutor with simulated students and review quality scores
 6. **Configure AI models** — Choose which AI provider and model powers each component
 7. **View test scenarios** — Review end-to-end test results and screenshots for each feature
