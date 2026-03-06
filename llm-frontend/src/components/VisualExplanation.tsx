@@ -157,12 +157,17 @@ function renderAddition(visual: VisualExplanationType, phase: number) {
   return (
     <svg viewBox={`0 0 320 ${viewHeight}`} className="visual-svg">
       {/* Group 1 */}
-      {showGroup1 && !merged && (
-        <g>
-          <text x="80" y="20" textAnchor="middle" className="visual-group-label" fill={COLORS.group1}>{g1}</text>
-          {renderObjectGrid(emoji, g1, 20, 30, preMaxPerRow, COLORS.group1, 'g1')}
-        </g>
-      )}
+      {showGroup1 && !merged && (() => {
+        const g1Cols = Math.min(g1, preMaxPerRow);
+        const g1Width = g1Cols * 28;
+        const g1StartX = 80 - g1Width / 2;
+        return (
+          <g>
+            <text x="80" y="20" textAnchor="middle" className="visual-group-label" fill={COLORS.group1}>{g1}</text>
+            {renderObjectGrid(emoji, g1, g1StartX, 30, preMaxPerRow, COLORS.group1, 'g1')}
+          </g>
+        );
+      })()}
 
       {/* Plus sign */}
       {showGroup2 && !merged && (
@@ -170,17 +175,22 @@ function renderAddition(visual: VisualExplanationType, phase: number) {
       )}
 
       {/* Group 2 */}
-      {showGroup2 && !merged && (
-        <g>
-          <text x="240" y="20" textAnchor="middle" className="visual-group-label" fill={COLORS.group2}>{g2}</text>
-          {renderObjectGrid(emoji, g2, 180, 30, preMaxPerRow, COLORS.group2, 'g2')}
-        </g>
-      )}
+      {showGroup2 && !merged && (() => {
+        const g2Cols = Math.min(g2, preMaxPerRow);
+        const g2Width = g2Cols * 28;
+        const g2StartX = 240 - g2Width / 2;
+        return (
+          <g>
+            <text x="240" y="20" textAnchor="middle" className="visual-group-label" fill={COLORS.group2}>{g2}</text>
+            {renderObjectGrid(emoji, g2, g2StartX, 30, preMaxPerRow, COLORS.group2, 'g2')}
+          </g>
+        );
+      })()}
 
       {/* Merged result */}
       {merged && (
         <g className="visual-fade-in">
-          {renderObjectGrid(emoji, total, 40, 30, mergedMaxPerRow, COLORS.result, 'merged')}
+          {renderObjectGridCentered(emoji, total, 320, 30, mergedMaxPerRow, COLORS.result, 'merged')}
           {showTotal && (
             <text x="160" y={mergedGridBottom + 25} textAnchor="middle" className="visual-result-label" fill={COLORS.result}>
               = {total}
@@ -218,7 +228,10 @@ function renderSubtraction(visual: VisualExplanationType, phase: number) {
           {Array.from({ length: count }).map((_, i) => {
             const col = i % maxPerRow;
             const row = Math.floor(i / maxPerRow);
-            const x = 20 + col * 36;
+            const cols = Math.min(count, maxPerRow);
+            const gridWidth = cols * 36;
+            const offsetX = (320 - gridWidth) / 2;
+            const x = offsetX + col * 36;
             const y = 30 + row * 40;
             return (
               <text
@@ -238,7 +251,10 @@ function renderSubtraction(visual: VisualExplanationType, phase: number) {
             const idx = start - 1 - i;
             const col = idx % maxPerRow;
             const row = Math.floor(idx / maxPerRow);
-            const x = 20 + col * 36;
+            const crossCols = Math.min(count, maxPerRow);
+            const crossGridWidth = crossCols * 36;
+            const crossOffsetX = (320 - crossGridWidth) / 2;
+            const x = crossOffsetX + col * 36;
             const y = 30 + row * 40;
             return (
               <g key={`cross-${i}`} className="visual-fade-in">
@@ -434,7 +450,10 @@ function renderCounting(visual: VisualExplanationType, phase: number) {
       {Array.from({ length: visibleCount }).map((_, i) => {
         const col = i % maxPerRow;
         const row = Math.floor(i / maxPerRow);
-        const x = 40 + col * 50;
+        const cols = Math.min(total, maxPerRow);
+        const gridWidth = cols * 50;
+        const offsetX = (320 - gridWidth) / 2;
+        const x = offsetX + col * 50;
         const y = 20 + row * 50;
         return (
           <g key={`count-${i}`} className="visual-pop-in">
@@ -460,6 +479,21 @@ function renderCounting(visual: VisualExplanationType, phase: number) {
 }
 
 // ─── Helpers ────────────────────────────────────────
+
+function renderObjectGridCentered(
+  emoji: string,
+  count: number,
+  viewBoxWidth: number,
+  startY: number,
+  maxPerRow: number,
+  color: string,
+  keyPrefix: string,
+) {
+  const cols = Math.min(count, maxPerRow);
+  const gridWidth = cols * 28;
+  const startX = (viewBoxWidth - gridWidth) / 2;
+  return renderObjectGrid(emoji, count, startX, startY, maxPerRow, color, keyPrefix);
+}
 
 function renderObjectGrid(
   emoji: string,
