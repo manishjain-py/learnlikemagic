@@ -333,15 +333,36 @@ class SessionState(BaseModel):
 ```python
 class StudentContext(BaseModel):
     grade: int
-    board: str                # Educational board (e.g., "CBSE")
-    language_level: str       # "simple" | "standard" | "advanced"
-    preferred_examples: list  # e.g., ["food", "sports", "games"]
-    student_name: Optional[str]   # From user profile
-    student_age: Optional[int]    # From user profile
-    about_me: Optional[str]       # From user profile
+    board: str                          # Educational board (e.g., "CBSE")
+    language_level: str                 # "simple" | "standard" | "advanced"
+    preferred_examples: list            # e.g., ["food", "sports", "games"]
+    student_name: Optional[str]         # From user profile
+    student_age: Optional[int]          # From user profile
+    about_me: Optional[str]             # From user profile
+    text_language_preference: str       # "en" | "hi" | "hinglish" — language for text responses
+    audio_language_preference: str      # "en" | "hi" | "hinglish" — language for TTS audio
+    tutor_brief: Optional[str]          # Rich personality prose from enrichment profile
+    personality_json: Optional[dict]    # Full structured personality (for exam personalization)
+    attention_span: Optional[str]       # "short" | "medium" | "long" — from enrichment profile
 ```
 
-When the user is authenticated, `StudentContext` is populated from the user profile (name, age, about_me), which enables personalized tutoring (addressing the student by name, age-appropriate language).
+When the user is authenticated, `StudentContext` is populated from the user profile (name, age, about_me), the personality profile (`tutor_brief`, `personality_json`), and the enrichment profile (`attention_span`). `tutor_brief` is used in the system prompt personalization block — when available, it replaces the basic name/age personalization with a rich personality prose that tailors the tutor's entire interaction style.
+
+### ExplanationPhase
+
+```python
+class ExplanationPhase(BaseModel):
+    concept: str                     # Concept being explained
+    step_id: int                     # Study plan step ID
+    phase: ExplanationPhaseName      # not_started/opening/explaining/informal_check/complete
+    tutor_turns_in_phase: int        # Tutor turns spent so far
+    building_blocks_covered: list[str]  # Building blocks already covered
+    student_engaged: bool            # Whether student showed engagement
+    informal_check_passed: bool      # Whether informal understanding check passed
+    skip_reason: Optional[str]       # e.g., "student_demonstrated_knowledge"
+```
+
+Explanation phases are tracked per concept in `SessionState.explanation_phases`. The orchestrator's `_handle_explanation_phase()` manages lifecycle transitions based on `TutorTurnOutput` fields. The `can_advance_past_explanation()` guard prevents step advancement until the explanation is complete (phase=complete, skip_reason set, informal check passed, or minimum turns reached during informal_check phase).
 
 ### Question Lifecycle
 
@@ -374,7 +395,7 @@ The orchestrator handles five question lifecycle cases:
 
 ### Step Advancement
 
-Master tutor sets `advance_to_step` in output. Applied in `_apply_state_updates()`. When advancing, all intermediate step concepts are added to `concepts_covered_set`.
+Master tutor sets `advance_to_step` in output. Applied in `_apply_state_updates()`. When advancing, all intermediate step concepts are added to `concepts_covered_set`. An **explanation guard** prevents advancement past explain steps that are not yet complete — the explanation must reach `phase=complete`, have a `skip_reason` set, or pass the informal check before the step can advance.
 
 Session completion logic:
 - `is_complete` property: `clarify_doubts` → returns `clarify_complete`; `teach_me` → `current_step > total_steps`; `exam` → also `current_step > total_steps` (but see note below)
