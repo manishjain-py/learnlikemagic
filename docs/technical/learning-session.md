@@ -412,15 +412,17 @@ class ExamQuestion(BaseModel):
     question_text: str
     concept: str
     difficulty: "easy" | "medium" | "hard"
-    question_type: "conceptual" | "procedural" | "application"
+    question_type: "conceptual" | "procedural" | "application" | "real_world" | "error_spotting" | "reasoning"
     expected_answer: str
     student_answer: Optional[str]
     result: Optional["correct" | "partial" | "incorrect"]
     feedback: str
+    score: float                # Fractional score 0.0-1.0
+    marks_rationale: str        # Brief justification for score
 
 class ExamFeedback(BaseModel):
-    score: int
-    total: int
+    score: float               # Total fractional score (e.g., 5.3)
+    total: int                 # Total questions
     percentage: float
     strengths: list[str]
     weak_areas: list[str]
@@ -428,7 +430,9 @@ class ExamFeedback(BaseModel):
     next_steps: list[str]
 ```
 
-Exam questions are generated at session creation time via `ExamService.generate_questions()`, which uses an LLM call with structured output. Default: 7 questions. On failure, retries with 3 questions.
+Exam questions are generated at session creation time via `ExamService.generate_questions()`, which uses an LLM call with structured output. Default: 7 questions. On failure, retries with 3 questions. Questions are personalized using `personality_json` (student name, interests, people to reference) when available.
+
+Scoring uses fractional values (0.0-1.0) per question via `TutorTurnOutput.answer_score`, with categorical result derived: score >= 0.8 → correct, >= 0.2 → partial, < 0.2 → incorrect. The `marks_rationale` provides a brief justification for each score.
 
 ### Persistence and Concurrency
 
