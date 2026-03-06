@@ -103,26 +103,28 @@ TutorTurnOutput {
 
 `TeacherOrchestrator.process_turn(session, student_message)`:
 
-1. **Post-completion check** — If session already complete: for `clarify_doubts` mode, always short-circuit with a context-aware response. For `teach_me`, short-circuit if no extension allowed or extension_turns > 10. The context-aware response is LLM-generated and responds naturally to whatever the student said.
-2. **Increment turn** — Add student message to history
-3. **Build AgentContext** — Current state, mastery, study plan
-4. **Safety Agent** — Fast content moderation gate. If unsafe: return guidance + log safety flag
-5. **Mode Router** — Branch based on `session.mode`:
-   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify prompts, tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
-   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question, records result (correct/partial/incorrect), advances to next question. Mid-exam responses do NOT reveal correctness — the student sees "Got it — let's continue" with the next question. When the last question is answered, builds a full results response with per-question review and final score. Partial scoring: `answer_correct == False` with `mastery_signal != "needs_remediation"` → partial.
-   - `teach_me` → continues to step 6
-6. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 10 teaching rules + personalization block) and turn prompt (current state, mastery, pacing directive, student style, history)
-7. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
-8. **Apply State Updates**:
+1. **Input Translation** — Translate Hinglish/Hindi input to English via a fast LLM call. Returns unchanged if already English.
+2. **Post-completion check** — If session already complete: for `clarify_doubts` mode, always short-circuit with a context-aware response. For `teach_me`, short-circuit if no extension allowed or extension_turns > 10. The context-aware response is LLM-generated and responds naturally to whatever the student said.
+3. **Increment turn** — Add student message to history
+4. **Build AgentContext** — Current state, mastery, study plan
+5. **Safety Agent** — Fast content moderation gate. If unsafe: return guidance + log safety flag
+6. **Mode Router** — Branch based on `session.mode`:
+   - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify-specific prompts (`CLARIFY_DOUBTS_SYSTEM_PROMPT` + `CLARIFY_DOUBTS_TURN_PROMPT`), tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
+   - `exam` → `_process_exam_turn()`: evaluates answer against current exam question using fractional scoring (0.0-1.0). Score >= 0.8 → correct, >= 0.2 → partial, < 0.2 → incorrect. Records `marks_rationale` per question. Mid-exam responses show only the next question — correctness is not revealed. When the last question is answered, builds a full results response with per-question scores, rationales, and final score.
+   - `teach_me` → continues to step 7
+7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 12 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
+8. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
+9. **Apply State Updates**:
+   - Handle explanation phase lifecycle (opening → explaining → informal_check → complete)
    - Update mastery estimates
    - Track misconceptions
    - Handle question lifecycle (probe → hint → explain phases)
-   - Advance step if needed + update coverage set
+   - Advance step if needed + update coverage set (with explanation guard — cannot advance past incomplete explain steps)
    - Track off-topic count
    - Handle session completion (only honored on final step)
-9. **Add response** to conversation history
-10. **Update session summary** — Turn timeline (capped at 30 entries), progress trend, concepts taught
-11. **Return TurnResult**
+10. **Add response** (with `audio_text`) to conversation history
+11. **Update session summary** — Turn timeline (capped at 30 entries), progress trend, concepts taught
+12. **Return TurnResult** (includes `audio_text`)
 
 ---
 
