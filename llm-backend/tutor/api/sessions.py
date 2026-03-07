@@ -701,14 +701,27 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await websocket.send_json(create_typing_indicator().model_dump())
 
                 turn_result = None
-                async for msg_type, data in orchestrator.process_turn_stream(
-                    session=session,
-                    student_message=client_msg.payload.message or "",
-                ):
-                    if msg_type == "token":
-                        await websocket.send_json(create_token_message(data).model_dump())
-                    elif msg_type == "result":
-                        turn_result = data
+                try:
+                    async for msg_type, data in orchestrator.process_turn_stream(
+                        session=session,
+                        student_message=client_msg.payload.message or "",
+                    ):
+                        if msg_type == "token":
+                            await websocket.send_json(create_token_message(data).model_dump())
+                        elif msg_type == "result":
+                            turn_result = data
+                except (WebSocketDisconnect, Exception) as stream_err:
+                    # Connection lost mid-stream — still persist state so the turn isn't lost
+                    logger.warning(f"WS send failed mid-stream for {session_id}: {stream_err}")
+                    _save_session_to_db(db, session_id, session, ws_version)
+                    raise
+
+                if turn_result is None:
+                    logger.error(f"process_turn_stream yielded no result for {session_id}")
+                    await websocket.send_json(
+                        create_error_response("Failed to process turn. Please try again.").model_dump()
+                    )
+                    continue
 
                 result = turn_result
 

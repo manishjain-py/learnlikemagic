@@ -35,6 +35,8 @@ class ResponseFieldExtractor:
         self._scan_buffer = ""
         self._state = "scanning"  # scanning | found_key | in_value | done
         self._escape_next = False
+        self._unicode_remaining = 0  # how many hex digits left to collect for \uXXXX
+        self._unicode_buf = ""
 
     def feed(self, chunk: str) -> str:
         """Feed a JSON chunk. Returns any extracted response text."""
@@ -61,10 +63,24 @@ class ResponseFieldExtractor:
                         self._scan_buffer = ""
 
             elif self._state == "in_value":
-                if self._escape_next:
-                    _ESC = {"n": "\n", "t": "\t", '"': '"', "\\": "\\", "r": "\r", "/": "/"}
-                    output.append(_ESC.get(char, char))
-                    self._escape_next = False
+                if self._unicode_remaining > 0:
+                    self._unicode_buf += char
+                    self._unicode_remaining -= 1
+                    if self._unicode_remaining == 0:
+                        try:
+                            output.append(chr(int(self._unicode_buf, 16)))
+                        except ValueError:
+                            output.append(self._unicode_buf)
+                        self._unicode_buf = ""
+                        self._escape_next = False
+                elif self._escape_next:
+                    if char == "u":
+                        self._unicode_remaining = 4
+                        self._unicode_buf = ""
+                    else:
+                        _ESC = {"n": "\n", "t": "\t", '"': '"', "\\": "\\", "r": "\r", "/": "/"}
+                        output.append(_ESC.get(char, char))
+                        self._escape_next = False
                 elif char == "\\":
                     self._escape_next = True
                 elif char == '"':

@@ -60,6 +60,4 @@ initiatives/
 
 | Skill | Rigor | Human Gates | Use When |
 |-------|-------|-------------|----------|
-| `/1-percent-better` | Low | None | Hands-off; finds its own problems |
-| `/improve-with-feedback` | Medium | None | Quick fix for specific feedback |
 | `/tutor-improve-*` (this) | High | Phase 1 review | Important feedback needing measurement |

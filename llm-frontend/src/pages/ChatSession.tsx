@@ -87,6 +87,8 @@ export default function ChatSession() {
   // Streaming state
   const [streamingText, setStreamingText] = useState('');
   const wsRef = useRef<TutorWebSocket | null>(null);
+  const virtualTeacherOnRef = useRef(virtualTeacherOn);
+  useEffect(() => { virtualTeacherOnRef.current = virtualTeacherOn; }, [virtualTeacherOn]);
   const streamResolveRef = useRef<(() => void) | null>(null);
 
   // Feedback modal state
@@ -356,8 +358,8 @@ export default function ChatSession() {
         ]);
         setLoading(false);
 
-        // Auto-play TTS in virtual teacher mode
-        if (virtualTeacherOn && message) {
+        // Auto-play TTS in virtual teacher mode (use ref to avoid stale closure)
+        if (virtualTeacherOnRef.current && message) {
           playTeacherAudio(audioText || message);
         }
 

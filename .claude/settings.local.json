@@ -63,7 +63,14 @@
       "Bash(kill:*)",
       "Bash(make run:*)",
       "Bash(git log:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(git status -u)",
+      "Bash(npm test -- src/__tests__/api-exam-lifecycle.test.ts)",
+      "Bash(npx vitest run src/__tests__/api-exam-lifecycle.test.ts)",
+      "Bash(git pull origin main)",
+      "Bash(npx vite build)",
+      "Bash(npx vitest run)",
+      "Bash(./venv/bin/uvicorn main:app:*)"
     ],
     "deny": [],
     "ask": []

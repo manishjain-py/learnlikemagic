@@ -144,28 +144,11 @@ class TeacherOrchestrator:
             # Clarify Doubts: always short-circuit once student ended the session
             # Teach Me: allow extension turns for advanced students
             if session.is_complete and session.mode == "clarify_doubts":
-                session.add_message(create_student_message(student_message))
-                response = await self._generate_post_completion_response(session, student_message)
-                session.add_message(create_teacher_message(response))
-                return TurnResult(
-                    response=response,
-                    intent="session_complete",
-                    specialists_called=[],
-                    state_changed=True,
-                )
+                return await self._process_post_completion(session, student_message)
             max_extension_turns = 10
             extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
             if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
-                # Record both student message and assistant reply in history
-                session.add_message(create_student_message(student_message))
-                response = await self._generate_post_completion_response(session, student_message)
-                session.add_message(create_teacher_message(response))
-                return TurnResult(
-                    response=response,
-                    intent="session_complete",
-                    specialists_called=[],
-                    state_changed=True,
-                )
+                return await self._process_post_completion(session, student_message)
 
             # Increment turn counter and add student message
             session.increment_turn()
@@ -349,7 +332,20 @@ class TeacherOrchestrator:
 
         try:
             # Safety check (non-streaming, fast)
+            safety_start = time.time()
             safety_result: SafetyOutput = await self.safety_agent.execute(context)
+            safety_duration = int((time.time() - safety_start) * 1000)
+
+            self._log_agent_event(
+                session_id=session.session_id,
+                turn_id=turn_id,
+                agent_name="safety",
+                event_type="completed",
+                input_summary=f"Check: {student_message[:80]}",
+                output=self._extract_output_dict(safety_result),
+                duration_ms=safety_duration,
+            )
+
             if not safety_result.is_safe:
                 response = self._handle_unsafe_message(session, safety_result)
                 yield ("result", TurnResult(
@@ -393,6 +389,8 @@ class TeacherOrchestrator:
                     "intent": tutor_output.intent,
                     "answer_correct": tutor_output.answer_correct,
                     "advance_to_step": tutor_output.advance_to_step,
+                    "question_asked": tutor_output.question_asked is not None,
+                    "session_complete": tutor_output.session_complete,
                     "streamed": True,
                 },
             )
@@ -425,6 +423,15 @@ class TeacherOrchestrator:
 
             duration_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Turn completed (streamed): {turn_id} ({duration_ms}ms)")
+
+            self._log_agent_event(
+                session_id=session.session_id,
+                turn_id=turn_id,
+                agent_name="orchestrator",
+                event_type="turn_completed",
+                duration_ms=duration_ms,
+                metadata={"intent": tutor_output.intent, "state_changed": state_changed, "streamed": True},
+            )
 
             yield ("result", TurnResult(
                 response=tutor_output.response,
