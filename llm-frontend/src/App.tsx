@@ -56,6 +56,7 @@ import TestScenariosPage from './features/admin/pages/TestScenariosPage';
 import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
 import CreateBookV2 from './features/admin/pages/CreateBookV2';
 import BookV2Detail from './features/admin/pages/BookV2Detail';
+import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
 
 function App() {
   return (
@@ -148,6 +149,7 @@ function App() {
           <Route path="/admin/books-v2" element={<BookV2Dashboard />} />
           <Route path="/admin/books-v2/new" element={<CreateBookV2 />} />
           <Route path="/admin/books-v2/:id" element={<BookV2Detail />} />
+          <Route path="/admin/pixi-js-poc" element={<PixiJsPocPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
