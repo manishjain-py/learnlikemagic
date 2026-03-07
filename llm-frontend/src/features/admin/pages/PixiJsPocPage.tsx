@@ -262,30 +262,36 @@ const PixiJsPocPage: React.FC = () => {
       )}
 
       {/* Canvas area */}
-      <div
-        ref={canvasContainerRef}
-        style={{
-          width: '800px',
-          height: '600px',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          backgroundColor: '#1a1a2e',
-          border: '1px solid #374151',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <div style={{
+        width: '800px',
+        height: '600px',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        backgroundColor: '#1a1a2e',
+        border: '1px solid #374151',
+        position: 'relative',
+      }}>
         {!loading && !generatedCode && (
-          <p style={{ color: '#6B7280', fontSize: '14px' }}>
-            Your diagram will appear here
-          </p>
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <p style={{ color: '#6B7280', fontSize: '14px' }}>
+              Your diagram will appear here
+            </p>
+          </div>
         )}
         {loading && (
-          <p style={{ color: '#93C5FD', fontSize: '14px' }}>
-            Generating Pixi.js code...
-          </p>
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <p style={{ color: '#93C5FD', fontSize: '14px' }}>
+              Generating Pixi.js code...
+            </p>
+          </div>
         )}
+        <div ref={canvasContainerRef} style={{ width: '100%', height: '100%' }} />
       </div>
     </div>
   );

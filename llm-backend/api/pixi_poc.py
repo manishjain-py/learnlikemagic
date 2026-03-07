@@ -4,6 +4,7 @@ Pixi.js PoC API — Generates Pixi.js code from natural language prompts.
 Uses GPT Codex 5.3 to translate user descriptions into executable Pixi.js v8 code.
 """
 
+import asyncio
 import json
 import logging
 from typing import Literal
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/pixi-poc", tags=["pixi-poc"])
 
-SYSTEM_PROMPT = """You are an expert Pixi.js v8 developer. Generate ONLY valid JavaScript code that uses Pixi.js v8 to create the requested visual.
+SYSTEM_PROMPT_TEMPLATE = """You are an expert Pixi.js v8 developer. Generate ONLY valid JavaScript code that uses Pixi.js v8 to create the requested visual.
 
 CRITICAL RULES:
 1. The code will be executed via new Function() with a single parameter `app` which is an initialized PIXI.Application instance already added to the DOM.
@@ -30,7 +31,7 @@ CRITICAL RULES:
 7. Return ONLY the JavaScript code, no markdown fences, no explanation.
 8. Use modern Pixi.js v8 API:
    - Graphics: `const g = new PIXI.Graphics(); g.rect(x,y,w,h); g.fill(color);` (chaining fill/stroke after shape calls)
-   - Text: `new PIXI.Text({ text: '...', style: { fontSize: 24, fill: 0xffffff } })`
+   - Text: `new PIXI.Text({{ text: '...', style: {{ fontSize: 24, fill: 0xffffff }} }})`
    - Container: `new PIXI.Container()`
    - Sprite from graphics: render to texture if needed
 9. Always add created display objects to `app.stage` via `app.stage.addChild(...)`.
@@ -72,15 +73,17 @@ async def generate_pixi_code(request: PixiGenerateRequest):
         timeout=120,
     )
 
-    full_prompt = SYSTEM_PROMPT.format(
+    full_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         output_type=request.output_type,
         user_prompt=request.prompt,
     )
 
     try:
-        result = llm.call(
+        # Run sync LLM call in thread pool to avoid blocking the event loop
+        result = await asyncio.to_thread(
+            llm.call,
             prompt=full_prompt,
-            reasoning_effort="medium",
+            reasoning_effort="none",
             json_mode=False,
         )
         code = result["output_text"]
