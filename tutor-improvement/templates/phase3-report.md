@@ -2,6 +2,7 @@
 
 **Date:** {{DATE}}
 **Branch:** `tutor-improve/{{INITIATIVE_ID}}`
+**Topic:** {{TOPIC_ID}}
 
 ---
 
@@ -10,67 +11,71 @@
 - **Feedback:** {{FEEDBACK_SUMMARY}}
 - **Root Cause:** {{ROOT_CAUSE}}
 - **Changes Made:** {{CHANGES_SUMMARY}}
-- **Measurement:** 3 persona evals before and after
+- **Measurement:** 3 persona conversations via tutor REST API
 
-## Before/After Score Table
+## Conversation Scores
 
-### Struggler Persona
-| Dimension | Before | After | Delta |
-|-----------|--------|-------|-------|
-| Responsiveness | | | |
-| Explanation Quality | | | |
-| Emotional Attunement | | | |
-| Pacing | | | |
-| Authenticity | | | |
-| **Average** | | | |
+### Struggler Persona ({{TURNS}} turns)
+| Dimension | Score |
+|-----------|-------|
+| Responsiveness | /10 |
+| Explanation Quality | /10 |
+| Emotional Attunement | /10 |
+| Pacing | /10 |
+| Authenticity | /10 |
+| **Average** | /10 |
 
-### Average Student Persona
-| Dimension | Before | After | Delta |
-|-----------|--------|-------|-------|
-| Responsiveness | | | |
-| Explanation Quality | | | |
-| Emotional Attunement | | | |
-| Pacing | | | |
-| Authenticity | | | |
-| **Average** | | | |
+### Average Student Persona ({{TURNS}} turns)
+| Dimension | Score |
+|-----------|-------|
+| Responsiveness | /10 |
+| Explanation Quality | /10 |
+| Emotional Attunement | /10 |
+| Pacing | /10 |
+| Authenticity | /10 |
+| **Average** | /10 |
 
-### Ace Persona
-| Dimension | Before | After | Delta |
-|-----------|--------|-------|-------|
-| Responsiveness | | | |
-| Explanation Quality | | | |
-| Emotional Attunement | | | |
-| Pacing | | | |
-| Authenticity | | | |
-| **Average** | | | |
-
-## Key Conversation Evidence
-
-Excerpts showing the feedback issue before vs. after.
-
-### Before (baseline)
-> Relevant excerpt
-
-### After (post-change)
-> Relevant excerpt
+### Ace Persona ({{TURNS}} turns)
+| Dimension | Score |
+|-----------|-------|
+| Responsiveness | /10 |
+| Explanation Quality | /10 |
+| Emotional Attunement | /10 |
+| Pacing | /10 |
+| Authenticity | /10 |
+| **Average** | /10 |
 
 ## Feedback-Specific Assessment
 
 - **Feedback:** {{ORIGINAL_FEEDBACK}}
-- **Addressed?** YES / PARTIALLY / NO
-- **Evidence:** Specific moments from simulated conversations
+- **Fixed?** YES / PARTIALLY / NO
+- **Evidence:** Specific moments from the conversations that show whether the issue is resolved
 
-## Improvement Score
+### Key Conversation Excerpts
 
-Average delta across all dimensions and personas: **{{DELTA}}**
+Quote specific tutor responses that demonstrate the behavior related to the feedback.
+
+#### Evidence the issue is fixed:
+> Relevant excerpt
+
+#### Evidence the issue persists (if any):
+> Relevant excerpt
+
+## Other Observations
+
+Anything else notable — new issues, unexpected improvements, regressions.
+
+## Overall Score
+
+Average across all personas and dimensions: **{{OVERALL_AVG}}/10**
 
 ## Confidence Level
 
 **High / Medium / Low**
 
-- High: Consistent improvement across all personas
-- Medium: Improvement in most personas/dimensions
-- Low: Mixed or inconsistent results
+- High: Issue clearly fixed, strong scores across all personas
+- Medium: Issue mostly fixed, some mixed signals
+- Low: Unclear results, need more testing
 
 ## Verdict
 

@@ -1,32 +1,6 @@
 # Tutor Improve — Phase 3: Measurement & Report
 
-You are running Phase 3 (Measurement) of the master tutor improvement initiative. This phase runs before/after evaluations and produces a scored report with a verdict.
-
-**Reference:** Read `docs/technical/evaluation.md` and `tutor-improvement/README.md` for context.
-
----
-
-## ENVIRONMENT SETUP
-
-**All Python commands MUST use the project virtual environment.** The venv is at `llm-backend/venv` (NOT `.venv`).
-
-For every `python` or `python -m` command, use:
-```bash
-cd llm-backend && source venv/bin/activate && python ...
-```
-
-Do NOT use bare `python` or `python3` — the system Python lacks project dependencies.
-
----
-
-## AUTOMATION DIRECTIVE
-
-This is a **fully automated pipeline** after it starts. The user will NOT be present to review plans or give go-ahead between steps.
-
-- **Do NOT** use `EnterPlanMode` or `AskUserQuestion` at any point.
-- **Do NOT** pause for user confirmation between steps.
-- Execute every step end-to-end without stopping.
-- If something fails, attempt to fix and retry (3 max). Only stop if recovery is exhausted.
+You are orchestrating Phase 3 (Measurement) of the master tutor improvement initiative. You gather context and then delegate the heavy work to a subagent.
 
 ---
 
@@ -40,95 +14,175 @@ This is a **fully automated pipeline** after it starts. The user will NOT be pre
 
 ### Step 1: Read context
 
-Read Phase 1 and Phase 2 docs:
+Read these files:
 - `tutor-improvement/initiatives/<initiative_id>/phase1-analysis.md`
 - `tutor-improvement/initiatives/<initiative_id>/phase2-implementation.md`
 
-Extract the topic ID to use for evaluation (from Phase 1 analysis or pick a suitable one from eval config).
+Extract:
+- The original feedback text
+- What was changed and why
+- What improvement looks like
+- What could regress
 
-### Step 2: Find a topic for evaluation
+### Step 2: Verify server is running
+
+```bash
+curl -s http://localhost:8000/health
+```
+
+If not running, start it in the background:
+```bash
+cd llm-backend && source venv/bin/activate && python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+```
+
+Wait for health check to pass.
+
+### Step 3: Find a topic for evaluation
 
 ```bash
 cd llm-backend && source venv/bin/activate
 python -c "
 from evaluation.config import EvalConfig
+config = EvalConfig.__new__(EvalConfig)
 # List available guideline/topic IDs
 "
 ```
 
-Pick a topic that is relevant to the feedback being tested.
+Pick a topic relevant to the feedback.
 
-### Step 3: Run evaluations in parallel
+### Step 4: Spawn the measurement subagent
 
-Use the **Agent tool** to run baseline and post-change evaluations simultaneously:
+Use the **Agent tool** to spawn a subagent with the following prompt. Replace all `{{PLACEHOLDERS}}` with real values from Steps 1-3.
 
-**Agent A (baseline — worktree on main):**
-1. Create a git worktree: `git worktree add ../learnlikemagic-baseline main`
-2. Run 3 eval sessions (struggler, average, ace) from the worktree:
-   ```bash
-   cd ../learnlikemagic-baseline/llm-backend && source venv/bin/activate
-   python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.json --skip-server
-   python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona average_student.json --skip-server
-   python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json --skip-server
-   ```
-3. Copy the run directories to `tutor-improvement/initiatives/<initiative_id>/baseline-conversations/`
-4. Clean up worktree: `git worktree remove ../learnlikemagic-baseline`
+```
+You are executing Phase 3 measurement for tutor improvement initiative {{INITIATIVE_ID}}.
 
-**Agent B (post-change — current branch):**
-1. Run 3 eval sessions (struggler, average, ace) from current branch:
-   ```bash
-   cd llm-backend && source venv/bin/activate
-   python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona struggler.json --skip-server
-   python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona average_student.json --skip-server
-   python -m evaluation.run_evaluation --topic-id <TOPIC_ID> --persona ace.json --skip-server
-   ```
-2. Copy the run directories to `tutor-improvement/initiatives/<initiative_id>/post-change-conversations/`
+## Context
 
-**Important:** Both agents need the backend server running. Start it before dispatching agents if `--skip-server` is not appropriate. Use `--skip-server` if the server is already running.
+**Original Feedback:** {{FEEDBACK_TEXT}}
+**Changes Made:** {{CHANGES_SUMMARY}}
+**Expected Improvement:** {{EXPECTED_IMPROVEMENT}}
+**Regression Risks:** {{REGRESSION_RISKS}}
 
-### Step 4: Collect and compare scores
+## Your Job
 
-After both agents complete:
-1. Read all evaluation JSONs from baseline and post-change runs
-2. Extract scores per dimension per persona
-3. Calculate deltas
+Drive 3 full tutoring conversations via the REST API, capture them, evaluate them, and produce a report.
 
-### Step 5: Produce measurement report
+## API Contract
 
-Create `tutor-improvement/initiatives/<initiative_id>/phase3-report.md` using the template at `tutor-improvement/templates/phase3-report.md`.
+**Create session:**
+curl -X POST http://localhost:8000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "student": {"id": "eval-student", "grade": 3},
+    "goal": {
+      "chapter": "Evaluation",
+      "syllabus": "CBSE Grade 3",
+      "learning_objectives": ["Evaluate tutoring quality"],
+      "guideline_id": "{{TOPIC_ID}}"
+    }
+  }'
 
-Fill in ALL sections:
-- End-to-end summary
-- Before/after score tables (per persona, per dimension)
-- Key conversation evidence (excerpts showing the issue before vs. after)
-- Feedback-specific assessment
-- Improvement score (average delta)
-- Confidence level (High/Medium/Low)
-- Verdict: SHIP / REVERT / NEEDS-MORE-DATA
+Response: {"session_id": "...", "first_turn": {"message": "..."}}
 
-### Step 6: Generate HTML report
+**Send student reply (each turn):**
+curl -X POST http://localhost:8000/sessions/<SESSION_ID>/step \
+  -H "Content-Type: application/json" \
+  -d '{"student_reply": "<STUDENT_MESSAGE>"}'
 
-Save the report as `tutor-improvement/initiatives/<initiative_id>/phase3-report.html` — a well-structured HTML document with proper styling for readability.
+Response: {"next_turn": {"message": "..."}, "routing": "Advance|Remediate", ...}
 
-### Step 7: Email the report
+## Conversation 1: Struggler Persona (10-12 turns)
 
-```bash
+Create a new session. You ARE a struggling student:
+- Frequently give wrong answers, make common arithmetic/conceptual mistakes
+- Get confused, say "I don't understand", need things repeated
+- Respond hesitantly — short answers, sometimes just "ok" or "huh?"
+- Get wrong ~60% of the time
+- Sound like a real 8-year-old who finds this hard
+
+After each tutor response, craft your next student reply in character, then call the step API.
+
+Save the full transcript to: tutor-improvement/initiatives/{{INITIATIVE_ID}}/conversations/struggler-conversation.md
+
+Format each conversation file as:
+# Struggler Conversation — {{INITIATIVE_ID}}
+**Date:** <today>
+**Topic:** {{TOPIC_ID}}
+**Turns:** <final count>
+---
+**Turn 1 — Tutor:**
+> <tutor message>
+**Turn 1 — Student:**
+> <student reply>
+(etc.)
+
+## Conversation 2: Average Student Persona (10-12 turns)
+
+Create a NEW session. You ARE an average student:
+- Mix of right and wrong answers (~50/50)
+- Engage normally, ask occasional clarifying questions
+- Show typical grade-level understanding
+- Sometimes give lazy one-word answers
+
+Save to: tutor-improvement/initiatives/{{INITIATIVE_ID}}/conversations/average-conversation.md
+
+## Conversation 3: Ace Persona (10-12 turns)
+
+Create a NEW session. You ARE a strong student:
+- Get most answers right (~80%), answer quickly
+- Show deeper understanding, ask "why does it work this way?"
+- Get bored with easy questions, want to move faster
+- Occasionally make a careless mistake
+
+Save to: tutor-improvement/initiatives/{{INITIATIVE_ID}}/conversations/ace-conversation.md
+
+## After All 3 Conversations: Evaluate
+
+Re-read all 3 conversation transcripts. Score each across 5 dimensions (1-10):
+
+1. **Responsiveness** — Does the tutor adapt to student signals (confusion, boredom, confidence)?
+2. **Explanation Quality** — Are explanations clear, varied, age-appropriate? Different approaches when one fails?
+3. **Emotional Attunement** — Does the tutor match emotional state? Appropriate praise calibration?
+4. **Pacing** — Right speed for this student? Speeds up for ace, slows down for struggler?
+5. **Authenticity** — Does it feel like a real teacher or a chatbot?
+
+**Critical evaluation:** Does the original feedback issue ("{{FEEDBACK_TEXT}}") still appear in any conversation? Quote specific evidence.
+
+## Produce the Report
+
+Create tutor-improvement/initiatives/{{INITIATIVE_ID}}/phase3-report.md using the template at tutor-improvement/templates/phase3-report.md. Fill in ALL sections with real data from the conversations.
+
+## Generate HTML Report
+
+Save as tutor-improvement/initiatives/{{INITIATIVE_ID}}/phase3-report.html — well-structured HTML with proper styling.
+
+## Email the Report
+
 BRANCH=$(git branch --show-current)
-REPORT_FILE="$(pwd)/tutor-improvement/initiatives/<initiative_id>/phase3-report.html"
+REPORT_FILE="$(pwd)/tutor-improvement/initiatives/{{INITIATIVE_ID}}/phase3-report.html"
 
 osascript -e '
 tell application "Mail"
-    set newMessage to make new outgoing message with properties {subject:"Tutor Improvement Report — <initiative_id> — <VERDICT>", content:"See attached HTML report.", visible:false}
+    set newMessage to make new outgoing message with properties {subject:"Tutor Improvement Report — {{INITIATIVE_ID}} — <VERDICT>", content:"See attached HTML report.", visible:false}
     tell newMessage
         make new to recipient at end of to recipients with properties {address:"manishjain.py@gmail.com"}
         make new attachment with properties {file name:POSIX file "'"$REPORT_FILE"'"} at after the last paragraph
     end tell
     send newMessage
 end tell'
+
+Replace <VERDICT> with the actual verdict.
+
+## AUTOMATION RULES
+- Do NOT use EnterPlanMode or AskUserQuestion
+- Do NOT pause for confirmation
+- Execute everything end-to-end
+- If an API call fails, retry up to 3 times
 ```
 
-Replace `<VERDICT>` with the actual verdict and `<initiative_id>` with the real ID.
+### Step 5: Update index
 
-### Step 8: Update index
+After the subagent completes, read `tutor-improvement/initiatives/<initiative_id>/phase3-report.md` and extract the verdict.
 
-Update `tutor-improvement/index.md` — set this initiative's status to the final verdict (SHIP / REVERT / NEEDS-MORE-DATA) with scores.
+Update `tutor-improvement/index.md` — set this initiative's status to the final verdict with the overall score.

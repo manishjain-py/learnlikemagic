@@ -23,9 +23,11 @@ Feedback --> Phase 1 (Analysis) --> [Human Review] --> Phase 2 (Implementation) 
 - Outputs `phase2-implementation.md`
 
 ### Phase 3: Measurement (`/tutor-improve-measure`)
-- Runs 3 baseline evals on `main` (via worktree) in parallel with 3 post-change evals
-- Compares scores across 5 dimensions (Responsiveness, Explanation Quality, Emotional Attunement, Pacing, Authenticity)
-- Produces before/after report with verdict: SHIP / REVERT / NEEDS-MORE-DATA
+- Claude Code plays 3 student personas (Struggler, Average, Ace) by calling the tutor REST API directly
+- Drives 10-12 turn conversations per persona, captures full transcripts
+- Evaluates each conversation across 5 dimensions (Responsiveness, Explanation Quality, Emotional Attunement, Pacing, Authenticity)
+- Assesses whether the original feedback issue is fixed
+- Produces scored report with verdict: SHIP / REVERT / NEEDS-MORE-DATA
 - Emails HTML report
 
 ## Initiative Folder Structure
@@ -40,8 +42,10 @@ initiatives/
     phase2-implementation.md       # Implementation log
     phase3-report.md               # Final report with scores
     phase3-report.html             # Email-ready HTML
-    baseline-conversations/        # Before-change eval transcripts
-    post-change-conversations/     # After-change eval transcripts
+    conversations/                 # Phase 3 eval transcripts
+      struggler-conversation.md
+      average-conversation.md
+      ace-conversation.md
 ```
 
 ## Quick Start

@@ -17,8 +17,8 @@ Every feedback item goes through three phases, with a human review gate after an
  | ANALYZE   | gate | IMPLEMENT |      | MEASURE   |
  +-----------+      +-----------+      +-----------+
      |                   |                   |
-  Analysis doc      Code changes        Before/after
-  Root cause        Feature branch      score report
+  Analysis doc      Code changes        3 persona convos
+  Root cause        Feature branch      Scored report
   Recommendation    Tests passing       SHIP/REVERT
 ```
 
@@ -38,20 +38,24 @@ Claude creates a feature branch, makes the targeted code/prompt changes followin
 
 ### Phase 3: Measure (`/tutor-improve-measure`)
 
-This is the key differentiator. Claude runs the same evaluation pipeline on **both** the old code (main) and the new code (feature branch):
-- 3 simulated student personas: Struggler, Average, Ace
-- 5 scoring dimensions: Responsiveness, Explanation Quality, Emotional Attunement, Pacing, Authenticity
-- LLM judge scores each conversation
+This is the key differentiator. Claude Code **plays the student** and drives real conversations against the tutor API:
+- Plays 3 personas (Struggler, Average, Ace) — 10-12 turns each
+- Calls `POST /sessions` and `POST /sessions/{id}/step` directly via REST
+- Captures full conversation transcripts
+- Evaluates each conversation across 5 dimensions: Responsiveness, Explanation Quality, Emotional Attunement, Pacing, Authenticity
+- Specifically checks whether the original feedback issue is fixed
 
-The output is a before/after score table with a verdict: **SHIP / REVERT / NEEDS-MORE-DATA**.
+Phase 3 runs as a **subagent** — keeping the main context clean while the subagent drives all conversations, evaluates them, and produces the report.
+
+The output is a scored report with a verdict: **SHIP / REVERT / NEEDS-MORE-DATA**.
 
 ## What Makes This Different
 
 | | Quick Fix | This Pipeline |
 |---|---|---|
 | Human oversight | None | Phase 1 review gate |
-| Baseline measurement | None | Before/after scores |
-| Confidence | "Probably better" | Scored across 3 personas, 5 dimensions |
+| Testing | Hope it works | 3 persona conversations, 5 scoring dimensions |
+| Confidence | "Probably better" | Scored report with conversation evidence |
 | Traceability | Ad hoc | Initiative folder with full history |
 | Reversibility | Unclear | Clear verdict, feature branch |
 
@@ -75,12 +79,16 @@ tutor-improvement/
       feedback.md                # Original feedback
       phase1-analysis.md         # Analysis (review this!)
       phase2-implementation.md   # What changed
-      phase3-report.md           # Before/after scores + verdict
+      phase3-report.md           # Scored report + verdict
       phase3-report.html         # Emailed to you
+      conversations/             # Full conversation transcripts
+        struggler-conversation.md
+        average-conversation.md
+        ace-conversation.md
 ```
 
 ## Built On
 
-- **Evaluation pipeline** (`llm-backend/evaluation/`) — student simulation with personas + LLM judge scoring
+- **Tutor REST API** (`POST /sessions`, `POST /sessions/{id}/step`) — Claude Code drives conversations directly
 - **Claude Code skills** — each phase is a `/slash-command` that runs autonomously
-- **Git worktrees** — Phase 3 runs baseline evals on `main` in parallel with post-change evals on the feature branch
+- **Claude as student + judge** — no separate evaluation pipeline; Claude plays the student and evaluates the results
