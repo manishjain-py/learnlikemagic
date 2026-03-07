@@ -10,7 +10,7 @@ are kept as internal helpers.
 
 import json
 import time
-from typing import Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional, Literal, Generator
 from openai import OpenAI, OpenAIError, RateLimitError, APITimeoutError
 from google import genai
 from google.genai import types
@@ -95,6 +95,142 @@ class LLMService:
                     prompt, self.model_id, json_mode=json_mode
                 )
                 return {"output_text": text, "reasoning": None}
+
+    # ─── Streaming entry point ───────────────────────────────────────
+
+    def call_stream(
+        self,
+        prompt: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Generator[str, None, None]:
+        """
+        Streaming LLM call — yields text chunks as they arrive.
+
+        Supports OpenAI Responses API and Chat Completions streaming.
+        Anthropic/Gemini fall back to non-streaming (yield full response as one chunk).
+        """
+        if self.provider in ("anthropic", "anthropic-haiku"):
+            # Anthropic tool_use streaming is complex; fall back to non-streaming
+            result = self.call(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+            yield result.get("output_text", "")
+            return
+
+        if self.provider == "google":
+            text = self._call_gemini(prompt, model_name=self.model_id, json_mode=json_mode)
+            yield text
+            return
+
+        # OpenAI streaming
+        if self.model_id in _RESPONSES_API_MODELS:
+            yield from self._stream_responses_api(
+                prompt, self.model_id, reasoning_effort, json_mode, json_schema, schema_name
+            )
+        else:
+            yield from self._stream_chat_completions(
+                prompt, self.model_id, json_mode=json_mode
+            )
+
+    def _stream_responses_api(
+        self,
+        prompt: str,
+        model: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Generator[str, None, None]:
+        """Stream from OpenAI Responses API. Yields text chunks."""
+        logger.info(json.dumps({
+            "step": "LLM_CALL_STREAM",
+            "status": "starting",
+            "model": model,
+        }))
+        start_time = time.time()
+
+        kwargs = {
+            "model": model,
+            "input": prompt,
+            "stream": True,
+            "timeout": self.timeout,
+        }
+
+        if reasoning_effort != "none":
+            kwargs["reasoning"] = {"effort": reasoning_effort}
+
+        if json_schema:
+            kwargs["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": schema_name,
+                    "schema": json_schema,
+                    "strict": True,
+                }
+            }
+        elif json_mode:
+            kwargs["text"] = {"format": {"type": "json_object"}}
+
+        stream = self.client.responses.create(**kwargs)
+        total_chars = 0
+        for event in stream:
+            if getattr(event, "type", None) == "response.output_text.delta":
+                total_chars += len(event.delta)
+                yield event.delta
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(json.dumps({
+            "step": "LLM_CALL_STREAM",
+            "status": "complete",
+            "model": model,
+            "output": {"response_length": total_chars},
+            "duration_ms": duration_ms,
+        }))
+
+    def _stream_chat_completions(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+        json_mode: bool = True,
+    ) -> Generator[str, None, None]:
+        """Stream from OpenAI Chat Completions API. Yields text chunks."""
+        logger.info(json.dumps({
+            "step": "LLM_CALL_STREAM",
+            "status": "starting",
+            "model": model,
+        }))
+        start_time = time.time()
+
+        kwargs = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_completion_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "timeout": self.timeout,
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        stream = self.client.chat.completions.create(**kwargs)
+        total_chars = 0
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                total_chars += len(content)
+                yield content
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(json.dumps({
+            "step": "LLM_CALL_STREAM",
+            "status": "complete",
+            "model": model,
+            "output": {"response_length": total_chars},
+            "duration_ms": duration_ms,
+        }))
 
     # ─── OpenAI Responses API (gpt-5.2, gpt-5.1) ─────────────────────
 

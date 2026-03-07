@@ -32,6 +32,7 @@ from tutor.models.messages import (
     create_assistant_response,
     create_error_response,
     create_state_update,
+    create_token_message,
     create_typing_indicator,
 )
 from shared.utils.exceptions import LearnLikeMagicException
@@ -699,10 +700,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             if client_msg.type == "chat":
                 await websocket.send_json(create_typing_indicator().model_dump())
 
-                result = await orchestrator.process_turn(
+                turn_result = None
+                async for msg_type, data in orchestrator.process_turn_stream(
                     session=session,
                     student_message=client_msg.payload.message or "",
-                )
+                ):
+                    if msg_type == "token":
+                        await websocket.send_json(create_token_message(data).model_dump())
+                    elif msg_type == "result":
+                        turn_result = data
+
+                result = turn_result
 
                 ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
                 if reloaded:

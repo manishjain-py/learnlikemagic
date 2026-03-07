@@ -608,3 +608,116 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 
   return response.blob();
 }
+
+// ──────────────────────────────────────────────
+// WebSocket for streaming chat
+// ──────────────────────────────────────────────
+
+export interface TutorWSCallbacks {
+  onToken: (text: string) => void;
+  onAssistant: (message: string, audioText?: string | null, visualExplanation?: VisualExplanation | null) => void;
+  onStateUpdate: (state: {
+    session_id: string;
+    current_step: number;
+    total_steps: number;
+    current_concept: string | null;
+    progress_percentage: number;
+    mastery_estimates: Record<string, number>;
+    is_complete: boolean;
+    mode: string;
+    coverage: number;
+    concepts_discussed: string[];
+    exam_progress: { current_question: number; total_questions: number; correct_so_far: number } | null;
+    is_paused: boolean;
+  }) => void;
+  onTyping: () => void;
+  onError: (error: string) => void;
+  onClose: () => void;
+}
+
+export class TutorWebSocket {
+  private ws: WebSocket | null = null;
+  private callbacks: TutorWSCallbacks;
+  private url: string;
+  private _connected = false;
+  private _pendingMessages: string[] = [];
+
+  constructor(sessionId: string, callbacks: TutorWSCallbacks) {
+    this.callbacks = callbacks;
+    const wsBase = API_BASE_URL.replace(/^http/, 'ws');
+    const token = getAccessToken();
+    this.url = `${wsBase}/sessions/ws/${sessionId}${token ? `?token=${token}` : ''}`;
+  }
+
+  connect(): void {
+    this.ws = new WebSocket(this.url);
+
+    this.ws.onopen = () => {
+      this._connected = true;
+      // Flush any messages queued before connection
+      for (const msg of this._pendingMessages) {
+        this.ws!.send(msg);
+      }
+      this._pendingMessages = [];
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        switch (msg.type) {
+          case 'token':
+            this.callbacks.onToken(msg.payload?.message || '');
+            break;
+          case 'assistant':
+            this.callbacks.onAssistant(
+              msg.payload?.message || '',
+              msg.payload?.audio_text,
+              msg.payload?.visual_explanation,
+            );
+            break;
+          case 'state_update':
+            if (msg.payload?.state) {
+              this.callbacks.onStateUpdate(msg.payload.state);
+            }
+            break;
+          case 'typing':
+            this.callbacks.onTyping();
+            break;
+          case 'error':
+            this.callbacks.onError(msg.payload?.error || 'Unknown error');
+            break;
+        }
+      } catch {
+        // Ignore malformed messages
+      }
+    };
+
+    this.ws.onerror = () => {
+      this.callbacks.onError('WebSocket connection error');
+    };
+
+    this.ws.onclose = () => {
+      this._connected = false;
+      this.callbacks.onClose();
+    };
+  }
+
+  sendChat(message: string): void {
+    const payload = JSON.stringify({ type: 'chat', payload: { message } });
+    if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(payload);
+    } else {
+      this._pendingMessages.push(payload);
+    }
+  }
+
+  disconnect(): void {
+    this._connected = false;
+    this.ws?.close();
+    this.ws = null;
+  }
+
+  get isConnected(): boolean {
+    return this._connected && this.ws?.readyState === WebSocket.OPEN;
+  }
+}

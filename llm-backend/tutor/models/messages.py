@@ -191,7 +191,7 @@ class ServerMessagePayload(BaseModel):
 
 
 class ServerMessage(BaseModel):
-    type: Literal["assistant", "state_update", "error", "typing"] = Field(description="Type of server message")
+    type: Literal["assistant", "state_update", "error", "typing", "token"] = Field(description="Type of server message")
     payload: ServerMessagePayload = Field(default_factory=ServerMessagePayload)
 
 
@@ -215,6 +215,10 @@ def create_error_response(error: str) -> ServerMessage:
 
 def create_state_update(state: SessionStateDTO) -> ServerMessage:
     return ServerMessage(type="state_update", payload=ServerMessagePayload(state=state))
+
+
+def create_token_message(text: str) -> ServerMessage:
+    return ServerMessage(type="token", payload=ServerMessagePayload(message=text))
 
 
 def create_typing_indicator() -> ServerMessage:

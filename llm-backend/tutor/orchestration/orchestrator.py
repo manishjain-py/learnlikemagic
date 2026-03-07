@@ -8,7 +8,7 @@ The master tutor handles all teaching responsibilities in a single LLM call.
 import re
 import time
 import logging
-from typing import Dict, Any, Optional, List
+from typing import AsyncGenerator, Dict, Any, Optional, List, Tuple, Union
 from pydantic import BaseModel, Field
 
 from shared.services.llm_service import LLMService
@@ -297,6 +297,164 @@ class TeacherOrchestrator:
                 specialists_called=[],
                 state_changed=False,
             )
+
+    async def process_turn_stream(
+        self,
+        session: SessionState,
+        student_message: str,
+    ) -> AsyncGenerator[Tuple[str, Union[str, TurnResult]], None]:
+        """Process a turn with streaming. Yields tuples:
+
+        - ("token", str)         — text chunk for the student-facing response
+        - ("result", TurnResult) — final result with state updates applied (always last)
+
+        Non-streamable modes (exam, post-completion) fall back to process_turn.
+        """
+        start_time = time.time()
+        turn_id = session.get_current_turn_id()
+
+        # --- Pre-streaming checks (same as process_turn) ---
+
+        # Translate input
+        student_message = await self._translate_to_english(student_message)
+
+        # Post-completion short circuits — not streamable
+        if session.is_complete and session.mode == "clarify_doubts":
+            result = await self._process_post_completion(session, student_message)
+            yield ("result", result)
+            return
+
+        max_extension_turns = 10
+        extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
+        if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
+            result = await self._process_post_completion(session, student_message)
+            yield ("result", result)
+            return
+
+        # Increment turn and add student message
+        session.increment_turn()
+        session.add_message(create_student_message(student_message))
+
+        context = AgentContext(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            student_message=student_message,
+            current_step=session.current_step,
+            current_concept=(
+                session.current_step_data.concept if session.current_step_data else None
+            ),
+            student_grade=session.student_context.grade,
+            language_level=session.student_context.language_level,
+        )
+
+        try:
+            # Safety check (non-streaming, fast)
+            safety_result: SafetyOutput = await self.safety_agent.execute(context)
+            if not safety_result.is_safe:
+                response = self._handle_unsafe_message(session, safety_result)
+                yield ("result", TurnResult(
+                    response=response, intent="unsafe",
+                    specialists_called=["safety"], state_changed=True,
+                ))
+                return
+
+            # Exam and clarify_doubts: fall back to non-streaming
+            if session.mode in ("exam", "clarify_doubts"):
+                if session.mode == "clarify_doubts":
+                    result = await self._process_clarify_turn(session, context, turn_id, start_time)
+                else:
+                    result = await self._process_exam_turn(session, context, turn_id, start_time)
+                yield ("result", result)
+                return
+
+            # Streaming master tutor (teach_me mode)
+            tutor_start = time.time()
+            self.master_tutor.set_session(session)
+            tutor_output = None
+
+            async for msg_type, data in self.master_tutor.execute_stream(context):
+                if msg_type == "token":
+                    yield ("token", data)
+                elif msg_type == "result":
+                    tutor_output = data
+
+            tutor_duration = int((time.time() - tutor_start) * 1000)
+
+            self._log_agent_event(
+                session_id=session.session_id,
+                turn_id=turn_id,
+                agent_name="master_tutor",
+                event_type="completed",
+                output=self._extract_output_dict(tutor_output),
+                reasoning=tutor_output.reasoning,
+                duration_ms=tutor_duration,
+                prompt=self.master_tutor.last_prompt,
+                metadata={
+                    "intent": tutor_output.intent,
+                    "answer_correct": tutor_output.answer_correct,
+                    "advance_to_step": tutor_output.advance_to_step,
+                    "streamed": True,
+                },
+            )
+
+            self._check_response_sanitization(session.session_id, turn_id, tutor_output.response)
+
+            # Apply state updates (same as process_turn)
+            state_changed = self._apply_state_updates(session, tutor_output)
+            session.add_message(create_teacher_message(tutor_output.response, audio_text=tutor_output.audio_text))
+
+            turn_entry = f"Turn {session.turn_count}: {tutor_output.turn_summary}"
+            session.session_summary.turn_timeline.append(turn_entry)
+            if len(session.session_summary.turn_timeline) > 30:
+                session.session_summary.turn_timeline = session.session_summary.turn_timeline[-30:]
+
+            if tutor_output.answer_correct is not None:
+                mastery_values = list(session.mastery_estimates.values())
+                avg_mastery = sum(mastery_values) / len(mastery_values) if mastery_values else 0.5
+                if tutor_output.answer_correct and avg_mastery >= 0.6:
+                    session.session_summary.progress_trend = "improving"
+                elif not tutor_output.answer_correct and avg_mastery < 0.4:
+                    session.session_summary.progress_trend = "struggling"
+                else:
+                    session.session_summary.progress_trend = "steady"
+
+            if session.current_step_data:
+                concept = session.current_step_data.concept
+                if concept and concept not in session.session_summary.concepts_taught:
+                    session.session_summary.concepts_taught.append(concept)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"Turn completed (streamed): {turn_id} ({duration_ms}ms)")
+
+            yield ("result", TurnResult(
+                response=tutor_output.response,
+                audio_text=tutor_output.audio_text,
+                intent=tutor_output.intent,
+                specialists_called=["master_tutor"],
+                state_changed=state_changed,
+                visual_explanation=tutor_output.visual_explanation.model_dump() if tutor_output.visual_explanation else None,
+            ))
+
+        except Exception as e:
+            logger.error(f"Streaming turn failed: {e}", exc_info=True)
+            yield ("result", TurnResult(
+                response="I apologize, but I had a moment of confusion. Could you please repeat that?",
+                intent="error",
+                specialists_called=[],
+                state_changed=False,
+            ))
+
+    async def _process_post_completion(self, session: SessionState, student_message: str) -> TurnResult:
+        """Handle post-completion messages (shared by process_turn and process_turn_stream)."""
+        session.add_message(create_student_message(student_message))
+        response = await self._generate_post_completion_response(session, student_message)
+        session.add_message(create_teacher_message(response))
+        return TurnResult(
+            response=response,
+            intent="session_complete",
+            specialists_called=[],
+            state_changed=True,
+        )
 
     # Regex patterns that indicate system/diagnostic language leaked into student-facing response
     _LEAK_PATTERNS = re.compile(

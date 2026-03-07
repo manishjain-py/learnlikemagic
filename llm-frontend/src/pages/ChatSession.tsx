@@ -9,6 +9,7 @@ import {
   transcribeAudio,
   synthesizeSpeech,
   submitFeedback,
+  TutorWebSocket,
   Turn,
   SummaryResponse,
   VisualExplanation as VisualExplanationType,
@@ -82,6 +83,11 @@ export default function ChatSession() {
   const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
   const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
   const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
+
+  // Streaming state
+  const [streamingText, setStreamingText] = useState('');
+  const wsRef = useRef<TutorWebSocket | null>(null);
+  const streamResolveRef = useRef<(() => void) | null>(null);
 
   // Feedback modal state
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -328,6 +334,77 @@ export default function ChatSession() {
     navigate(location.pathname, { replace: true, state: null });
   }, [sessionId]);
 
+  // Connect WebSocket for streaming (non-exam modes)
+  useEffect(() => {
+    if (!sessionId || sessionMode === 'exam') return;
+
+    const ws = new TutorWebSocket(sessionId, {
+      onToken: (text) => {
+        setStreamingText((prev) => prev + text);
+      },
+      onAssistant: (message, audioText, visualExplanation) => {
+        // Finalize: replace streaming text with the complete message
+        setStreamingText('');
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'teacher',
+            content: message,
+            audioText: audioText,
+            visualExplanation: visualExplanation,
+          },
+        ]);
+        setLoading(false);
+
+        // Auto-play TTS in virtual teacher mode
+        if (virtualTeacherOn && message) {
+          playTeacherAudio(audioText || message);
+        }
+
+        // Resolve the pending send promise
+        streamResolveRef.current?.();
+        streamResolveRef.current = null;
+      },
+      onStateUpdate: (state) => {
+        if (state.current_step != null) setStepIdx(state.current_step);
+        if (state.mastery_estimates) {
+          const values = Object.values(state.mastery_estimates);
+          if (values.length > 0) {
+            setMastery(values.reduce((a, b) => a + b, 0) / values.length);
+          }
+        }
+        if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
+        if (state.is_complete) {
+          setIsComplete(true);
+          if (sessionMode !== 'clarify_doubts') {
+            getSummary(sessionId).then(setSummary).catch(() => {});
+          }
+        }
+      },
+      onTyping: () => {
+        // Typing indicator is handled by the loading state
+      },
+      onError: (error) => {
+        console.error('WebSocket error:', error);
+        setLoading(false);
+        setStreamingText('');
+        streamResolveRef.current?.();
+        streamResolveRef.current = null;
+      },
+      onClose: () => {
+        // Connection closed — future sends will fall back to REST
+      },
+    });
+
+    ws.connect();
+    wsRef.current = ws;
+
+    return () => {
+      ws.disconnect();
+      wsRef.current = null;
+    };
+  }, [sessionId, sessionMode]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !sessionId || loading) return;
@@ -370,6 +447,18 @@ export default function ChatSession() {
     setMessages((prev) => [...prev, { role: 'student', content: userMessage }]);
     setLoading(true);
 
+    // Use WebSocket for streaming when connected (non-exam modes)
+    if (wsRef.current?.isConnected) {
+      setStreamingText('');
+      wsRef.current.sendChat(userMessage);
+      // Wait for onAssistant callback to resolve before allowing next message
+      await new Promise<void>((resolve) => {
+        streamResolveRef.current = resolve;
+      });
+      return;
+    }
+
+    // Fallback: REST (exam mode, or WS not connected)
     try {
       const response = await submitStep(sessionId, userMessage);
       setMessages((prev) => [
@@ -1017,7 +1106,14 @@ export default function ChatSession() {
                 )}
               </div>
             ))}
-            {loading && (
+            {streamingText && (
+              <div className="message teacher streaming">
+                <div className="message-content">
+                  <ReactMarkdown>{streamingText}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+            {loading && !streamingText && (
               <div className="message teacher loading">
                 <div className="typing-indicator">
                   <span></span>
