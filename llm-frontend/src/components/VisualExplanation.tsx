@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Application } from 'pixi.js';
 import type { VisualExplanation as VisualExplanationType } from '../api';
 
