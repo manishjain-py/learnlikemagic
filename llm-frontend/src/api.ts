@@ -71,31 +71,12 @@ export interface CreateSessionRequest {
   mode?: 'teach_me' | 'clarify_doubts' | 'exam';
 }
 
-export interface VisualAnimationStep {
-  action: string; // 'appear' | 'highlight' | 'merge' | 'label' | 'fade'
-  target: string; // 'group1' | 'group2' | 'result' | 'all' | 'part_N'
-  label?: string;
-  delay_ms?: number;
-}
-
 export interface VisualExplanation {
-  scene_type: string; // 'addition' | 'subtraction' | 'fraction' | 'multiplication' | 'counting'
+  pixi_code: string;        // Generated Pixi.js v8 JavaScript code
+  output_type: 'image' | 'animation';
   title?: string;
-  // Addition/subtraction/counting
-  group1_count?: number;
-  group2_count?: number;
-  result_count?: number;
-  object_emoji?: string;
-  // Fraction
-  total_parts?: number;
-  highlighted_parts?: number;
-  fraction_label?: string;
-  // Multiplication
-  rows?: number;
-  cols?: number;
-  // Animation
-  animation_steps?: VisualAnimationStep[];
   narration?: string;
+  visual_prompt?: string;   // Original prompt (for debugging)
 }
 
 export interface Turn {
