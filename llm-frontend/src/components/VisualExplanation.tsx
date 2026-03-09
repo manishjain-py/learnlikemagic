@@ -1,76 +1,90 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Application } from 'pixi.js';
+import { useState, useCallback, useEffect } from 'react';
 import type { VisualExplanation as VisualExplanationType } from '../api';
 
 interface Props {
   visual: VisualExplanationType;
 }
 
+/**
+ * Renders LLM-generated Pixi.js visuals inside a sandboxed iframe.
+ *
+ * The iframe has `sandbox="allow-scripts"` — no access to parent page DOM,
+ * cookies, localStorage, or navigation. This mitigates XSS risk from
+ * executing LLM-generated code.
+ */
 export default function VisualExplanation({ visual }: Props) {
   const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const pixiAppRef = useRef<Application | null>(null);
 
-  const destroyPixiApp = useCallback(() => {
-    if (pixiAppRef.current) {
-      pixiAppRef.current.destroy(true);
-      pixiAppRef.current = null;
-    }
-    if (canvasContainerRef.current) {
-      canvasContainerRef.current.innerHTML = '';
-    }
+  const pixiCode = visual.pixi_code;
+  const hasLegacyFormat = !!visual.scene_type;
+
+  // Build the srcdoc HTML that runs inside the sandboxed iframe.
+  // Pixi.js is loaded from CDN inside the iframe — no global pollution on the parent.
+  const buildSrcdoc = useCallback((code: string) => {
+    return `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #1a1a2e; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.6.6/pixi.min.js"><\/script>
+<script>
+(async function() {
+  try {
+    const app = new PIXI.Application();
+    await app.init({ width: 500, height: 350, backgroundColor: 0x1a1a2e, antialias: true });
+    document.body.appendChild(app.canvas);
+    const fn = new Function('app', 'PIXI', ${JSON.stringify(code)});
+    fn(app, PIXI);
+    window.parent.postMessage({ type: 'pixi-ready' }, '*');
+  } catch (e) {
+    window.parent.postMessage({ type: 'pixi-error', message: e.message || String(e) }, '*');
+  }
+})();
+<\/script>
+</body>
+</html>`;
   }, []);
 
+  // Listen for messages from the sandboxed iframe
   useEffect(() => {
-    return () => {
-      destroyPixiApp();
+    if (!started) return;
+
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'pixi-error') {
+        setError('Visual could not be loaded');
+        console.error('Pixi.js iframe error:', event.data.message);
+      }
     };
-  }, [destroyPixiApp]);
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [started]);
 
-  const executePixiCode = useCallback(async (code: string) => {
-    destroyPixiApp();
+  // Reset state when pixi_code changes (prop change cleanup)
+  useEffect(() => {
+    setStarted(false);
     setError(null);
-
-    if (!canvasContainerRef.current || !code) return;
-
-    try {
-      const app = new Application();
-      await app.init({
-        width: 500,
-        height: 350,
-        backgroundColor: 0x1a1a2e,
-        antialias: true,
-      });
-
-      canvasContainerRef.current.appendChild(app.canvas);
-      pixiAppRef.current = app;
-
-      const PIXI = await import('pixi.js');
-      (window as any).PIXI = PIXI;
-
-      const fn = new Function('app', 'PIXI', code);
-      fn(app, PIXI);
-    } catch (err) {
-      console.error('Pixi.js execution error:', err);
-      setError('Visual could not be loaded');
-    }
-  }, [destroyPixiApp]);
+  }, [pixiCode]);
 
   const startAnimation = useCallback(() => {
     setStarted(true);
-    if (visual.pixi_code) {
-      executePixiCode(visual.pixi_code);
-    }
-  }, [visual.pixi_code, executePixiCode]);
+    setError(null);
+  }, []);
 
   const replay = useCallback(() => {
-    if (visual.pixi_code) {
-      executePixiCode(visual.pixi_code);
-    }
-  }, [visual.pixi_code, executePixiCode]);
+    // Force iframe re-render by toggling started
+    setStarted(false);
+    setError(null);
+    queueMicrotask(() => setStarted(true));
+  }, []);
 
-  if (!visual.pixi_code) {
+  // Backward compat: old sessions have scene_type but no pixi_code — skip rendering
+  if (!pixiCode || hasLegacyFormat) {
     return null;
   }
 
@@ -91,7 +105,14 @@ export default function VisualExplanation({ visual }: Props) {
   return (
     <div className="visual-explanation">
       {visual.title && <div className="visual-title">{visual.title}</div>}
-      <div className="visual-canvas-pixi" ref={canvasContainerRef} />
+      <div className="visual-canvas-pixi">
+        <iframe
+          sandbox="allow-scripts"
+          srcDoc={buildSrcdoc(pixiCode)}
+          style={{ width: 500, height: 350, border: 'none', display: 'block' }}
+          title={visual.title || 'Visual explanation'}
+        />
+      </div>
       {error && <div className="visual-error">{error}</div>}
       {visual.narration && <div className="visual-narration">{visual.narration}</div>}
       <button className="visual-replay-btn" onClick={replay} title="Replay">

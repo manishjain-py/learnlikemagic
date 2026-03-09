@@ -52,14 +52,23 @@ class TeacherOrchestrator:
 
         logger.info("TeacherOrchestrator initialized (single master tutor architecture)")
 
-    async def _generate_pixi_code(self, visual_explanation) -> Dict[str, Any]:
-        """Generate Pixi.js code for a visual explanation and return the full visual dict."""
-        visual_dict = visual_explanation.model_dump()
+    async def _generate_pixi_code(self, visual_explanation) -> Optional[Dict[str, Any]]:
+        """Generate Pixi.js code for a visual explanation and return the full visual dict.
+
+        Returns None if code generation fails, so the frontend won't show a
+        broken 'Visualise' button.  Also strips visual_prompt from the payload
+        to avoid leaking internal prompts to the client.
+        """
         pixi_code = await self.pixi_generator.generate(
             visual_prompt=visual_explanation.visual_prompt,
             output_type=visual_explanation.output_type,
         )
+        if not pixi_code:
+            logger.warning("Pixi code generation returned empty — skipping visual")
+            return None
+        visual_dict = visual_explanation.model_dump()
         visual_dict["pixi_code"] = pixi_code
+        visual_dict.pop("visual_prompt", None)
         return visual_dict
 
     def _log_agent_event(
@@ -445,14 +454,22 @@ class TeacherOrchestrator:
                 metadata={"intent": tutor_output.intent, "state_changed": state_changed, "streamed": True},
             )
 
+            # Yield the text result immediately so the frontend gets it without
+            # waiting for the (potentially slow) Pixi code generation LLM call.
             yield ("result", TurnResult(
                 response=tutor_output.response,
                 audio_text=tutor_output.audio_text,
                 intent=tutor_output.intent,
                 specialists_called=["master_tutor"],
                 state_changed=state_changed,
-                visual_explanation=await self._generate_pixi_code(tutor_output.visual_explanation) if tutor_output.visual_explanation else None,
+                visual_explanation=None,
             ))
+
+            # Generate Pixi code in a separate step and yield as a "visual" message
+            if tutor_output.visual_explanation:
+                visual_dict = await self._generate_pixi_code(tutor_output.visual_explanation)
+                if visual_dict:
+                    yield ("visual", visual_dict)
 
         except Exception as e:
             logger.error(f"Streaming turn failed: {e}", exc_info=True)

@@ -72,11 +72,12 @@ export interface CreateSessionRequest {
 }
 
 export interface VisualExplanation {
-  pixi_code: string;        // Generated Pixi.js v8 JavaScript code
-  output_type: 'image' | 'animation';
+  pixi_code?: string;       // Generated Pixi.js v8 JavaScript code
+  output_type?: 'image' | 'animation';
   title?: string;
   narration?: string;
-  visual_prompt?: string;   // Original prompt (for debugging)
+  // Legacy fields from old SVG-based visuals (backward compat)
+  scene_type?: string;
 }
 
 export interface Turn {
@@ -597,6 +598,7 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 export interface TutorWSCallbacks {
   onToken: (text: string) => void;
   onAssistant: (message: string, audioText?: string | null, visualExplanation?: VisualExplanation | null) => void;
+  onVisualUpdate?: (visualExplanation: VisualExplanation) => void;
   onStateUpdate: (state: {
     session_id: string;
     current_step: number;
@@ -659,6 +661,11 @@ export class TutorWebSocket {
           case 'state_update':
             if (msg.payload?.state) {
               this.callbacks.onStateUpdate(msg.payload.state);
+            }
+            break;
+          case 'visual_update':
+            if (msg.payload?.visual_explanation && this.callbacks.onVisualUpdate) {
+              this.callbacks.onVisualUpdate(msg.payload.visual_explanation);
             }
             break;
           case 'typing':

@@ -78,8 +78,11 @@ class PixiCodeGenerator:
         """Strip markdown code fences if present."""
         code = code.strip()
         if code.startswith("```"):
-            first_newline = code.index("\n")
-            code = code[first_newline + 1:]
+            newline_idx = code.find("\n")
+            if newline_idx == -1:
+                # Edge case: input is just "```" or "```js" with no newline
+                return ""
+            code = code[newline_idx + 1:]
         if code.endswith("```"):
             code = code[:-3].rstrip()
         return code
