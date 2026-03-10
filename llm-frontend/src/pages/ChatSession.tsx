@@ -1073,7 +1073,7 @@ export default function ChatSession() {
             {messages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`message ${msg.role}`}
+                className={`message ${msg.role}${msg.role === 'teacher' && msg.visualExplanation ? ' has-visual' : ''}`}
                 {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message', onClick: () => handleTeacherDoubleTap(idx) } : {})}
               >
                 <div className="message-content">

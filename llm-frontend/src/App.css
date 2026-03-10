@@ -237,6 +237,10 @@ body {
   color: #333;
 }
 
+.message.has-visual {
+  max-width: 95%;
+}
+
 .message.student {
   align-self: flex-end;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -2836,7 +2840,6 @@ body {
   justify-content: center;
   align-items: center;
   width: 100%;
-  max-width: 500px;
   margin: 0 auto;
   border-radius: 8px;
   overflow: hidden;

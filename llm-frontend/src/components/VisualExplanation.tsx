@@ -28,7 +28,7 @@ export default function VisualExplanation({ visual }: Props) {
 <style>
   * { margin: 0; padding: 0; }
   body { background: #1a1a2e; overflow: hidden; }
-  canvas { display: block; }
+  canvas { display: block; width: 100% !important; height: auto !important; }
 </style>
 </head>
 <body>
@@ -109,7 +109,7 @@ export default function VisualExplanation({ visual }: Props) {
         <iframe
           sandbox="allow-scripts"
           srcDoc={buildSrcdoc(pixiCode)}
-          style={{ width: 500, height: 350, border: 'none', display: 'block' }}
+          style={{ width: '100%', aspectRatio: '500 / 350', border: 'none', display: 'block' }}
           title={visual.title || 'Visual explanation'}
         />
       </div>
