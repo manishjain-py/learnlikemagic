@@ -2810,8 +2810,8 @@ body {
 
 .visual-explanation {
   margin-top: 10px;
-  background: #FAFBFF;
-  border: 1px solid #E2E8F0;
+  background: #0f0f23;
+  border: 1px solid #2a2a4a;
   border-radius: 12px;
   padding: 12px;
   overflow: hidden;
@@ -2820,7 +2820,7 @@ body {
 .visual-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #334155;
+  color: #e2e8f0;
   text-align: center;
   margin-bottom: 8px;
 }
@@ -2831,30 +2831,32 @@ body {
   align-items: center;
 }
 
-.visual-svg {
+.visual-canvas-pixi {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   width: 100%;
-  max-width: 320px;
-  height: auto;
+  max-width: 500px;
+  margin: 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.visual-group-label {
-  font-size: 16px;
-  font-weight: 700;
+.visual-canvas-pixi canvas {
+  width: 100% !important;
+  height: auto !important;
 }
 
-.visual-operator {
-  font-size: 28px;
-  font-weight: 700;
-}
-
-.visual-result-label {
-  font-size: 20px;
-  font-weight: 700;
+.visual-error {
+  text-align: center;
+  color: #f87171;
+  font-size: 0.82rem;
+  padding: 8px;
 }
 
 .visual-narration {
   font-size: 0.82rem;
-  color: #64748B;
+  color: #94a3b8;
   text-align: center;
   margin-top: 8px;
   font-style: italic;

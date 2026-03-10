@@ -24,39 +24,22 @@ from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
 
 
-class VisualAnimationStep(BaseModel):
-    """A single step in a visual animation sequence."""
-    action: str = Field(description="What happens: 'appear', 'highlight', 'merge', 'label', 'fade'")
-    target: str = Field(description="Which group/element: 'group1', 'group2', 'result', 'all', or a part index like 'part_3'")
-    label: Optional[str] = Field(default=None, description="Text label to display during this step")
-    delay_ms: int = Field(default=600, description="Delay before this step in milliseconds")
-
-
 class VisualExplanation(BaseModel):
-    """Structured visual explanation that the frontend renders as an animation."""
-    scene_type: str = Field(
-        description="Type of visual: 'addition', 'subtraction', 'fraction', 'multiplication', 'number_line', 'counting'. "
-        "Use null/omit if no visual is helpful for this turn."
+    """Visual prompt for PixiJS illustration generation."""
+    visual_prompt: str = Field(
+        description="Natural language description of the visual to generate. "
+        "Be specific about objects, layout, colors, labels, and any animation. "
+        "Example: 'Show 3 red apples on the left and 4 green apples on the right. "
+        "Animate them merging into a single group of 7 with a label showing 3+4=7.'"
     )
-    title: Optional[str] = Field(default=None, description="Short title for the visual (e.g., '4 + 4 = 8')")
-    # Addition/subtraction/counting fields
-    group1_count: Optional[int] = Field(default=None, description="Number of objects in first group")
-    group2_count: Optional[int] = Field(default=None, description="Number of objects in second group")
-    result_count: Optional[int] = Field(default=None, description="Total/result count")
-    object_emoji: Optional[str] = Field(default=None, description="Emoji to represent objects (e.g., '🍎', '⭐')")
-    # Fraction fields
-    total_parts: Optional[int] = Field(default=None, description="Total equal parts in the fraction bar")
-    highlighted_parts: Optional[int] = Field(default=None, description="Number of parts to highlight")
-    fraction_label: Optional[str] = Field(default=None, description="Fraction label like '3/4'")
-    # Multiplication fields
-    rows: Optional[int] = Field(default=None, description="Number of rows in multiplication array")
-    cols: Optional[int] = Field(default=None, description="Number of columns in multiplication array")
-    # Animation steps
-    animation_steps: list[VisualAnimationStep] = Field(
-        default_factory=list,
-        description="Ordered animation steps. If empty, the frontend uses a default animation sequence for the scene_type."
+    output_type: str = Field(
+        default="image",
+        description="'image' for static illustrations, 'animation' for animated visuals. "
+        "Use animation for processes, merging/splitting, or sequences. "
+        "Use image for diagrams, charts, labeled structures."
     )
-    narration: Optional[str] = Field(default=None, description="Short narration text synced with the visual")
+    title: Optional[str] = Field(default=None, description="Short title like '3 + 4 = 7'")
+    narration: Optional[str] = Field(default=None, description="Short narration text")
 
 
 class MasteryUpdate(BaseModel):
@@ -141,10 +124,10 @@ class TutorTurnOutput(BaseModel):
     # Visual explanation (optional — only when a visual would genuinely help)
     visual_explanation: Optional[VisualExplanation] = Field(
         default=None,
-        description="Optional structured visual explanation to render as an animation. "
-        "Include ONLY when a visual would genuinely help the student understand the concept better — "
-        "e.g., counting, addition, subtraction, fractions, multiplication arrays. "
-        "Do NOT include for every turn — only when explaining a concept that benefits from visual representation. "
+        description="Optional visual explanation prompt for PixiJS illustration generation. "
+        "Include when a visual would help the student understand the concept — "
+        "any subject, any visual: diagrams, animations, charts, illustrations. "
+        "Write a detailed visual_prompt describing exactly what to draw. "
         "Set to null when no visual is needed."
     )
 

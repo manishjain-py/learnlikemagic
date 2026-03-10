@@ -367,6 +367,19 @@ export default function ChatSession() {
         streamResolveRef.current?.();
         streamResolveRef.current = null;
       },
+      onVisualUpdate: (visualExplanation) => {
+        // Attach visual to the last teacher message (sent separately for latency)
+        setMessages((prev) => {
+          const updated = [...prev];
+          for (let i = updated.length - 1; i >= 0; i--) {
+            if (updated[i].role === 'teacher') {
+              updated[i] = { ...updated[i], visualExplanation: visualExplanation };
+              break;
+            }
+          }
+          return updated;
+        });
+      },
       onStateUpdate: (state) => {
         if (state.current_step != null) setStepIdx(state.current_step);
         if (state.mastery_estimates) {

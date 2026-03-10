@@ -701,6 +701,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await websocket.send_json(create_typing_indicator().model_dump())
 
                 turn_result = None
+                pending_visual = None
                 try:
                     async for msg_type, data in orchestrator.process_turn_stream(
                         session=session,
@@ -710,6 +711,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             await websocket.send_json(create_token_message(data).model_dump())
                         elif msg_type == "result":
                             turn_result = data
+                        elif msg_type == "visual":
+                            pending_visual = data
                 except (WebSocketDisconnect, Exception) as stream_err:
                     # Connection lost mid-stream — still persist state so the turn isn't lost
                     logger.warning(f"WS send failed mid-stream for {session_id}: {stream_err}")
@@ -739,9 +742,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     )
                 else:
                     assistant_msg = create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
+                    # For non-streamed paths (clarify/exam), visual is on the result
                     if result.visual_explanation:
                         assistant_msg["payload"]["visual_explanation"] = result.visual_explanation
                     await websocket.send_json(assistant_msg)
+
+                    # For streamed path: visual was generated after text —
+                    # send as a separate message so text isn't delayed
+                    if pending_visual:
+                        await websocket.send_json({
+                            "type": "visual_update",
+                            "payload": {"visual_explanation": pending_visual},
+                        })
 
                 state_dto = SessionStateDTO(
                     session_id=session.session_id,

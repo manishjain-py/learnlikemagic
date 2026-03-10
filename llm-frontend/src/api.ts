@@ -71,31 +71,13 @@ export interface CreateSessionRequest {
   mode?: 'teach_me' | 'clarify_doubts' | 'exam';
 }
 
-export interface VisualAnimationStep {
-  action: string; // 'appear' | 'highlight' | 'merge' | 'label' | 'fade'
-  target: string; // 'group1' | 'group2' | 'result' | 'all' | 'part_N'
-  label?: string;
-  delay_ms?: number;
-}
-
 export interface VisualExplanation {
-  scene_type: string; // 'addition' | 'subtraction' | 'fraction' | 'multiplication' | 'counting'
+  pixi_code?: string;       // Generated Pixi.js v8 JavaScript code
+  output_type?: 'image' | 'animation';
   title?: string;
-  // Addition/subtraction/counting
-  group1_count?: number;
-  group2_count?: number;
-  result_count?: number;
-  object_emoji?: string;
-  // Fraction
-  total_parts?: number;
-  highlighted_parts?: number;
-  fraction_label?: string;
-  // Multiplication
-  rows?: number;
-  cols?: number;
-  // Animation
-  animation_steps?: VisualAnimationStep[];
   narration?: string;
+  // Legacy fields from old SVG-based visuals (backward compat)
+  scene_type?: string;
 }
 
 export interface Turn {
@@ -616,6 +598,7 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 export interface TutorWSCallbacks {
   onToken: (text: string) => void;
   onAssistant: (message: string, audioText?: string | null, visualExplanation?: VisualExplanation | null) => void;
+  onVisualUpdate?: (visualExplanation: VisualExplanation) => void;
   onStateUpdate: (state: {
     session_id: string;
     current_step: number;
@@ -678,6 +661,11 @@ export class TutorWebSocket {
           case 'state_update':
             if (msg.payload?.state) {
               this.callbacks.onStateUpdate(msg.payload.state);
+            }
+            break;
+          case 'visual_update':
+            if (msg.payload?.visual_explanation && this.callbacks.onVisualUpdate) {
+              this.callbacks.onVisualUpdate(msg.payload.visual_explanation);
             }
             break;
           case 'typing':
