@@ -47,8 +47,14 @@ class AnthropicAdapter:
         json_schema: Optional[Dict[str, Any]] = None,
         schema_name: str = "response",
     ) -> Dict[str, Any]:
-        """Build kwargs for anthropic messages.create()."""
-        system_parts = []
+        """Build kwargs for anthropic messages.create().
+
+        Supports prompt caching: if the prompt contains a '---' separator
+        (system_prompt --- turn_prompt), the system portion is extracted and
+        marked with cache_control for Anthropic's prompt caching, saving
+        significant latency on repeated calls within a session.
+        """
+        system_blocks = []
         kwargs: Dict[str, Any] = {
             "model": self.model,
             "max_tokens": 16384,
@@ -71,14 +77,29 @@ class AnthropicAdapter:
             else:
                 kwargs["tool_choice"] = {"type": "tool", "name": schema_name}
         elif json_mode:
-            system_parts.append(
-                "You MUST respond with valid JSON only. No markdown, no explanation outside the JSON."
-            )
+            system_blocks.append({
+                "type": "text",
+                "text": "You MUST respond with valid JSON only. No markdown, no explanation outside the JSON.",
+            })
 
-        if system_parts:
-            kwargs["system"] = "\n\n".join(system_parts)
+        # Split prompt on '---' to extract cacheable system prompt
+        separator = "\n\n---\n\n"
+        if separator in prompt:
+            system_text, user_text = prompt.split(separator, 1)
+            # System prompt with cache_control for prompt caching
+            system_blocks.append({
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            })
+            user_content = user_text
+        else:
+            user_content = prompt
 
-        kwargs["messages"] = [{"role": "user", "content": prompt}]
+        if system_blocks:
+            kwargs["system"] = system_blocks
+
+        kwargs["messages"] = [{"role": "user", "content": user_content}]
         return kwargs
 
     def _parse_response(
@@ -150,3 +171,56 @@ class AnthropicAdapter:
             )
             raise
         return self._parse_response(response, json_mode, json_schema)
+
+    def stream_sync(
+        self,
+        prompt: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ):
+        """Streaming sync call to Claude. Yields text chunks as they arrive.
+
+        For tool_use (json_schema) responses, yields the JSON input delta chunks.
+        For text responses, yields text delta chunks.
+        """
+        import time
+        kwargs = self._build_kwargs(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+
+        logger.info(json.dumps({
+            "step": "LLM_CALL_STREAM",
+            "status": "starting",
+            "model": self.model,
+        }))
+        start_time = time.time()
+        total_chars = 0
+
+        try:
+            with self.client.messages.stream(**kwargs) as stream:
+                for event in stream:
+                    # Text delta events
+                    if hasattr(event, 'type'):
+                        if event.type == 'content_block_delta':
+                            delta = getattr(event, 'delta', None)
+                            if delta:
+                                if hasattr(delta, 'text'):
+                                    total_chars += len(delta.text)
+                                    yield delta.text
+                                elif hasattr(delta, 'partial_json'):
+                                    total_chars += len(delta.partial_json)
+                                    yield delta.partial_json
+        except anthropic.APIStatusError as e:
+            logger.error(
+                f"Anthropic streaming error ({type(e).__name__}): status={e.status_code} {e.message}"
+            )
+            raise
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(json.dumps({
+            "step": "LLM_CALL_STREAM",
+            "status": "complete",
+            "model": self.model,
+            "output": {"response_length": total_chars},
+            "duration_ms": duration_ms,
+        }))

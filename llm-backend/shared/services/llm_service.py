@@ -96,6 +96,30 @@ class LLMService:
                 )
                 return {"output_text": text, "reasoning": None}
 
+    # ─── Fast model entry point (lightweight tasks) ─────────────────
+
+    def call_fast(
+        self,
+        prompt: str,
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """
+        Fast LLM call using gpt-4o-mini for lightweight tasks
+        (translation, safety checks, etc.). Always uses OpenAI Chat Completions
+        regardless of the main provider setting.
+        """
+        logger.info(json.dumps({
+            "step": "LLM_CALL_FAST",
+            "status": "starting",
+            "model": "gpt-4o-mini",
+        }))
+        text = self._call_chat_completions(
+            prompt, "gpt-4o-mini", max_tokens=512, temperature=0.3, json_mode=json_mode
+        )
+        return {"output_text": text, "reasoning": None}
+
     # ─── Streaming entry point ───────────────────────────────────────
 
     def call_stream(
@@ -113,7 +137,12 @@ class LLMService:
         Anthropic/Gemini fall back to non-streaming (yield full response as one chunk).
         """
         if self.provider in ("anthropic", "anthropic-haiku"):
-            # Anthropic tool_use streaming is complex; fall back to non-streaming
+            if self.anthropic_adapter:
+                yield from self.anthropic_adapter.stream_sync(
+                    prompt, reasoning_effort, json_mode, json_schema, schema_name
+                )
+                return
+            # Fallback if adapter not configured
             result = self.call(prompt, reasoning_effort, json_mode, json_schema, schema_name)
             yield result.get("output_text", "")
             return
