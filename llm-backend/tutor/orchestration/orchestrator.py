@@ -58,18 +58,25 @@ class TeacherOrchestrator:
         Returns None if code generation fails, so the frontend won't show a
         broken 'Visualise' button.  Also strips visual_prompt from the payload
         to avoid leaking internal prompts to the client.
+
+        This method MUST never raise — any exception is logged and returns None
+        so that a failed visual never crashes the turn.
         """
-        pixi_code = await self.pixi_generator.generate(
-            visual_prompt=visual_explanation.visual_prompt,
-            output_type=visual_explanation.output_type,
-        )
-        if not pixi_code:
-            logger.warning("Pixi code generation returned empty — skipping visual")
+        try:
+            pixi_code = await self.pixi_generator.generate(
+                visual_prompt=visual_explanation.visual_prompt,
+                output_type=visual_explanation.output_type,
+            )
+            if not pixi_code:
+                logger.warning("Pixi code generation returned empty — skipping visual")
+                return None
+            visual_dict = visual_explanation.model_dump()
+            visual_dict["pixi_code"] = pixi_code
+            visual_dict.pop("visual_prompt", None)
+            return visual_dict
+        except Exception as e:
+            logger.error(f"Pixi code generation crashed — skipping visual: {e}", exc_info=True)
             return None
-        visual_dict = visual_explanation.model_dump()
-        visual_dict["pixi_code"] = pixi_code
-        visual_dict.pop("visual_prompt", None)
-        return visual_dict
 
     def _log_agent_event(
         self,
@@ -294,7 +301,11 @@ class TeacherOrchestrator:
             )
 
         except Exception as e:
-            logger.error(f"Turn failed: {e}", exc_info=True)
+            logger.error(
+                f"Turn failed ({type(e).__name__}): {e}",
+                exc_info=True,
+                extra={"session_id": session.session_id, "turn_id": turn_id},
+            )
             return TurnResult(
                 response="I apologize, but I had a moment of confusion. Could you please repeat that?",
                 intent="error",
@@ -472,7 +483,11 @@ class TeacherOrchestrator:
                     yield ("visual", visual_dict)
 
         except Exception as e:
-            logger.error(f"Streaming turn failed: {e}", exc_info=True)
+            logger.error(
+                f"Streaming turn failed ({type(e).__name__}): {e}",
+                exc_info=True,
+                extra={"session_id": session.session_id, "turn_id": turn_id},
+            )
             yield ("result", TurnResult(
                 response="I apologize, but I had a moment of confusion. Could you please repeat that?",
                 intent="error",

@@ -13,7 +13,7 @@ from shared.services.llm_service import LLMService, LLMServiceError
 
 logger = logging.getLogger(__name__)
 
-PIXI_SYSTEM_PROMPT = """You are an expert Pixi.js v8 developer. Generate ONLY valid JavaScript code that uses Pixi.js v8 to create the requested visual.
+_PIXI_SYSTEM_PROMPT_HEADER = """You are an expert Pixi.js v8 developer. Generate ONLY valid JavaScript code that uses Pixi.js v8 to create the requested visual.
 
 CRITICAL RULES:
 1. The code will be executed via new Function() with a single parameter `app` which is an initialized PIXI.Application instance already added to the DOM.
@@ -30,15 +30,7 @@ CRITICAL RULES:
 9. Always add created display objects to `app.stage` via `app.stage.addChild(...)`.
 10. For colors use hex numbers like 0xff0000, not strings.
 11. Keep code concise but visually clear and educational.
-12. Use kid-friendly colors and large readable text for educational content.
-
-OUTPUT_TYPE: {output_type}
-
-If OUTPUT_TYPE is "animation", include smooth animations using app.ticker.
-If OUTPUT_TYPE is "image", create a static diagram/illustration.
-
-VISUAL DESCRIPTION:
-{visual_prompt}"""
+12. Use kid-friendly colors and large readable text for educational content."""
 
 
 class PixiCodeGenerator:
@@ -52,12 +44,19 @@ class PixiCodeGenerator:
 
         Returns the generated JavaScript code string, or empty string on failure.
         """
-        prompt = PIXI_SYSTEM_PROMPT.format(
-            output_type=output_type,
-            visual_prompt=visual_prompt,
-        )
-
+        import time
+        start = time.time()
         try:
+            # Build prompt via concatenation — NOT str.format() — because
+            # visual_prompt may contain curly braces (e.g. "the set {1,2,3}")
+            # which would crash .format() with KeyError/ValueError.
+            prompt = (
+                _PIXI_SYSTEM_PROMPT_HEADER
+                + f"\n\nOUTPUT_TYPE: {output_type}"
+                + "\n\nIf OUTPUT_TYPE is \"animation\", include smooth animations using app.ticker."
+                + "\nIf OUTPUT_TYPE is \"image\", create a static diagram/illustration."
+                + f"\n\nVISUAL DESCRIPTION:\n{visual_prompt}"
+            )
             result = await asyncio.to_thread(
                 self.llm.call,
                 prompt=prompt,
@@ -65,12 +64,23 @@ class PixiCodeGenerator:
                 json_mode=False,
             )
             code = result["output_text"]
-            return self._strip_markdown_fences(code)
+            stripped = self._strip_markdown_fences(code)
+            duration_ms = int((time.time() - start) * 1000)
+            if stripped:
+                logger.info(f"Pixi code generated ({duration_ms}ms, {len(stripped)} chars)")
+            else:
+                logger.warning(
+                    f"Pixi code generation returned empty after stripping ({duration_ms}ms, "
+                    f"raw length={len(code)})"
+                )
+            return stripped
         except LLMServiceError as e:
-            logger.error(f"Pixi code generation failed: {e}")
+            duration_ms = int((time.time() - start) * 1000)
+            logger.error(f"Pixi code generation failed ({duration_ms}ms): {e}")
             return ""
         except Exception as e:
-            logger.error(f"Unexpected error in pixi code generation: {e}")
+            duration_ms = int((time.time() - start) * 1000)
+            logger.error(f"Unexpected error in pixi code generation ({duration_ms}ms, {type(e).__name__}): {e}")
             return ""
 
     @staticmethod

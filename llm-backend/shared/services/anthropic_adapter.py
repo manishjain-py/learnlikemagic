@@ -142,5 +142,11 @@ class AnthropicAdapter:
     ) -> Dict[str, Any]:
         """Sync call to Claude, returning the standard output dict."""
         kwargs = self._build_kwargs(prompt, reasoning_effort, json_mode, json_schema, schema_name)
-        response = self.client.messages.create(**kwargs)
+        try:
+            response = self.client.messages.create(**kwargs)
+        except anthropic.APIStatusError as e:
+            logger.error(
+                f"Anthropic API error ({type(e).__name__}): status={e.status_code} {e.message}"
+            )
+            raise
         return self._parse_response(response, json_mode, json_schema)
