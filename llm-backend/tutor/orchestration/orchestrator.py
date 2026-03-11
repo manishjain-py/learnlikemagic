@@ -110,9 +110,16 @@ class TeacherOrchestrator:
     async def _translate_to_english(self, text: str) -> str:
         """Translate Hinglish/Hindi student input to English.
 
-        Uses a fast LLM call. Returns the original text unchanged if it is
-        already plain English.
+        Uses gpt-4o-mini for speed (~200-500ms vs 2-5s with main model).
+        Skips only for trivially non-translatable input (empty, pure numbers).
+        Does NOT skip for ASCII text since Roman-script Hinglish is all-ASCII
+        but still needs translation.
         """
+        # Skip only for empty or pure-number input
+        stripped = text.strip()
+        if not stripped or all(c.isdigit() or c in ' +-*/=.,()%^' for c in stripped):
+            return text
+
         prompt = (
             "You are a translator. The student may write in Hinglish (Hindi-English mix, Roman script) "
             "or Hindi. Translate the following student message to clean English. "
@@ -125,9 +132,8 @@ class TeacherOrchestrator:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self.llm.call(
+            lambda: self.llm.call_fast(
                 prompt=prompt,
-                reasoning_effort="none",
                 json_mode=True,
             ),
         )
@@ -148,15 +154,80 @@ class TeacherOrchestrator:
         """
         Process a single conversation turn.
 
-        Flow: translate input -> safety check -> master tutor -> state update -> return response.
+        Flow: translate + safety (parallel) -> master tutor -> state update -> return response.
         """
         start_time = time.time()
         turn_id = session.get_current_turn_id()
-
-        # Translate Hinglish/Hindi input to English
-        student_message = await self._translate_to_english(student_message)
+        import asyncio
 
         logger.info(f"Turn started: {turn_id} for session {session.session_id}")
+
+        # Run safety on ALL messages (including post-completion) before any processing.
+        # Build safety context with original message.
+        safety_context = AgentContext(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            student_message=student_message,
+            current_step=session.current_step,
+            current_concept=(
+                session.current_step_data.concept if session.current_step_data else None
+            ),
+            student_grade=session.student_context.grade,
+            language_level=session.student_context.language_level,
+        )
+
+        # Post-completion short circuits — run safety + translation in parallel
+        if session.is_complete and session.mode == "clarify_doubts":
+            translated_msg, safety_result = await asyncio.gather(
+                self._translate_to_english(student_message),
+                self.safety_agent.execute(safety_context),
+            )
+            if not safety_result.is_safe:
+                return TurnResult(
+                    response=self._handle_unsafe_message(session, safety_result),
+                    intent="unsafe", specialists_called=["safety"], state_changed=True,
+                )
+            return await self._process_post_completion(session, translated_msg)
+        max_extension_turns = 10
+        extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
+        if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
+            translated_msg, safety_result = await asyncio.gather(
+                self._translate_to_english(student_message),
+                self.safety_agent.execute(safety_context),
+            )
+            if not safety_result.is_safe:
+                return TurnResult(
+                    response=self._handle_unsafe_message(session, safety_result),
+                    intent="unsafe", specialists_called=["safety"], state_changed=True,
+                )
+            return await self._process_post_completion(session, translated_msg)
+
+        # Normal flow: reuse safety_context built above
+        # Run translation + safety in parallel (saves 2-5s)
+        safety_start = time.time()
+        translated_msg, safety_result = await asyncio.gather(
+            self._translate_to_english(student_message),
+            self.safety_agent.execute(safety_context),
+        )
+        student_message = translated_msg
+        safety_duration = int((time.time() - safety_start) * 1000)
+
+        # Increment turn counter and add translated student message
+        session.increment_turn()
+        session.add_message(create_student_message(student_message))
+
+        # Build tutor context with translated message
+        context = AgentContext(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            student_message=student_message,
+            current_step=session.current_step,
+            current_concept=(
+                session.current_step_data.concept if session.current_step_data else None
+            ),
+            student_grade=session.student_context.grade,
+            language_level=session.student_context.language_level,
+        )
 
         self._log_agent_event(
             session_id=session.session_id,
@@ -168,37 +239,6 @@ class TeacherOrchestrator:
         )
 
         try:
-            # Check if session is already complete
-            # Clarify Doubts: always short-circuit once student ended the session
-            # Teach Me: allow extension turns for advanced students
-            if session.is_complete and session.mode == "clarify_doubts":
-                return await self._process_post_completion(session, student_message)
-            max_extension_turns = 10
-            extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
-            if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
-                return await self._process_post_completion(session, student_message)
-
-            # Increment turn counter and add student message
-            session.increment_turn()
-            session.add_message(create_student_message(student_message))
-
-            # Build context for agents
-            context = AgentContext(
-                session_id=session.session_id,
-                turn_id=turn_id,
-                student_message=student_message,
-                current_step=session.current_step,
-                current_concept=(
-                    session.current_step_data.concept if session.current_step_data else None
-                ),
-                student_grade=session.student_context.grade,
-                language_level=session.student_context.language_level,
-            )
-
-            # Step 1: Safety check
-            safety_start = time.time()
-            safety_result: SafetyOutput = await self.safety_agent.execute(context)
-            safety_duration = int((time.time() - safety_start) * 1000)
 
             self._log_agent_event(
                 session_id=session.session_id,
@@ -327,26 +367,66 @@ class TeacherOrchestrator:
         """
         start_time = time.time()
         turn_id = session.get_current_turn_id()
+        import asyncio
 
-        # --- Pre-streaming checks (same as process_turn) ---
+        # --- Pre-streaming checks ---
 
-        # Translate input
-        student_message = await self._translate_to_english(student_message)
+        # Build safety context with original message (used for all paths)
+        safety_context = AgentContext(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            student_message=student_message,
+            current_step=session.current_step,
+            current_concept=(
+                session.current_step_data.concept if session.current_step_data else None
+            ),
+            student_grade=session.student_context.grade,
+            language_level=session.student_context.language_level,
+        )
 
-        # Post-completion short circuits — not streamable
+        # Post-completion short circuits — run safety + translation in parallel
         if session.is_complete and session.mode == "clarify_doubts":
-            result = await self._process_post_completion(session, student_message)
+            translated_msg, safety_result = await asyncio.gather(
+                self._translate_to_english(student_message),
+                self.safety_agent.execute(safety_context),
+            )
+            if not safety_result.is_safe:
+                yield ("result", TurnResult(
+                    response=self._handle_unsafe_message(session, safety_result),
+                    intent="unsafe", specialists_called=["safety"], state_changed=True,
+                ))
+                return
+            result = await self._process_post_completion(session, translated_msg)
             yield ("result", result)
             return
 
         max_extension_turns = 10
         extension_turns = session.turn_count - (session.topic.study_plan.total_steps * 2 if session.topic else 0)
         if session.is_complete and (not session.allow_extension or extension_turns > max_extension_turns):
-            result = await self._process_post_completion(session, student_message)
+            translated_msg, safety_result = await asyncio.gather(
+                self._translate_to_english(student_message),
+                self.safety_agent.execute(safety_context),
+            )
+            if not safety_result.is_safe:
+                yield ("result", TurnResult(
+                    response=self._handle_unsafe_message(session, safety_result),
+                    intent="unsafe", specialists_called=["safety"], state_changed=True,
+                ))
+                return
+            result = await self._process_post_completion(session, translated_msg)
             yield ("result", result)
             return
 
-        # Increment turn and add student message
+        # Run translation + safety in parallel (saves 2-5s)
+        safety_start = time.time()
+        translated_msg, safety_result = await asyncio.gather(
+            self._translate_to_english(student_message),
+            self.safety_agent.execute(safety_context),
+        )
+        student_message = translated_msg
+        safety_duration = int((time.time() - safety_start) * 1000)
+
+        # Increment turn and add translated student message
         session.increment_turn()
         session.add_message(create_student_message(student_message))
 
@@ -363,11 +443,6 @@ class TeacherOrchestrator:
         )
 
         try:
-            # Safety check (non-streaming, fast)
-            safety_start = time.time()
-            safety_result: SafetyOutput = await self.safety_agent.execute(context)
-            safety_duration = int((time.time() - safety_start) * 1000)
-
             self._log_agent_event(
                 session_id=session.session_id,
                 turn_id=turn_id,

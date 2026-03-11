@@ -118,10 +118,12 @@ class BaseAgent(ABC):
         llm_service: LLMService,
         timeout_seconds: int = 30,
         reasoning_effort: str = "none",
+        use_fast_model: bool = False,
     ):
         self.llm = llm_service
         self.timeout_seconds = timeout_seconds
         self._reasoning_effort = reasoning_effort
+        self._use_fast_model = use_fast_model
         self._last_prompt: Optional[str] = None
 
     @property
@@ -159,17 +161,27 @@ class BaseAgent(ABC):
             output_model = self.get_output_model()
             schema = get_strict_schema(output_model)
 
-            # Call LLM with strict schema — routes via provider/model from DB config
+            # Call LLM — use fast model (gpt-4o-mini) for lightweight agents,
+            # or the main model with strict schema for complex agents
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.llm.call(
-                    prompt=prompt,
-                    reasoning_effort=self._reasoning_effort,
-                    json_schema=schema,
-                    schema_name=output_model.__name__,
-                ),
-            )
+            if self._use_fast_model:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: self.llm.call_fast(
+                        prompt=prompt,
+                        json_mode=True,
+                    ),
+                )
+            else:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: self.llm.call(
+                        prompt=prompt,
+                        reasoning_effort=self._reasoning_effort,
+                        json_schema=schema,
+                        schema_name=output_model.__name__,
+                    ),
+                )
 
             # Parse output
             output_text = result.get("output_text", "{}")
