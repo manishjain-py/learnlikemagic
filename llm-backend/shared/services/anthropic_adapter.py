@@ -197,19 +197,36 @@ class AnthropicAdapter:
         total_chars = 0
 
         try:
+            # Track which content block type we're in to skip thinking blocks
+            current_block_type = None
             with self.client.messages.stream(**kwargs) as stream:
                 for event in stream:
-                    # Text delta events
-                    if hasattr(event, 'type'):
-                        if event.type == 'content_block_delta':
-                            delta = getattr(event, 'delta', None)
-                            if delta:
-                                if hasattr(delta, 'text'):
-                                    total_chars += len(delta.text)
-                                    yield delta.text
-                                elif hasattr(delta, 'partial_json'):
-                                    total_chars += len(delta.partial_json)
-                                    yield delta.partial_json
+                    if not hasattr(event, 'type'):
+                        continue
+
+                    # Track content block types to filter thinking blocks
+                    if event.type == 'content_block_start':
+                        block = getattr(event, 'content_block', None)
+                        current_block_type = getattr(block, 'type', None) if block else None
+                        continue
+
+                    if event.type == 'content_block_stop':
+                        current_block_type = None
+                        continue
+
+                    if event.type == 'content_block_delta':
+                        # Skip thinking block deltas — don't yield internal reasoning
+                        if current_block_type == 'thinking':
+                            continue
+
+                        delta = getattr(event, 'delta', None)
+                        if delta:
+                            if hasattr(delta, 'text'):
+                                total_chars += len(delta.text)
+                                yield delta.text
+                            elif hasattr(delta, 'partial_json'):
+                                total_chars += len(delta.partial_json)
+                                yield delta.partial_json
         except anthropic.APIStatusError as e:
             logger.error(
                 f"Anthropic streaming error ({type(e).__name__}): status={e.status_code} {e.message}"
