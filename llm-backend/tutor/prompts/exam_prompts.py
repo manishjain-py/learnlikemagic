@@ -102,7 +102,6 @@ Expected answer: {expected_answer}
 
 Evaluate their answer:
 - Set `answer_correct` to true if correct, false if incorrect or partially correct
-- Set `mastery_signal` to "strong" if correct, "adequate" if partially correct, "needs_remediation" if incorrect
 - Give brief feedback in your response (1-2 sentences)
 - Set `turn_summary` to a brief summary of the evaluation result""",
     name="exam_evaluation_turn",

@@ -317,7 +317,6 @@ class TestSummarizeOutput:
             intent="answer",
             answer_correct=True,
             misconceptions_detected=[],
-            mastery_signal="strong",
             mastery_updates=[MasteryUpdate(concept="What is a fraction", score=0.8)],
             question_asked="Can you draw 1/2 of a pizza?",
             expected_answer="Half a pizza",

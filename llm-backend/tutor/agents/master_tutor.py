@@ -26,20 +26,10 @@ from tutor.utils.prompt_utils import format_conversation_history
 
 class VisualExplanation(BaseModel):
     """Visual prompt for PixiJS illustration generation."""
-    visual_prompt: str = Field(
-        description="Natural language description of the visual to generate. "
-        "Be specific about objects, layout, colors, labels, and any animation. "
-        "Example: 'Show 3 red apples on the left and 4 green apples on the right. "
-        "Animate them merging into a single group of 7 with a label showing 3+4=7.'"
-    )
-    output_type: str = Field(
-        default="image",
-        description="'image' for static illustrations, 'animation' for animated visuals. "
-        "Use animation for processes, merging/splitting, or sequences. "
-        "Use image for diagrams, charts, labeled structures."
-    )
-    title: Optional[str] = Field(default=None, description="Short title like '3 + 4 = 7'")
-    narration: Optional[str] = Field(default=None, description="Short narration text")
+    visual_prompt: str = Field(description="Describe objects, layout, colors, labels, animation")
+    output_type: str = Field(default="image", description="'image' or 'animation'")
+    title: Optional[str] = Field(default=None, description="Short title")
+    narration: Optional[str] = Field(default=None, description="Short narration")
 
 
 class MasteryUpdate(BaseModel):
@@ -51,89 +41,40 @@ class MasteryUpdate(BaseModel):
 class TutorTurnOutput(BaseModel):
     """Structured output from the master tutor — response + state updates."""
 
-    response: str = Field(description="Your response to the student as the tutor")
-    audio_text: str = Field(
-        description="Hinglish (Hindi-English mix) casual spoken version of your response for TTS. "
-        "Use Roman script throughout. Mix Hindi conversational glue with English technical terms. "
-        "Never shown to the student — audio only."
-    )
-    intent: str = Field(
-        description="What the student was doing: answer, answer_change, question, confusion, novel_strategy, off_topic, or continuation"
-    )
+    response: str = Field(description="Your response to the student")
+    audio_text: str = Field(description="Hinglish spoken version for TTS (Roman script, not shown to student)")
+    intent: str = Field(description="answer, answer_change, question, confusion, novel_strategy, off_topic, or continuation")
 
     # Answer evaluation
-    answer_correct: Optional[bool] = Field(
-        default=None, description="If student answered a question: was it correct? null if not answering"
-    )
-    misconceptions_detected: list[str] = Field(
-        default_factory=list, description="Any misconceptions revealed in student's message"
-    )
-    mastery_signal: Optional[str] = Field(
-        default=None, description="Mastery signal: strong, adequate, or needs_remediation"
-    )
-    answer_score: Optional[float] = Field(
-        default=None, description="Fractional score 0.0–1.0 for the student's answer. Used in exam mode for partial credit."
-    )
-    marks_rationale: Optional[str] = Field(
-        default=None, description="Brief justification for the score awarded (1-2 sentences)"
-    )
+    answer_correct: Optional[bool] = Field(default=None, description="Was student's answer correct? null if not answering")
+    misconceptions_detected: list[str] = Field(default_factory=list, description="Misconceptions in student's message")
+    answer_score: Optional[float] = Field(default=None, description="Score 0.0–1.0 (exam mode partial credit)")
+    marks_rationale: Optional[str] = Field(default=None, description="Brief score justification")
 
     # State updates
-    advance_to_step: Optional[int] = Field(
-        default=None, description="Step number to advance to if student is ready"
-    )
-    mastery_updates: list[MasteryUpdate] = Field(
-        default_factory=list, description="Updated mastery scores for concepts"
-    )
+    advance_to_step: Optional[int] = Field(default=None, description="Step to advance to")
+    mastery_updates: list[MasteryUpdate] = Field(default_factory=list, description="Mastery score updates")
 
     # Question tracking
-    question_asked: Optional[str] = Field(
-        default=None, description="If your response contains a question, write it here"
-    )
-    expected_answer: Optional[str] = Field(
-        default=None, description="The expected/correct answer to your question"
-    )
-    question_concept: Optional[str] = Field(
-        default=None, description="Which concept the question tests"
-    )
+    question_asked: Optional[str] = Field(default=None, description="Question asked in response")
+    expected_answer: Optional[str] = Field(default=None, description="Correct answer to question")
+    question_concept: Optional[str] = Field(default=None, description="Concept being tested")
 
-    # Explanation phase tracking (only used during explain steps)
-    explanation_phase_update: Optional[str] = Field(
-        default=None,
-        description="Update explanation phase: 'opening', 'explaining', 'informal_check', 'complete', or 'skip'. Only set during explain steps."
-    )
-    explanation_building_blocks_covered: list[str] = Field(
-        default_factory=list,
-        description="Building blocks covered in THIS turn (from the step's building_blocks list)"
-    )
-    student_shows_understanding: Optional[bool] = Field(
-        default=None,
-        description="During informal_check phase: did the student demonstrate understanding? null if not checking."
-    )
-    student_shows_prior_knowledge: Optional[bool] = Field(
-        default=None,
-        description="Set true if the student clearly demonstrates they already know this concept and explanation can be skipped."
-    )
+    # Explanation phase tracking (explain steps only)
+    explanation_phase_update: Optional[str] = Field(default=None, description="opening/explaining/informal_check/complete/skip")
+    explanation_building_blocks_covered: list[str] = Field(default_factory=list, description="Building blocks covered this turn")
+    student_shows_understanding: Optional[bool] = Field(default=None, description="Did student demonstrate understanding?")
+    student_shows_prior_knowledge: Optional[bool] = Field(default=None, description="Student already knows this concept?")
 
     # Session completion
-    session_complete: bool = Field(
-        default=False,
-        description="Set to true when the student has completed the final step and demonstrated understanding. This ends the session.",
-    )
+    session_complete: bool = Field(default=False, description="True when session should end")
 
-    # Visual explanation (optional — only when a visual would genuinely help)
-    visual_explanation: Optional[VisualExplanation] = Field(
-        default=None,
-        description="Optional visual explanation prompt for PixiJS illustration generation. "
-        "Include when a visual would help the student understand the concept — "
-        "any subject, any visual: diagrams, animations, charts, illustrations. "
-        "Write a detailed visual_prompt describing exactly what to draw. "
-        "Set to null when no visual is needed."
-    )
+    # Visual explanation
+    visual_explanation: Optional[VisualExplanation] = Field(default=None, description="PixiJS visual prompt (null when not needed)")
 
     # Turn summary
-    turn_summary: str = Field(description="One-sentence summary of this turn (max 80 chars)")
-    reasoning: str = Field(default="", description="Your internal reasoning (not shown to student)")
+    turn_summary: str = Field(description="One-sentence summary (max 80 chars)")
+    reasoning: str = Field(default="", description="Internal reasoning (not shown)")
 
 
 class MasterTutorAgent(BaseAgent):
@@ -568,7 +509,7 @@ class MasterTutorAgent(BaseAgent):
         student_style = self._compute_student_style(session)
         explanation_context = self._build_explanation_context(session)
 
-        conversation = format_conversation_history(session.conversation_history, max_turns=10)
+        conversation = format_conversation_history(session.conversation_history, max_turns=5)
         if not conversation.strip():
             conversation = "(No prior messages — this is the first turn)"
 
@@ -590,7 +531,7 @@ class MasterTutorAgent(BaseAgent):
 
     def _build_clarify_turn_prompt(self, session: SessionState, context: AgentContext) -> str:
         concepts_discussed = ", ".join(session.concepts_discussed) if session.concepts_discussed else "None yet"
-        conversation = format_conversation_history(session.conversation_history, max_turns=10)
+        conversation = format_conversation_history(session.conversation_history, max_turns=5)
         if not conversation.strip():
             conversation = "(No prior messages — this is the first turn)"
 

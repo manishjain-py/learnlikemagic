@@ -543,7 +543,6 @@ class TestExamTurn:
         orch.master_tutor.execute.return_value = make_tutor_output(
             response="That's incorrect. The right answer is 42.",
             answer_correct=False,
-            mastery_signal="needs_remediation",
             turn_summary="Student got this wrong",
         )
 
