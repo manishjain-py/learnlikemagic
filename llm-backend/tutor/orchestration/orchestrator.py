@@ -551,9 +551,30 @@ class TeacherOrchestrator:
                 visual_explanation=None,
             ))
 
-            # Generate Pixi code in a separate step and yield as a "visual" message
+            # Generate Pixi code in a separate step and yield as a "visual" message.
+            # Timeout prevents a hung LLM call from blocking the WebSocket loop
+            # indefinitely (the text response is already sent at this point).
             if tutor_output.visual_explanation:
-                visual_dict = await self._generate_pixi_code(tutor_output.visual_explanation)
+                try:
+                    visual_dict = await asyncio.wait_for(
+                        self._generate_pixi_code(tutor_output.visual_explanation),
+                        timeout=15.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Pixi code generation timed out after 15s — skipping visual "
+                        f"(session={session.session_id}, turn={turn_id})"
+                    )
+                    visual_dict = None
+                except Exception as pixi_err:
+                    # Catch-all so a Pixi failure never propagates to the outer
+                    # handler (which would yield a duplicate error result since
+                    # the text result was already yielded above).
+                    logger.error(
+                        f"Pixi code generation failed unexpectedly — skipping visual: {pixi_err}",
+                        exc_info=True,
+                    )
+                    visual_dict = None
                 if visual_dict:
                     yield ("visual", visual_dict)
 

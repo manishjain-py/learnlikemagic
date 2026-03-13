@@ -2,7 +2,7 @@
 Unit tests for TeacherOrchestrator.
 
 Tests the orchestration layer: safety gating, master tutor invocation,
-state updates, question lifecycle, and error handling.
+state updates, question lifecycle, error handling, and streaming + Pixi decoupling.
 """
 
 import asyncio
@@ -14,7 +14,7 @@ from tutor.models.session_state import SessionState, Question, ExamQuestion, cre
 from tutor.models.study_plan import Topic, TopicGuidelines, StudyPlan, StudyPlanStep
 from tutor.models.messages import StudentContext, Message
 from tutor.agents.safety import SafetyOutput
-from tutor.agents.master_tutor import TutorTurnOutput, MasteryUpdate
+from tutor.agents.master_tutor import TutorTurnOutput, MasteryUpdate, VisualExplanation
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,7 @@ def make_unsafe_result():
 def make_tutor_output(**overrides):
     defaults = dict(
         response="Good job!",
+        audio_text="Good job!",
         intent="answer",
         answer_correct=True,
         mastery_updates=[MasteryUpdate(concept="Basics", score=0.8)],
@@ -723,3 +724,179 @@ class TestGenerateWelcomeMessage:
         session = make_test_session()
         msg = await orch.generate_welcome_message(session)
         assert msg == ""
+
+
+# ---------------------------------------------------------------------------
+# process_turn_stream — Pixi decoupling
+# ---------------------------------------------------------------------------
+
+def _build_streaming_orchestrator():
+    """Build an orchestrator with mocked streaming master tutor."""
+    orch = build_orchestrator()
+    # Mock translation to pass through (avoids Mock-as-string errors)
+    orch._translate_to_english = AsyncMock(side_effect=lambda text: text)
+    # Replace execute_stream with an async generator mock — set per-test
+    orch.master_tutor.execute_stream = None
+    return orch
+
+
+async def _fake_execute_stream(tutor_output, tokens=None):
+    """Create a fake execute_stream async generator."""
+    for token in (tokens or ["Hello", " world"]):
+        yield ("token", token)
+    yield ("result", tutor_output)
+
+
+class TestProcessTurnStreamPixiDecoupling:
+    """Tests verifying that text result is yielded before Pixi generation."""
+
+    @pytest.mark.asyncio
+    async def test_result_yielded_before_visual(self):
+        """The result message must arrive before the visual message in the stream."""
+        orch = _build_streaming_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+
+        tutor_out = make_tutor_output(
+            visual_explanation=VisualExplanation(
+                visual_prompt="Draw a circle",
+                output_type="image",
+                title="Circle",
+            ),
+        )
+
+        async def fake_stream(ctx):
+            async for item in _fake_execute_stream(tutor_out):
+                yield item
+
+        orch.master_tutor.execute_stream = fake_stream
+        orch._generate_pixi_code = AsyncMock(return_value={
+            "output_type": "image",
+            "title": "Circle",
+            "pixi_code": "// code",
+        })
+
+        session = make_test_session()
+        messages = []
+        async for msg_type, data in orch.process_turn_stream(session, "Hi"):
+            messages.append((msg_type, data))
+
+        msg_types = [m[0] for m in messages]
+        # result must come before visual
+        assert "result" in msg_types
+        assert "visual" in msg_types
+        assert msg_types.index("result") < msg_types.index("visual")
+
+    @pytest.mark.asyncio
+    async def test_result_has_no_visual_explanation(self):
+        """The result TurnResult must have visual_explanation=None (sent separately)."""
+        orch = _build_streaming_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+
+        tutor_out = make_tutor_output(
+            visual_explanation=VisualExplanation(
+                visual_prompt="Draw a square",
+                output_type="image",
+            ),
+        )
+
+        async def fake_stream(ctx):
+            async for item in _fake_execute_stream(tutor_out):
+                yield item
+
+        orch.master_tutor.execute_stream = fake_stream
+        orch._generate_pixi_code = AsyncMock(return_value={"pixi_code": "// code"})
+
+        session = make_test_session()
+        result_data = None
+        async for msg_type, data in orch.process_turn_stream(session, "Hi"):
+            if msg_type == "result":
+                result_data = data
+
+        assert result_data is not None
+        assert result_data.visual_explanation is None
+
+    @pytest.mark.asyncio
+    async def test_no_visual_when_tutor_has_none(self):
+        """No visual message is yielded when tutor output has no visual."""
+        orch = _build_streaming_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+
+        tutor_out = make_tutor_output(visual_explanation=None)
+
+        async def fake_stream(ctx):
+            async for item in _fake_execute_stream(tutor_out):
+                yield item
+
+        orch.master_tutor.execute_stream = fake_stream
+
+        session = make_test_session()
+        msg_types = []
+        async for msg_type, data in orch.process_turn_stream(session, "Hi"):
+            msg_types.append(msg_type)
+
+        assert "visual" not in msg_types
+        assert "result" in msg_types
+
+    @pytest.mark.asyncio
+    async def test_pixi_generation_failure_skips_visual(self):
+        """If Pixi code generation fails, no visual message is yielded."""
+        orch = _build_streaming_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+
+        tutor_out = make_tutor_output(
+            visual_explanation=VisualExplanation(
+                visual_prompt="Draw something",
+                output_type="image",
+            ),
+        )
+
+        async def fake_stream(ctx):
+            async for item in _fake_execute_stream(tutor_out):
+                yield item
+
+        orch.master_tutor.execute_stream = fake_stream
+        orch._generate_pixi_code = AsyncMock(return_value=None)
+
+        session = make_test_session()
+        msg_types = []
+        async for msg_type, data in orch.process_turn_stream(session, "Hi"):
+            msg_types.append(msg_type)
+
+        assert "visual" not in msg_types
+        assert "result" in msg_types
+
+    @pytest.mark.asyncio
+    async def test_pixi_exception_skips_visual_gracefully(self):
+        """If Pixi code generation raises, visual is skipped and text result is unaffected."""
+        orch = _build_streaming_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
+
+        tutor_out = make_tutor_output(
+            visual_explanation=VisualExplanation(
+                visual_prompt="Draw something broken",
+                output_type="image",
+            ),
+        )
+
+        async def fake_stream(ctx):
+            async for item in _fake_execute_stream(tutor_out):
+                yield item
+
+        orch.master_tutor.execute_stream = fake_stream
+
+        # Mock _generate_pixi_code to raise — the catch-all except in the
+        # Pixi block should handle it without propagating to the outer handler
+        orch._generate_pixi_code = AsyncMock(side_effect=RuntimeError("LLM crashed"))
+
+        session = make_test_session()
+        collected = []
+        async for msg_type, data in orch.process_turn_stream(session, "Hi"):
+            collected.append((msg_type, data))
+
+        msg_types = [m[0] for m in collected]
+        assert "visual" not in msg_types
+        assert "result" in msg_types
+        # The result should be the normal tutor response, NOT an error
+        result = next(d for t, d in collected if t == "result")
+        assert result.response == "Good job!"
+        assert result.intent == "answer"
