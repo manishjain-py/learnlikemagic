@@ -701,7 +701,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await websocket.send_json(create_typing_indicator().model_dump())
 
                 turn_result = None
-                pending_visual = None
+                result_sent = False
                 try:
                     async for msg_type, data in orchestrator.process_turn_stream(
                         session=session,
@@ -711,12 +711,58 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             await websocket.send_json(create_token_message(data).model_dump())
                         elif msg_type == "result":
                             turn_result = data
+                            # Send assistant message IMMEDIATELY — don't wait
+                            # for Pixi visual generation which comes later in
+                            # the stream. This is the critical decoupling fix.
+                            result = turn_result
+                            ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
+                            if reloaded:
+                                session = reloaded
+                                await websocket.send_json(
+                                    create_error_response(
+                                        "Session was updated from another tab. "
+                                        "Your last message was not saved. Please resend."
+                                    ).model_dump()
+                                )
+                            else:
+                                assistant_msg = create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
+                                # For non-streamed paths (clarify/exam), visual is on the result
+                                if result.visual_explanation:
+                                    assistant_msg["payload"]["visual_explanation"] = result.visual_explanation
+                                await websocket.send_json(assistant_msg)
+                                result_sent = True
+
+                            state_dto = SessionStateDTO(
+                                session_id=session.session_id,
+                                current_step=session.current_step,
+                                total_steps=session.topic.study_plan.total_steps if session.topic else 0,
+                                current_concept=session.current_step_data.concept if session.current_step_data else None,
+                                progress_percentage=session.progress_percentage,
+                                mastery_estimates=session.mastery_estimates,
+                                is_complete=session.is_complete,
+                                mode=session.mode,
+                                coverage=session.coverage_percentage,
+                                concepts_discussed=session.concepts_discussed,
+                                exam_progress={
+                                    "current_question": session.exam_current_question_idx + 1,
+                                    "total_questions": len(session.exam_questions),
+                                    "correct_so_far": session.exam_total_correct,
+                                } if session.mode == "exam" and session.exam_questions else None,
+                                is_paused=session.is_paused,
+                            )
+                            await websocket.send_json(create_state_update(state_dto).model_dump())
                         elif msg_type == "visual":
-                            pending_visual = data
+                            # Visual arrived after text — send immediately as
+                            # a separate update (text is already displayed)
+                            await websocket.send_json({
+                                "type": "visual_update",
+                                "payload": {"visual_explanation": data},
+                            })
                 except (WebSocketDisconnect, Exception) as stream_err:
                     # Connection lost mid-stream — still persist state so the turn isn't lost
                     logger.warning(f"WS send failed mid-stream for {session_id}: {stream_err}")
-                    _save_session_to_db(db, session_id, session, ws_version)
+                    if not result_sent:
+                        _save_session_to_db(db, session_id, session, ws_version)
                     raise
 
                 if turn_result is None:
@@ -725,55 +771,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         create_error_response("Failed to process turn. Please try again.").model_dump()
                     )
                     continue
-
-                result = turn_result
-
-                ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
-                if reloaded:
-                    # CAS conflict: a REST endpoint (pause/end-exam) modified
-                    # the session concurrently. The turn's state changes are
-                    # lost — notify the client instead of silently continuing.
-                    session = reloaded
-                    await websocket.send_json(
-                        create_error_response(
-                            "Session was updated from another tab. "
-                            "Your last message was not saved. Please resend."
-                        ).model_dump()
-                    )
-                else:
-                    assistant_msg = create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
-                    # For non-streamed paths (clarify/exam), visual is on the result
-                    if result.visual_explanation:
-                        assistant_msg["payload"]["visual_explanation"] = result.visual_explanation
-                    await websocket.send_json(assistant_msg)
-
-                    # For streamed path: visual was generated after text —
-                    # send as a separate message so text isn't delayed
-                    if pending_visual:
-                        await websocket.send_json({
-                            "type": "visual_update",
-                            "payload": {"visual_explanation": pending_visual},
-                        })
-
-                state_dto = SessionStateDTO(
-                    session_id=session.session_id,
-                    current_step=session.current_step,
-                    total_steps=session.topic.study_plan.total_steps if session.topic else 0,
-                    current_concept=session.current_step_data.concept if session.current_step_data else None,
-                    progress_percentage=session.progress_percentage,
-                    mastery_estimates=session.mastery_estimates,
-                    is_complete=session.is_complete,
-                    mode=session.mode,
-                    coverage=session.coverage_percentage,
-                    concepts_discussed=session.concepts_discussed,
-                    exam_progress={
-                        "current_question": session.exam_current_question_idx + 1,
-                        "total_questions": len(session.exam_questions),
-                        "correct_so_far": session.exam_total_correct,
-                    } if session.mode == "exam" and session.exam_questions else None,
-                    is_paused=session.is_paused,
-                )
-                await websocket.send_json(create_state_update(state_dto).model_dump())
 
             elif client_msg.type == "get_state":
                 state_dto = SessionStateDTO(
