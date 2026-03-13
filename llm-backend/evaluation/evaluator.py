@@ -2,7 +2,7 @@
 Conversation Evaluator
 
 Uses OpenAI Responses API (gpt-5.2) or Anthropic Messages API (claude-opus-4-6)
-with high reasoning effort to evaluate a tutoring conversation across 10 dimensions.
+with high reasoning effort to evaluate a tutoring conversation across 5 dimensions.
 """
 
 import json

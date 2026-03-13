@@ -273,30 +273,86 @@ The `source` field is `"simulated"` for new simulations or `"existing_session"` 
 
 ---
 
-## CLI Usage
+## Running an End-to-End Evaluation
+
+### Prerequisites
+
+1. **Database running** -- The evaluation CLI needs DB access to resolve topics and read LLM config. Ensure your local database is up (see `docs/technical/dev-workflow.md`).
+2. **API keys** -- `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` must be set in `llm-backend/.env`, depending on which providers are configured for the tutor, evaluator, and simulator.
+3. **Backend server running** -- The evaluation creates a real tutoring session against your running server, so the tutor being tested is whatever code is currently running.
+
+### Step-by-step
 
 ```bash
 cd llm-backend
 
-# Single persona
-python -m evaluation.run_evaluation --topic-id <guideline_id> --persona ace.json --skip-server
+# Step 1: Browse available topics
+python -m evaluation.run_evaluation --list-topics
+python -m evaluation.run_evaluation --list-topics --subject Mathematics
 
-# All personas
-python -m evaluation.run_evaluation --topic-id <guideline_id> --persona all --skip-server
+# Step 2: Start the backend server (if not already running)
+python -m uvicorn main:app --port 8000 &
 
-# Multiple runs per persona for noise reduction
-python -m evaluation.run_evaluation --topic-id <guideline_id> --persona all --runs-per-persona 3 --skip-server
+# Step 3: Run a single evaluation (quick check)
+python -m evaluation.run_evaluation \
+  --subject Mathematics --chapter Fractions \
+  --skip-server
+
+# Step 4: Run all 8 personas for a comprehensive sweep
+python -m evaluation.run_evaluation \
+  --subject Mathematics --chapter Fractions \
+  --persona all --skip-server
+
+# Step 5: Multiple runs per persona for statistical reliability
+python -m evaluation.run_evaluation \
+  --subject Mathematics --chapter Fractions \
+  --persona all --runs-per-persona 3 --skip-server
 ```
+
+### What happens
+
+1. The CLI resolves your `--subject`/`--chapter`/`--topic` to a guideline ID from the database
+2. Creates a tutoring session via `POST /sessions` (the tutor doesn't know it's being evaluated)
+3. A simulated student persona converses with the tutor over WebSocket (up to `--max-turns` turns)
+4. An LLM judge evaluates the transcript on 5 dimensions (1-10 each) and identifies problems
+5. Reports are saved to `evaluation/runs/run_<timestamp>/`
+
+### Output files (per run)
+
+| File | Contents |
+|------|----------|
+| `config.json` | Run configuration (topic, models, persona) |
+| `conversation.json` | Machine-readable transcript |
+| `conversation.md` | Human-readable transcript |
+| `evaluation.json` | Scores, dimension analysis, problems |
+| `review.md` | Formatted evaluation report with score bars |
+| `problems.md` | Problem-focused report with root cause suggestions |
+| `run.log` | Timestamped execution log |
+
+For `--persona all` runs, a `comparison_<timestamp>/` directory is also created with `comparison.md` (cross-persona summary table) and `comparison.json`.
+
+### Comparing before/after code changes
+
+1. Run evaluation **before** your change -- note the run directory name
+2. Make your tutor code changes and restart the server
+3. Run evaluation **after** your change with the same topic and personas
+4. Compare `evaluation.json` scores between the two run directories
+
+### CLI reference
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--topic-id` | (required) | Guideline ID for the topic |
-| `--persona` | average_student.json | Persona file or `all` |
+| `--subject` | -- | Subject name, e.g., `Mathematics` (case-insensitive) |
+| `--chapter` | -- | Chapter name, e.g., `Fractions` (optional, narrows match) |
+| `--topic` | -- | Topic name, e.g., `Comparing Like Denominators` (optional) |
+| `--topic-id` | -- | Guideline ID directly (alternative to name-based lookup) |
+| `--list-topics` | -- | List available topics and exit |
+| `--persona` | `average_student.json` | Persona file or `all` for all 8 personas |
 | `--runs-per-persona` | 1 | Runs per persona for noise reduction (only with `--persona all`) |
-| `--skip-server` | false | Use already-running server |
+| `--skip-server` | false | Use already-running server (recommended) |
 | `--max-turns` | 20 | Max conversation turns |
 | `--grade` | 3 | Student grade |
-| `--provider` | (from env) | LLM provider override (sets both evaluator and simulator) |
+| `--provider` | (from DB/env) | LLM provider override for evaluator and simulator |
 
 The CLI validates API key availability based on selected providers before starting.
 
@@ -323,13 +379,11 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Run list** -- cards with run ID, timestamp, source badge (Simulated/Session), topic, message count, avg score badge, mini score bars
 - **Start form** -- tabbed panel with two modes:
   - "Evaluate Existing Session" -- dropdown of sessions from DB (shows topic, message count, date)
-  - "New Simulated Session" -- dropdown of approved guidelines, max turns slider (5-40)
+  - "New Simulated Session" -- dropdown of approved guidelines, student persona selector (loaded from `/api/evaluation/personas`), max turns slider (5-40)
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
-**Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display (coherence, non_repetition, natural_flow, engagement, responsiveness, pacing, grade_appropriateness, topic_coverage, session_arc, overall_naturalness). The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data -- legacy dimensions without scores simply show 0.
-
-The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching the backend: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

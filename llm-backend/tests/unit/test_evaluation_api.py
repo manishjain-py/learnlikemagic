@@ -122,6 +122,84 @@ class TestUpdateEvalState:
 
 
 # ---------------------------------------------------------------------------
+# Tests — GET /api/evaluation/personas
+# ---------------------------------------------------------------------------
+
+
+class TestListPersonas:
+    @patch("evaluation.config.EvalConfig.all_personas")
+    def test_personas_returns_list(self, mock_all_personas, client):
+        mock_all_personas.return_value = [
+            {
+                "persona_id": "ace",
+                "name": "Arjun",
+                "file": "ace.json",
+                "grade": 5,
+                "age": 10,
+                "description": "Quick learner",
+                "correct_answer_probability": 0.9,
+            },
+            {
+                "persona_id": "struggler",
+                "name": "Priya",
+                "file": "struggler.json",
+                "grade": 5,
+                "age": 10,
+                "description": "Hardworking but confused",
+                "correct_answer_probability": 0.3,
+            },
+        ]
+
+        resp = client.get("/api/evaluation/personas")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        assert data[0]["persona_id"] == "ace"
+        assert data[0]["name"] == "Arjun"
+        assert data[0]["file"] == "ace.json"
+        assert data[0]["correct_answer_probability"] == 0.9
+        assert data[1]["persona_id"] == "struggler"
+
+    @patch("evaluation.config.EvalConfig.all_personas")
+    def test_personas_empty(self, mock_all_personas, client):
+        mock_all_personas.return_value = []
+        resp = client.get("/api/evaluation/personas")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    @patch("evaluation.config.EvalConfig.all_personas")
+    def test_personas_filters_malformed(self, mock_all_personas, client):
+        """Personas missing persona_id or name are filtered out."""
+        mock_all_personas.return_value = [
+            {"persona_id": "ace", "name": "Arjun", "file": "ace.json"},
+            {"file": "broken.json", "description": "missing id and name"},
+            {"persona_id": "no_name", "file": "no_name.json"},
+            {"name": "No ID", "file": "no_id.json"},
+        ]
+
+        resp = client.get("/api/evaluation/personas")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["persona_id"] == "ace"
+
+    @patch("evaluation.config.EvalConfig.all_personas")
+    def test_personas_defaults_for_missing_fields(self, mock_all_personas, client):
+        """Optional fields use sensible defaults."""
+        mock_all_personas.return_value = [
+            {"persona_id": "minimal", "name": "Min", "file": "min.json"},
+        ]
+
+        resp = client.get("/api/evaluation/personas")
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["grade"] is None
+        assert data[0]["age"] is None
+        assert data[0]["description"] == ""
+        assert data[0]["correct_answer_probability"] == 0.6
+
+
+# ---------------------------------------------------------------------------
 # Tests — GET /api/evaluation/status
 # ---------------------------------------------------------------------------
 

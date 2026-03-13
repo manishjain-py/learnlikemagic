@@ -121,7 +121,7 @@ class SessionRunner:
                         "grade": self.config.student_grade,
                     },
                     "goal": {
-                        "topic": "Evaluation",
+                        "chapter": "Evaluation",
                         "syllabus": f"{self.config.student_board} Grade {self.config.student_grade}",
                         "learning_objectives": ["Evaluate tutoring quality"],
                         "guideline_id": self.config.topic_id,
@@ -189,7 +189,7 @@ class SessionRunner:
                     raw = await asyncio.wait_for(ws.recv(), timeout=self.config.turn_timeout)
                     msg = json.loads(raw)
 
-                    if msg["type"] == "typing":
+                    if msg["type"] in ("typing", "token", "visual_update"):
                         continue
                     elif msg["type"] == "state_update":
                         state = msg["payload"].get("state", {})

@@ -253,12 +253,15 @@ def _score_bar(score: int) -> str:
 
 def _root_cause_suggestion(cause: str) -> str:
     suggestions = {
-        "conversation_history_window": "Increase the conversation history window or implement better context compression that preserves conversational arc.",
-        "session_summary_lossy": "Improve session summary to capture narrative context (how things flowed) not just facts (what happened).",
-        "multi_agent_composition": "Improve response composition to feel holistic rather than stitched together from multiple specialist outputs.",
-        "turn_level_processing": "Add session-level narrative tracking so each turn decision considers the broader conversation trajectory.",
-        "rigid_study_plan": "Make the study plan more adaptive -- allow lingering on difficult concepts and skipping ahead when understood.",
+        "missed_student_signal": "Review how the tutor prompt handles student cues (confusion, boredom, confidence). Add explicit instructions to detect and respond to these signals.",
+        "wrong_pacing": "Adjust the pacing directive logic — check mastery thresholds and attention span handling to better calibrate speed for different student types.",
+        "repetitive_approach": "Strengthen the 'never repeat' teaching rule. Add variety tracking so the tutor tries different explanation styles (visual, story, analogy) on retry.",
+        "emotional_mismatch": "Improve emotional attunement instructions in the tutor prompt. Calibrate praise to match difficulty and celebrate breakthroughs proportionally.",
+        "missed_misconception": "Enhance misconception detection and tracking. Ensure the tutor probes confident wrong answers instead of simply correcting them.",
+        "over_scaffolding": "Reduce hand-holding for students showing mastery. Let the pacing directive accelerate more aggressively when mastery signals are strong.",
+        "conversation_history_window": "Increase the conversation history window or improve the turn summary to preserve conversational arc across the sliding window.",
         "prompt_quality": "Review and improve the relevant agent prompts for clarity, specificity, and natural language generation.",
         "model_capability": "This may be a model limitation. Consider testing with different models or adjusting temperature/sampling.",
+        "other": "Investigate the specific turns cited to determine whether this is a prompt, model, or architectural issue.",
     }
     return suggestions.get(cause, "")

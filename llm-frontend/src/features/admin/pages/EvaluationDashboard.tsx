@@ -13,20 +13,17 @@ import {
   listSessions,
   evaluateSession,
   getAllGuidelinesForReview,
+  listEvalPersonas,
+  EvalPersona,
 } from '../api/adminApi';
 import { EvalRunSummary, EvalRunDetail, EvalStatus, SessionSummary, GuidelineReview } from '../types';
 
 const DIMENSIONS = [
-  'coherence',
-  'non_repetition',
-  'natural_flow',
-  'engagement',
   'responsiveness',
+  'explanation_quality',
+  'emotional_attunement',
   'pacing',
-  'grade_appropriateness',
-  'topic_coverage',
-  'session_arc',
-  'overall_naturalness',
+  'authenticity',
 ];
 
 function dimensionLabel(key: string): string {
@@ -590,7 +587,7 @@ const RunDetailView: React.FC<{
 type EvalMode = 'existing' | 'simulated';
 
 const EvalFormPanel: React.FC<{
-  onStartSimulated: (topicId: string, maxTurns: number) => void;
+  onStartSimulated: (topicId: string, maxTurns: number, personaFile?: string) => void;
   onStartSession: (sessionId: string) => void;
   onCancel: () => void;
   starting: boolean;
@@ -598,11 +595,14 @@ const EvalFormPanel: React.FC<{
   const [mode, setMode] = useState<EvalMode>('existing');
   const [topicId, setTopicId] = useState('');
   const [maxTurns, setMaxTurns] = useState(20);
+  const [selectedPersonaFile, setSelectedPersonaFile] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [guidelines, setGuidelines] = useState<GuidelineReview[]>([]);
   const [loadingGuidelines, setLoadingGuidelines] = useState(false);
+  const [personas, setPersonas] = useState<EvalPersona[]>([]);
+  const [loadingPersonas, setLoadingPersonas] = useState(false);
 
   useEffect(() => {
     if (mode === 'existing' && sessions.length === 0) {
@@ -612,14 +612,29 @@ const EvalFormPanel: React.FC<{
         .catch(() => {})
         .finally(() => setLoadingSessions(false));
     }
-    if (mode === 'simulated' && guidelines.length === 0) {
-      setLoadingGuidelines(true);
-      getAllGuidelinesForReview({ status: 'APPROVED' })
-        .then((data) => setGuidelines(data))
-        .catch(() => {})
-        .finally(() => setLoadingGuidelines(false));
+    if (mode === 'simulated') {
+      if (guidelines.length === 0) {
+        setLoadingGuidelines(true);
+        getAllGuidelinesForReview({ status: 'APPROVED' })
+          .then((data) => setGuidelines(data))
+          .catch(() => {})
+          .finally(() => setLoadingGuidelines(false));
+      }
+      if (personas.length === 0) {
+        setLoadingPersonas(true);
+        listEvalPersonas()
+          .then((data) => {
+            setPersonas(data);
+            const defaultPersona = data.find((p) => p.file === 'average_student.json');
+            if (defaultPersona && !selectedPersonaFile) {
+              setSelectedPersonaFile(defaultPersona.file);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setLoadingPersonas(false));
+      }
     }
-  }, [mode, sessions.length, guidelines.length]);
+  }, [mode, sessions.length, guidelines.length, personas.length]);
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 16px',
@@ -780,6 +795,41 @@ const EvalFormPanel: React.FC<{
                 </select>
               )}
             </div>
+            <div style={{ minWidth: '180px' }}>
+              <label
+                style={{ fontSize: '12px', color: '#6B7280', display: 'block', marginBottom: '4px' }}
+              >
+                Student Persona
+              </label>
+              {loadingPersonas ? (
+                <div style={{ padding: '8px 0', fontSize: '13px', color: '#9CA3AF' }}>
+                  Loading...
+                </div>
+              ) : (
+                <select
+                  value={selectedPersonaFile}
+                  onChange={(e) => setSelectedPersonaFile(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #D1D5DB',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    backgroundColor: 'white',
+                  }}
+                >
+                  {personas.map((p) => (
+                    <option key={p.persona_id} value={p.file}>
+                      {p.name} — {p.description.split(',')[0] || p.persona_id} ({Math.round(p.correct_answer_probability * 100)}% correct)
+                    </option>
+                  ))}
+                  {personas.length === 0 && (
+                    <option value="">No personas available</option>
+                  )}
+                </select>
+              )}
+            </div>
             <div style={{ width: '140px' }}>
               <label
                 style={{ fontSize: '12px', color: '#6B7280', display: 'block', marginBottom: '4px' }}
@@ -796,7 +846,7 @@ const EvalFormPanel: React.FC<{
               />
             </div>
             <button
-              onClick={() => onStartSimulated(topicId, maxTurns)}
+              onClick={() => onStartSimulated(topicId, maxTurns, selectedPersonaFile)}
               disabled={!topicId.trim() || starting}
               style={{
                 padding: '8px 20px',
@@ -1050,10 +1100,10 @@ const EvaluationDashboard: React.FC = () => {
     }
   };
 
-  const handleStartEval = async (topicId: string, maxTurns: number) => {
+  const handleStartEval = async (topicId: string, maxTurns: number, personaFile?: string) => {
     try {
       setStarting(true);
-      await startEvaluation({ topic_id: topicId, max_turns: maxTurns });
+      await startEvaluation({ topic_id: topicId, max_turns: maxTurns, persona_file: personaFile });
       setShowStartForm(false);
       // Start polling
       const status = await getEvalStatus();
@@ -1190,7 +1240,7 @@ const EvaluationDashboard: React.FC = () => {
         </div>
         <p style={{ color: '#6B7280', margin: 0 }}>
           Run automated tutoring sessions and evaluate tutor performance across
-          10 dimensions
+          5 dimensions
         </p>
       </div>
 
