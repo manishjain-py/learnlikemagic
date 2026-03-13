@@ -333,7 +333,7 @@ Custom imperative migration (not Alembic):
 12. `_apply_kid_enrichment_tables()` -- Seeds `personality_derivation` LLM config entry (tables created by `create_all`)
 13. `_drop_unused_enrichment_columns()` -- Drops columns removed when enrichment was simplified from 9 to 4 sections
 14. `_apply_study_plan_user_column()` -- Adds `user_id` to study_plans, drops old single-column unique constraint on guideline_id, creates composite unique index on (user_id, guideline_id)
-15. `_apply_focus_mode_column()` -- Adds `focus_mode` column to users (default true)
+15. `_apply_focus_mode_column()` -- Adds `focus_mode` column to users (default true); if column already exists, resets all `focus_mode = FALSE` to `TRUE`
 16. `_apply_session_feedback_table()` -- Verifies session_feedback table exists (created by `create_all`)
 17. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 

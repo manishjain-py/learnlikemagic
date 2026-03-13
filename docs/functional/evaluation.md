@@ -69,7 +69,7 @@ When selecting a session, you see the topic name, message count, and date for ea
 
 Create a fresh simulated session. Choose an approved guideline from the dropdown, set the maximum number of conversation turns (5-40), and start. The system creates a simulated student, runs a full conversation with the tutor, then judges the result.
 
-The persona used for simulated sessions defaults to the average student (Riya). To test with other personas or run all personas at once, use the command line.
+The start form includes a persona selector dropdown showing all available student types. Select which persona the simulated student should use for the session. To run all personas at once, use the command line.
 
 ---
 

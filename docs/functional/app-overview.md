@@ -33,6 +33,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Book & Guidelines** | Admin tool to upload textbooks, extract table of contents, process chapters, and sync topics to the curriculum |
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
+| **Visual Explanations (PoC)** | Admin tool to generate interactive diagrams and animations from text prompts using AI + Pixi.js |
 | **Test Scenarios** | Admin tool to view end-to-end test results and screenshots |
 | **Docs Viewer** | Admin tool to browse project documentation inside the app |
 
@@ -83,8 +84,9 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 4. **Sync to curriculum** — Push processed topics into the live curriculum
 5. **Run evaluations** — Test the tutor with simulated students and review quality scores
 6. **Configure AI models** — Choose which AI provider and model powers each component
-7. **View test scenarios** — Review end-to-end test results and screenshots for each feature
-8. **Browse documentation** — View project docs directly in the admin interface
+7. **Generate visual explanations** — Create interactive diagrams and animations from text descriptions (proof of concept)
+8. **View test scenarios** — Review end-to-end test results and screenshots for each feature
+9. **Browse documentation** — View project docs directly in the admin interface
 
 ---
 

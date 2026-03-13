@@ -21,7 +21,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │                                                                 │
 │  Modules: tutor, book_ingestion_v2, study_plans, evaluation,    │
 │           auth (+ enrichment, personality)                      │
-│  Root API: api/ (docs, test_scenarios)                          │
+│  Root API: api/ (docs, test_scenarios, pixi_poc)                 │
 │  Shared: llm_service, llm_config_service, anthropic_adapter,    │
 │          ocr_service, s3_client, api, models, utils,            │
 │          repositories, prompts                                  │
@@ -120,7 +120,7 @@ llm-backend/
 │   ├── models/           # Domain models, ORM entities, Pydantic schemas
 │   ├── prompts/          # Shared prompt loader
 │   └── utils/            # Constants, exceptions, formatting helpers, S3 client
-├── api/                  # Root-level API (docs, test scenarios)
+├── api/                  # Root-level API (docs, test scenarios, pixi PoC)
 ├── scripts/              # Utility scripts
 ├── tests/
 ├── main.py               # FastAPI app entrypoint
@@ -166,6 +166,7 @@ Most modules follow the layered internal structure:
 | v2 page routes | `/admin/v2/books/{id}/chapters/{id}/pages` | Chapter page management (V2) |
 | v2 processing routes | `/admin/v2/books/{id}/chapters/{id}` | Chapter processing, topic extraction, jobs (V2) |
 | v2 sync routes | `/admin/v2/books/{id}` | Sync processed topics to curriculum + results (V2) |
+| pixi poc | `/api/admin/pixi-poc` | Pixi.js code generation from text prompts (PoC) |
 
 ---
 
@@ -199,6 +200,7 @@ llm-frontend/src/
 │   ├── AppShell.tsx          # Shared layout for authenticated pages (nav bar, user menu)
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
 │   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/exam/resume)
+│   ├── VisualExplanation.tsx # Renders LLM-generated Pixi.js visuals in sandboxed iframe
 │   └── enrichment/           # Enrichment form components
 │       ├── SectionCard.tsx
 │       ├── ChipSelector.tsx
@@ -212,7 +214,8 @@ llm-frontend/src/
 │   │       ├── EvaluationDashboard.tsx
 │   │       ├── DocsViewer.tsx        # In-app documentation browser
 │   │       ├── LLMConfigPage.tsx     # LLM model config admin
-│   │       └── TestScenariosPage.tsx # E2E test results viewer
+│   │       ├── TestScenariosPage.tsx # E2E test results viewer
+│   │       └── PixiJsPocPage.tsx    # Pixi.js visual generation PoC
 │   └── devtools/         # Debug tools (shown in chat session)
 │       ├── api/devToolsApi.ts         # Dev tools API client
 │       ├── components/
@@ -261,6 +264,7 @@ llm-frontend/src/
 | `/admin/docs` | DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | LLMConfigPage | Unprotected | LLM provider/model configuration |
 | `/admin/test-scenarios` | TestScenariosPage | Unprotected | E2E test results and screenshots |
+| `/admin/pixi-js-poc` | PixiJsPocPage | Unprotected | Pixi.js visual generation PoC |
 
 ---
 
@@ -339,6 +343,9 @@ Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own ro
 - **Retry**: 3 attempts with exponential backoff for rate limits and timeouts
 - **Schema conversion**: `make_schema_strict()` converts Pydantic models to OpenAI strict schema format
 - **OpenAI API selection**: gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
+- **Streaming**: `call_stream()` yields text chunks via OpenAI Responses API or Chat Completions streaming; Anthropic streams via adapter; Gemini falls back to non-streaming
+- **Fast model**: `call_fast()` always uses gpt-4o-mini via Chat Completions for lightweight tasks (translation, safety checks) regardless of provider setting
+- **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls
 - **Gemini**: Google Generative AI client with JSON mode support
 
 ---
