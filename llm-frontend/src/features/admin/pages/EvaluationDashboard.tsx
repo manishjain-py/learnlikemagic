@@ -623,7 +623,13 @@ const EvalFormPanel: React.FC<{
       if (personas.length === 0) {
         setLoadingPersonas(true);
         listEvalPersonas()
-          .then((data) => setPersonas(data))
+          .then((data) => {
+            setPersonas(data);
+            const defaultPersona = data.find((p) => p.file === 'average_student.json');
+            if (defaultPersona && !selectedPersonaFile) {
+              setSelectedPersonaFile(defaultPersona.file);
+            }
+          })
           .catch(() => {})
           .finally(() => setLoadingPersonas(false));
       }
@@ -813,12 +819,14 @@ const EvalFormPanel: React.FC<{
                     backgroundColor: 'white',
                   }}
                 >
-                  <option value="">Riya — Average (default)</option>
                   {personas.map((p) => (
                     <option key={p.persona_id} value={p.file}>
                       {p.name} — {p.description.split(',')[0] || p.persona_id} ({Math.round(p.correct_answer_probability * 100)}% correct)
                     </option>
                   ))}
+                  {personas.length === 0 && (
+                    <option value="">No personas available</option>
+                  )}
                 </select>
               )}
             </div>
@@ -838,7 +846,7 @@ const EvalFormPanel: React.FC<{
               />
             </div>
             <button
-              onClick={() => onStartSimulated(topicId, maxTurns, selectedPersonaFile || undefined)}
+              onClick={() => onStartSimulated(topicId, maxTurns, selectedPersonaFile)}
               disabled={!topicId.trim() || starting}
               style={{
                 padding: '8px 20px',

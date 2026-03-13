@@ -323,13 +323,11 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Run list** -- cards with run ID, timestamp, source badge (Simulated/Session), topic, message count, avg score badge, mini score bars
 - **Start form** -- tabbed panel with two modes:
   - "Evaluate Existing Session" -- dropdown of sessions from DB (shows topic, message count, date)
-  - "New Simulated Session" -- dropdown of approved guidelines, max turns slider (5-40)
+  - "New Simulated Session" -- dropdown of approved guidelines, student persona selector (loaded from `/api/evaluation/personas`), max turns slider (5-40)
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
-**Note:** The frontend `DIMENSIONS` constant currently lists 10 legacy dimension names for display (coherence, non_repetition, natural_flow, engagement, responsiveness, pacing, grade_appropriateness, topic_coverage, session_arc, overall_naturalness). The backend evaluator produces 5 dimensions. Score bars render correctly for whichever dimensions are present in the evaluation data -- legacy dimensions without scores simply show 0.
-
-The subtitle text in the dashboard header also references "10 dimensions" (legacy copy). Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching the backend: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

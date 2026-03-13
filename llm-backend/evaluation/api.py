@@ -333,15 +333,16 @@ async def list_personas():
     personas = EvalConfig.all_personas()
     return [
         {
-            "persona_id": p["persona_id"],
-            "name": p["name"],
-            "file": p["file"],
+            "persona_id": p.get("persona_id", "unknown"),
+            "name": p.get("name", "Unknown"),
+            "file": p.get("file", ""),
             "grade": p.get("grade"),
             "age": p.get("age"),
             "description": p.get("description", ""),
             "correct_answer_probability": p.get("correct_answer_probability", 0.6),
         }
         for p in personas
+        if p.get("persona_id") and p.get("name")
     ]
 
 
