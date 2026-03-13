@@ -9,7 +9,19 @@ Orchestrates the full evaluation pipeline:
 5. Clean up
 
 Usage:
-    cd llm-backend && python -m evaluation.run_evaluation --topic-id <guideline_id> [--skip-server] [--max-turns N]
+    cd llm-backend
+
+    # By topic name (recommended — resolves guideline ID from database)
+    python -m evaluation.run_evaluation --subject Mathematics --chapter Fractions --skip-server
+
+    # By guideline ID (if you already know it)
+    python -m evaluation.run_evaluation --topic-id <guideline_id> --skip-server
+
+    # List available topics
+    python -m evaluation.run_evaluation --list-topics
+
+    # List topics filtered by subject
+    python -m evaluation.run_evaluation --list-topics --subject Mathematics
 """
 
 import argparse
@@ -23,6 +35,103 @@ from evaluation.student_simulator import StudentSimulator
 from evaluation.session_runner import SessionRunner
 from evaluation.evaluator import ConversationEvaluator
 from evaluation.report_generator import ReportGenerator
+
+
+def _resolve_topic_id(args) -> str:
+    """Resolve a guideline ID from --topic-id, or from --subject/--chapter/--topic via DB lookup."""
+    if args.topic_id:
+        return args.topic_id
+
+    if not args.subject:
+        print("ERROR: Provide either --topic-id or --subject (+ optional --chapter, --topic).")
+        print("       Run with --list-topics to see available topics.")
+        sys.exit(1)
+
+    from database import get_db_manager
+    from shared.models.entities import TeachingGuideline
+    from sqlalchemy import func
+
+    db_manager = get_db_manager()
+    db = db_manager.session_factory()
+    try:
+        query = db.query(TeachingGuideline).filter(
+            func.lower(TeachingGuideline.subject) == args.subject.lower(),
+        )
+        if args.chapter:
+            query = query.filter(func.lower(TeachingGuideline.chapter) == args.chapter.lower())
+        if args.topic:
+            query = query.filter(func.lower(TeachingGuideline.topic) == args.topic.lower())
+
+        # Prefer approved guidelines
+        results = query.order_by(
+            TeachingGuideline.review_status.desc(),  # APPROVED sorts after TO_BE_REVIEWED
+            TeachingGuideline.chapter_sequence,
+            TeachingGuideline.topic_sequence,
+        ).all()
+
+        if not results:
+            print(f"ERROR: No guideline found matching subject='{args.subject}'", end="")
+            if args.chapter:
+                print(f", chapter='{args.chapter}'", end="")
+            if args.topic:
+                print(f", topic='{args.topic}'", end="")
+            print("\n       Run with --list-topics to see available topics.")
+            sys.exit(1)
+
+        guideline = results[0]
+        print(f"  Resolved: {guideline.subject} / {guideline.chapter} / {guideline.topic} (id={guideline.id})")
+        return guideline.id
+    finally:
+        db.close()
+
+
+def _list_topics(args):
+    """Print available topics from the database."""
+    from database import get_db_manager
+    from shared.models.entities import TeachingGuideline
+
+    db_manager = get_db_manager()
+    db = db_manager.session_factory()
+    try:
+        query = db.query(TeachingGuideline)
+        if args.subject:
+            from sqlalchemy import func
+            query = query.filter(func.lower(TeachingGuideline.subject) == args.subject.lower())
+        if args.grade:
+            query = query.filter(TeachingGuideline.grade == args.grade)
+
+        guidelines = query.order_by(
+            TeachingGuideline.subject,
+            TeachingGuideline.grade,
+            TeachingGuideline.chapter_sequence,
+            TeachingGuideline.topic_sequence,
+        ).all()
+
+        if not guidelines:
+            print("No guidelines found.")
+            return
+
+        print(f"\n{'='*80}")
+        print(f"  Available Topics ({len(guidelines)} guidelines)")
+        print(f"{'='*80}\n")
+
+        current_subject = None
+        current_chapter = None
+        for g in guidelines:
+            if g.subject != current_subject:
+                current_subject = g.subject
+                current_chapter = None
+                print(f"  {g.subject} (Grade {g.grade})")
+            if g.chapter != current_chapter:
+                current_chapter = g.chapter
+                print(f"    {g.chapter}")
+            status = "✓" if g.review_status == "APPROVED" else " "
+            print(f"      [{status}] {g.topic}  (id: {g.id})")
+
+        print(f"\n  [✓] = approved    [ ] = pending review")
+        print(f"\n  Usage: python -m evaluation.run_evaluation --subject \"{current_subject}\" --chapter \"{current_chapter}\" --skip-server\n")
+    finally:
+        db.close()
 
 
 def run_all_personas(args):
@@ -256,8 +365,23 @@ def generate_comparison_report(comparison_dir: Path, topic_id: str, results: lis
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run tutor evaluation pipeline")
-    parser.add_argument("--topic-id", required=True, help="Guideline ID for the topic")
+    parser = argparse.ArgumentParser(
+        description="Run tutor evaluation pipeline",
+        epilog="Examples:\n"
+               "  python -m evaluation.run_evaluation --list-topics\n"
+               "  python -m evaluation.run_evaluation --subject Mathematics --chapter Fractions --skip-server\n"
+               "  python -m evaluation.run_evaluation --topic-id <guideline_id> --skip-server\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # Topic selection (either --topic-id OR --subject/--chapter/--topic)
+    topic_group = parser.add_argument_group("topic selection (use one approach)")
+    topic_group.add_argument("--topic-id", default=None, help="Guideline ID (if you already know it)")
+    topic_group.add_argument("--subject", default=None, help="Subject name (e.g., Mathematics)")
+    topic_group.add_argument("--chapter", default=None, help="Chapter name (e.g., Fractions)")
+    topic_group.add_argument("--topic", default=None, help="Topic name (e.g., Comparing Like Denominators)")
+
+    parser.add_argument("--list-topics", action="store_true", help="List available topics and exit")
     parser.add_argument("--skip-server", action="store_true", help="Skip server management (use already-running server)")
     parser.add_argument("--max-turns", type=int, default=20, help="Max conversation turns (default: 20)")
     parser.add_argument("--grade", type=int, default=3, help="Student grade (default: 3)")
@@ -266,14 +390,23 @@ def main():
     parser.add_argument("--runs-per-persona", type=int, default=1, help="Number of runs per persona for noise reduction (default: 1, only used with --persona all)")
     args = parser.parse_args()
 
+    # List topics mode
+    if args.list_topics:
+        _list_topics(args)
+        return
+
+    # Resolve topic ID
+    topic_id = _resolve_topic_id(args)
+
     # Handle "all" personas special case
     if args.persona == "all":
+        args.topic_id = topic_id
         run_all_personas(args)
         return
 
     # 1. Create config and run directory
     config = EvalConfig(
-        topic_id=args.topic_id,
+        topic_id=topic_id,
         max_turns=args.max_turns,
         student_grade=args.grade,
         persona_file=args.persona,
