@@ -77,6 +77,22 @@ export async function getAllGuidelinesForReview(filters?: {
   );
 }
 
+// ===== Evaluation Personas =====
+
+export interface EvalPersona {
+  persona_id: string;
+  name: string;
+  file: string;
+  grade: number | null;
+  age: number | null;
+  description: string;
+  correct_answer_probability: number;
+}
+
+export async function listEvalPersonas(): Promise<EvalPersona[]> {
+  return apiFetch<EvalPersona[]>('/api/evaluation/personas');
+}
+
 // ===== Evaluation Pipeline =====
 
 export async function listEvalRuns(): Promise<EvalRunSummary[]> {

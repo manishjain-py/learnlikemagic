@@ -325,6 +325,26 @@ def _retry_evaluation(run_dir: Path):
 # ──────────────────────────────────────────────
 
 
+@router.get("/personas")
+async def list_personas():
+    """List all available student personas for simulated evaluation."""
+    from evaluation.config import EvalConfig
+
+    personas = EvalConfig.all_personas()
+    return [
+        {
+            "persona_id": p["persona_id"],
+            "name": p["name"],
+            "file": p["file"],
+            "grade": p.get("grade"),
+            "age": p.get("age"),
+            "description": p.get("description", ""),
+            "correct_answer_probability": p.get("correct_answer_probability", 0.6),
+        }
+        for p in personas
+    ]
+
+
 @router.get("/guidelines")
 async def list_approved_guidelines(
     country: str = None,
