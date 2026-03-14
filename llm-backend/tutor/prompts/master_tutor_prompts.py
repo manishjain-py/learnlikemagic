@@ -126,7 +126,6 @@ MASTER_TUTOR_TURN_PROMPT = PromptTemplate(
 {student_message}
 
 Let the student work through problems step-by-step — prompt each step, don't solve for them.
-Mirror the student's language — if they use Hindi words, use them back naturally.
 Respond as the tutor. Return your response in the structured output format.""",
     name="master_tutor_turn",
 )
