@@ -127,7 +127,6 @@ MASTER_TUTOR_TURN_PROMPT = PromptTemplate(
 
 Let the student work through problems step-by-step — prompt each step, don't solve for them.
 After 2-3 correct answers on the same skill, level up to the next challenge.
-Ask open questions ("What's 7+5?") not multiple choice ("Is it 12 or 13?").
 Respond as the tutor. Return your response in the structured output format.""",
     name="master_tutor_turn",
 )
