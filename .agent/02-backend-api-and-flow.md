@@ -1,7 +1,7 @@
 # Backend API And Flow
 
-Last audited: 2026-03-06
-Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
+Last audited: 2026-03-14
+Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## Boot Sequence
 1. `main.py` validates required settings (`OPENAI_API_KEY`, `DATABASE_URL`)
@@ -99,6 +99,7 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - `GET /admin/v2/books/{book_id}/results`
 
 ### Evaluation
+- `GET /api/evaluation/personas`
 - `GET /api/evaluation/guidelines`
 - `POST /api/evaluation/start`
 - `POST /api/evaluation/evaluate-session`
@@ -119,12 +120,16 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - `PUT /api/admin/llm-config/{component_key}`
 - `GET /api/admin/llm-config/options`
 
+### Pixi.js PoC
+- `POST /api/admin/pixi-poc/generate`
+
 ## Tutoring Runtime Flow
 1. Session creation (`SessionService.create_new_session`) resolves guideline + optional study plan + user context
 2. Orchestrator turn cycle:
-   - safety gate
+   - translate (Hinglish→English) + safety gate run in parallel
    - mode routing (teach_me / clarify_doubts / exam)
    - master tutor call
+   - optional Pixi.js visual generation
    - state transition application
 3. State persisted with optimistic locking (`state_version`)
 4. Event log records turn metadata

@@ -1,7 +1,7 @@
 # Repo Map
 
-Last audited: 2026-03-06
-Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
+Last audited: 2026-03-14
+Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## Product Summary
 LearnLikeMagic is an AI tutoring platform with:
@@ -12,13 +12,13 @@ LearnLikeMagic is an AI tutoring platform with:
 - Functional + technical documentation (`docs`)
 
 ## Source Footprint
-- Backend Python files: `193`
-- Backend Python lines: `34,718`
-- Frontend TS/TSX files: `52`
-- Frontend TS/TSX lines: `12,083`
-- Docs markdown files: `36`
+- Backend Python files: `195`
+- Backend Python lines: `36,009`
+- Frontend TS/TSX files: `54`
+- Frontend TS/TSX lines: `12,858`
+- Docs markdown files: `37`
 - Backend unit tests: `38`
-- Backend integration tests: `4`
+- Backend integration tests: `7`
 
 ## Top-Level Ownership
 - `llm-backend/`: tutoring runtime, auth, ingestion, evaluation, shared infra
@@ -46,8 +46,8 @@ LearnLikeMagic is an AI tutoring platform with:
 - `shared/`: entities/schemas, repositories, LLM abstraction, health/config
 
 ## Frontend Domain Map
-- `src/pages/`: auth, onboarding, profile, history, report card, learning flow
-- `src/features/admin/`: books (v2), evaluation, docs, model config, test scenarios
+- `src/pages/`: auth, onboarding, profile, history, report card, learning flow, enrichment, exam review
+- `src/features/admin/`: books (v2), evaluation, docs, model config, test scenarios, pixi PoC
 - `src/features/devtools/`: session state + agent logs + guidelines + study plan views
 - `src/contexts/AuthContext.tsx`: Cognito + backend profile sync
 

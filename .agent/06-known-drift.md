@@ -1,16 +1,16 @@
 # Known Drift And Risks
 
-Last audited: 2026-03-06
-Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
+Last audited: 2026-03-14
+Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## Verified Drift
 1. `llm-frontend/README.md` is stale.
 - Describes older architecture and scripts (`npm run lint`, `npm run type-check`) not present in current `llm-frontend/package.json`.
 - Port claim (`localhost:3000`) is now correct (Vite config overrides to 3000), but architecture/script references remain stale.
 
-2. Scorecard docs and API docs are inconsistent with runtime routes.
-- Current backend route in `tutor/api/sessions.py` is `GET /sessions/report-card`.
-- Multiple technical docs still reference `GET /sessions/scorecard` as active endpoint.
+2. ~~Scorecard docs and API docs are inconsistent with runtime routes.~~ **Resolved.**
+- `docs/technical/scorecard.md` now correctly references `GET /sessions/report-card`.
+- Only remaining `scorecard` mentions are in the migration implementation plan, which is historical/intentional.
 
 3. Legacy model/repository overlap remains.
 - `shared/models/domain.py` has legacy `TutorState` model.
@@ -33,6 +33,6 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 
 ## Cleanup Backlog
 1. Refresh `llm-frontend/README.md` to current architecture/scripts/routes.
-2. Reconcile scorecard/report-card technical docs with actual route set.
+2. ~~Reconcile scorecard/report-card technical docs with actual route set.~~ Done — docs now use `report-card`.
 3. Decide whether to retire or modernize legacy `TutorState` paths in repository layer.
 4. Clarify whether teaching guideline legacy fields (`teaching_description`, `description`) can be dropped or are still needed by V2 pipeline.

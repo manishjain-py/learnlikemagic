@@ -1,7 +1,7 @@
 # File Indexes
 
-Last audited: 2026-03-06
-Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
+Last audited: 2026-03-14
+Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## Backend High-Signal Files
 - App bootstrap: `llm-backend/main.py`
@@ -11,6 +11,7 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - Session APIs: `llm-backend/tutor/api/sessions.py`
 - Curriculum API: `llm-backend/tutor/api/curriculum.py`
 - Transcription API: `llm-backend/tutor/api/transcription.py`
+- TTS API: `llm-backend/tutor/api/tts.py`
 - Session service: `llm-backend/tutor/services/session_service.py`
 - Orchestrator: `llm-backend/tutor/orchestration/orchestrator.py`
 - Master tutor agent: `llm-backend/tutor/agents/master_tutor.py`
@@ -24,6 +25,7 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - Evaluation runner: `llm-backend/evaluation/session_runner.py`
 - Evaluation judge: `llm-backend/evaluation/evaluator.py`
 - Auth routes: `llm-backend/auth/api/auth_routes.py`
+- Enrichment routes: `llm-backend/auth/api/enrichment_routes.py`
 - Profile routes: `llm-backend/auth/api/profile_routes.py`
 - Auth middleware: `llm-backend/auth/middleware/auth_middleware.py`
 - Shared entities: `llm-backend/shared/models/entities.py`
@@ -31,6 +33,8 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - LLM config service: `llm-backend/shared/services/llm_config_service.py`
 - Health API: `llm-backend/shared/api/health.py`
 - Docs API: `llm-backend/api/docs.py`
+- Pixi PoC API: `llm-backend/api/pixi_poc.py`
+- Pixi code generator: `llm-backend/tutor/services/pixi_code_generator.py`
 - Test-scenarios API: `llm-backend/api/test_scenarios.py`
 
 ## Frontend High-Signal Files
@@ -40,6 +44,7 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - Auth config: `llm-frontend/src/config/auth.ts`
 - Learning pages: `llm-frontend/src/pages/*`
 - Admin pages: `llm-frontend/src/features/admin/pages/*`
+- Visual explanation component: `llm-frontend/src/components/VisualExplanation.tsx`
 - Admin API client: `llm-frontend/src/features/admin/api/adminApi.ts`
 - Devtools API client: `llm-frontend/src/features/devtools/api/devToolsApi.ts`
 

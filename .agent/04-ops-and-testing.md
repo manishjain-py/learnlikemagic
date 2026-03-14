@@ -1,7 +1,7 @@
 # Ops And Testing Runbook
 
-Last audited: 2026-03-06
-Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
+Last audited: 2026-03-14
+Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## Local Backend
 ```bash
@@ -66,8 +66,8 @@ npm run report
 ```
 
 ## Test Inventory
-- Backend unit test files: `38`
-- Backend integration test files: `3`
+- Backend unit test files: `38` (in `tests/unit/`)
+- Backend integration test files: `3` (plus 1 helper module in `tests/integration/helpers/`)
 - E2E runner: `e2e/tests/scenarios.spec.ts`
 - E2E scenario source: `e2e/scenarios.json`
 - E2E outputs: `reports/e2e-runner/`

@@ -1,7 +1,7 @@
 # Frontend Map
 
-Last audited: 2026-03-06
-Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
+Last audited: 2026-03-14
+Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## Stack
 - React 18 + TypeScript + Vite
@@ -47,6 +47,7 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - `/admin/docs`
 - `/admin/llm-config`
 - `/admin/test-scenarios`
+- `/admin/pixi-js-poc`
 
 ## Auth Flow
 1. Cognito login/signup/OTP/OAuth completes client-side
@@ -68,6 +69,7 @@ Code baseline: `claude/update-agent-docs-j6oFs@5dbd8b5`
 - Admin book ingestion V2 workflow
 - Admin evaluation dashboard
 - Admin docs/test scenario browsers
+- Admin Pixi.js PoC playground
 - Devtools drawer (agent logs/session state)
 
 ## E2E Coupling

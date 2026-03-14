@@ -1,6 +1,6 @@
 # AI Agent Context Files
 
-How the ~32 files that give AI agents project context are organized, what each one does, and when they need updating.
+How the ~34 files that give AI agents project context are organized, what each one does, and when they need updating.
 
 ---
 
@@ -65,8 +65,10 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | `code-implementer.md` | Tech plan → working code via orchestrator + sub-agents | Manual — update when implementation workflow changes |
 | `update-all-docs.md` | Refresh all project docs via 7 parallel sub-agents | Manual — update when doc structure or areas change |
 | `update-agent-files.md` | Refresh code-coupled `.agent/` files via 3 parallel sub-agents | Manual — update when agent file structure changes |
-| `improve-with-feedback.md` | Feedback → persona → tutor fix → evaluate → report cycle | Manual — update when evaluation pipeline changes |
-| `1-percent-better.md` | Iterative tutor improvement: measure → analyze → fix → measure → compare | Manual — update when evaluation dimensions change |
+| `tutor-improve-analyze.md` | Tutor Improve Phase 1: analyze tutor session transcripts for improvement opportunities | Manual — update when evaluation pipeline changes |
+| `tutor-improve-implement.md` | Tutor Improve Phase 2: implement tutor fixes based on analysis findings | Manual — update when evaluation pipeline changes |
+| `tutor-improve-review.md` | Tutor Improve Phase 2.5: code review of tutor improvements | Manual — update when evaluation pipeline changes |
+| `tutor-improve-measure.md` | Tutor Improve Phase 3: measure impact and generate comparison report | Manual — update when evaluation pipeline changes |
 | `e2e-runner.md` | Start app, run Playwright E2E tests, upload to S3, email report | Manual — update when E2E infrastructure changes |
 | `e2e-updater.md` | Generate/update `e2e/scenarios.json` from functional docs and codebase | Manual — update when E2E scenario format changes |
 | `unit-test-runner.md` | Run pytest with coverage, build HTML report, email | Manual — update when test infrastructure changes |
