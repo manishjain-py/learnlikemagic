@@ -209,6 +209,18 @@ Text and audio language can be set independently — for example, you can read i
 
 ---
 
+## Visual Illustrations
+
+During lessons, the tutor can generate interactive visual illustrations to help explain concepts — diagrams, charts, animations, or labeled pictures. These appear alongside the tutor's text response.
+
+- Visuals are generated automatically when the tutor decides a picture would help
+- Animations show processes, sequences, or transformations (e.g., fractions merging)
+- Static images show diagrams, charts, or labeled structures
+- Visuals are not shown during test questions where they would reveal the answer
+- Each visual includes a short title and optional narration
+
+---
+
 ## Key Details
 
 - Sessions are saved automatically — you can review past sessions in your history

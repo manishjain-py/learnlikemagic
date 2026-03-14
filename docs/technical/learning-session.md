@@ -9,13 +9,14 @@ Architecture, agents, orchestration, and APIs for the tutoring pipeline.
 ```
 Student Message
     │
-    v
-INPUT TRANSLATION (Hinglish/Hindi → English)
-    │
-    v
-SAFETY AGENT (fast gate)
-    │
-    v
+    ├──────────────────────┐
+    v                      v
+INPUT TRANSLATION    SAFETY AGENT
+(Hinglish/Hindi→EN)  (fast gate)
+    │                      │
+    └──────────┬───────────┘
+               │  (parallel)
+               v
 MODE ROUTER ──────────────────────────────────────┐
     │                                              │
     │ teach_me              clarify_doubts / exam  │
@@ -29,15 +30,22 @@ SANITIZATION CHECK (log-only)        MODE-SPECIFIC STATE
     v                                              │
 STATE UPDATES                                      v
 (mastery, misconceptions,                   Response
- explanation phase, step                  (+ audio_text)
- advance, coverage)
+ explanation phase, step                  (+ audio_text
+ advance, coverage)                        + visual_explanation)
     │
     v
 Response to Student
 (+ audio_text for TTS)
+    │
+    v  (if visual_explanation present)
+PIXI CODE GENERATOR
+(LLM → Pixi.js v8 code)
+    │
+    v
+Visual Update to Client
 ```
 
-Three-step pipeline: input translation (Hinglish/Hindi to English), a fast safety check, then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech.
+Pipeline: input translation and safety check run **in parallel** (saves 2-5s), then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech. When the tutor includes a `visual_explanation`, a secondary LLM call generates executable Pixi.js v8 code for client-side rendering.
 
 ---
 
@@ -92,9 +100,17 @@ TutorTurnOutput {
     student_shows_understanding: bool|None   # Informal check result
     student_shows_prior_knowledge: bool|None # Skip explanation if student knows it
     session_complete: bool     # True when final step mastered
+    visual_explanation: VisualExplanation|None  # Optional visual for PixiJS rendering
     turn_summary: str          # One-line summary (max 80 chars)
     reasoning: str             # Internal reasoning (not shown to student)
 }
+
+# VisualExplanation {
+#     visual_prompt: str       # Natural language description of what to draw
+#     output_type: str         # "image" (static) or "animation" (animated)
+#     title: str|None          # Short title
+#     narration: str|None      # Short narration text
+# }
 ```
 
 ---
@@ -103,16 +119,16 @@ TutorTurnOutput {
 
 `TeacherOrchestrator.process_turn(session, student_message)`:
 
-1. **Input Translation** — Translate Hinglish/Hindi input to English via a fast LLM call. Returns unchanged if already English.
-2. **Post-completion check** — If session already complete: for `clarify_doubts` mode, always short-circuit with a context-aware response. For `teach_me`, short-circuit if no extension allowed or extension_turns > 10. The context-aware response is LLM-generated and responds naturally to whatever the student said.
-3. **Increment turn** — Add student message to history
+1. **Post-completion check** — If session already complete: for `clarify_doubts` mode, always short-circuit with a context-aware response. For `teach_me`, short-circuit if no extension allowed or extension_turns > 10. Post-completion paths still run safety + translation in parallel before responding. The context-aware response is LLM-generated and responds naturally to whatever the student said.
+2. **Input Translation + Safety (parallel)** — Translation (Hinglish/Hindi → English via fast LLM call) and safety check run concurrently via `asyncio.gather`, saving 2-5s per turn.
+3. **Increment turn** — Add translated student message to history
 4. **Build AgentContext** — Current state, mastery, study plan
-5. **Safety Agent** — Fast content moderation gate. If unsafe: return guidance + log safety flag
+5. **Safety gate** — If unsafe: return guidance + log safety flag
 6. **Mode Router** — Branch based on `session.mode`:
    - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify-specific prompts (`CLARIFY_DOUBTS_SYSTEM_PROMPT` + `CLARIFY_DOUBTS_TURN_PROMPT`), tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
    - `exam` → `_process_exam_turn()`: evaluates answer against current exam question using fractional scoring (0.0-1.0). Score >= 0.8 → correct, >= 0.2 → partial, < 0.2 → incorrect. Records `marks_rationale` per question. Mid-exam responses show only the next question — correctness is not revealed. When the last question is answered, builds a full results response with per-question scores, rationales, and final score.
    - `teach_me` → continues to step 7
-7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 12 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
+7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 13 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
 8. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
 9. **Apply State Updates**:
    - Handle explanation phase lifecycle (opening → explaining → informal_check → complete)
@@ -124,7 +140,18 @@ TutorTurnOutput {
    - Handle session completion (only honored on final step)
 10. **Add response** (with `audio_text`) to conversation history
 11. **Update session summary** — Turn timeline (capped at 30 entries), progress trend, concepts taught
-12. **Return TurnResult** (includes `audio_text`)
+12. **Visual Generation (optional)** — If `tutor_output.visual_explanation` is present, generate Pixi.js v8 code via `PixiCodeGenerator`. Failures are logged and silently skipped (never crashes the turn).
+13. **Return TurnResult** (includes `audio_text` and optional `visual_explanation` with generated `pixi_code`)
+
+### Streaming Path
+
+`TeacherOrchestrator.process_turn_stream(session, student_message)` is an async generator that yields tuples:
+
+- `("token", str)` — text chunk for real-time streaming of the student-facing response
+- `("result", TurnResult)` — final result with state updates applied (always emitted)
+- `("visual", dict)` — Pixi.js visual data, sent after the result so text is not delayed
+
+Only `teach_me` mode streams tokens. `clarify_doubts` and `exam` modes fall back to non-streaming `process_turn` internally. The WebSocket handler converts these into `token`, `assistant`, `state_update`, and `visual_update` messages.
 
 ---
 
@@ -137,7 +164,7 @@ Contains:
 - Personalization block: uses `tutor_brief` (rich personality prose from enrichment profile) when available, falling back to basic name/age/about_me from user profile
 - Study plan (steps with types, concepts, content hints)
 - Topic guidelines (curriculum scope, common misconceptions)
-- 12 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking
+- 13 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking, visual explanations (strongly encouraged on explanation/demonstration turns via `visual_explanation` field)
 - Response and audio language instructions (from `language_utils.py`)
 
 ### Turn Prompt (teach_me — per turn)
@@ -240,10 +267,14 @@ Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong
 **Server emits:**
 ```json
 {"type": "typing", "payload": {}}
-{"type": "assistant", "payload": {"message": "...", "audio_text": "..."}}
+{"type": "token", "payload": {"message": "<chunk>"}}
+{"type": "assistant", "payload": {"message": "...", "audio_text": "...", "visual_explanation": {...}}}
 {"type": "state_update", "payload": {"state": {...}}}
+{"type": "visual_update", "payload": {"visual_explanation": {"output_type": "...", "title": "...", "narration": "...", "pixi_code": "..."}}}
 {"type": "error", "payload": {"error": "..."}}
 ```
+
+For `teach_me` mode, the server streams `token` messages in real time as the tutor generates its response, followed by the full `assistant` message. For `clarify_doubts` and `exam`, only the final `assistant` message is sent (no token streaming). The `visual_update` message is sent after the `assistant` message when the tutor generated a visual explanation — this allows the text to arrive without waiting for Pixi code generation.
 
 The `audio_text` field contains the spoken version of the response for TTS (in the student's audio language preference).
 
@@ -490,6 +521,7 @@ The `POST /sessions/{id}/feedback` endpoint allows study plan regeneration durin
 | Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text | Inline in `orchestrator.py` |
 | Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) | `exam_prompts.py` EXAM_QUESTION_GENERATION_PROMPT |
 | Study Plan Gen | Configurable (DB, `study_plan_generator`) | Generate/regenerate personalized study plan | Structured JSON | `StudyPlanGeneratorService` |
+| Pixi Code Gen | Configurable (DB) | Generate Pixi.js v8 code from visual description | Plain JavaScript | `pixi_code_generator.py` inline prompt |
 
 LLM provider/model is resolved at session creation from the `llm_config` DB table via `LLMConfigService.get_config("tutor")`. Study plan generation uses a separate config key `study_plan_generator`. The Anthropic adapter maps structured output to tool_use, and reasoning effort to thinking budgets.
 
@@ -518,14 +550,14 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 | File | Purpose |
 |------|---------|
 | `base_agent.py` | BaseAgent ABC: execute(), build_prompt(), LLM call with strict schema |
-| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model (with audio_text, answer_score, marks_rationale, explanation phase fields), pacing/style computation (explanation-aware + attention span), personalization block (tutor_brief or name/age fallback), mode-specific prompt routing (clarify uses dedicated prompts) |
+| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model (with audio_text, answer_score, marks_rationale, explanation phase fields, visual_explanation), VisualExplanation model, pacing/style computation (explanation-aware + attention span), personalization block (tutor_brief or name/age fallback), mode-specific prompt routing (clarify uses dedicated prompts) |
 | `safety.py` | SafetyAgent: fast content moderation gate |
 
 ### Orchestration (`tutor/orchestration/`)
 
 | File | Purpose |
 |------|---------|
-| `orchestrator.py` | TeacherOrchestrator: input translation → safety → mode router → master_tutor → state updates. Input translation (`_translate_to_english`). Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with fractional scoring and marks_rationale). `_handle_explanation_phase()` for explanation lifecycle. Exam feedback builder. Separate welcome generators per mode returning `(message, audio_text)` tuples with language-aware prompts. Post-completion response generator. |
+| `orchestrator.py` | TeacherOrchestrator: parallel input translation + safety → mode router → master_tutor → state updates → optional visual generation. `process_turn()` (non-streaming) and `process_turn_stream()` (async generator with token streaming for teach_me). Input translation (`_translate_to_english`). Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with fractional scoring and marks_rationale). `_handle_explanation_phase()` for explanation lifecycle. `_generate_pixi_code()` for visual explanation rendering. Exam feedback builder. Separate welcome generators per mode returning `(message, audio_text)` tuples with language-aware prompts. Post-completion response generator. |
 
 ### Models (`tutor/models/`)
 
@@ -533,7 +565,7 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 |------|---------|
 | `session_state.py` | SessionState, ExplanationPhase, Question, Misconception, SessionSummary, ExamQuestion (with score, marks_rationale), ExamFeedback (with float score), create_session() |
 | `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep (with explanation sub-plan fields: approach, building_blocks, analogy, min_turns) |
-| `messages.py` | Message (with audio_text), StudentContext (with text/audio language prefs, tutor_brief, personality_json, attention_span), WebSocket DTOs (ClientMessage, ServerMessage with audio_text, SessionStateDTO), factory functions |
+| `messages.py` | Message (with audio_text), StudentContext (with text/audio language prefs, tutor_brief, personality_json, attention_span), WebSocket DTOs (ClientMessage, ServerMessage with audio_text and token type, SessionStateDTO), factory functions (`create_token_message`, `create_typing_indicator`, etc.) |
 | `agent_logs.py` | AgentLogEntry, AgentLogStore (in-memory, thread-safe) |
 
 ### Prompts (`tutor/prompts/`)
@@ -561,6 +593,7 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 |------|---------|
 | `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation and duplicate exam guard), step processing, pause/resume, end clarify, end exam, mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
 | `tutor/services/exam_service.py` | Exam question generation via LLM with retry and personalization. ExamGenerationError (LearnLikeMagicException subclass) |
+| `tutor/services/pixi_code_generator.py` | PixiCodeGenerator: translates natural language visual descriptions into executable Pixi.js v8 code via LLM. Used by the orchestrator for `visual_explanation` rendering. Canvas 500x350. Returns empty string on failure (never crashes the turn). |
 | `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model |
 | `tutor/services/report_card_service.py` | Report card aggregation, topic progress |
 | `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint, feedback endpoint, exam-review endpoint, guideline sessions endpoint |

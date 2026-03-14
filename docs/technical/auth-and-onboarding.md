@@ -310,8 +310,9 @@ Profile updates to personality-triggering fields (name, preferred_name, age, gra
 
 - `EnrichmentService.get_profile()` — returns enrichment data + `sections_filled` count + `has_about_me` flag (for migration banner)
 - `EnrichmentService.update_profile()` — partial updates, returns `personality_status` and `inputs_hash`
-- `EnrichmentService.has_meaningful_data()` — checks if at least one of the sections has data
-- `EnrichmentService.compute_inputs_hash()` — hashes enrichment + user profile fields for change detection
+- `EnrichmentService.has_meaningful_data()` — checks if any enrichment data exists: any of the 4 chip sections, parent_notes, attention_span, or pace_preference
+- `EnrichmentService.compute_inputs_hash()` — hashes enrichment + user profile fields (name, preferred_name, age, grade, board, about_me) for change detection
+- `EnrichmentService.should_regenerate()` — compares new hash with latest personality's `inputs_hash` to detect changes
 
 ---
 

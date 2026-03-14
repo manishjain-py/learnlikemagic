@@ -113,7 +113,7 @@ pytest --cov-report=html  # HTML coverage report -> htmlcov/
 | `db_session` | In-memory SQLite session, fresh per test function |
 | `client` | FastAPI `TestClient` |
 | `sample_student` | `Student` domain object (grade 3, standard style, English) |
-| `sample_goal` | `Goal` domain object (chapter: Fractions, CBSE Grade 3, guideline_id `g1`) |
+| `sample_goal` | `Goal` domain object (chapter: Fractions, syllabus: CBSE Grade 3 Mathematics, guideline_id `g1`) |
 | `sample_tutor_state` | `TutorState` with sample student + goal |
 | `sample_grading_result` | `GradingResult` with score 0.85 |
 | `mock_llm_provider` | Mock LLM provider (no real API calls) |
@@ -156,7 +156,7 @@ curl http://localhost:8000/
 curl http://localhost:8000/health/db
 curl -X POST http://localhost:8000/sessions \
   -H "Content-Type: application/json" \
-  -d '{"student":{"id":"s1","grade":3},"goal":{"topic":"Fractions","guideline_id":"g1"}}'
+  -d '{"student":{"id":"s1","grade":3},"goal":{"chapter":"Fractions","syllabus":"CBSE Grade 3 Math","learning_objectives":["Compare fractions"],"guideline_id":"g1"}}'
 ```
 
 ---

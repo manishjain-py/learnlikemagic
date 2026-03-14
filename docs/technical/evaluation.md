@@ -52,7 +52,7 @@ Generate Reports (JSON + Markdown artifacts)
 - Uses the **same protocol real students use** -- the tutor does not know it is being evaluated
 - Captures all messages with timestamps, turn numbers, and roles
 - Configurable max turns (default: 20) and per-turn timeout (default: 90s)
-- Handles `typing`, `state_update`, `assistant`, and `error` WebSocket message types
+- Handles `typing`, `token`, `visual_update`, `state_update`, `assistant`, and `error` WebSocket message types
 - Session ends when max turns reached, tutor marks session complete (`is_complete: true`), or no tutor response is received
 - Fetches final session state via `GET /sessions/{session_id}` after conversation completes
 - `on_turn` callback enables live progress reporting (used by API pipeline for status updates)
@@ -145,15 +145,16 @@ The `problems.md` report includes suggested fixes for certain root causes. The s
 
 | Root Cause | Suggested Fix |
 |------------|---------------|
-| `conversation_history_window` | Increase the conversation history window or implement better context compression |
-| `session_summary_lossy` | Improve session summary to capture narrative context |
-| `multi_agent_composition` | Improve response composition to feel holistic |
-| `turn_level_processing` | Add session-level narrative tracking |
-| `rigid_study_plan` | Make the study plan more adaptive |
+| `missed_student_signal` | Review tutor prompt handling of student cues (confusion, boredom, confidence) |
+| `wrong_pacing` | Adjust pacing directive logic -- check mastery thresholds and attention span handling |
+| `repetitive_approach` | Strengthen the "never repeat" teaching rule, add variety tracking |
+| `emotional_mismatch` | Improve emotional attunement instructions, calibrate praise to match difficulty |
+| `missed_misconception` | Enhance misconception detection, ensure tutor probes confident wrong answers |
+| `over_scaffolding` | Reduce hand-holding for students showing mastery |
+| `conversation_history_window` | Increase the conversation history window or improve turn summary |
 | `prompt_quality` | Review and improve relevant agent prompts |
-| `model_capability` | Consider testing with different models or adjusting parameters |
-
-Note: Several of these root causes (`session_summary_lossy`, `multi_agent_composition`, `turn_level_processing`, `rigid_study_plan`) are not in the evaluator's `ROOT_CAUSE_CATEGORIES` list but are handled here for forward-compatibility -- the LLM judge may produce them despite not being explicitly listed.
+| `model_capability` | Consider testing with different models or adjusting temperature/sampling |
+| `other` | Investigate specific turns to determine whether prompt, model, or architectural issue |
 
 Multi-persona comparison (`--persona all`): `comparison_{timestamp}/comparison.md` + `comparison.json`. When `--runs-per-persona` > 1, the comparison report includes per-run detail tables and averaged scores across runs.
 
@@ -205,6 +206,7 @@ Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6). Note: `a
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/evaluation/personas` | List all available student personas |
 | `GET` | `/api/evaluation/guidelines` | List teaching guidelines (filterable by country, board, grade, subject, status) |
 | `POST` | `/api/evaluation/start` | Start evaluation run in background |
 | `GET` | `/api/evaluation/status` | Get current evaluation status (polling) |
@@ -379,7 +381,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Run list** -- cards with run ID, timestamp, source badge (Simulated/Session), topic, message count, avg score badge, mini score bars
 - **Start form** -- tabbed panel with two modes:
   - "Evaluate Existing Session" -- dropdown of sessions from DB (shows topic, message count, date)
-  - "New Simulated Session" -- dropdown of approved guidelines, student persona selector (loaded from `/api/evaluation/personas`), max turns slider (5-40)
+  - "New Simulated Session" -- dropdown of approved guidelines, student persona dropdown (loaded from `GET /api/evaluation/personas`), max turns slider (5-40). The start request sends `persona_file` alongside `topic_id` and `max_turns`.
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 

@@ -53,6 +53,8 @@ toc_defined -> upload_in_progress -> upload_complete -> topic_extraction -> chap
 
 Defined in `book_ingestion_v2/constants.py` as `ChapterStatus` enum.
 
+Topic statuses (`TopicStatus` enum in same file): `draft` -> `consolidated` -> `final` -> `approved`.
+
 ---
 
 ## Book Management
@@ -276,12 +278,14 @@ Study plans are generated from teaching guidelines and used by the tutor during 
 
 **Service:** `study_plans/services/generator_service.py` (`StudyPlanGeneratorService`)
 
-- Loads `study_plan_generator` prompt template
-- Calls LLM with `reasoning_effort="high"` and strict JSON schema (`StudyPlan` Pydantic model)
-- Output: 3-5 `StudyPlanStep` items, each with step_id, title, description, teaching_approach, success_criteria, building_blocks, analogy, status
-- Validates output against Pydantic model and legacy schema checks
-- Supports optional student personalization via `StudentContext` (name, age, interests, attention span)
-- `generate_plan_with_feedback()`: adjusts plan mid-session based on parent/student feedback
+- Loads `study_plan_generator` prompt template via `shared/prompts/loader.py` (`PromptLoader`)
+- Calls LLM with `reasoning_effort="high"` and strict JSON schema (`StudyPlan` Pydantic model via `LLMService.make_schema_strict()`)
+- Output structure (`StudyPlan` model in `generator_service.py`):
+  - `todo_list`: 3-5 `StudyPlanStep` items, each with step_id, title, description, teaching_approach, success_criteria, building_blocks, analogy, status
+  - `metadata`: `StudyPlanMetadata` with plan_version, estimated_duration_minutes, difficulty_level, is_generic, creative_theme
+- Validates output against both Pydantic model and legacy schema checks (`_validate_plan_schema()`)
+- Supports optional student personalization via `StudentContext` (imported from `tutor.models.messages`) with fields: student_name, student_age, preferred_examples, attention_span, tutor_brief
+- `generate_plan_with_feedback()`: generates adjusted plan mid-session based on parent/student feedback. Appends feedback context (feedback text, concepts already covered, progress) to the prompt. Skips the reviewer pass for speed.
 
 ### Reviewer
 
@@ -294,9 +298,13 @@ Study plans are generated from teaching guidelines and used by the tutor during 
 
 **Service:** `study_plans/services/orchestrator.py` (`StudyPlanOrchestrator`)
 
-- Generate -> Review -> (optional) Improve loop
-- If review rejects, calls `_improve_plan()` for a single revision pass
-- Persists to `study_plans` table with generator_model, reviewer_model, feedback, version tracking
+- Takes separate `generator_llm` and `reviewer_llm` `LLMService` instances (can be different models)
+- Generate -> Review -> (optional) Improve loop:
+  1. `generator.generate_plan(guideline)` produces initial plan
+  2. `reviewer.review_plan(plan, guideline)` returns approved/rejected with feedback and suggested_improvements
+  3. If rejected, `_improve_plan()` calls the reviewer LLM with `study_plan_improve` prompt for a single revision pass
+  4. If improvement fails, saves the original plan anyway
+- Persists to `study_plans` table with generator_model, reviewer_model, generation_reasoning, reviewer_feedback, was_revised flag, version tracking
 - `get_study_plan()` returns cached plan if exists; `generate_study_plan(force_regenerate=True)` regenerates
 
 ---
@@ -312,9 +320,9 @@ Study plans are generated from teaching guidelines and used by the tutor during 
 | `chapter_chunks` | Per-chunk processing audit trail |
 | `chapter_topics` | Extracted topics (draft -> consolidated -> final) |
 | `teaching_guidelines` | Synced guidelines used by the tutor |
-| `study_plans` | Generated study plans |
+| `study_plans` | Generated study plans (per-guideline, optionally per-user) |
 
-See `book_ingestion_v2/models/database.py` for V2 ORM models.
+See `book_ingestion_v2/models/database.py` for V2 ORM models. Study plan ORM model is in `shared/models/entities.py` (`StudyPlan`).
 
 ---
 
@@ -355,6 +363,9 @@ books/{book_id}/
 | `prompts/chunk_topic_extraction.txt` | `ChunkProcessorService` | Extract/update topics from a 3-page chunk |
 | `prompts/topic_guidelines_merge.txt` | `ChapterFinalizationService` | Merge per-chunk appended guidelines into unified text |
 | `prompts/chapter_consolidation.txt` | `ChapterFinalizationService` | Dedup, rename, sequence, summarize topics |
+| `shared/prompts/templates/study_plan_generator.txt` | `StudyPlanGeneratorService` | Generate 3-5 step study plan from guideline |
+| `shared/prompts/templates/study_plan_reviewer.txt` | `StudyPlanReviewerService` | Review plan quality, approve/reject with feedback |
+| `shared/prompts/templates/study_plan_improve.txt` | `StudyPlanOrchestrator._improve_plan()` | Revise rejected plan using reviewer feedback |
 
 ---
 
@@ -408,5 +419,7 @@ books/{book_id}/
 | `book_ingestion_v2/repositories/` | Data access: chapter_repository, chapter_page_repository, chunk_repository, topic_repository, processing_job_repository |
 | `shared/repositories/book_repository.py` | Shared book data access |
 | `study_plans/services/orchestrator.py` | Study plan generate -> review -> improve loop |
-| `study_plans/services/generator_service.py` | LLM-based study plan generation with strict schema |
+| `study_plans/services/generator_service.py` | LLM-based study plan generation with strict schema; also defines `StudyPlan`, `StudyPlanStep`, `StudyPlanMetadata` Pydantic models |
 | `study_plans/services/reviewer_service.py` | LLM-based study plan quality review |
+| `shared/models/entities.py` (StudyPlan class) | ORM model for `study_plans` table (guideline_id, user_id, plan_json, version) |
+| `shared/prompts/templates/study_plan_*.txt` | Prompts for study plan generation, review, and improvement |
