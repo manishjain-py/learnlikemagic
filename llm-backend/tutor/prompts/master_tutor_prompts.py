@@ -125,6 +125,8 @@ MASTER_TUTOR_TURN_PROMPT = PromptTemplate(
 ## Student's Message
 {student_message}
 
-Respond as the tutor. Return your response in the structured output format.""",
+Respond as the tutor. Remember: this student needs you to make hard things feel easy.
+Use the simplest words possible. One idea at a time. Check understanding before moving on.
+Return your response in the structured output format.""",
     name="master_tutor_turn",
 )
