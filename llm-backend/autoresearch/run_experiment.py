@@ -186,34 +186,43 @@ def run_experiment(
     max_turns: int,
     skip_server: bool,
     provider: str | None = None,
+    runs: int = 1,
 ) -> dict:
-    """Run the full experiment across all personas. Returns composite results."""
+    """Run the full experiment across all personas, optionally multiple times.
+
+    When runs > 1, each persona is evaluated `runs` times and scores are
+    averaged. This reduces stochastic variance from the student simulator
+    (~0.6 single-run) to ~0.35 with 3 runs.
+    """
     t0 = time.time()
-    all_results = []
+    all_results = []  # flat list of every single run result
 
     for i, persona_file in enumerate(personas, 1):
         persona_id = persona_file.replace(".json", "")
-        print(f"  [{i}/{len(personas)}] Running persona: {persona_id}...")
-        result = run_single_persona(topic_id, persona_file, max_turns, skip_server, provider)
-        all_results.append(result)
-        status = "ok" if result["status"] == "ok" else "CRASH"
-        print(f"    {status} — {result['persona_name']}: {result['avg_score']:.1f}/10, {result['message_count']} msgs")
+        for run_num in range(1, runs + 1):
+            label = f"[{persona_id} run {run_num}/{runs}]" if runs > 1 else f"[{i}/{len(personas)}] {persona_id}"
+            print(f"  {label} Running...")
+            result = run_single_persona(topic_id, persona_file, max_turns, skip_server, provider)
+            result["run_num"] = run_num
+            all_results.append(result)
+            status = "ok" if result["status"] == "ok" else "CRASH"
+            print(f"    {status} — {result['persona_name']}: {result['avg_score']:.1f}/10, {result['message_count']} msgs")
 
     elapsed = time.time() - t0
 
-    # Compute composite scores (average across all personas)
     ok_results = [r for r in all_results if r["status"] == "ok"]
     if not ok_results:
         return {
             "avg_score": 0,
             "scores": {},
-            "problems": ["ALL PERSONAS CRASHED"],
+            "problems": ["ALL RUNS CRASHED"],
             "per_persona": all_results,
             "elapsed_seconds": elapsed,
             "status": "crash",
+            "individual_scores": [],
         }
 
-    # Average each dimension across personas
+    # Average each dimension across ALL ok runs
     all_dims = set()
     for r in ok_results:
         all_dims.update(r["scores"].keys())
@@ -225,10 +234,17 @@ def run_experiment(
 
     composite_avg = sum(composite_scores.values()) / len(composite_scores) if composite_scores else 0
 
+    # Collect individual run scores for transparency
+    individual_scores = [r["avg_score"] for r in ok_results]
+
     # Aggregate problems (deduplicate by title prefix)
     all_problems = []
     for r in ok_results:
         all_problems.extend(r["problems"])
+
+    if runs > 1:
+        scores_str = ", ".join(f"{s:.1f}" for s in individual_scores)
+        print(f"\n  Averaged {len(ok_results)} runs: [{scores_str}] → {composite_avg:.2f}")
 
     return {
         "avg_score": composite_avg,
@@ -237,6 +253,7 @@ def run_experiment(
         "per_persona": all_results,
         "elapsed_seconds": elapsed,
         "status": "ok",
+        "individual_scores": individual_scores,
     }
 
 
@@ -304,6 +321,7 @@ def main():
     parser.add_argument("--email", default=None, help="Email address for iteration report")
     parser.add_argument("--description", default="", help="Description of what this experiment tries")
     parser.add_argument("--iteration", type=int, default=0, help="Iteration number (for email subject)")
+    parser.add_argument("--runs", type=int, default=1, help="Number of evaluation runs to average (reduces variance)")
     args = parser.parse_args()
 
     # Resolve settings
@@ -330,8 +348,11 @@ def main():
         print(f"  Description: {args.description}")
     print(f"{'='*60}\n")
 
+    if args.runs > 1:
+        print(f"  Runs per persona: {args.runs} (averaging to reduce variance)")
+
     # Run experiment
-    results = run_experiment(topic_id, personas, max_turns, args.skip_server, args.provider)
+    results = run_experiment(topic_id, personas, max_turns, args.skip_server, args.provider, runs=args.runs)
 
     # Print results
     commit = get_short_commit()
@@ -351,10 +372,16 @@ def main():
     for dim, score in scores.items():
         print(f"    {dim.replace('_', ' ').title():.<30} {score:.1f}/10")
     print()
-    print("  Per Persona:")
+    individual = results.get("individual_scores", [])
+    if len(individual) > 1:
+        scores_str = ", ".join(f"{s:.1f}" for s in individual)
+        print(f"  Individual runs: [{scores_str}]")
+    print()
+    print("  Per Run:")
     for r in results["per_persona"]:
         s = "ok" if r["status"] == "ok" else "CRASH"
-        print(f"    {r['persona_name']:.<20} {r['avg_score']:.1f}/10  ({s})")
+        run_label = f" (run {r.get('run_num', '?')})" if len(individual) > 1 else ""
+        print(f"    {r['persona_name']:.<20} {r['avg_score']:.1f}/10  ({s}){run_label}")
     print(f"{'='*60}")
 
     # Output machine-readable result

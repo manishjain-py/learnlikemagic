@@ -3,3 +3,9 @@ b50df82	6.6000	10.5	baseline	baseline — current prompts, no changes	{"authenti
 a14147b	6.8000	7.7	keep	add false-OK detection rule — probe vague acknowledgments	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 6.0, "responsiveness": 7.0}
 c872c20	7.2000	8.5	keep	why-before-what pacing — ask why before drilling	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 8.0}
 f360e45	6.6000	9.5	discard	verify reasoning not just answers, ground analogies in everyday objects	{"authenticity": 6.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}
+23b9dcf	6.6000	8.5	discard	ban forced repetition, one stable analogy per concept	{"authenticity": 6.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}
+78511a6	5.8000	4.9	discard	warmer persona — favourite older sibling, keep sentences short	{"authenticity": 6.0, "emotional_attunement": 7.0, "explanation_quality": 6.0, "pacing": 4.0, "responsiveness": 6.0}
+a42a182	4.4000	4.4	discard	concrete physical models when strategy change needed	{"authenticity": 6.0, "emotional_attunement": 4.0, "explanation_quality": 5.0, "pacing": 3.0, "responsiveness": 4.0}
+4c28c7f	6.2000	7.1	discard	per-turn reminder: simplest words, one idea, check understanding	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 6.0, "pacing": 5.0, "responsiveness": 6.0}
+9f98269	7.0000	6.6	discard	simplify rule 5 — less prescriptive about being unpredictable	{"authenticity": 6.0, "emotional_attunement": 8.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}
+c16e22c	6.6000	6.7	variance-check	variance check — re-run current best prompts (no changes)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 5.0, "responsiveness": 7.0}
