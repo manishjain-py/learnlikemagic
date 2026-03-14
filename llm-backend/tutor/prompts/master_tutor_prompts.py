@@ -125,6 +125,7 @@ MASTER_TUTOR_TURN_PROMPT = PromptTemplate(
 ## Student's Message
 {student_message}
 
+Let the student work through problems step-by-step — prompt each step, don't solve for them.
 Respond as the tutor. Return your response in the structured output format.""",
     name="master_tutor_turn",
 )
