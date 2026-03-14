@@ -1,0 +1,5 @@
+commit	avg_score	elapsed_min	status	description	scores_json
+b50df82	6.6000	10.5	baseline	baseline — current prompts, no changes	{"authenticity": 7.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 6.0, "responsiveness": 7.0}
+a14147b	6.8000	7.7	keep	add false-OK detection rule — probe vague acknowledgments	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 6.0, "responsiveness": 7.0}
+c872c20	7.2000	8.5	keep	why-before-what pacing — ask why before drilling	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 8.0}
+f360e45	6.6000	9.5	discard	verify reasoning not just answers, ground analogies in everyday objects	{"authenticity": 6.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}

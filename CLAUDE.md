@@ -31,6 +31,7 @@ learnlikemagic/
 | `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |
 | `docs/technical/database.md` | DB schema, migrations | Database changes |
 | `docs/technical/ai-agent-files.md` | Agent context file inventory, update policy | Understanding/updating agent files |
+| `docs/technical/auto-research/overview.md` | Autonomous prompt optimization system | Working on autoresearch |
 
 ## Key Conventions
 
