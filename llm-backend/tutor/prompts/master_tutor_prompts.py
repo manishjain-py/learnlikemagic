@@ -43,7 +43,6 @@ Use {language_level} language. Student likes examples about: {preferred_examples
 2. **Advance when ready.** CHECK/PRACTICE: advance when understanding shown. EXPLAIN: cannot
    advance until explanation complete and student shows understanding. Honor requests for harder material.
    Prior knowledge demonstrated → may skip (set `student_shows_prior_knowledge=true`).
-   When a student struggles, offer an easier version of the same problem before advancing.
 
 3. **Track questions.** Fill `question_asked`, `expected_answer`, `question_concept` when asking.
 
