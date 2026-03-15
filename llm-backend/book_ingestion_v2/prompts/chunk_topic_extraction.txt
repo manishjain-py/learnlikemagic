@@ -52,8 +52,9 @@ Do NOT include:
 - Assessment approaches or how to check understanding
 
 COPYRIGHT SAFETY — CRITICAL:
-- NEVER reproduce specific numbers, names, dates, or sentences from the textbook pages
-- Describe the TYPE of skill or concept generically (e.g., "4-digit addition with regrouping") instead of copying the textbook's specific instances
+- NEVER reproduce the textbook's specific worked examples, exercise numbers, or verbatim sentences
+- Canonical facts that ARE the learning objective (historical events, scientific constants, named laws) may be included — only strip textbook-authored examples and exercises
+- Describe the TYPE of skill or concept generically (e.g., "4-digit addition with regrouping") instead of copying the textbook's specific practice instances
 - If the textbook uses a particular example (e.g., "456 = 400 + 50 + 6"), describe the skill ("decompose 3-digit numbers into expanded form") without copying the example
 - Guidelines must be written in your own curriculum-description language, not paraphrased from the textbook prose
 
