@@ -40,6 +40,7 @@ class SessionService:
 
         # Initialize LLM service — read config from DB (once at session start)
         from shared.services.llm_config_service import LLMConfigService
+        from shared.services.feature_flag_service import FeatureFlagService
         settings = get_settings()
         tutor_config = LLMConfigService(db).get_config("tutor")
         self.llm_service = LLMService(
@@ -49,7 +50,8 @@ class SessionService:
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )
-        self.orchestrator = TeacherOrchestrator(self.llm_service)
+        visuals_enabled = FeatureFlagService(db).is_enabled("show_visuals_in_tutor_flow")
+        self.orchestrator = TeacherOrchestrator(self.llm_service, visuals_enabled=visuals_enabled)
 
     def create_new_session(self, request: CreateSessionRequest, user_id: Optional[str] = None) -> CreateSessionResponse:
         """Create a new learning session with mode support."""

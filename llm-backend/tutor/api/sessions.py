@@ -639,6 +639,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         from config import get_settings
         from shared.services.llm_service import LLMService
         from shared.services.llm_config_service import LLMConfigService
+        from shared.services.feature_flag_service import FeatureFlagService
         from tutor.orchestration import TeacherOrchestrator
 
         settings = get_settings()
@@ -650,7 +651,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )
-        orchestrator = TeacherOrchestrator(llm_service)
+        visuals_enabled = FeatureFlagService(db).is_enabled("show_visuals_in_tutor_flow")
+        orchestrator = TeacherOrchestrator(llm_service, visuals_enabled=visuals_enabled)
 
         # Send initial state
         state_dto = SessionStateDTO(
