@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 EVAL_DIR = Path(__file__).parent

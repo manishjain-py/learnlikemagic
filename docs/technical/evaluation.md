@@ -26,7 +26,7 @@ Generate Reports (JSON + Markdown artifacts)
 
 ## Student Simulator
 
-**File:** `evaluation/student_simulator.py`
+**File:** `autoresearch/tutor_teaching_quality/evaluation/student_simulator.py`
 
 `StudentSimulator` builds a system prompt from persona traits and uses an LLM to roleplay as the student.
 
@@ -45,7 +45,7 @@ Generate Reports (JSON + Markdown artifacts)
 
 ## Session Runner
 
-**File:** `evaluation/session_runner.py`
+**File:** `autoresearch/tutor_teaching_quality/evaluation/session_runner.py`
 
 - Creates tutoring session via `POST /sessions` REST endpoint with an `eval-student` user
 - Runs conversation loop over WebSocket (`/sessions/ws/{session_id}`)
@@ -66,7 +66,7 @@ Generate Reports (JSON + Markdown artifacts)
 
 ## LLM Judge
 
-**File:** `evaluation/evaluator.py`
+**File:** `autoresearch/tutor_teaching_quality/evaluation/evaluator.py`
 
 `ConversationEvaluator` sends full transcript plus persona context to an LLM judge and evaluates across 5 persona-aware dimensions.
 
@@ -124,9 +124,9 @@ The evaluator and simulator models are configured independently. When run from t
 
 ## Report Generator
 
-**File:** `evaluation/report_generator.py`
+**File:** `autoresearch/tutor_teaching_quality/evaluation/report_generator.py`
 
-Each run creates a directory: `evaluation/runs/run_{YYYYMMDD}_{HHMMSS}[_{persona_id}][_r{N}]/`
+Each run creates a directory: `autoresearch/tutor_teaching_quality/evaluation/runs/run_{YYYYMMDD}_{HHMMSS}[_{persona_id}][_r{N}]/`
 
 The directory name includes the persona ID when run from CLI, and a `_r{N}` suffix for multi-run mode.
 
@@ -162,7 +162,7 @@ Multi-persona comparison (`--persona all`): `comparison_{timestamp}/comparison.m
 
 ## Personas
 
-**Location:** `evaluation/personas/*.json`
+**Location:** `autoresearch/tutor_teaching_quality/evaluation/personas/*.json`
 
 | Persona ID | Name | Grade | Correct% | Key Trait |
 |------------|------|-------|----------|-----------|
@@ -271,7 +271,7 @@ Each run includes:
 
 The `source` field is `"simulated"` for new simulations or `"existing_session"` for evaluated real sessions. When source is `"existing_session"`, `source_session_id` contains the original session UUID.
 
-**Note:** The `GET /api/evaluation/runs` endpoint parses run directory names to extract timestamps using the format `run_{YYYYMMDD}_{HHMMSS}`. CLI-generated multi-persona runs with persona ID suffixes (e.g., `run_20260222_143000_ace`) and comparison directories will fail timestamp parsing and are silently skipped. Only API-generated runs (which use the plain timestamp format) and single-persona CLI runs appear in the API listing.
+**Note:** The `GET /api/evaluation/runs` endpoint parses run directory names to extract timestamps using the format `run_{YYYYMMDD}_{HHMMSS}`. CLI-generated multi-persona runs with persona ID suffixes (e.g., `run_20260222_143000_ace`) and comparison directories will fail timestamp parsing and are silently skipped. Only API-generated runs (which use the plain timestamp format) and single-persona CLI runs appear in the API listing. Run directories are stored under `autoresearch/tutor_teaching_quality/evaluation/runs/`.
 
 ---
 
@@ -289,24 +289,24 @@ The `source` field is `"simulated"` for new simulations or `"existing_session"` 
 cd llm-backend
 
 # Step 1: Browse available topics
-python -m evaluation.run_evaluation --list-topics
-python -m evaluation.run_evaluation --list-topics --subject Mathematics
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --list-topics
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --list-topics --subject Mathematics
 
 # Step 2: Start the backend server (if not already running)
 python -m uvicorn main:app --port 8000 &
 
 # Step 3: Run a single evaluation (quick check)
-python -m evaluation.run_evaluation \
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation \
   --subject Mathematics --chapter Fractions \
   --skip-server
 
 # Step 4: Run all 8 personas for a comprehensive sweep
-python -m evaluation.run_evaluation \
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation \
   --subject Mathematics --chapter Fractions \
   --persona all --skip-server
 
 # Step 5: Multiple runs per persona for statistical reliability
-python -m evaluation.run_evaluation \
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation \
   --subject Mathematics --chapter Fractions \
   --persona all --runs-per-persona 3 --skip-server
 ```
@@ -317,7 +317,7 @@ python -m evaluation.run_evaluation \
 2. Creates a tutoring session via `POST /sessions` (the tutor doesn't know it's being evaluated)
 3. A simulated student persona converses with the tutor over WebSocket (up to `--max-turns` turns)
 4. An LLM judge evaluates the transcript on 5 dimensions (1-10 each) and identifies problems
-5. Reports are saved to `evaluation/runs/run_<timestamp>/`
+5. Reports are saved to `autoresearch/tutor_teaching_quality/evaluation/runs/run_<timestamp>/`
 
 ### Output files (per run)
 
@@ -393,14 +393,14 @@ The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching th
 
 | File | Purpose |
 |------|---------|
-| `evaluation/config.py` | `EvalConfig` dataclass, persona loading, paths, DB config integration |
-| `evaluation/student_simulator.py` | LLM-powered student with persona-driven behavior and per-turn correctness enforcement |
-| `evaluation/session_runner.py` | Session lifecycle: REST creation, WebSocket conversation, server management |
-| `evaluation/evaluator.py` | LLM judge with 5-dimension persona-aware rubric, structured JSON output |
-| `evaluation/report_generator.py` | Markdown + JSON report generation, comparison reports |
-| `evaluation/run_evaluation.py` | CLI entry point, single-persona and multi-persona orchestration |
-| `evaluation/api.py` | FastAPI endpoints, background thread execution, status polling, session evaluation |
-| `evaluation/personas/*.json` | 8 student persona definitions |
+| `autoresearch/tutor_teaching_quality/evaluation/config.py` | `EvalConfig` dataclass, persona loading, paths, DB config integration |
+| `autoresearch/tutor_teaching_quality/evaluation/student_simulator.py` | LLM-powered student with persona-driven behavior and per-turn correctness enforcement |
+| `autoresearch/tutor_teaching_quality/evaluation/session_runner.py` | Session lifecycle: REST creation, WebSocket conversation, server management |
+| `autoresearch/tutor_teaching_quality/evaluation/evaluator.py` | LLM judge with 5-dimension persona-aware rubric, structured JSON output |
+| `autoresearch/tutor_teaching_quality/evaluation/report_generator.py` | Markdown + JSON report generation, comparison reports |
+| `autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py` | CLI entry point, single-persona and multi-persona orchestration |
+| `autoresearch/tutor_teaching_quality/evaluation/api.py` | FastAPI endpoints, background thread execution, status polling, session evaluation |
+| `autoresearch/tutor_teaching_quality/evaluation/personas/*.json` | 8 student persona definitions |
 | `llm-frontend/src/features/admin/pages/EvaluationDashboard.tsx` | Evaluation UI: run list, detail view, start form, status polling |
 | `llm-frontend/src/features/admin/api/adminApi.ts` | API client functions for evaluation endpoints |
 | `llm-frontend/src/features/admin/types/index.ts` | TypeScript types for evaluation data |

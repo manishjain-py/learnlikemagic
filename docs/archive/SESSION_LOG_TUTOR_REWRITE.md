@@ -129,15 +129,15 @@ Removed the entire LangGraph pipeline:
 
 | File | Purpose |
 |------|---------|
-| `evaluation/__init__.py` | Package init |
-| `evaluation/config.py` | `EvalConfig` dataclass: server, session, simulation, LLM settings |
-| `evaluation/student_simulator.py` | LLM-powered student with persona (OpenAI gpt-4o or Anthropic) |
-| `evaluation/session_runner.py` | Session lifecycle: create via REST, converse via WebSocket, capture messages |
-| `evaluation/evaluator.py` | 10-dimension LLM judge (coherence, non-repetition, natural flow, engagement, responsiveness, pacing, grade appropriateness, topic coverage, session arc, overall naturalness) |
-| `evaluation/report_generator.py` | Generates conversation.md, evaluation.json, review.md, problems.md |
-| `evaluation/run_evaluation.py` | CLI entry point: `python -m evaluation.run_evaluation` |
-| `evaluation/api.py` | FastAPI endpoints for starting/monitoring evaluation runs |
-| `evaluation/personas/average_student.json` | Default student persona "Riya" (grade 5, age 10, 60% correct probability) |
+| `autoresearch/tutor_teaching_quality/evaluation/__init__.py` | Package init |
+| `autoresearch/tutor_teaching_quality/evaluation/config.py` | `EvalConfig` dataclass: server, session, simulation, LLM settings |
+| `autoresearch/tutor_teaching_quality/evaluation/student_simulator.py` | LLM-powered student with persona (OpenAI gpt-4o or Anthropic) |
+| `autoresearch/tutor_teaching_quality/evaluation/session_runner.py` | Session lifecycle: create via REST, converse via WebSocket, capture messages |
+| `autoresearch/tutor_teaching_quality/evaluation/evaluator.py` | 10-dimension LLM judge (coherence, non-repetition, natural flow, engagement, responsiveness, pacing, grade appropriateness, topic coverage, session arc, overall naturalness) |
+| `autoresearch/tutor_teaching_quality/evaluation/report_generator.py` | Generates conversation.md, evaluation.json, review.md, problems.md |
+| `autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py` | CLI entry point: `python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation` |
+| `autoresearch/tutor_teaching_quality/evaluation/api.py` | FastAPI endpoints for starting/monitoring evaluation runs |
+| `autoresearch/tutor_teaching_quality/evaluation/personas/average_student.json` | Default student persona "Riya" (grade 5, age 10, 60% correct probability) |
 
 ### Phase 6: Cleanup & Dependencies
 
@@ -236,5 +236,5 @@ Response to Student
 2. Start server: `cd llm-backend && python -m uvicorn main:app --reload`
 3. Test session creation with a known guideline_id
 4. Test WebSocket chat flow
-5. Run evaluation: `python -m evaluation.run_evaluation`
+5. Run evaluation: `python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation`
 6. Commit changes to the branch

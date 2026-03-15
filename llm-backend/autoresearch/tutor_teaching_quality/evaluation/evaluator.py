@@ -8,7 +8,7 @@ with high reasoning effort to evaluate a tutoring conversation across 5 dimensio
 import json
 from openai import OpenAI
 
-from evaluation.config import EvalConfig
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 
 EVALUATION_DIMENSIONS = [
     "responsiveness",

@@ -27,7 +27,7 @@ instructions for the AI researcher. The agent does the prompt engineering autono
 ## Architecture
 
 ```
-autoresearch/
+autoresearch/tutor_teaching_quality/
 ├── program.md           # Agent instructions (the human edits this)
 ├── run_experiment.py    # Experiment runner (produces a single score)
 ├── email_report.py      # Sends compact email reports per iteration
@@ -39,8 +39,8 @@ autoresearch/
 | Karpathy's Autoresearch | Our Autoresearch |
 |--------------------------|------------------|
 | `train.py` (agent modifies) | `tutor/prompts/master_tutor_prompts.py` |
-| `prepare.py` (fixed eval) | `evaluation/` pipeline (evaluator + personas) |
-| `program.md` (human writes) | `autoresearch/program.md` |
+| `prepare.py` (fixed eval) | `autoresearch/tutor_teaching_quality/evaluation/` pipeline (evaluator + personas) |
+| `program.md` (human writes) | `autoresearch/tutor_teaching_quality/program.md` |
 | `val_bpb` (metric) | Composite eval score (avg across 5 dimensions, 1-10) |
 | 5 min training budget | ~5-8 min per experiment (1 session + evaluation) |
 | ~12 experiments/hour | ~8-10 experiments/hour |
@@ -77,7 +77,7 @@ primary audience.
 
 ### Persona File
 
-`evaluation/personas/average_student.json` — full persona definition used by the
+`autoresearch/tutor_teaching_quality/evaluation/personas/average_student.json` — full persona definition used by the
 student simulator during evaluation.
 
 ---
@@ -102,18 +102,18 @@ composite = (responsiveness + explanation_quality + emotional_attunement + pacin
 
 ### Evaluation Pipeline
 
-1. **Student Simulator** (`evaluation/student_simulator.py`) — An LLM roleplaying as
+1. **Student Simulator** (`autoresearch/tutor_teaching_quality/evaluation/student_simulator.py`) — An LLM roleplaying as
    Riya. Correct/incorrect answers are programmatically controlled via dice rolls
    against the persona's `correct_answer_probability` (45%).
 
-2. **Session Runner** (`evaluation/session_runner.py`) — Creates a session via REST API,
+2. **Session Runner** (`autoresearch/tutor_teaching_quality/evaluation/session_runner.py`) — Creates a session via REST API,
    runs the full tutoring conversation over WebSocket (20 turns max).
 
-3. **LLM Judge** (`evaluation/evaluator.py`) — An LLM (GPT-5.2 or Claude Opus) reads
+3. **LLM Judge** (`autoresearch/tutor_teaching_quality/evaluation/evaluator.py`) — An LLM (GPT-5.2 or Claude Opus) reads
    the full transcript and scores it across the 5 dimensions. Persona-aware: the same
    tutor behavior scores differently depending on the student type.
 
-4. **Report Generator** (`evaluation/report_generator.py`) — Saves conversation transcript,
+4. **Report Generator** (`autoresearch/tutor_teaching_quality/evaluation/report_generator.py`) — Saves conversation transcript,
    evaluation JSON, and formatted reports to the run directory.
 
 ---
@@ -127,7 +127,7 @@ composite = (responsiveness + explanation_quality + emotional_attunement + pacin
 2. Forms hypothesis: "If I change X in the prompt, dimension Y should improve"
 3. Edits tutor/prompts/master_tutor_prompts.py (ONE focused change)
 4. git commit
-5. Runs: ./venv/bin/python -m autoresearch.run_experiment --skip-server
+5. Runs: ./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server
 6. Reads result: avg_score from output
 7. avg_score improved? → KEEP (advance branch)
    avg_score worse?   → DISCARD (git reset --hard HEAD~1)
@@ -170,9 +170,9 @@ these templates is fair game:
 - `tutor/prompts/orchestrator_prompts.py`
 
 ### Read-Only (never modify):
-- `evaluation/` — Fixed metric
+- `autoresearch/tutor_teaching_quality/evaluation/` — Fixed metric
 - `tutor/agents/`, `tutor/models/`, `tutor/services/` — Application code
-- `autoresearch/run_experiment.py`, `autoresearch/email_report.py` — Runner code
+- `autoresearch/tutor_teaching_quality/run_experiment.py`, `autoresearch/tutor_teaching_quality/email_report.py` — Runner code
 
 ---
 
@@ -202,7 +202,7 @@ Requires `SMTP_USER` and `SMTP_PASSWORD` env vars (Gmail app password).
 Point an AI coding agent (Claude Code, Codex, etc.) at the repo and prompt:
 
 ```
-Read autoresearch/program.md and let's kick off a new experiment!
+Read autoresearch/tutor_teaching_quality/program.md and let's kick off a new experiment!
 Email reports to <your-email>.
 ```
 
@@ -211,14 +211,14 @@ The agent handles everything autonomously from there.
 ### Monitor
 
 - Check email on your phone for per-iteration reports
-- Review `autoresearch/results.tsv` for the full experiment log
-- Browse `evaluation/runs/autoresearch_*` directories for detailed transcripts
+- Review `autoresearch/tutor_teaching_quality/results.tsv` for the full experiment log
+- Browse `autoresearch/tutor_teaching_quality/evaluation/runs/autoresearch_*` directories for detailed transcripts
 
 ---
 
 ## Results Format
 
-`autoresearch/results.tsv` (tab-separated):
+`autoresearch/tutor_teaching_quality/results.tsv` (tab-separated):
 
 ```
 commit  avg_score  elapsed_min  status   description                        scores_json

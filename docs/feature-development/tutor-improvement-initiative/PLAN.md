@@ -23,11 +23,11 @@ Feedback --> Phase 1 (Analysis) --> [Human Review Gate] --> Phase 2 (Implementat
 
 ## Existing Infrastructure We Build On
 
-### Evaluation Pipeline (`llm-backend/evaluation/`)
+### Evaluation Pipeline (`llm-backend/autoresearch/tutor_teaching_quality/evaluation/`)
 - Student simulation with personas (struggler, average, ace)
 - LLM judge scoring across 5 dimensions: Responsiveness, Explanation Quality, Emotional Attunement, Pacing, Authenticity
 - Problem detection with root causes and severity
-- Entry point: `python -m evaluation.run_evaluation --topic-id <ID> --persona <FILE> --skip-server`
+- Entry point: `python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --topic-id <ID> --persona <FILE> --skip-server`
 
 ### Master Tutor Architecture (key files)
 - `llm-backend/tutor/agents/master_tutor.py` — Single LLM-powered agent

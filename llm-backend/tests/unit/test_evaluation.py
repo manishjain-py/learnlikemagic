@@ -7,11 +7,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 from datetime import datetime
 
-from evaluation.config import EvalConfig, RUNS_DIR, PERSONAS_DIR
-from evaluation.evaluator import ConversationEvaluator, EVALUATION_DIMENSIONS, ROOT_CAUSE_CATEGORIES
-from evaluation.student_simulator import StudentSimulator
-from evaluation.session_runner import SessionRunner
-from evaluation.report_generator import ReportGenerator, _score_bar, _root_cause_suggestion
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig, RUNS_DIR, PERSONAS_DIR
+from autoresearch.tutor_teaching_quality.evaluation.evaluator import ConversationEvaluator, EVALUATION_DIMENSIONS, ROOT_CAUSE_CATEGORIES
+from autoresearch.tutor_teaching_quality.evaluation.student_simulator import StudentSimulator
+from autoresearch.tutor_teaching_quality.evaluation.session_runner import SessionRunner
+from autoresearch.tutor_teaching_quality.evaluation.report_generator import ReportGenerator, _score_bar, _root_cause_suggestion
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ class TestConversationEvaluator:
         assert "missed_student_signal" in ROOT_CAUSE_CATEGORIES
         assert "prompt_quality" in ROOT_CAUSE_CATEGORIES
 
-    @patch("evaluation.evaluator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.evaluator.OpenAI")
     def test_format_transcript(self, mock_openai_cls):
         config = _make_config()
         evaluator = ConversationEvaluator(config)
@@ -167,7 +167,7 @@ class TestConversationEvaluator:
         assert "STUDENT" in transcript
         assert "[Turn 0]" in transcript
 
-    @patch("evaluation.evaluator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.evaluator.OpenAI")
     def test_build_user_message_basic(self, mock_openai_cls):
         config = _make_config()
         evaluator = ConversationEvaluator(config)
@@ -176,7 +176,7 @@ class TestConversationEvaluator:
         assert "CONVERSATION TRANSCRIPT" in msg
         assert "evaluate this tutoring conversation" in msg.lower()
 
-    @patch("evaluation.evaluator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.evaluator.OpenAI")
     def test_build_user_message_with_persona(self, mock_openai_cls):
         config = _make_config()
         evaluator = ConversationEvaluator(config)
@@ -187,7 +187,7 @@ class TestConversationEvaluator:
         assert "Priya" in msg
         assert "Curious" in msg
 
-    @patch("evaluation.evaluator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.evaluator.OpenAI")
     def test_build_user_message_with_topic(self, mock_openai_cls):
         config = _make_config()
         evaluator = ConversationEvaluator(config)
@@ -204,7 +204,7 @@ class TestConversationEvaluator:
         assert "TOPIC CONTEXT" in msg
         assert "Fractions" in msg
 
-    @patch("evaluation.evaluator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.evaluator.OpenAI")
     def test_build_user_message_with_persona_specific_behaviors(self, mock_openai_cls):
         config = _make_config()
         evaluator = ConversationEvaluator(config)
@@ -217,7 +217,7 @@ class TestConversationEvaluator:
         msg = evaluator._build_user_message(_make_conversation(), persona=persona)
         assert "Behavioral tendencies" in msg
 
-    @patch("evaluation.evaluator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.evaluator.OpenAI")
     def test_evaluate_openai(self, mock_openai_cls):
         config = _make_config()
         evaluator = ConversationEvaluator(config)
@@ -236,7 +236,7 @@ class TestConversationEvaluator:
 # ---------------------------------------------------------------------------
 
 class TestStudentSimulator:
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_init(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -246,7 +246,7 @@ class TestStudentSimulator:
         assert sim.turn_count == 0
         assert "Priya" in sim.system_prompt
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_build_system_prompt(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -258,7 +258,7 @@ class TestStudentSimulator:
         assert "CRITICAL RULES" in prompt
         assert "TURN DIRECTIVE" in prompt
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_build_system_prompt_with_persona_behaviors(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -267,7 +267,7 @@ class TestStudentSimulator:
 
         assert "PERSONA-SPECIFIC" in sim.system_prompt
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_should_answer_correctly_uses_probability(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -276,7 +276,7 @@ class TestStudentSimulator:
 
         assert sim._should_answer_correctly() is True
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_should_answer_correctly_zero_probability(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -285,7 +285,7 @@ class TestStudentSimulator:
 
         assert sim._should_answer_correctly() is False
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_get_turn_directive_correct(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -294,7 +294,7 @@ class TestStudentSimulator:
         directive = sim._get_turn_directive(should_be_correct=True)
         assert "ANSWER CORRECTLY" in directive
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_get_turn_directive_incorrect(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -303,7 +303,7 @@ class TestStudentSimulator:
         directive = sim._get_turn_directive(should_be_correct=False)
         assert "ANSWER INCORRECTLY" in directive
 
-    @patch("evaluation.student_simulator.OpenAI")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.student_simulator.OpenAI")
     def test_generate_response_openai(self, mock_openai_cls):
         config = _make_config()
         persona = _make_persona()
@@ -361,7 +361,7 @@ class TestSessionRunner:
 
         assert runner._log_file.closed
 
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_start_server_skipped_healthy(self, mock_httpx_cls, tmp_path):
         config = _make_config()
         sim = MagicMock()
@@ -376,7 +376,7 @@ class TestSessionRunner:
 
         runner.start_server()  # should not raise
 
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_start_server_skipped_unhealthy(self, mock_httpx_cls, tmp_path):
         import httpx
 

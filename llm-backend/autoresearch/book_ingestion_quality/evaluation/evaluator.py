@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from openai import OpenAI
 
-from book_ingestion_v2.evaluation.config import IngestionEvalConfig
+from autoresearch.book_ingestion_quality.evaluation.config import IngestionEvalConfig
 
 EVALUATION_DIMENSIONS = [
     "granularity",

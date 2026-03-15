@@ -10,8 +10,8 @@ from unittest.mock import patch, MagicMock, AsyncMock, mock_open
 
 import httpx
 
-from evaluation.config import EvalConfig
-from evaluation.session_runner import SessionRunner
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
+from autoresearch.tutor_teaching_quality.evaluation.session_runner import SessionRunner
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ class TestLog:
 
 
 class TestStartServerSkipped:
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_start_server_skip_healthy(self, mock_httpx_cls, tmp_path):
         config = _make_config()
         sim = _make_simulator()
@@ -144,7 +144,7 @@ class TestStartServerSkipped:
         runner.start_server()  # should not raise
         runner.cleanup()
 
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_start_server_skip_unhealthy(self, mock_httpx_cls, tmp_path):
         config = _make_config()
         sim = _make_simulator()
@@ -159,7 +159,7 @@ class TestStartServerSkipped:
             runner.start_server()
         runner.cleanup()
 
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_start_server_skip_read_timeout(self, mock_httpx_cls, tmp_path):
         config = _make_config()
         sim = _make_simulator()
@@ -181,9 +181,9 @@ class TestStartServerSkipped:
 
 
 class TestStartServerSubprocess:
-    @patch("evaluation.session_runner.time.sleep")
-    @patch("evaluation.session_runner.httpx.Client")
-    @patch("evaluation.session_runner.subprocess.Popen")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.time.sleep")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.subprocess.Popen")
     def test_start_server_subprocess_healthy(self, mock_popen, mock_httpx_cls, mock_sleep, tmp_path):
         config = _make_config()
         sim = _make_simulator()
@@ -206,9 +206,9 @@ class TestStartServerSubprocess:
         assert runner.server_process is mock_proc
         runner.cleanup()
 
-    @patch("evaluation.session_runner.time.sleep")
-    @patch("evaluation.session_runner.httpx.Client")
-    @patch("evaluation.session_runner.subprocess.Popen")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.time.sleep")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.subprocess.Popen")
     def test_start_server_subprocess_timeout(self, mock_popen, mock_httpx_cls, mock_sleep, tmp_path):
         # Use a very short real timeout so test runs quickly without mocking time.time
         config = _make_config(server_startup_timeout=0, health_check_interval=0)
@@ -292,7 +292,7 @@ class TestStopServer:
 
 
 class TestCreateSession:
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_create_session_success(self, mock_httpx_cls, tmp_path):
         config = _make_config(topic_id="fractions-basics")
         sim = _make_simulator()
@@ -320,7 +320,7 @@ class TestCreateSession:
 
         runner.cleanup()
 
-    @patch("evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
     def test_create_session_http_error(self, mock_httpx_cls, tmp_path):
         config = _make_config()
         sim = _make_simulator()
@@ -347,8 +347,8 @@ class TestCreateSession:
 
 
 class TestRunSession:
-    @patch("evaluation.session_runner.httpx.Client")
-    @patch("evaluation.session_runner.asyncio.run")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.asyncio.run")
     def test_run_session_success(self, mock_asyncio_run, mock_httpx_cls, tmp_path):
         config = _make_config()
         sim = _make_simulator()
@@ -392,8 +392,8 @@ class TestRunSession:
 
         runner.cleanup()
 
-    @patch("evaluation.session_runner.httpx.Client")
-    @patch("evaluation.session_runner.asyncio.run")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.asyncio.run")
     def test_run_session_ws_error_with_conversation(self, mock_asyncio_run, mock_httpx_cls, tmp_path):
         """If WS errors but conversation has messages, should not raise."""
         config = _make_config()
@@ -425,8 +425,8 @@ class TestRunSession:
         assert len(result) == 1
         runner.cleanup()
 
-    @patch("evaluation.session_runner.httpx.Client")
-    @patch("evaluation.session_runner.asyncio.run")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.asyncio.run")
     def test_run_session_ws_error_no_conversation_raises(self, mock_asyncio_run, mock_httpx_cls, tmp_path):
         """If WS errors and no conversation, should re-raise."""
         config = _make_config()
@@ -453,8 +453,8 @@ class TestRunSession:
 
         runner.cleanup()
 
-    @patch("evaluation.session_runner.httpx.Client")
-    @patch("evaluation.session_runner.asyncio.run")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.asyncio.run")
     def test_run_session_fetch_state_fails(self, mock_asyncio_run, mock_httpx_cls, tmp_path):
         """If fetching final state fails, session_metadata should be {}."""
         config = _make_config()

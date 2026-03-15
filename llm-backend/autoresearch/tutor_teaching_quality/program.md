@@ -26,18 +26,18 @@ Work with the user to:
 1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar14`).
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current branch.
 3. **Read the in-scope files** for full context:
-   - `autoresearch/program.md` — this file (your instructions)
-   - `autoresearch/run_experiment.py` — the experiment runner
+   - `autoresearch/tutor_teaching_quality/program.md` — this file (your instructions)
+   - `autoresearch/tutor_teaching_quality/run_experiment.py` — the experiment runner
    - `tutor/prompts/master_tutor_prompts.py` — **THE FILE YOU MODIFY** (main teaching prompts)
    - `tutor/prompts/clarify_doubts_prompts.py` — secondary target (clarify mode prompts)
    - `tutor/prompts/orchestrator_prompts.py` — secondary target (welcome messages)
-   - `evaluation/evaluator.py` — the 5 evaluation dimensions and rubric
-   - `evaluation/personas/average_student.json` — **READ THIS CAREFULLY** — understand Riya
+   - `autoresearch/tutor_teaching_quality/evaluation/evaluator.py` — the 5 evaluation dimensions and rubric
+   - `autoresearch/tutor_teaching_quality/evaluation/personas/average_student.json` — **READ THIS CAREFULLY** — understand Riya
 4. **Verify server is running**: `curl -s http://localhost:8000/health/db` should return OK.
    If not, tell the human to start the server: `cd llm-backend && ./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000`
 5. **Set AUTORESEARCH_TOPIC_ID**: Check `.env` or resolve:
-   `./venv/bin/python -c "from autoresearch.run_experiment import resolve_topic_id; print(resolve_topic_id())"`
-6. **Run baseline**: `./venv/bin/python -m autoresearch.run_experiment --skip-server --description "baseline" --iteration 0 --email <email>`
+   `./venv/bin/python -c "from autoresearch.tutor_teaching_quality.run_experiment import resolve_topic_id; print(resolve_topic_id())"`
+6. **Run baseline**: `./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server --description "baseline" --iteration 0 --email <email>`
 7. **Confirm and go**: Confirm setup with the human, then start the loop.
 
 ## Modifiable Surface
@@ -54,9 +54,9 @@ the prompt layout, add/remove rules, change tone instructions, modify formatting
 - `tutor/prompts/orchestrator_prompts.py` — Welcome message prompts
 
 **DO NOT MODIFY:**
-- `evaluation/` — The evaluation pipeline is read-only (fixed metric)
+- `autoresearch/tutor_teaching_quality/evaluation/` — The evaluation pipeline is read-only (fixed metric)
 - `tutor/agents/`, `tutor/models/`, `tutor/services/` — Code
-- `autoresearch/run_experiment.py`, `autoresearch/email_report.py` — Runner
+- `autoresearch/tutor_teaching_quality/run_experiment.py`, `autoresearch/tutor_teaching_quality/email_report.py` — Runner
 
 ## The Metric
 
@@ -92,7 +92,7 @@ The composite score = average across all 5 dimensions for this one persona.
 
 ```bash
 cd llm-backend
-./venv/bin/python -m autoresearch.run_experiment \
+./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment \
     --skip-server \
     --description "what this experiment tries" \
     --iteration <N> \
@@ -118,7 +118,7 @@ That's ~8-10 experiments per hour, ~60-80 overnight.
 For risky/speculative ideas, run quick mode first (12 turns):
 
 ```bash
-./venv/bin/python -m autoresearch.run_experiment --skip-server --quick \
+./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server --quick \
     --description "risky: remove all teaching rules" --iteration <N>
 ```
 
@@ -145,7 +145,7 @@ LOOP FOREVER:
 
 4. **Run experiment**:
    ```bash
-   ./venv/bin/python -m autoresearch.run_experiment --skip-server \
+   ./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server \
        --description "short description" --iteration <N> \
        --email <email> > run.log 2>&1
    ```
