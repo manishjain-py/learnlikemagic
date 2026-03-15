@@ -28,7 +28,7 @@ Sync to teaching_guidelines table
 Study Plan Generation (LLM generate -> review -> improve loop)
 ```
 
-All book ingestion code lives under `book_ingestion_v2/`. Study plan generation is a separate module under `study_plans/`.
+All book ingestion code lives under `book_ingestion_v2/`. Study plan generation is a separate module under `study_plans/`. The ingestion quality evaluation pipeline lives under `autoresearch/book_ingestion_quality/`.
 
 ---
 
@@ -268,6 +268,74 @@ Sync is idempotent: deletes existing guidelines for the chapter before creating 
 
 ---
 
+## Ingestion Quality Evaluation
+
+**Module:** `autoresearch/book_ingestion_quality/`
+
+Automated evaluation pipeline that scores topic extraction quality using an LLM judge. Runs offline from the command line, not from the web UI.
+
+### How It Works
+
+1. **Pipeline Runner** (`evaluation/pipeline_runner.py`, `PipelineRunner`) loads existing extracted topics from the DB (or optionally re-runs extraction fresh) and collects the full pipeline output: chapter metadata, book metadata, all topics with guidelines, and original OCR page texts.
+
+2. **Evaluator** (`evaluation/evaluator.py`, `IngestionEvaluator`) sends the pipeline output to an LLM judge that scores across three dimensions:
+   - **Granularity** -- Are topics split at the right level (not too broad, not too narrow)?
+   - **Coverage depth** -- Do the guidelines cover the source material thoroughly?
+   - **Copyright safety** -- Do the guidelines avoid verbatim or close-paraphrase copying?
+
+   The evaluator returns per-dimension scores (1-10), per-topic assessments, a list of problems with root cause categories, and a summary.
+
+3. **Report Generator** (`evaluation/report_generator.py`, `IngestionReportGenerator`) saves all run artifacts to a timestamped directory under `evaluation/runs/`:
+   - `config.json` -- Run configuration
+   - `pipeline_output.json` -- Raw topics and pages
+   - `topics.md` -- Human-readable topic listing
+   - `evaluation.json` -- Machine-readable scores and problems
+   - `review.md` -- Human-readable evaluation review with score tables, per-topic assessment, and problems
+
+4. **Email Report** (`email_report.py`) optionally sends a plain-text summary email with a comprehensive HTML report attached (uses macOS Mail.app via osascript).
+
+### Configuration
+
+**Config class:** `evaluation/config.py` (`IngestionEvalConfig`)
+
+- **Evaluator provider:** OpenAI (default) or Anthropic, set via `EVAL_LLM_PROVIDER` env var or `--provider` flag
+- **OpenAI evaluator:** `gpt-5.2` with `reasoning_effort="high"` and JSON output mode
+- **Anthropic evaluator:** `claude-opus-4-6` with extended thinking (budget: 20000 tokens)
+- **API keys:** Read from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` environment variables
+
+### CLI Usage
+
+```bash
+cd llm-backend
+
+# Evaluate existing topics (no re-extraction)
+python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction
+
+# Run fresh extraction + evaluate
+python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id>
+
+# Multiple runs for variance reduction
+python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction --runs 3
+
+# Use Anthropic as evaluator
+python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction --provider anthropic
+
+# With email report
+python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction --email user@example.com
+```
+
+Results are appended to `evaluation/results.tsv` when `--description` is provided.
+
+### Root Cause Categories
+
+The judge classifies problems into: `over_splitting`, `under_splitting`, `missing_coverage`, `shallow_guidelines`, `verbatim_copy`, `paraphrase_copy`, `wrong_scope`, `missing_prerequisites`, `missing_misconceptions`, `sequence_error`, `other`.
+
+### Judge Prompt
+
+**File:** `evaluation/prompts/judge.txt` -- Rubric and instructions for the LLM judge.
+
+---
+
 ## Study Plan Generation
 
 **Module:** `study_plans/`
@@ -366,6 +434,7 @@ books/{book_id}/
 | `shared/prompts/templates/study_plan_generator.txt` | `StudyPlanGeneratorService` | Generate 3-5 step study plan from guideline |
 | `shared/prompts/templates/study_plan_reviewer.txt` | `StudyPlanReviewerService` | Review plan quality, approve/reject with feedback |
 | `shared/prompts/templates/study_plan_improve.txt` | `StudyPlanOrchestrator._improve_plan()` | Revise rejected plan using reviewer feedback |
+| `autoresearch/book_ingestion_quality/evaluation/prompts/judge.txt` | `IngestionEvaluator` | Evaluate topic extraction quality across granularity, coverage, copyright |
 
 ---
 
@@ -423,3 +492,10 @@ books/{book_id}/
 | `study_plans/services/reviewer_service.py` | LLM-based study plan quality review |
 | `shared/models/entities.py` (StudyPlan class) | ORM model for `study_plans` table (guideline_id, user_id, plan_json, version) |
 | `shared/prompts/templates/study_plan_*.txt` | Prompts for study plan generation, review, and improvement |
+| `autoresearch/book_ingestion_quality/run_experiment.py` | CLI entry point for ingestion evaluation (runs extraction + LLM judge) |
+| `autoresearch/book_ingestion_quality/evaluation/evaluator.py` | LLM judge that scores extraction quality across 3 dimensions |
+| `autoresearch/book_ingestion_quality/evaluation/pipeline_runner.py` | Runs or loads extraction pipeline output for evaluation |
+| `autoresearch/book_ingestion_quality/evaluation/report_generator.py` | Generates markdown and JSON evaluation reports |
+| `autoresearch/book_ingestion_quality/evaluation/config.py` | Evaluation config: judge model, provider, API keys |
+| `autoresearch/book_ingestion_quality/email_report.py` | Sends HTML evaluation report via macOS Mail.app |
+| `autoresearch/book_ingestion_quality/evaluation/prompts/judge.txt` | Judge prompt with evaluation rubric |

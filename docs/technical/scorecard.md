@@ -121,7 +121,7 @@ The `_group_sessions` method accumulates data across all sessions for the same t
 
 ### Topic Progress (Lightweight)
 
-Used by the curriculum picker to show coverage indicators:
+Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.tsx` and `TopicSelect.tsx` call `getTopicProgress()` on mount and use the returned map to render progress badges alongside each chapter or topic.
 
 - Only counts **Teach Me** sessions (clarify_doubts and exam sessions are excluded entirely)
 - `status = "studied"` if `session_count > 0`
@@ -238,5 +238,7 @@ The report card is accessible from:
 | `tutor/api/sessions.py` | `/report-card` and `/topic-progress` endpoints |
 | `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`) |
 | `llm-frontend/src/pages/ReportCardPage.tsx` | Report card UI (overview + subject detail) |
+| `llm-frontend/src/pages/ChapterSelect.tsx` | Consumes `getTopicProgress()` to show progress badges per chapter |
+| `llm-frontend/src/pages/TopicSelect.tsx` | Consumes `getTopicProgress()` to show progress badges per topic |
 | `llm-frontend/src/api.ts` | Frontend API functions and TypeScript types |
 | `tests/unit/test_report_card_service.py` | Unit tests for coverage, exam score, hierarchy resolution, and resilience |

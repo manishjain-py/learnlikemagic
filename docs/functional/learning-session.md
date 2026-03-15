@@ -95,15 +95,17 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 4. **Never repeat** — The tutor varies how it explains things and the types of questions it asks. If something isn't working, it changes strategy.
 
-5. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it.
+5. **Checks for real understanding** — If you give a vague response like "hmm ok" or "I think I get it", the tutor does not just move on. It follows up with a quick check to make sure you actually understand, such as asking you to solve a small example or explain the idea back. The tutor only moves forward when you can show understanding through doing, not just by saying you understand.
 
-6. **Be real** — Praise is calibrated to difficulty. Easy answers don't get over-the-top celebration. Genuine breakthroughs get genuine enthusiasm. No stock phrases or excessive emojis.
+6. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it.
 
-7. **End naturally** — When the lesson is done, the tutor checks if you want to continue. If you say goodbye, it wraps up warmly in a few sentences.
+7. **Be real** — Praise is calibrated to difficulty. Easy answers don't get over-the-top celebration. Genuine breakthroughs get genuine enthusiasm. No stock phrases or excessive emojis.
 
-8. **Personalized** — If you've set up a profile (name, age, interests), the tutor uses your name and adapts its examples and language to your age level. When a full personality profile is available (from onboarding enrichment), the tutor's entire tone, examples, and style are tailored to who you are.
+8. **End naturally** — When the lesson is done, the tutor checks if you want to continue. If you say goodbye, it wraps up warmly in a few sentences.
 
-9. **Attention-aware** — The tutor is aware of your attention span (short, medium, or long). When the session reaches the attention limit, the tutor begins wrapping up and suggests continuing next time rather than pushing on.
+9. **Personalized** — If you've set up a profile (name, age, interests), the tutor uses your name and adapts its examples and language to your age level. When a full personality profile is available (from onboarding enrichment), the tutor's entire tone, examples, and style are tailored to who you are.
+
+10. **Attention-aware** — The tutor is aware of your attention span (short, medium, or long). When the session reaches the attention limit, the tutor begins wrapping up and suggests continuing next time rather than pushing on.
 
 ---
 

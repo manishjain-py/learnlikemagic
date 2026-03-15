@@ -22,16 +22,16 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Modules: tutor, book_ingestion_v2, study_plans, evaluation,    │
 │           auth (+ enrichment, personality)                      │
 │  Root API: api/ (docs, test_scenarios, pixi_poc)                 │
-│  Shared: llm_service, llm_config_service, anthropic_adapter,    │
-│          ocr_service, s3_client, api, models, utils,            │
-│          repositories, prompts                                  │
+│  Shared: llm_service, llm_config_service, feature_flag_service, │
+│          anthropic_adapter, ocr_service, s3_client, api, models,│
+│          utils, repositories, prompts                           │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
 │  Database (Aurora Serverless v2 PostgreSQL)                      │
 │  Tables: users, sessions, events, contents,                     │
 │          teaching_guidelines, study_plans, books, llm_config,    │
-│          session_feedback, kid_enrichment_profiles,              │
+│          feature_flags, session_feedback, kid_enrichment_profiles,│
 │          kid_personalities, book_chapters, chapter_pages,        │
 │          chapter_processing_jobs, chapter_chunks, chapter_topics │
 └─────────────────────────────────────────────────────────────────┘
@@ -49,7 +49,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | Uvicorn | ASGI server | Lightweight, high-performance, pairs with FastAPI |
 | Pydantic | Data validation | Type hints for validation, clear errors, schema gen |
 | SQLAlchemy | ORM | Mature, flexible, database-agnostic |
-| OpenAI | LLM provider (GPT-5.3, GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
+| OpenAI | LLM provider (GPT-5.4, GPT-5.3, GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 | Google | LLM provider (Gemini) + Cloud TTS | Additional provider option, text-to-speech |
 
@@ -119,9 +119,9 @@ llm-backend/
 │   ├── middleware/        # auth_middleware
 │   └── prompts/          # personality_prompts
 ├── shared/               # Cross-module utilities
-│   ├── api/              # Health checks, LLM config admin endpoints
-│   ├── services/         # LLM service, Anthropic adapter, LLM config service, OCR service
-│   ├── repositories/     # Session, event, guideline, book, LLM config repos
+│   ├── api/              # Health checks, LLM config admin, feature flag admin endpoints
+│   ├── services/         # LLM service, Anthropic adapter, LLM config service, feature flag service, OCR service
+│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag repos
 │   ├── models/           # Domain models, ORM entities, Pydantic schemas
 │   ├── prompts/          # Shared prompt loader
 │   └── utils/            # Constants, exceptions, formatting helpers, S3 client
@@ -165,6 +165,7 @@ Most modules follow the layered internal structure:
 | enrichment | `/profile` | Enrichment profile + personality endpoints (`/profile/enrichment`, `/profile/personality`) |
 | docs | `/api/docs` | Documentation API for admin viewer |
 | llm config | `/api/admin` | LLM model configuration (`/api/admin/llm-config/*`) |
+| feature flags | `/api/admin` | Runtime feature flag management (`/api/admin/feature-flags/*`) |
 | test scenarios | `/api/test-scenarios` | E2E test scenario results and screenshots |
 | v2 book routes | `/admin/v2/books` | Book CRUD (V2) |
 | v2 toc routes | `/admin/v2/books` | Table of contents extraction (V2) |
@@ -211,16 +212,25 @@ llm-frontend/src/
 │       ├── ChipSelector.tsx
 │       └── SessionPreferences.tsx
 ├── features/
-│   ├── admin/            # Admin pages + components
-│   │   └── pages/
-│   │       ├── BookV2Dashboard.tsx   # V2 book management dashboard
-│   │       ├── CreateBookV2.tsx      # Create new book (V2)
-│   │       ├── BookV2Detail.tsx      # Book detail + chapters (V2)
-│   │       ├── EvaluationDashboard.tsx
-│   │       ├── DocsViewer.tsx        # In-app documentation browser
-│   │       ├── LLMConfigPage.tsx     # LLM model config admin
-│   │       ├── TestScenariosPage.tsx # E2E test results viewer
-│   │       └── PixiJsPocPage.tsx    # Pixi.js visual generation PoC
+│   ├── admin/            # Admin pages, components, API client, types
+│   │   ├── api/
+│   │   │   ├── adminApi.ts          # Admin API client (evaluation, docs, LLM config, feature flags, test scenarios)
+│   │   │   └── adminApiV2.ts        # Book ingestion V2 API client
+│   │   ├── components/
+│   │   │   └── AdminLayout.tsx      # Shared admin layout with persistent top nav bar
+│   │   ├── pages/
+│   │   │   ├── AdminHome.tsx        # Admin dashboard landing page with cards linking to all admin sections
+│   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
+│   │   │   ├── CreateBookV2.tsx      # Create new book (V2)
+│   │   │   ├── BookV2Detail.tsx      # Book detail + chapters (V2)
+│   │   │   ├── EvaluationDashboard.tsx
+│   │   │   ├── DocsViewer.tsx        # In-app documentation browser
+│   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
+│   │   │   ├── FeatureFlagsPage.tsx  # Feature flag toggle admin
+│   │   │   ├── TestScenariosPage.tsx # E2E test results viewer
+│   │   │   └── PixiJsPocPage.tsx    # Pixi.js visual generation PoC
+│   │   └── types/
+│   │       └── index.ts             # TypeScript types for admin features (eval, LLM config, feature flags)
 │   └── devtools/         # Debug tools (shown in chat session)
 │       ├── api/devToolsApi.ts         # Dev tools API client
 │       ├── components/
@@ -260,16 +270,17 @@ llm-frontend/src/
 | `/history` | AppShell > SessionHistoryPage | Protected + Onboarding | Past sessions |
 | `/report-card` | AppShell > ReportCardPage | Protected + Onboarding | Student report card |
 | `/onboarding` | OnboardingFlow | Protected | First-time setup |
-| `/admin` | (redirect) | Unprotected | Redirects to `/admin/books-v2` |
+| `/admin` | AdminLayout > AdminHome | Unprotected | Admin dashboard landing page with links to all admin sections |
 | `/admin/books` | (redirect) | Unprotected | Redirects to `/admin/books-v2` |
-| `/admin/books-v2` | BookV2Dashboard | Unprotected | Book management (V2) |
-| `/admin/books-v2/new` | CreateBookV2 | Unprotected | Create new book (V2) |
-| `/admin/books-v2/:id` | BookV2Detail | Unprotected | Book detail + chapters (V2) |
-| `/admin/evaluation` | EvaluationDashboard | Unprotected | Evaluation dashboard |
-| `/admin/docs` | DocsViewer | Unprotected | Project documentation browser |
-| `/admin/llm-config` | LLMConfigPage | Unprotected | LLM provider/model configuration |
-| `/admin/test-scenarios` | TestScenariosPage | Unprotected | E2E test results and screenshots |
-| `/admin/pixi-js-poc` | PixiJsPocPage | Unprotected | Pixi.js visual generation PoC |
+| `/admin/books-v2` | AdminLayout > BookV2Dashboard | Unprotected | Book management (V2) |
+| `/admin/books-v2/new` | AdminLayout > CreateBookV2 | Unprotected | Create new book (V2) |
+| `/admin/books-v2/:id` | AdminLayout > BookV2Detail | Unprotected | Book detail + chapters (V2) |
+| `/admin/evaluation` | AdminLayout > EvaluationDashboard | Unprotected | Evaluation dashboard |
+| `/admin/docs` | AdminLayout > DocsViewer | Unprotected | Project documentation browser |
+| `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
+| `/admin/feature-flags` | AdminLayout > FeatureFlagsPage | Unprotected | Toggle runtime feature flags on/off |
+| `/admin/test-scenarios` | AdminLayout > TestScenariosPage | Unprotected | E2E test results and screenshots |
+| `/admin/pixi-js-poc` | AdminLayout > PixiJsPocPage | Unprotected | Pixi.js visual generation PoC |
 
 ---
 
@@ -318,7 +329,7 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 
 | Provider | Config Value | Available Models | Usage |
 |----------|-------------|------------------|-------|
-| OpenAI | `openai` | gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
+| OpenAI | `openai` | gpt-5.4, gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
 | Anthropic | `anthropic` | claude-opus-4-6, claude-haiku-4-5-20251001 | Tutor, evaluation |
 | Google | `google` | gemini-3-pro-preview | Alternative provider |
 
@@ -347,11 +358,32 @@ Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own ro
 - **Reasoning levels**: none, low, medium, high, xhigh (mapped to thinking budgets for Claude: 0, 5K, 10K, 20K, 40K tokens)
 - **Retry**: 3 attempts with exponential backoff for rate limits and timeouts
 - **Schema conversion**: `make_schema_strict()` converts Pydantic models to OpenAI strict schema format
-- **OpenAI API selection**: gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
+- **OpenAI API selection**: gpt-5.4/gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
 - **Streaming**: `call_stream()` yields text chunks via OpenAI Responses API or Chat Completions streaming; Anthropic streams via adapter; Gemini falls back to non-streaming
 - **Fast model**: `call_fast()` always uses gpt-4o-mini via Chat Completions for lightweight tasks (translation, safety checks) regardless of provider setting
 - **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls
 - **Gemini**: Google Generative AI client with JSON mode support
+
+---
+
+## Feature Flag System
+
+Runtime feature toggles stored in the `feature_flags` DB table. Flags are seeded during migration (`db.py`) and managed through the `/admin/feature-flags` admin UI.
+
+- **Admin UI**: `/admin/feature-flags` page lets admins toggle each flag on or off. Changes take effect immediately for new sessions.
+- **API**: `GET /api/admin/feature-flags` lists all flags; `PUT /api/admin/feature-flags/{flag_name}` toggles one. Only existing flags can be updated (404 for unknown names).
+- **Service**: `FeatureFlagService.is_enabled(flag_name)` returns `True`/`False` — called from backend code to gate features at runtime.
+- **Seeded flags**: `show_visuals_in_tutor_flow` (controls Pixi.js visual explanations during tutoring sessions).
+
+### Key Feature Flag Files
+
+| File | Purpose |
+|------|---------|
+| `shared/services/feature_flag_service.py` | Read/write feature flags from DB; `is_enabled()` check |
+| `shared/repositories/feature_flag_repository.py` | CRUD for `feature_flags` table |
+| `shared/api/feature_flag_routes.py` | Admin API endpoints (list, toggle) |
+| `shared/models/entities.py` (`FeatureFlag`) | ORM entity for `feature_flags` table |
+| `db.py` (`_FEATURE_FLAG_SEEDS`) | Default flag seeds applied during migration |
 
 ---
 

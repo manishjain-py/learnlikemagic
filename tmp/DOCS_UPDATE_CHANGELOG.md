@@ -1,6 +1,6 @@
 # Documentation Update Changelog
 
-**Date:** 2026-03-13
+**Date:** 2026-03-15
 **Trigger:** `/update-all-docs` skill execution
 
 ---
@@ -11,51 +11,51 @@
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/app-overview.md` | Added "Visual Explanations (PoC)" to Core Features table; added step 7 to Admin user journey for visual explanations |
-| `docs/technical/architecture-overview.md` | Updated architecture diagram and module structure for pixi_poc router; added pixi poc to Routers table; added VisualExplanation.tsx and PixiJsPocPage.tsx to frontend components; added /admin/pixi-js-poc to Route Map; documented streaming (call_stream()), fast model (call_fast()), and prompt caching provider features |
+| `docs/functional/app-overview.md` | Added "Feature Flags" to Core Features; added feature flag step to admin journey |
+| `docs/technical/architecture-overview.md` | Updated OpenAI models (added gpt-5.4, gpt-5.3-codex); added feature_flags to DB diagram, shared module, routers table; expanded frontend admin structure; fixed admin route map (AdminLayout wrapper); added full "Feature Flag System" section |
 
 ### Agent 2 — Learning Session
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/learning-session.md` | Added Visual Illustrations section documenting interactive diagram/animation generation alongside text responses |
-| `docs/technical/learning-session.md` | Fixed architecture diagram to show parallel execution (translation + safety via asyncio.gather); added visual_explanation field and VisualExplanation sub-schema to TutorTurnOutput; reordered orchestration flow (post-completion check first); added Streaming Path subsection (process_turn_stream(), 3 yield types); updated teaching rules 12→13 (rule 13: visual explanations); added token and visual_update WebSocket message types; updated Key Files (orchestrator.py, master_tutor.py, messages.py); added pixi_code_generator.py; added Pixi Code Gen to LLM Calls table |
+| `docs/functional/learning-session.md` | Added Rule 5: "Checks for real understanding" (detect false OKs) |
+| `docs/technical/learning-session.md` | Updated teaching rule count 13→14 (4 locations); updated model list (added gpt-5.4, gpt-5.3-codex); added `show_visuals_in_tutor_flow` feature flag docs (3 locations); added `feature_flag_service.py` to Key Files |
 
 ### Agent 3 — Evaluation
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/evaluation.md` | Updated persona selector: UI now has dropdown (was CLI-only) |
-| `docs/technical/evaluation.md` | Added token and visual_update to WebSocket message types; replaced stale root cause suggestion table with current code values; added GET /api/evaluation/personas endpoint; updated frontend persona selector description |
+| `docs/functional/evaluation.md` | No changes needed — fully accurate |
+| `docs/technical/evaluation.md` | Fixed `max_tokens` → `max_completion_tokens`; changed "silently skipped" to "logged as warnings"; added note about frontend model badge reading legacy field |
 
 ### Agent 4 — Scorecard
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/scorecard.md` | No changes needed — fully accurate |
-| `docs/technical/scorecard.md` | No changes needed — fully accurate |
+| `docs/functional/scorecard.md` | Fixed empty state nav target: "topic selection" → "subject selection" |
+| `docs/technical/scorecard.md` | Added `ChapterSelect.tsx` and `TopicSelect.tsx` as topic-progress consumers |
 
 ### Agent 5 — Book & Guidelines
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/book-guidelines.md` | Added `approved` topic status; added study plan metadata (duration, difficulty, theme); documented mid-session feedback plan regeneration |
-| `docs/technical/book-guidelines.md` | Documented TopicStatus enum progression (draft→consolidated→final→approved); added 3 study plan prompt files to LLM Prompts table; expanded Generator section (prompt loading, schema enforcement, output structure, StudentContext, generate_plan_with_feedback()); expanded Orchestrator section (4-step flow, improvement fallback); updated Database Tables for study_plans; updated Key Files (entities.py, generator_service.py, prompt files) |
+| `docs/functional/book-guidelines.md` | Added version field to topic listing |
+| `docs/technical/book-guidelines.md` | Added new "Ingestion Quality Evaluation" section (was missing); added 7 evaluation pipeline files + judge prompt to Key Files |
 
 ### Agent 6 — Auth & Onboarding
 
 | Doc | Changes |
 |-----|---------|
-| `docs/functional/auth-and-onboarding.md` | Fixed onboarding greeting fallback logic (preferredName || name) |
-| `docs/technical/auth-and-onboarding.md` | Updated EnrichmentService.has_meaningful_data() field list; added about_me to compute_inputs_hash(); documented should_regenerate() method |
+| `docs/functional/auth-and-onboarding.md` | No changes needed — fully accurate |
+| `docs/technical/auth-and-onboarding.md` | No changes needed — fully accurate |
 
 ### Agent 7 — Infrastructure
 
 | Doc | Changes |
 |-----|---------|
-| `docs/technical/dev-workflow.md` | Fixed sample_goal fixture description (syllabus field); fixed curl example (topic→chapter, added required fields) |
+| `docs/technical/dev-workflow.md` | No changes needed — paths already updated |
 | `docs/technical/deployment.md` | No changes needed — fully accurate |
-| `docs/technical/database.md` | Fixed migration step 15 description: _apply_focus_mode_column() also resets FALSE→TRUE |
+| `docs/technical/database.md` | Added "Feature Flags" table section; added to relationships diagram; added migration step 18 |
 
 ---
 
@@ -69,9 +69,12 @@ None — all changes fit into existing documentation files.
 
 | Doc | Reason |
 |-----|--------|
-| `docs/functional/scorecard.md` | All claims match current code |
-| `docs/technical/scorecard.md` | All claims match current code |
-| `docs/technical/deployment.md` | All infra details match current Terraform/CI/CD/Docker |
+| `docs/functional/evaluation.md` | All 8 personas, 5 dimensions, dashboard features verified correct |
+| `docs/functional/auth-and-onboarding.md` | All flows, route guards, enrichment verified correct |
+| `docs/technical/auth-and-onboarding.md` | All 34 key files, endpoints, Cognito verified correct |
+| `docs/technical/dev-workflow.md` | All paths and configs verified correct |
+| `docs/technical/deployment.md` | All infra details verified correct |
+| `docs/technical/auto-research/overview.md` | Already updated with centralized structure |
 | `docs/DOCUMENTATION_GUIDELINES.md` | Master index unchanged (no new docs added) |
 
 ---
@@ -79,22 +82,29 @@ None — all changes fit into existing documentation files.
 ## Coverage Matrix
 
 | Feature/Module | Functional Doc | Technical Doc |
-|----------------|---------------|---------------|
-| App overview & user journey | app-overview.md | architecture-overview.md |
-| Learning session / tutor | learning-session.md | learning-session.md |
-| Evaluation | evaluation.md | evaluation.md |
-| Scorecard / report card | scorecard.md | scorecard.md |
-| Book ingestion & guidelines | book-guidelines.md | book-guidelines.md |
-| Study plans | book-guidelines.md | book-guidelines.md |
-| Auth & onboarding | auth-and-onboarding.md | auth-and-onboarding.md |
-| Visual explanations (PoC) | app-overview.md, learning-session.md | architecture-overview.md, learning-session.md |
-| LLM providers & streaming | N/A (infra detail) | architecture-overview.md |
-| Dev workflow & testing | N/A (dev-facing) | dev-workflow.md |
-| Deployment & infrastructure | N/A (dev-facing) | deployment.md |
-| Database schema & migrations | N/A (dev-facing) | database.md |
+|---|---|---|
+| App overview & user journey | `app-overview.md` | `architecture-overview.md` |
+| Learning sessions (tutor) | `learning-session.md` | `learning-session.md` |
+| Evaluation pipeline | `evaluation.md` | `evaluation.md` |
+| Scorecard / report card | `scorecard.md` | `scorecard.md` |
+| Book ingestion & guidelines | `book-guidelines.md` | `book-guidelines.md` |
+| Auth & onboarding | `auth-and-onboarding.md` | `auth-and-onboarding.md` |
+| Feature flags | `app-overview.md` (brief) | `architecture-overview.md` (full section) |
+| LLM config admin | N/A (admin tool) | `architecture-overview.md` |
+| Autoresearch (tutor) | N/A | `auto-research/overview.md` |
+| Autoresearch (book ingestion) | N/A | `book-guidelines.md` (new section) |
+| Database schema | N/A | `database.md` |
+| Dev workflow & testing | N/A | `dev-workflow.md` |
+| Deployment & infra | N/A | `deployment.md` |
 
 ---
 
 ## Deferred Items
 
-None — all discovered functionality is now documented.
+| Item | Rationale |
+|---|---|
+| `docs_router` (API docs endpoint) | Internal tooling, not a user/developer feature |
+| `test_scenarios_router` / `TestScenariosPage` | Development helper, not production |
+| `ExamReviewPage.tsx` | Early-stage page; will document when stabilized |
+| `PixiJsPocPage.tsx` | Proof-of-concept, minimal mention in learning-session tech doc is sufficient |
+| `DocsViewer.tsx` admin page | Internal admin tool for browsing docs |

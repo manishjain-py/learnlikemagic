@@ -276,6 +276,26 @@ LLM-derived personality versions (multiple per kid, latest version = active).
 
 **Indexes:** `idx_books_curriculum` (country, board, grade, subject)
 
+### Feature Flags
+
+**Table:** `feature_flags` | **Model:** `FeatureFlag` (`shared/models/entities.py`)
+
+Runtime feature flags toggled via the `/admin/feature-flags` UI. Each row is a named boolean switch. New flags are seeded in `db.py` via `_seed_feature_flags()`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `flag_name` | VARCHAR | Primary key (e.g. `show_visuals_in_tutor_flow`) |
+| `enabled` | BOOL | Whether the flag is on (default false) |
+| `description` | VARCHAR | Human-readable description |
+| `updated_at` | DATETIME | Last update timestamp |
+| `updated_by` | VARCHAR | Who last toggled the flag |
+
+**Seeded defaults** (inserted if the flag does not yet exist):
+
+| Flag Name | Default | Description |
+|-----------|---------|-------------|
+| `show_visuals_in_tutor_flow` | true | Show Pixi.js visual explanations during tutoring sessions |
+
 ### V2 Pipeline Tables
 
 See `book_ingestion_v2/models/database.py` for the full V2 pipeline tables:
@@ -299,6 +319,7 @@ teaching_guidelines ──1:N──> study_plans (per-user plans)
 books ──1:N──> book_chapters ──1:N──> chapter_pages
 books ──1:N──> book_chapters ──1:N──> chapter_topics
 llm_config (standalone, no FKs)
+feature_flags (standalone, no FKs)
 ```
 
 - `Session.user_id` --> `User.id` (nullable -- anonymous sessions supported)
@@ -336,6 +357,7 @@ Custom imperative migration (not Alembic):
 15. `_apply_focus_mode_column()` -- Adds `focus_mode` column to users (default true); if column already exists, resets all `focus_mode = FALSE` to `TRUE`
 16. `_apply_session_feedback_table()` -- Verifies session_feedback table exists (created by `create_all`)
 17. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+18. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
 
 ```bash
 # Run migrations
@@ -385,7 +407,7 @@ python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guide
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality) |
+| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag) |
 | `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob) |
 | `db.py` | Migration CLI and migration functions |
 | `database.py` | DatabaseManager, connection pooling, `get_db()` dependency |

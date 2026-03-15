@@ -64,6 +64,7 @@ Once processing completes, the admin can expand a chapter to see its extracted t
 - **Source pages** -- Which pages the content came from
 - **Status** -- Draft, consolidated, final, or approved
 - **Sequence order** -- The recommended teaching order
+- **Version** -- Tracks revisions when a topic is reprocessed
 
 ### Step 6: Sync to Teaching Database
 

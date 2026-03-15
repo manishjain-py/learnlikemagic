@@ -45,7 +45,7 @@ PIXI CODE GENERATOR
 Visual Update to Client
 ```
 
-Pipeline: input translation and safety check run **in parallel** (saves 2-5s), then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech. When the tutor includes a `visual_explanation`, a secondary LLM call generates executable Pixi.js v8 code for client-side rendering.
+Pipeline: input translation and safety check run **in parallel** (saves 2-5s), then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech. When the tutor includes a `visual_explanation` and the `show_visuals_in_tutor_flow` feature flag is enabled, a secondary LLM call generates executable Pixi.js v8 code for client-side rendering.
 
 ---
 
@@ -73,7 +73,7 @@ Mode-specific processing happens in the orchestrator after the shared safety che
 | **Safety** | Configurable (DB) | `SafetyOutput` (strict) | Content moderation gate |
 | **Master Tutor** | Configurable (DB) | `TutorTurnOutput` (strict) | All teaching: explain, ask, evaluate, track mastery, advance |
 
-Provider and model are configured via the `llm_config` DB table, read at session creation time through `LLMConfigService.get_config("tutor")`. Supported providers: `openai` (GPT-5.2, GPT-5.1), `anthropic` / `anthropic-haiku` (Claude), `google` (Gemini).
+Provider and model are configured via the `llm_config` DB table, read at session creation time through `LLMConfigService.get_config("tutor")`. Supported providers: `openai` (GPT-5.4, GPT-5.3-codex, GPT-5.2, GPT-5.1), `anthropic` / `anthropic-haiku` (Claude), `google` (Gemini).
 
 ### TutorTurnOutput Schema
 
@@ -128,7 +128,7 @@ TutorTurnOutput {
    - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify-specific prompts (`CLARIFY_DOUBTS_SYSTEM_PROMPT` + `CLARIFY_DOUBTS_TURN_PROMPT`), tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
    - `exam` → `_process_exam_turn()`: evaluates answer against current exam question using fractional scoring (0.0-1.0). Score >= 0.8 → correct, >= 0.2 → partial, < 0.2 → incorrect. Records `marks_rationale` per question. Mid-exam responses show only the next question — correctness is not revealed. When the last question is answered, builds a full results response with per-question scores, rationales, and final score.
    - `teach_me` → continues to step 7
-7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 13 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
+7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 14 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
 8. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
 9. **Apply State Updates**:
    - Handle explanation phase lifecycle (opening → explaining → informal_check → complete)
@@ -140,7 +140,7 @@ TutorTurnOutput {
    - Handle session completion (only honored on final step)
 10. **Add response** (with `audio_text`) to conversation history
 11. **Update session summary** — Turn timeline (capped at 30 entries), progress trend, concepts taught
-12. **Visual Generation (optional)** — If `tutor_output.visual_explanation` is present, generate Pixi.js v8 code via `PixiCodeGenerator`. Failures are logged and silently skipped (never crashes the turn).
+12. **Visual Generation (optional)** — If `tutor_output.visual_explanation` is present and visuals are enabled, generate Pixi.js v8 code via `PixiCodeGenerator`. Visual generation is gated by the `show_visuals_in_tutor_flow` feature flag (read from `feature_flags` DB table via `FeatureFlagService` at orchestrator initialization). When disabled, `_generate_pixi_code()` returns `None` and the frontend receives no visual. Failures are logged and silently skipped (never crashes the turn).
 13. **Return TurnResult** (includes `audio_text` and optional `visual_explanation` with generated `pixi_code`)
 
 ### Streaming Path
@@ -164,7 +164,7 @@ Contains:
 - Personalization block: uses `tutor_brief` (rich personality prose from enrichment profile) when available, falling back to basic name/age/about_me from user profile
 - Study plan (steps with types, concepts, content hints)
 - Topic guidelines (curriculum scope, common misconceptions)
-- 13 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking, visual explanations (strongly encouraged on explanation/demonstration turns via `visual_explanation` field)
+- 14 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, detect false OKs (vague "hmm ok" / "I get it" requires diagnostic follow-up before moving on), match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking, visual explanations (strongly encouraged on explanation/demonstration turns via `visual_explanation` field)
 - Response and audio language instructions (from `language_utils.py`)
 
 ### Turn Prompt (teach_me — per turn)
@@ -572,7 +572,7 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 
 | File | Purpose |
 |------|---------|
-| `master_tutor_prompts.py` | System prompt (study plan + guidelines + 12 rules + personalization + language instructions) and turn prompt (with explanation context, feedback notices). Used for teach_me and exam modes. |
+| `master_tutor_prompts.py` | System prompt (study plan + guidelines + 14 rules + personalization + language instructions) and turn prompt (with explanation context, feedback notices). Used for teach_me and exam modes. |
 | `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode. **Actively wired** — clarify mode uses these via `MasterTutorAgent._build_system_prompt()` and `_build_clarify_turn_prompt()`. Direct answer rules, session closure rules, concept tracking. |
 | `exam_prompts.py` | Exam question generation prompt (actively used by ExamService, includes personalization section) and evaluation prompts (**evaluation prompts defined but not yet wired** — exam eval uses master tutor prompts with exam context injected). |
 | `orchestrator_prompts.py` | Welcome message (Teach Me) and session summary prompts |
@@ -593,7 +593,7 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 |------|---------|
 | `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation and duplicate exam guard), step processing, pause/resume, end clarify, end exam, mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
 | `tutor/services/exam_service.py` | Exam question generation via LLM with retry and personalization. ExamGenerationError (LearnLikeMagicException subclass) |
-| `tutor/services/pixi_code_generator.py` | PixiCodeGenerator: translates natural language visual descriptions into executable Pixi.js v8 code via LLM. Used by the orchestrator for `visual_explanation` rendering. Canvas 500x350. Returns empty string on failure (never crashes the turn). |
+| `tutor/services/pixi_code_generator.py` | PixiCodeGenerator: translates natural language visual descriptions into executable Pixi.js v8 code via LLM (uses the tutor's configured model). Gated by `show_visuals_in_tutor_flow` feature flag. Used by the orchestrator for `visual_explanation` rendering. Canvas 500x350. Returns empty string on failure (never crashes the turn). |
 | `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model |
 | `tutor/services/report_card_service.py` | Report card aggregation, topic progress |
 | `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint, feedback endpoint, exam-review endpoint, guideline sessions endpoint |
@@ -604,3 +604,4 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 | `shared/services/llm_service.py` | LLM wrapper (OpenAI Responses API, Chat Completions, Gemini, Anthropic) |
 | `shared/services/anthropic_adapter.py` | Claude API adapter (tool_use for structured output, thinking budgets) |
 | `shared/services/llm_config_service.py` | DB-backed LLM config: component_key → provider + model_id |
+| `shared/services/feature_flag_service.py` | DB-backed feature flags: flag_name → enabled boolean (used for `show_visuals_in_tutor_flow` gate) |

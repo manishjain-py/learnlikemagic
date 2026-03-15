@@ -115,7 +115,7 @@ The `_build_user_message()` method assembles the evaluator input:
 
 | Provider | Default Model | Config |
 |----------|---------------|--------|
-| OpenAI | gpt-4o | Chat Completions API, temperature 0.8, max tokens 150 |
+| OpenAI | gpt-4o | Chat Completions API, temperature 0.8, max_completion_tokens 150 |
 | Anthropic | Claude Opus 4.6 | Messages API, max tokens 150 |
 
 The evaluator and simulator models are configured independently. When run from the API, models are read from the DB `llm_config` table (`eval_evaluator` and `eval_simulator` keys). When run from the CLI, models fall back to `EVAL_LLM_PROVIDER` env var.
@@ -271,7 +271,7 @@ Each run includes:
 
 The `source` field is `"simulated"` for new simulations or `"existing_session"` for evaluated real sessions. When source is `"existing_session"`, `source_session_id` contains the original session UUID.
 
-**Note:** The `GET /api/evaluation/runs` endpoint parses run directory names to extract timestamps using the format `run_{YYYYMMDD}_{HHMMSS}`. CLI-generated multi-persona runs with persona ID suffixes (e.g., `run_20260222_143000_ace`) and comparison directories will fail timestamp parsing and are silently skipped. Only API-generated runs (which use the plain timestamp format) and single-persona CLI runs appear in the API listing. Run directories are stored under `autoresearch/tutor_teaching_quality/evaluation/runs/`.
+**Note:** The `GET /api/evaluation/runs` endpoint parses run directory names to extract timestamps using the format `run_{YYYYMMDD}_{HHMMSS}`. CLI-generated multi-persona runs with persona ID suffixes (e.g., `run_20260222_143000_ace`) and comparison directories will fail timestamp parsing; these are logged as warnings on the server and omitted from the API response. Only API-generated runs (which use the plain timestamp format) and single-persona CLI runs appear in the API listing. Run directories are stored under `autoresearch/tutor_teaching_quality/evaluation/runs/`.
 
 ---
 
@@ -385,7 +385,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
-The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching the backend: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching the backend: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. Note that `eval_llm_provider` is the legacy provider field (default from `EVAL_LLM_PROVIDER` env var), not the per-component `evaluator_provider` field -- when evaluator and simulator providers are set independently via DB config, the badge may show the legacy default rather than the actual evaluator provider. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

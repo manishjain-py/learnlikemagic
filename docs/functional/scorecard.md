@@ -52,7 +52,7 @@ The button is only available for topics that are linked to a teaching guideline.
 
 ## Empty State
 
-When a student has no completed sessions, the report card shows an encouraging message and a "Start Learning" button that takes them to the topic selection screen.
+When a student has no completed sessions, the report card shows an encouraging message and a "Start Learning" button that takes them to the subject selection screen.
 
 ---
 
