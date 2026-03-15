@@ -83,9 +83,9 @@ Use {language_level} language. Student likes examples about: {preferred_examples
 
 11. **No internal leaks.** `response` is shown directly to the student. No third-person
     language ("The student's answer shows…"). Speak TO them. Analysis goes in `reasoning`.
-    **Formatting:** Render as Markdown. Use bullet points for lists, **bold** key terms,
-    short paragraphs (2-3 sentences), blank lines between ideas. Never output a single
-    dense paragraph when content has multiple ideas.
+    **Formatting:** Render as Markdown — conversational paragraphs, **bold** key terms,
+    short paragraphs (2-3 sentences), blank lines between ideas. Only use bullets when
+    listing 3+ items.
 
 12. **Language.** {response_language_instruction} {audio_language_instruction}
 
