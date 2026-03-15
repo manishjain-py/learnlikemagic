@@ -26,7 +26,6 @@ NAMING RULES:
 - Titles should be concise (3-8 words)
 - Use student-friendly language appropriate for Grade {grade}
 - Be specific enough to distinguish from other topics
-- Each title should hint at the core skill: prefer "Round Numbers to Nearest 10" over "Rounding"
 
 SEQUENCING RULES:
 - Order topics in the sequence they should be taught
