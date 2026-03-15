@@ -7,7 +7,6 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { listDocs, getDocContent, DocsIndex, DocContent } from '../api/adminApi';
 
@@ -20,8 +19,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_ORDER = ['functional', 'technical', 'root'] as const;
 
 const DocsViewer: React.FC = () => {
-  const navigate = useNavigate();
-
   // Index state
   const [index, setIndex] = useState<DocsIndex | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
@@ -114,49 +111,6 @@ const DocsViewer: React.FC = () => {
         <p style={{ color: '#6B7280' }}>
           Browse project documentation rendered in-app
         </p>
-      </div>
-
-      {/* Nav */}
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
-        <button
-          onClick={() => navigate('/admin/books-v2')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Books
-        </button>
-        <button
-          onClick={() => navigate('/admin/books-v2')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Guidelines Review
-        </button>
-        <button
-          onClick={() => navigate('/admin/evaluation')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Evaluation
-        </button>
       </div>
 
       {/* Loading */}

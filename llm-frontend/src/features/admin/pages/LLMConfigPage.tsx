@@ -3,12 +3,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getLLMConfigs, updateLLMConfig, getLLMConfigOptions } from '../api/adminApi';
 import { LLMConfig, LLMConfigOptions } from '../types';
 
 const LLMConfigPage: React.FC = () => {
-  const navigate = useNavigate();
   const [configs, setConfigs] = useState<LLMConfig[]>([]);
   const [options, setOptions] = useState<LLMConfigOptions>({});
   const [loading, setLoading] = useState(true);
@@ -103,62 +101,6 @@ const LLMConfigPage: React.FC = () => {
         <p style={{ color: '#6B7280' }}>
           Configure which LLM provider and model each component uses. Changes take effect immediately for new sessions.
         </p>
-      </div>
-
-      {/* Navigation */}
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
-        <button
-          onClick={() => navigate('/admin/books-v2')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Books
-        </button>
-        <button
-          onClick={() => navigate('/admin/books-v2')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Guidelines Review
-        </button>
-        <button
-          onClick={() => navigate('/admin/evaluation')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Evaluation
-        </button>
-        <button
-          disabled
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#3B82F6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: '500',
-          }}
-        >
-          LLM Config
-        </button>
       </div>
 
       {/* Error */}

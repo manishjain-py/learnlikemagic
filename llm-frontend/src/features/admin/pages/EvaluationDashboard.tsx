@@ -3,7 +3,6 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   listEvalRuns,
@@ -1019,7 +1018,6 @@ const RunCard: React.FC<{
 // ──────────────────────────────────────
 
 const EvaluationDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const [runs, setRuns] = useState<EvalRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1189,20 +1187,6 @@ const EvaluationDashboard: React.FC = () => {
             marginBottom: '10px',
           }}
         >
-          <button
-            onClick={() => navigate('/admin/books-v2')}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: 'white',
-              color: '#374151',
-              border: '1px solid #D1D5DB',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            ← Books
-          </button>
           <h1 style={{ fontSize: '28px', fontWeight: '600', margin: 0 }}>
             Evaluation Runs
           </h1>

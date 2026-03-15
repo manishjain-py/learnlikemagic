@@ -57,6 +57,8 @@ import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
 import CreateBookV2 from './features/admin/pages/CreateBookV2';
 import BookV2Detail from './features/admin/pages/BookV2Detail';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
+import AdminLayout from './features/admin/components/AdminLayout';
+import AdminHome from './features/admin/pages/AdminHome';
 
 function App() {
   return (
@@ -139,17 +141,19 @@ function App() {
           {/* Backward compat: redirect / to /learn */}
           <Route path="/" element={<Navigate to="/learn" replace />} />
 
-          {/* Admin routes */}
-          <Route path="/admin" element={<Navigate to="/admin/books-v2" replace />} />
-          <Route path="/admin/books" element={<Navigate to="/admin/books-v2" replace />} />
-          <Route path="/admin/evaluation" element={<EvaluationDashboard />} />
-          <Route path="/admin/docs" element={<DocsViewer />} />
-          <Route path="/admin/llm-config" element={<LLMConfigPage />} />
-          <Route path="/admin/test-scenarios" element={<TestScenariosPage />} />
-          <Route path="/admin/books-v2" element={<BookV2Dashboard />} />
-          <Route path="/admin/books-v2/new" element={<CreateBookV2 />} />
-          <Route path="/admin/books-v2/:id" element={<BookV2Detail />} />
-          <Route path="/admin/pixi-js-poc" element={<PixiJsPocPage />} />
+          {/* Admin routes — wrapped in shared AdminLayout with top nav */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminHome />} />
+            <Route path="books" element={<Navigate to="/admin/books-v2" replace />} />
+            <Route path="evaluation" element={<EvaluationDashboard />} />
+            <Route path="docs" element={<DocsViewer />} />
+            <Route path="llm-config" element={<LLMConfigPage />} />
+            <Route path="test-scenarios" element={<TestScenariosPage />} />
+            <Route path="books-v2" element={<BookV2Dashboard />} />
+            <Route path="books-v2/new" element={<CreateBookV2 />} />
+            <Route path="books-v2/:id" element={<BookV2Detail />} />
+            <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </AuthProvider>

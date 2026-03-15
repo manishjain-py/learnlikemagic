@@ -3,7 +3,6 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   listTestScenarios,
   getTestScenarioDetail,
@@ -289,7 +288,6 @@ const DetailView: React.FC<{
 // ── Main Page ──
 
 const TestScenariosPage: React.FC = () => {
-  const navigate = useNavigate();
   const [functionalities, setFunctionalities] = useState<TestFunctionality[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -342,88 +340,6 @@ const TestScenariosPage: React.FC = () => {
         <p style={{ color: '#6B7280' }}>
           Browse test cases and view latest E2E test results
         </p>
-      </div>
-
-      {/* Nav buttons */}
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        <button
-          onClick={() => navigate('/admin/books-v2')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Books
-        </button>
-        <button
-          onClick={() => navigate('/admin/books-v2')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Guidelines
-        </button>
-        <button
-          onClick={() => navigate('/admin/evaluation')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Evaluation
-        </button>
-        <button
-          onClick={() => navigate('/admin/docs')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Docs
-        </button>
-        <button
-          onClick={() => navigate('/admin/llm-config')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          LLM Config
-        </button>
-        <button
-          onClick={loadList}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: 'white',
-            color: '#374151',
-            border: '1px solid #D1D5DB',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Refresh
-        </button>
       </div>
 
       {/* Error */}
