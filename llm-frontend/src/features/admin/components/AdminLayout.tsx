@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'LLM Config', path: '/admin/llm-config' },
   { label: 'Docs', path: '/admin/docs' },
   { label: 'Pixi.js PoC', path: '/admin/pixi-js-poc' },
+  { label: 'Feature Flags', path: '/admin/feature-flags' },
 ];
 
 const AdminLayout: React.FC = () => {

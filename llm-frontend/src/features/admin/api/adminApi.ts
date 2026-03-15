@@ -11,6 +11,7 @@ import {
   EvaluateSessionRequest,
   LLMConfig,
   LLMConfigOptions,
+  FeatureFlag,
 } from '../types';
 
 // Use environment variable for production, fallback to localhost for development
@@ -176,6 +177,23 @@ export async function updateLLMConfig(
 
 export async function getLLMConfigOptions(): Promise<LLMConfigOptions> {
   return apiFetch<LLMConfigOptions>('/api/admin/llm-config/options');
+}
+
+// ===== Feature Flags =====
+
+export async function getFeatureFlags(): Promise<FeatureFlag[]> {
+  return apiFetch<FeatureFlag[]>('/api/admin/feature-flags');
+}
+
+export async function updateFeatureFlag(
+  flagName: string,
+  enabled: boolean
+): Promise<FeatureFlag> {
+  return apiFetch<FeatureFlag>(`/api/admin/feature-flags/${flagName}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 // ===== Test Scenarios =====

@@ -108,3 +108,13 @@ export interface LLMConfig {
 export interface LLMConfigOptions {
   [provider: string]: string[];
 }
+
+// ===== Feature Flag Types =====
+
+export interface FeatureFlag {
+  flag_name: string;
+  enabled: boolean;
+  description: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}

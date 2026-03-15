@@ -101,6 +101,9 @@ def migrate():
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
+        # Seed feature flags
+        _seed_feature_flags(db_manager)
+
         with db_manager.engine.connect() as conn:
             conn.commit()
 
@@ -558,6 +561,35 @@ def _seed_llm_config(db_manager):
             )
         conn.commit()
         print(f"  ✓ Seeded {len(_LLM_CONFIG_SEEDS)} llm_config rows")
+
+
+_FEATURE_FLAG_SEEDS = [
+    {
+        "flag_name": "show_visuals_in_tutor_flow",
+        "enabled": True,
+        "description": "Show Pixi.js visual explanations during tutoring sessions",
+    },
+]
+
+
+def _seed_feature_flags(db_manager):
+    """Seed feature_flags table with defaults (insert-if-missing per flag)."""
+    with db_manager.engine.connect() as conn:
+        for seed in _FEATURE_FLAG_SEEDS:
+            exists = conn.execute(
+                text("SELECT 1 FROM feature_flags WHERE flag_name = :name"),
+                {"name": seed["flag_name"]},
+            ).fetchone()
+            if not exists:
+                conn.execute(
+                    text(
+                        "INSERT INTO feature_flags (flag_name, enabled, description) "
+                        "VALUES (:flag_name, :enabled, :description)"
+                    ),
+                    seed,
+                )
+                print(f"  ✓ Seeded feature flag: {seed['flag_name']}")
+        conn.commit()
 
 
 if __name__ == "__main__":

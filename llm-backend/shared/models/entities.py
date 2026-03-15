@@ -299,4 +299,18 @@ class KidPersonality(Base):
     )
 
 
+class FeatureFlag(Base):
+    """Runtime feature flags toggled via the admin UI.
+
+    Each row is a named boolean switch. New flags are seeded in db.py.
+    """
+    __tablename__ = "feature_flags"
+
+    flag_name = Column(String, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    description = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String, nullable=True)
+
+
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model

@@ -42,26 +42,30 @@ class TeacherOrchestrator:
     with a separate safety gate.
     """
 
-    def __init__(self, llm_service: LLMService):
+    def __init__(self, llm_service: LLMService, *, visuals_enabled: bool = True):
         self.llm = llm_service
+        self.visuals_enabled = visuals_enabled
         self.pixi_generator = PixiCodeGenerator(llm_service)
         self.agent_logs = get_agent_log_store()
 
         self.safety_agent = SafetyAgent(self.llm)
         self.master_tutor = MasterTutorAgent(self.llm, timeout_seconds=60)
 
-        logger.info("TeacherOrchestrator initialized (single master tutor architecture)")
+        logger.info("TeacherOrchestrator initialized (single master tutor architecture, visuals=%s)", visuals_enabled)
 
     async def _generate_pixi_code(self, visual_explanation) -> Optional[Dict[str, Any]]:
         """Generate Pixi.js code for a visual explanation and return the full visual dict.
 
-        Returns None if code generation fails, so the frontend won't show a
+        Returns None if code generation fails or visuals are disabled via the
+        show_visuals_in_tutor_flow feature flag, so the frontend won't show a
         broken 'Visualise' button.  Also strips visual_prompt from the payload
         to avoid leaking internal prompts to the client.
 
         This method MUST never raise — any exception is logged and returns None
         so that a failed visual never crashes the turn.
         """
+        if not self.visuals_enabled:
+            return None
         try:
             pixi_code = await self.pixi_generator.generate(
                 visual_prompt=visual_explanation.visual_prompt,
