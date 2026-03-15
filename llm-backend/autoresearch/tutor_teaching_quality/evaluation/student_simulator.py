@@ -15,7 +15,7 @@ import random
 import time
 from openai import OpenAI, RateLimitError
 
-from evaluation.config import EvalConfig
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 
 logger = logging.getLogger(__name__)
 

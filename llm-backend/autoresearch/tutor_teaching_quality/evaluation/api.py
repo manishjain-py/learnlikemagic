@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
 from database import get_db
-from evaluation.config import RUNS_DIR
+from autoresearch.tutor_teaching_quality.evaluation.config import RUNS_DIR
 
-logger = logging.getLogger("evaluation.api")
+logger = logging.getLogger("autoresearch.tutor_teaching_quality.evaluation.api")
 
 router = APIRouter(prefix="/api/evaluation", tags=["evaluation"])
 
@@ -55,11 +55,11 @@ def _update_eval_state(**kwargs):
 
 def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
     """Thread target that runs the full evaluation pipeline."""
-    from evaluation.config import EvalConfig
-    from evaluation.student_simulator import StudentSimulator
-    from evaluation.session_runner import SessionRunner
-    from evaluation.evaluator import ConversationEvaluator
-    from evaluation.report_generator import ReportGenerator
+    from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
+    from autoresearch.tutor_teaching_quality.evaluation.student_simulator import StudentSimulator
+    from autoresearch.tutor_teaching_quality.evaluation.session_runner import SessionRunner
+    from autoresearch.tutor_teaching_quality.evaluation.evaluator import ConversationEvaluator
+    from autoresearch.tutor_teaching_quality.evaluation.report_generator import ReportGenerator
 
     runner = None
     run_dir = None
@@ -152,9 +152,9 @@ def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
 
 def _run_session_evaluation(session_id: str):
     """Thread target that evaluates an existing session's conversation."""
-    from evaluation.config import EvalConfig
-    from evaluation.evaluator import ConversationEvaluator
-    from evaluation.report_generator import ReportGenerator
+    from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
+    from autoresearch.tutor_teaching_quality.evaluation.evaluator import ConversationEvaluator
+    from autoresearch.tutor_teaching_quality.evaluation.report_generator import ReportGenerator
     from database import get_db_manager
     from tutor.models.session_state import SessionState
 
@@ -262,9 +262,9 @@ def _run_session_evaluation(session_id: str):
 
 def _retry_evaluation(run_dir: Path):
     """Re-run evaluation + reports on an existing conversation."""
-    from evaluation.config import EvalConfig
-    from evaluation.evaluator import ConversationEvaluator
-    from evaluation.report_generator import ReportGenerator
+    from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
+    from autoresearch.tutor_teaching_quality.evaluation.evaluator import ConversationEvaluator
+    from autoresearch.tutor_teaching_quality.evaluation.report_generator import ReportGenerator
 
     try:
         with open(run_dir / "config.json") as f:
@@ -328,7 +328,7 @@ def _retry_evaluation(run_dir: Path):
 @router.get("/personas")
 async def list_personas():
     """List all available student personas for simulated evaluation."""
-    from evaluation.config import EvalConfig
+    from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 
     personas = EvalConfig.all_personas()
     return [

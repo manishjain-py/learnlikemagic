@@ -12,16 +12,16 @@ Usage:
     cd llm-backend
 
     # By topic name (recommended — resolves guideline ID from database)
-    python -m evaluation.run_evaluation --subject Mathematics --chapter Fractions --skip-server
+    python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --subject Mathematics --chapter Fractions --skip-server
 
     # By guideline ID (if you already know it)
-    python -m evaluation.run_evaluation --topic-id <guideline_id> --skip-server
+    python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --topic-id <guideline_id> --skip-server
 
     # List available topics
-    python -m evaluation.run_evaluation --list-topics
+    python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --list-topics
 
     # List topics filtered by subject
-    python -m evaluation.run_evaluation --list-topics --subject Mathematics
+    python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --list-topics --subject Mathematics
 """
 
 import argparse
@@ -30,11 +30,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from evaluation.config import EvalConfig, RUNS_DIR, PROJECT_ROOT
-from evaluation.student_simulator import StudentSimulator
-from evaluation.session_runner import SessionRunner
-from evaluation.evaluator import ConversationEvaluator
-from evaluation.report_generator import ReportGenerator
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig, RUNS_DIR, PROJECT_ROOT
+from autoresearch.tutor_teaching_quality.evaluation.student_simulator import StudentSimulator
+from autoresearch.tutor_teaching_quality.evaluation.session_runner import SessionRunner
+from autoresearch.tutor_teaching_quality.evaluation.evaluator import ConversationEvaluator
+from autoresearch.tutor_teaching_quality.evaluation.report_generator import ReportGenerator
 
 
 def _resolve_topic_id(args) -> str:
@@ -129,7 +129,7 @@ def _list_topics(args):
             print(f"      [{status}] {g.topic}  (id: {g.id})")
 
         print(f"\n  [✓] = approved    [ ] = pending review")
-        print(f"\n  Usage: python -m evaluation.run_evaluation --subject \"{current_subject}\" --chapter \"{current_chapter}\" --skip-server\n")
+        print(f"\n  Usage: python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --subject \"{current_subject}\" --chapter \"{current_chapter}\" --skip-server\n")
     finally:
         db.close()
 
@@ -368,9 +368,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run tutor evaluation pipeline",
         epilog="Examples:\n"
-               "  python -m evaluation.run_evaluation --list-topics\n"
-               "  python -m evaluation.run_evaluation --subject Mathematics --chapter Fractions --skip-server\n"
-               "  python -m evaluation.run_evaluation --topic-id <guideline_id> --skip-server\n",
+               "  python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --list-topics\n"
+               "  python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --subject Mathematics --chapter Fractions --skip-server\n"
+               "  python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --topic-id <guideline_id> --skip-server\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

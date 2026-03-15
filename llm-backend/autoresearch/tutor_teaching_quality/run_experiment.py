@@ -11,16 +11,16 @@ Usage:
     cd llm-backend
 
     # Run a single experiment (requires server running)
-    python -m autoresearch.run_experiment --skip-server
+    python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server
 
     # With email report
-    python -m autoresearch.run_experiment --skip-server --email manish@example.com
+    python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server --email manish@example.com
 
     # Custom personas
-    python -m autoresearch.run_experiment --skip-server --personas average_student,ace,struggler
+    python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server --personas average_student,ace,struggler
 
     # Quick mode (fewer turns, fewer personas — for faster iteration)
-    python -m autoresearch.run_experiment --skip-server --quick
+    python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server --quick
 """
 
 import argparse
@@ -32,13 +32,13 @@ from datetime import datetime
 from pathlib import Path
 
 # Add llm-backend to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from evaluation.config import EvalConfig, RUNS_DIR
-from evaluation.student_simulator import StudentSimulator
-from evaluation.session_runner import SessionRunner
-from evaluation.evaluator import ConversationEvaluator
-from evaluation.report_generator import ReportGenerator
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig, RUNS_DIR
+from autoresearch.tutor_teaching_quality.evaluation.student_simulator import StudentSimulator
+from autoresearch.tutor_teaching_quality.evaluation.session_runner import SessionRunner
+from autoresearch.tutor_teaching_quality.evaluation.evaluator import ConversationEvaluator
+from autoresearch.tutor_teaching_quality.evaluation.report_generator import ReportGenerator
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -63,7 +63,7 @@ def get_prompt_diff() -> str:
     try:
         result = subprocess.run(
             ["git", "diff", "HEAD~1", "--", "tutor/prompts/"],
-            capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+            capture_output=True, text=True, cwd=str(Path(__file__).parent.parent.parent),
         )
         return result.stdout.strip() or "(no changes)"
     except Exception:
@@ -301,7 +301,7 @@ def get_short_commit() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, cwd=str(Path(__file__).parent.parent),
+            capture_output=True, text=True, cwd=str(Path(__file__).parent.parent.parent),
         )
         return result.stdout.strip() or "unknown"
     except Exception:
@@ -396,7 +396,7 @@ def main():
         baseline = load_baseline()
         prompt_diff = get_prompt_diff()
         run_dirs = [r["run_dir"] for r in results.get("per_persona", []) if r.get("run_dir")]
-        from autoresearch.email_report import send_iteration_report
+        from autoresearch.tutor_teaching_quality.email_report import send_iteration_report
         send_iteration_report(
             iteration=args.iteration,
             description=args.description or "(no description)",

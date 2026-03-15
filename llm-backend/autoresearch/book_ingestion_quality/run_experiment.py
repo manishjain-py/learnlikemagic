@@ -8,16 +8,16 @@ Usage:
     cd llm-backend
 
     # Evaluate existing topics (no re-extraction)
-    python -m book_ingestion_v2.evaluation.run_experiment --chapter-id <id> --skip-extraction
+    python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction
 
     # Run fresh extraction + evaluate
-    python -m book_ingestion_v2.evaluation.run_experiment --chapter-id <id>
+    python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id>
 
     # Multiple runs for variance reduction
-    python -m book_ingestion_v2.evaluation.run_experiment --chapter-id <id> --skip-extraction --runs 3
+    python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction --runs 3
 
     # Use Anthropic as evaluator
-    python -m book_ingestion_v2.evaluation.run_experiment --chapter-id <id> --skip-extraction --provider anthropic
+    python -m autoresearch.book_ingestion_quality.run_experiment --chapter-id <id> --skip-extraction --provider anthropic
 """
 
 import argparse
@@ -31,7 +31,7 @@ from pathlib import Path
 # Add llm-backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from book_ingestion_v2.evaluation.config import IngestionEvalConfig, RUNS_DIR, RESULTS_FILE
+from autoresearch.book_ingestion_quality.evaluation.config import IngestionEvalConfig, RUNS_DIR, RESULTS_FILE
 
 
 def get_short_commit() -> str:
@@ -48,9 +48,9 @@ def get_short_commit() -> str:
 def run_single(config: IngestionEvalConfig, skip_extraction: bool) -> dict:
     """Run a single evaluation pass and return results."""
     from database import get_db_manager
-    from book_ingestion_v2.evaluation.pipeline_runner import PipelineRunner
-    from book_ingestion_v2.evaluation.evaluator import IngestionEvaluator
-    from book_ingestion_v2.evaluation.report_generator import IngestionReportGenerator
+    from autoresearch.book_ingestion_quality.evaluation.pipeline_runner import PipelineRunner
+    from autoresearch.book_ingestion_quality.evaluation.evaluator import IngestionEvaluator
+    from autoresearch.book_ingestion_quality.evaluation.report_generator import IngestionReportGenerator
 
     started_at = datetime.now()
     timestamp = started_at.strftime("%Y%m%d_%H%M%S")
@@ -293,7 +293,7 @@ def main():
 
     # Email report
     if args.email:
-        from book_ingestion_v2.evaluation.email_report import send_ingestion_report
+        from autoresearch.book_ingestion_quality.email_report import send_ingestion_report
         run_dirs = [r["run_dir"] for r in results.get("per_run", []) if r.get("run_dir")]
         send_ingestion_report(
             description=args.description or "baseline evaluation",

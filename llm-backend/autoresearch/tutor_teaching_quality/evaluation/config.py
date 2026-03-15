@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env from llm-backend root
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 # Path constants

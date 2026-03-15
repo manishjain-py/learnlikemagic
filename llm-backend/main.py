@@ -14,7 +14,7 @@ from shared.api import health
 from shared.api import llm_config_routes
 from shared.api import feature_flag_routes
 from tutor.api import curriculum, sessions, transcription, tts
-from evaluation.api import router as evaluation_router
+from autoresearch.tutor_teaching_quality.evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
 from auth.api.profile_routes import router as profile_router
 from auth.api.enrichment_routes import router as enrichment_router

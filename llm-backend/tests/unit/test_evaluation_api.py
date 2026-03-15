@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from evaluation.api import (
+from autoresearch.tutor_teaching_quality.evaluation.api import (
     router,
     EvalStatus,
     _eval_state,
@@ -127,7 +127,7 @@ class TestUpdateEvalState:
 
 
 class TestListPersonas:
-    @patch("evaluation.config.EvalConfig.all_personas")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.config.EvalConfig.all_personas")
     def test_personas_returns_list(self, mock_all_personas, client):
         mock_all_personas.return_value = [
             {
@@ -160,14 +160,14 @@ class TestListPersonas:
         assert data[0]["correct_answer_probability"] == 0.9
         assert data[1]["persona_id"] == "struggler"
 
-    @patch("evaluation.config.EvalConfig.all_personas")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.config.EvalConfig.all_personas")
     def test_personas_empty(self, mock_all_personas, client):
         mock_all_personas.return_value = []
         resp = client.get("/api/evaluation/personas")
         assert resp.status_code == 200
         assert resp.json() == []
 
-    @patch("evaluation.config.EvalConfig.all_personas")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.config.EvalConfig.all_personas")
     def test_personas_filters_malformed(self, mock_all_personas, client):
         """Personas missing persona_id or name are filtered out."""
         mock_all_personas.return_value = [
@@ -183,7 +183,7 @@ class TestListPersonas:
         assert len(data) == 1
         assert data[0]["persona_id"] == "ace"
 
-    @patch("evaluation.config.EvalConfig.all_personas")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.config.EvalConfig.all_personas")
     def test_personas_defaults_for_missing_fields(self, mock_all_personas, client):
         """Optional fields use sensible defaults."""
         mock_all_personas.return_value = [
@@ -238,7 +238,7 @@ class TestGetStatus:
 
 
 class TestStartEvaluation:
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_success(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -259,7 +259,7 @@ class TestStartEvaluation:
         assert call_kwargs.kwargs["target"].__name__ == "_run_evaluation_pipeline"
         assert call_kwargs.kwargs["args"] == ("fractions", "curious.json", 10)
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_defaults(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -270,7 +270,7 @@ class TestStartEvaluation:
         assert data["topic_id"] == ""
         assert data["max_turns"] == 20
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_already_running(self, mock_thread_cls, client):
         _update_eval_state(status=EvalStatus.running_session)
 
@@ -278,7 +278,7 @@ class TestStartEvaluation:
         assert resp.status_code == 409
         assert "already running" in resp.json()["detail"]
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_after_complete(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -287,7 +287,7 @@ class TestStartEvaluation:
         resp = client.post("/api/evaluation/start", json={"topic_id": "t2"})
         assert resp.status_code == 200
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_after_failed(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -296,7 +296,7 @@ class TestStartEvaluation:
         resp = client.post("/api/evaluation/start", json={"topic_id": "t3"})
         assert resp.status_code == 200
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_updates_state(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -306,7 +306,7 @@ class TestStartEvaluation:
         assert _eval_state["max_turns"] == 15
         assert _eval_state["error"] is None
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_start_no_body(self, mock_thread_cls, client):
         """POST with no JSON body should use defaults."""
         mock_thread = MagicMock()
@@ -325,7 +325,7 @@ class TestStartEvaluation:
 
 
 class TestEvaluateSession:
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_evaluate_session_success(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -344,19 +344,19 @@ class TestEvaluateSession:
         assert call_kwargs.kwargs["target"].__name__ == "_run_session_evaluation"
         assert call_kwargs.kwargs["args"] == ("sess-abc-123",)
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_evaluate_session_missing_session_id(self, mock_thread_cls, client):
         resp = client.post("/api/evaluation/evaluate-session", json={})
         assert resp.status_code == 400
         assert "session_id is required" in resp.json()["detail"]
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_evaluate_session_none_body(self, mock_thread_cls, client):
         """POST with no JSON body should still fail with 400."""
         resp = client.post("/api/evaluation/evaluate-session")
         assert resp.status_code == 400
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_evaluate_session_already_running(self, mock_thread_cls, client):
         _update_eval_state(status=EvalStatus.evaluating)
 
@@ -367,7 +367,7 @@ class TestEvaluateSession:
         assert resp.status_code == 409
         assert "already running" in resp.json()["detail"]
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_evaluate_session_updates_state(self, mock_thread_cls, client):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -388,13 +388,13 @@ class TestEvaluateSession:
 
 class TestListRuns:
     def test_runs_empty_no_dir(self, client, tmp_path):
-        with patch("evaluation.api.RUNS_DIR", tmp_path / "nonexistent"):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path / "nonexistent"):
             resp = client.get("/api/evaluation/runs")
         assert resp.status_code == 200
         assert resp.json() == []
 
     def test_runs_empty_dir(self, client, tmp_path):
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
         assert resp.status_code == 200
         assert resp.json() == []
@@ -402,14 +402,14 @@ class TestListRuns:
     def test_runs_ignores_non_run_dirs(self, client, tmp_path):
         (tmp_path / "not_a_run").mkdir()
         (tmp_path / "some_file.txt").write_text("hello")
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
         assert resp.status_code == 200
         assert resp.json() == []
 
     def test_runs_ignores_run_without_config(self, client, tmp_path):
         (tmp_path / "run_20260218_120000").mkdir()
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
         assert resp.status_code == 200
         assert resp.json() == []
@@ -422,7 +422,7 @@ class TestListRuns:
             "started_at": "2026-02-18T12:00:00",
         }))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
 
         assert resp.status_code == 200
@@ -451,7 +451,7 @@ class TestListRuns:
             "scores": {"responsiveness": 8, "pacing": 7},
         }))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
 
         runs = resp.json()
@@ -468,7 +468,7 @@ class TestListRuns:
             d.mkdir()
             (d / "config.json").write_text(json.dumps({"topic_id": ts}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
 
         runs = resp.json()
@@ -482,7 +482,7 @@ class TestListRuns:
         run_dir.mkdir()
         (run_dir / "config.json").write_text("NOT VALID JSON")
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs")
 
         assert resp.status_code == 200
@@ -496,7 +496,7 @@ class TestListRuns:
 
 class TestGetRun:
     def test_get_run_not_found(self, client, tmp_path):
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs/run_nonexistent")
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
@@ -506,7 +506,7 @@ class TestGetRun:
         run_dir.mkdir()
         (run_dir / "config.json").write_text(json.dumps({"topic_id": "fracs"}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs/run_20260218_120000")
 
         assert resp.status_code == 200
@@ -529,7 +529,7 @@ class TestGetRun:
             "avg_score": 9.0,
         }))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs/run_20260218_120000")
 
         data = resp.json()
@@ -540,7 +540,7 @@ class TestGetRun:
     def test_get_run_file_not_dir(self, client, tmp_path):
         """A file named like a run_id should return 404."""
         (tmp_path / "run_20260218_120000").write_text("I am a file")
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.get("/api/evaluation/runs/run_20260218_120000")
         assert resp.status_code == 404
 
@@ -552,7 +552,7 @@ class TestGetRun:
 
 class TestRetryEvaluation:
     def test_retry_not_found(self, client, tmp_path):
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.post("/api/evaluation/runs/run_missing/retry-evaluation")
         assert resp.status_code == 404
 
@@ -561,7 +561,7 @@ class TestRetryEvaluation:
         run_dir.mkdir()
         (run_dir / "config.json").write_text(json.dumps({"topic_id": "t"}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.post("/api/evaluation/runs/run_20260218_120000/retry-evaluation")
         assert resp.status_code == 400
         assert "conversation.json" in resp.json()["detail"]
@@ -571,12 +571,12 @@ class TestRetryEvaluation:
         run_dir.mkdir()
         (run_dir / "conversation.json").write_text(json.dumps({"messages": []}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.post("/api/evaluation/runs/run_20260218_120000/retry-evaluation")
         assert resp.status_code == 400
         assert "config.json" in resp.json()["detail"]
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_retry_success(self, mock_thread_cls, client, tmp_path):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -586,7 +586,7 @@ class TestRetryEvaluation:
         (run_dir / "config.json").write_text(json.dumps({"topic_id": "t"}))
         (run_dir / "conversation.json").write_text(json.dumps({"messages": []}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.post("/api/evaluation/runs/run_20260218_120000/retry-evaluation")
 
         assert resp.status_code == 200
@@ -598,7 +598,7 @@ class TestRetryEvaluation:
         call_kwargs = mock_thread_cls.call_args
         assert call_kwargs.kwargs["target"].__name__ == "_retry_evaluation"
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_retry_already_running(self, mock_thread_cls, client, tmp_path):
         _update_eval_state(status=EvalStatus.running_session)
 
@@ -607,11 +607,11 @@ class TestRetryEvaluation:
         (run_dir / "config.json").write_text(json.dumps({"topic_id": "t"}))
         (run_dir / "conversation.json").write_text(json.dumps({"messages": []}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             resp = client.post("/api/evaluation/runs/run_20260218_120000/retry-evaluation")
         assert resp.status_code == 409
 
-    @patch("evaluation.api.threading.Thread")
+    @patch("autoresearch.tutor_teaching_quality.evaluation.api.threading.Thread")
     def test_retry_updates_state(self, mock_thread_cls, client, tmp_path):
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
@@ -621,7 +621,7 @@ class TestRetryEvaluation:
         (run_dir / "config.json").write_text(json.dumps({"topic_id": "t"}))
         (run_dir / "conversation.json").write_text(json.dumps({"messages": []}))
 
-        with patch("evaluation.api.RUNS_DIR", tmp_path):
+        with patch("autoresearch.tutor_teaching_quality.evaluation.api.RUNS_DIR", tmp_path):
             client.post("/api/evaluation/runs/run_20260218_120000/retry-evaluation")
 
         assert _eval_state["status"] == EvalStatus.evaluating
@@ -648,7 +648,7 @@ class TestRunEvaluationPipeline:
 
     def test_pipeline_fails_on_missing_openai_key(self):
         """When OPENAI_API_KEY is empty, pipeline should set status=failed."""
-        import evaluation.api as api_mod
+        import autoresearch.tutor_teaching_quality.evaluation.api as api_mod
 
         db_patch, svc_patch = self._mock_db_for_eval(provider="openai")
         with db_patch, svc_patch, patch.dict("os.environ", {"OPENAI_API_KEY": ""}):
@@ -660,7 +660,7 @@ class TestRunEvaluationPipeline:
 
     def test_pipeline_fails_on_missing_anthropic_key(self):
         """When ANTHROPIC_API_KEY is missing for anthropic provider."""
-        import evaluation.api as api_mod
+        import autoresearch.tutor_teaching_quality.evaluation.api as api_mod
 
         db_patch, svc_patch = self._mock_db_for_eval(provider="anthropic", eval_model="claude-opus-4-6", sim_model="claude-opus-4-6")
         with db_patch, svc_patch, patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
@@ -679,7 +679,7 @@ class TestRunEvaluationPipeline:
 class TestRetryEvaluationThread:
     def test_retry_fails_on_missing_files(self, tmp_path):
         """Should set status=failed when config/conversation files are missing."""
-        import evaluation.api as api_mod
+        import autoresearch.tutor_teaching_quality.evaluation.api as api_mod
         run_dir = tmp_path / "run_retry_test"
         run_dir.mkdir()
         # No config.json or conversation.json
@@ -691,7 +691,7 @@ class TestRetryEvaluationThread:
 
     def test_retry_writes_error_file(self, tmp_path):
         """Should write error.txt on failure."""
-        import evaluation.api as api_mod
+        import autoresearch.tutor_teaching_quality.evaluation.api as api_mod
         run_dir = tmp_path / "run_retry_err"
         run_dir.mkdir()
 
@@ -712,7 +712,7 @@ class TestSessionRunner:
     """Tests for evaluation/session_runner.py."""
 
     def _make_config(self):
-        from evaluation.config import EvalConfig
+        from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
         return EvalConfig(
             openai_api_key="test-key-fake",
             anthropic_api_key="test-key-fake",
@@ -725,7 +725,7 @@ class TestSessionRunner:
         )
 
     def _make_runner(self, tmp_path, config=None, skip_server=True):
-        from evaluation.session_runner import SessionRunner
+        from autoresearch.tutor_teaching_quality.evaluation.session_runner import SessionRunner
         config = config or self._make_config()
         simulator = MagicMock()
         runner = SessionRunner(
@@ -755,7 +755,7 @@ class TestSessionRunner:
 
     def test_start_server_skip_mode_healthy(self, tmp_path):
         runner = self._make_runner(tmp_path, skip_server=True)
-        with patch("evaluation.session_runner.httpx.Client") as MockClient:
+        with patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client") as MockClient:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_client_inst = MagicMock()
@@ -770,7 +770,7 @@ class TestSessionRunner:
     def test_start_server_skip_mode_unhealthy(self, tmp_path):
         runner = self._make_runner(tmp_path, skip_server=True)
         import httpx
-        with patch("evaluation.session_runner.httpx.Client") as MockClient:
+        with patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client") as MockClient:
             mock_client_inst = MagicMock()
             mock_client_inst.get.side_effect = httpx.ConnectError("refused")
             mock_ctx = MagicMock()
@@ -810,7 +810,7 @@ class TestSessionRunner:
 
     def test_create_session(self, tmp_path):
         runner = self._make_runner(tmp_path)
-        with patch("evaluation.session_runner.httpx.Client") as MockClient:
+        with patch("autoresearch.tutor_teaching_quality.evaluation.session_runner.httpx.Client") as MockClient:
             mock_resp = MagicMock()
             mock_resp.json.return_value = {"session_id": "sess-abc"}
             mock_resp.raise_for_status = MagicMock()

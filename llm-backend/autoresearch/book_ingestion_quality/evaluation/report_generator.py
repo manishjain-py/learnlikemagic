@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from book_ingestion_v2.evaluation.config import IngestionEvalConfig
+from autoresearch.book_ingestion_quality.evaluation.config import IngestionEvalConfig
 
 
 class IngestionReportGenerator:

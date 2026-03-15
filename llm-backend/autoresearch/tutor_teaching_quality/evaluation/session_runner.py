@@ -20,10 +20,10 @@ from pathlib import Path
 import httpx
 import websockets
 
-from evaluation.config import EvalConfig, PROJECT_ROOT
-from evaluation.student_simulator import StudentSimulator
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig, PROJECT_ROOT
+from autoresearch.tutor_teaching_quality.evaluation.student_simulator import StudentSimulator
 
-logger = logging.getLogger("evaluation.session_runner")
+logger = logging.getLogger("autoresearch.tutor_teaching_quality.evaluation.session_runner")
 
 
 class SessionRunner:

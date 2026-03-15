@@ -103,9 +103,14 @@ llm-backend/
 │   ├── api/
 │   ├── services/         # generator_service, reviewer_service, orchestrator
 │   └── models/
-├── evaluation/           # Session evaluation pipeline (flat structure)
-│   ├── api.py, evaluator.py, session_runner.py, student_simulator.py
-│   ├── report_generator.py, run_evaluation.py, config.py
+├── autoresearch/         # Autonomous experiment pipelines
+│   ├── tutor_teaching_quality/
+│   │   ├── evaluation/   # Session evaluation pipeline (flat structure)
+│   │   │   ├── api.py, evaluator.py, session_runner.py, student_simulator.py
+│   │   │   ├── report_generator.py, run_evaluation.py, config.py
+│   │   ├── run_experiment.py, email_report.py, program.md, results.tsv
+│   ├── book_ingestion_quality/
+│   │   ├── evaluation/   # Book ingestion evaluation pipeline
 ├── auth/                 # Authentication, user profiles, enrichment, personality
 │   ├── api/              # auth_routes, profile_routes, enrichment_routes
 │   ├── services/         # auth_service, profile_service, enrichment_service, personality_service
@@ -143,7 +148,7 @@ Most modules follow the layered internal structure:
 └── prompts/          # LLM prompt templates
 ```
 
-**Exception:** The `evaluation/` module uses a flat file layout (`api.py`, `evaluator.py`, `session_runner.py`, etc.) rather than subdirectories.
+**Exception:** The `autoresearch/tutor_teaching_quality/evaluation/` module uses a flat file layout (`api.py`, `evaluator.py`, `session_runner.py`, etc.) rather than subdirectories.
 
 ### Routers Registered in `main.py`
 

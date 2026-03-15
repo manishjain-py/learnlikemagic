@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from evaluation.config import EvalConfig
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 
 
 class ReportGenerator:

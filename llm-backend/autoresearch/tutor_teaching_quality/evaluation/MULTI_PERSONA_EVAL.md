@@ -20,7 +20,7 @@
 
 ### Architecture Overview
 
-The eval pipeline lives in `llm-backend/evaluation/` and has 6 files:
+The eval pipeline lives in `llm-backend/autoresearch/tutor_teaching_quality/evaluation/` and has 6 files:
 
 | File | Role |
 |------|------|
@@ -455,8 +455,8 @@ def evaluate(self, conversation, topic_info=None, persona=None) -> dict:
 #### 5. `run_evaluation.py` — Add `--persona` Flag
 
 ```bash
-python -m evaluation.run_evaluation --topic-id <id> --persona ace
-python -m evaluation.run_evaluation --topic-id <id> --persona all  # runs all 5
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --topic-id <id> --persona ace
+python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation --topic-id <id> --persona all  # runs all 5
 ```
 
 #### 6. `report_generator.py` — Include Persona in Reports
