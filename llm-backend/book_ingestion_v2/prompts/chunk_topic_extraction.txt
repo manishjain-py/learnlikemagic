@@ -49,6 +49,12 @@ Do NOT include:
 - Teaching strategies, scaffolding sequences, or pedagogical methods
 - Assessment approaches or how to check understanding
 
+COPYRIGHT SAFETY — CRITICAL:
+- NEVER reproduce specific numbers, names, dates, or sentences from the textbook pages
+- Describe the TYPE of skill or concept generically (e.g., "4-digit addition with regrouping") instead of copying the textbook's specific instances
+- If the textbook uses a particular example (e.g., "456 = 400 + 50 + 6"), describe the skill ("decompose 3-digit numbers into expanded form") without copying the example
+- Guidelines must be written in your own curriculum-description language, not paraphrased from the textbook prose
+
 OUTPUT FORMAT (strict JSON):
 {{
   "updated_chapter_summary": "Updated summary incorporating these pages...",
