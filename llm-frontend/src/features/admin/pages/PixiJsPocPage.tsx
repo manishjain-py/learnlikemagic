@@ -3,7 +3,6 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Application } from 'pixi.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -14,7 +13,6 @@ interface GenerateResponse {
 }
 
 const PixiJsPocPage: React.FC = () => {
-  const navigate = useNavigate();
   const [prompt, setPrompt] = useState('');
   const [outputType, setOutputType] = useState<'image' | 'animation'>('image');
   const [loading, setLoading] = useState(false);
@@ -122,14 +120,6 @@ const PixiJsPocPage: React.FC = () => {
         <p style={{ color: '#6B7280', fontSize: '14px' }}>
           Describe a diagram or animation and the LLM will generate Pixi.js code to render it.
         </p>
-      </div>
-
-      {/* Navigation */}
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/admin/books-v2')} style={navBtn}>Books</button>
-        <button onClick={() => navigate('/admin/evaluation')} style={navBtn}>Evaluation</button>
-        <button onClick={() => navigate('/admin/llm-config')} style={navBtn}>LLM Config</button>
-        <button disabled style={navBtnActive}>Pixi.js PoC</button>
       </div>
 
       {/* Input area */}
@@ -295,27 +285,6 @@ const PixiJsPocPage: React.FC = () => {
       </div>
     </div>
   );
-};
-
-// Shared nav button styles
-const navBtn: React.CSSProperties = {
-  padding: '10px 20px',
-  backgroundColor: 'white',
-  color: '#374151',
-  border: '1px solid #D1D5DB',
-  borderRadius: '6px',
-  cursor: 'pointer',
-  fontSize: '14px',
-};
-
-const navBtnActive: React.CSSProperties = {
-  padding: '10px 20px',
-  backgroundColor: '#3B82F6',
-  color: 'white',
-  border: 'none',
-  borderRadius: '6px',
-  fontWeight: '500',
-  fontSize: '14px',
 };
 
 export default PixiJsPocPage;
