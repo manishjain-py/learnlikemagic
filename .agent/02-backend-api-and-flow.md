@@ -1,7 +1,7 @@
 # Backend API And Flow
 
-Last audited: 2026-03-14
-Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
+Last audited: 2026-03-15
+Code baseline: `main@3814fb5`
 
 ## Boot Sequence
 1. `main.py` validates required settings (`OPENAI_API_KEY`, `DATABASE_URL`)
@@ -119,6 +119,10 @@ Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 - `GET /api/admin/llm-config`
 - `PUT /api/admin/llm-config/{component_key}`
 - `GET /api/admin/llm-config/options`
+
+### Feature flag admin
+- `GET /api/admin/feature-flags`
+- `PUT /api/admin/feature-flags/{flag_name}`
 
 ### Pixi.js PoC
 - `POST /api/admin/pixi-poc/generate`

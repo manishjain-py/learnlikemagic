@@ -1,7 +1,7 @@
 # Repo Map
 
-Last audited: 2026-03-14
-Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
+Last audited: 2026-03-15
+Code baseline: `main@3814fb5`
 
 ## Product Summary
 LearnLikeMagic is an AI tutoring platform with:
@@ -12,13 +12,13 @@ LearnLikeMagic is an AI tutoring platform with:
 - Functional + technical documentation (`docs`)
 
 ## Source Footprint
-- Backend Python files: `195`
-- Backend Python lines: `36,009`
-- Frontend TS/TSX files: `54`
-- Frontend TS/TSX lines: `12,858`
-- Docs markdown files: `37`
+- Backend Python files: `210`
+- Backend Python lines: `38,211`
+- Frontend TS/TSX files: `57`
+- Frontend TS/TSX lines: `13,112`
+- Docs markdown files: `40`
 - Backend unit tests: `38`
-- Backend integration tests: `7`
+- Backend integration tests: `3`
 
 ## Top-Level Ownership
 - `llm-backend/`: tutoring runtime, auth, ingestion, evaluation, shared infra
@@ -41,13 +41,15 @@ LearnLikeMagic is an AI tutoring platform with:
 - `tutor/`: live tutoring (teach_me / clarify_doubts / exam), ws chat, report card
 - `book_ingestion_v2/`: book/chapter/page CRUD, OCR, TOC extraction, topic extraction/sync
 - `study_plans/`: study plan generation + review orchestration
-- `evaluation/`: session simulation + transcript judging + reports
+- `autoresearch/`: autonomous prompt optimization with two sub-domains:
+  - `tutor_teaching_quality/`: session simulation + transcript judging + reports
+  - `book_ingestion_quality/`: ingestion pipeline evaluation + coverage scoring
 - `auth/`: Cognito token verification, user sync, profile
-- `shared/`: entities/schemas, repositories, LLM abstraction, health/config
+- `shared/`: entities/schemas, repositories, LLM abstraction, health/config, feature flags
 
 ## Frontend Domain Map
 - `src/pages/`: auth, onboarding, profile, history, report card, learning flow, enrichment, exam review
-- `src/features/admin/`: books (v2), evaluation, docs, model config, test scenarios, pixi PoC
+- `src/features/admin/`: books (v2), evaluation, docs, model config, feature flags, test scenarios, pixi PoC
 - `src/features/devtools/`: session state + agent logs + guidelines + study plan views
 - `src/contexts/AuthContext.tsx`: Cognito + backend profile sync
 

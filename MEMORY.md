@@ -15,5 +15,5 @@ Curated long-term memory for this workspace.
 
 ## Operational Memory
 - Internal reference pack lives in `.agent/`; refresh after API/route/architecture shifts.
-- Current baseline for references: `claude/update-agent-docs-6CPuT@d2e797a` (audited 2026-03-14).
+- Current baseline for references: `main@3814fb5` (audited 2026-03-15).
 - Known doc/code drift exists; check `.agent/06-known-drift.md` before trusting docs as source of truth.

@@ -1,7 +1,7 @@
 # Agent Start Here
 
-Last audited: 2026-03-14
-Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
+Last audited: 2026-03-15
+Code baseline: `main@3814fb5`
 
 This folder is the internal operator manual for fast, reliable work in this repo.
 

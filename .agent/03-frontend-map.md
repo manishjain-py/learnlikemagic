@@ -1,7 +1,7 @@
 # Frontend Map
 
-Last audited: 2026-03-14
-Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
+Last audited: 2026-03-15
+Code baseline: `main@3814fb5`
 
 ## Stack
 - React 18 + TypeScript + Vite
@@ -38,7 +38,7 @@ Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 - `/` redirects to `/learn`
 
 ### Admin routes (currently no route-level auth guard)
-- `/admin` redirects to `/admin/books-v2`
+- `/admin` renders AdminHome landing page
 - `/admin/books` redirects to `/admin/books-v2`
 - `/admin/books-v2`
 - `/admin/books-v2/new`
@@ -48,6 +48,7 @@ Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 - `/admin/llm-config`
 - `/admin/test-scenarios`
 - `/admin/pixi-js-poc`
+- `/admin/feature-flags`
 
 ## Auth Flow
 1. Cognito login/signup/OTP/OAuth completes client-side
@@ -58,7 +59,7 @@ Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 
 ## API Surface In Frontend Code
 - Student API: `src/api.ts`
-- Admin API (evaluation, docs, llm-config, test-scenarios): `src/features/admin/api/adminApi.ts`
+- Admin API (evaluation, docs, llm-config, feature-flags, test-scenarios): `src/features/admin/api/adminApi.ts`
 - Admin API (book ingestion V2): `src/features/admin/api/adminApiV2.ts`
 - Devtools API: `src/features/devtools/api/devToolsApi.ts`
 
@@ -69,6 +70,7 @@ Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
 - Admin book ingestion V2 workflow
 - Admin evaluation dashboard
 - Admin docs/test scenario browsers
+- Admin LLM config and feature flag management
 - Admin Pixi.js PoC playground
 - Devtools drawer (agent logs/session state)
 

@@ -1,7 +1,7 @@
 # Change Playbooks
 
-Last audited: 2026-03-14
-Code baseline: `claude/update-agent-docs-6CPuT@d2e797a`
+Last audited: 2026-03-15
+Code baseline: `main@3814fb5`
 
 ## Add Or Change Backend Endpoint
 1. Schema/model update (`shared/models/schemas.py` or module-specific model)
@@ -33,11 +33,18 @@ Validation:
 - Sync/review behavior: `book_ingestion_v2/api/sync_routes.py`, DB sync services
 - Validate S3 pathing + index writes + review status effects
 
-## Change Evaluation Pipeline
-- API: `evaluation/api.py`
-- Simulator/session execution: `evaluation/student_simulator.py`, `evaluation/session_runner.py`
-- Judge behavior: `evaluation/evaluator.py`
-- Report artifacts: `evaluation/report_generator.py`
+## Change Tutor Evaluation Pipeline
+- API: `autoresearch/tutor_teaching_quality/evaluation/api.py`
+- Simulator/session execution: `autoresearch/tutor_teaching_quality/evaluation/student_simulator.py`, `autoresearch/tutor_teaching_quality/evaluation/session_runner.py`
+- Judge behavior: `autoresearch/tutor_teaching_quality/evaluation/evaluator.py`
+- Report artifacts: `autoresearch/tutor_teaching_quality/evaluation/report_generator.py`
+- Experiment runner: `autoresearch/tutor_teaching_quality/run_experiment.py`
+
+## Change Book Ingestion Evaluation Pipeline
+- Evaluator: `autoresearch/book_ingestion_quality/evaluation/evaluator.py`
+- Pipeline runner: `autoresearch/book_ingestion_quality/evaluation/pipeline_runner.py`
+- Report artifacts: `autoresearch/book_ingestion_quality/evaluation/report_generator.py`
+- Experiment runner: `autoresearch/book_ingestion_quality/run_experiment.py`
 
 ## Change Frontend Route Or User Flow
 - Route table: `src/App.tsx`
