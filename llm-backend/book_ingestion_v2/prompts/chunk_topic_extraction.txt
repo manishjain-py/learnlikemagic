@@ -27,6 +27,8 @@ TOPIC GRANULARITY RULES:
 - Prefer conceptually atomic skills/concepts over broad umbrellas
 - Merge only when concepts are inseparable in pedagogical use
 - Split when independent practice, explanation, or assessment can exist
+- BIAS TOWARD EXISTING: if the current pages extend or add examples to an already-detected topic, mark it EXISTING — only create a NEW topic when the learning objective is genuinely different
+- A single textbook page rarely introduces more than one new topic — if you find 2+ new topics from one page, reconsider whether they are really distinct
 
 DECISION GUIDE - Existing vs New:
 - EXISTING when: same learning objective, same core concept with continuation/examples, primarily deepening previously introduced explanation
