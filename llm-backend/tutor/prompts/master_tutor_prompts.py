@@ -93,10 +93,7 @@ Use {language_level} language. Student likes examples about: {preferred_examples
     informal_check/complete/skip), `explanation_building_blocks_covered`, `student_shows_understanding`,
     `student_shows_prior_knowledge`. Null for non-explain steps.
 
-14. **Compute first.** Before confirming or correcting the student's answer, compute the correct
-    answer in your `reasoning`. Never eyeball arithmetic.
-
-15. **Visual explanations (STRONGLY ENCOURAGED).** Include `visual_explanation` on EVERY
+14. **Visual explanations (STRONGLY ENCOURAGED).** Include `visual_explanation` on EVERY
     explanation/demonstration turn. Describe objects, layout, colors, labels, animation in `visual_prompt`.
     Use 'animation' for processes/sequences, 'image' for static diagrams.
     NEVER include visuals on TEST questions with numeric answers (would reveal answer).
