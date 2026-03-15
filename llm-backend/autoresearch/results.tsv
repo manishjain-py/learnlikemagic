@@ -1,0 +1,23 @@
+commit	avg_score	elapsed_min	status	description	scores_json
+b50df82	6.6000	10.5	baseline	baseline — current prompts, no changes	{"authenticity": 7.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 6.0, "responsiveness": 7.0}
+a14147b	6.8000	7.7	keep	add false-OK detection rule — probe vague acknowledgments	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 6.0, "responsiveness": 7.0}
+c872c20	7.2000	8.5	keep	why-before-what pacing — ask why before drilling	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 8.0}
+f360e45	6.6000	9.5	discard	verify reasoning not just answers, ground analogies in everyday objects	{"authenticity": 6.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}
+23b9dcf	6.6000	8.5	discard	ban forced repetition, one stable analogy per concept	{"authenticity": 6.0, "emotional_attunement": 6.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}
+78511a6	5.8000	4.9	discard	warmer persona — favourite older sibling, keep sentences short	{"authenticity": 6.0, "emotional_attunement": 7.0, "explanation_quality": 6.0, "pacing": 4.0, "responsiveness": 6.0}
+a42a182	4.4000	4.4	discard	concrete physical models when strategy change needed	{"authenticity": 6.0, "emotional_attunement": 4.0, "explanation_quality": 5.0, "pacing": 3.0, "responsiveness": 4.0}
+4c28c7f	6.2000	7.1	discard	per-turn reminder: simplest words, one idea, check understanding	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 6.0, "pacing": 5.0, "responsiveness": 6.0}
+9f98269	7.0000	6.6	discard	simplify rule 5 — less prescriptive about being unpredictable	{"authenticity": 6.0, "emotional_attunement": 8.0, "explanation_quality": 7.0, "pacing": 7.0, "responsiveness": 7.0}
+c16e22c	6.6000	6.7	variance-check	variance check — re-run current best prompts (no changes)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 5.0, "responsiveness": 7.0}
+92f62fd	5.7333	13.9	discard	expand tangent management in rule 7 (3-run avg: 5.8,6.0,5.4)	{"authenticity": 5.7, "emotional_attunement": 6.3, "explanation_quality": 6.0, "pacing": 4.7, "responsiveness": 6.0}
+1fe879b	5.9333	15.9	discard	strengthen answer verification in rule 4 (3-run avg: 6.0,5.6,6.2)	{"authenticity": 6.3, "emotional_attunement": 6.0, "explanation_quality": 6.3, "pacing": 5.0, "responsiveness": 6.0}
+c6a009d	6.7333	18.7	baseline	3-run baseline — current best prompts (6.0,6.8,7.4)	{"authenticity": 6.7, "emotional_attunement": 7.0, "explanation_quality": 6.7, "pacing": 6.3, "responsiveness": 7.0}
+3813eda	6.4000	24.5	discard	reteach after repeated errors instead of drilling (3-run avg: 6.2,6.4,6.6)	{"authenticity": 7.0, "emotional_attunement": 6.3, "explanation_quality": 7.0, "pacing": 5.7, "responsiveness": 6.0}
+85580d9	6.9333	21.9	keep	turn prompt: student works through steps (3-run avg: 6.0,7.2,7.6)	{"authenticity": 7.0, "emotional_attunement": 7.3, "explanation_quality": 6.7, "pacing": 6.3, "responsiveness": 7.3}
+7af0d0f	6.0667	16.7	discard	ban gamified jargon labels in rule 9 (3-run avg: 7.0,6.0,5.2)	{"authenticity": 6.3, "emotional_attunement": 6.0, "explanation_quality": 6.7, "pacing": 5.3, "responsiveness": 6.0}
+7d50cc2	5.8667	20.5	discard	simplify rule 5 — remove unpredictable/fresh line (3-run avg: 5.8,6.6,5.2)	{"authenticity": 5.7, "emotional_attunement": 5.7, "explanation_quality": 6.7, "pacing": 5.3, "responsiveness": 6.0}
+d36e40f	6.6667	18.2	discard	turn prompt: mirror student Hindi words (3-run avg: 6.8,6.4,6.8)	{"authenticity": 7.0, "emotional_attunement": 6.3, "explanation_quality": 7.0, "pacing": 6.3, "responsiveness": 6.7}
+c8e3da0	7.0667	20.3	keep	turn prompt: level up after 2-3 correct (3-run avg: 6.8,7.0,7.4)	{"authenticity": 7.0, "emotional_attunement": 7.3, "explanation_quality": 7.0, "pacing": 6.7, "responsiveness": 7.3}
+ab42593	6.8667	20.5	discard	turn prompt: open questions not multiple choice (3-run avg: 5.8,7.6,7.2)	{"authenticity": 6.7, "emotional_attunement": 7.3, "explanation_quality": 6.7, "pacing": 6.7, "responsiveness": 7.0}
+a254255	5.8667	19.1	discard	turn prompt: connect ideas to everyday examples (3-run avg: 5.6,6.8,5.2)	{"authenticity": 6.3, "emotional_attunement": 6.0, "explanation_quality": 6.0, "pacing": 4.7, "responsiveness": 6.3}
+5074bd9	6.2667	25.1	discard	balanced level-up: advance or reteach (3-run avg: 6.2,6.8,5.8)	{"authenticity": 6.3, "emotional_attunement": 6.7, "explanation_quality": 6.3, "pacing": 5.7, "responsiveness": 6.3}
