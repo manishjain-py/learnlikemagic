@@ -65,7 +65,7 @@ OUTPUT FORMAT (strict JSON):
       "topic_key": "kebab-case-slug",
       "topic_title": "Human Readable Title",
       "is_new": true,
-      "guidelines_for_this_chunk": "A single plain-text string with all guideline sections (Learning objectives: ... Required depth: ... Prerequisites: ... Misconceptions: ... Scope: ...). NOT a JSON object — must be one string.",
+      "guidelines_for_this_chunk": "Teaching guidelines based on these pages...",
       "reasoning": "Why this is a new/existing topic..."
     }}
   ]
