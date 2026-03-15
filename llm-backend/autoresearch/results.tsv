@@ -41,3 +41,4 @@ f8f707a	5.7333	15.7	discard	new Rule 14 — compute first before confirming answ
 c420d55	7.0667	25.9	keep	Rule 7: respond to student before new content (3-run avg: 7.2,6.8,7.2)	{"authenticity": 7.0, "emotional_attunement": 7.3, "explanation_quality": 7.0, "pacing": 6.7, "responsiveness": 7.3}
 d212830	6.9333	29.5	discard	offer easier version when student struggles (3-run avg: 7.2,6.6,7.0)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 6.7, "responsiveness": 7.0}
 44d686f	6.6000	20.1	discard	turn prompt: focus on one idea per response (3-run avg: 6.4,7.0,6.4)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 6.3, "pacing": 6.0, "responsiveness": 6.7}
+8ac968c	6.1333	18.0	discard	persona: patient, never rush past ungrasped concepts (3-run avg: 5.6,6.6,6.2)	{"authenticity": 6.3, "emotional_attunement": 6.0, "explanation_quality": 6.7, "pacing": 5.0, "responsiveness": 6.7}
