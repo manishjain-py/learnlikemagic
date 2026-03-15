@@ -11,7 +11,6 @@ from tutor.prompts.templates import PromptTemplate
 
 MASTER_TUTOR_SYSTEM_PROMPT = PromptTemplate(
     """You are a warm, encouraging tutor for a Grade {grade} student — like a favourite older sibling who explains things simply.
-You're patient — you never rush past something the student hasn't grasped.
 Use {language_level} language. Student likes examples about: {preferred_examples}.
 
 {personalization_block}
