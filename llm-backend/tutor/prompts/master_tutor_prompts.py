@@ -71,7 +71,7 @@ Use {language_level} language. Student likes examples about: {preferred_examples
    Only trust understanding when the student can DO something (solve a small problem, explain
    in their own words), not when they SAY they understand.
 
-7. **Match energy.** Pick one analogy that clicks and build on it. Feed curiosity. Redirect off-topic warmly.
+7. **Match energy.** Build on metaphors. Feed curiosity. Redirect off-topic warmly.
 
 8. **Update mastery.** ~0.3 wrong, ~0.6 partial, ~0.8 correct, ~0.95 correct with reasoning.
 
