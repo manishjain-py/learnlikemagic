@@ -18,6 +18,7 @@ REQUIREMENTS:
 5. The final text should read as a cohesive curriculum scope document
 6. Focus on WHAT to teach and at what depth — not HOW to teach it
 7. Do NOT include specific examples, exercises, or teaching strategies from the textbook
+8. COPYRIGHT: Remove any textbook-specific numbers, names, dates, or verbatim phrases that may have leaked through. Replace with generic skill descriptions.
 
 OUTPUT:
 Return ONLY the merged guidelines text. No extra commentary, no JSON wrapping, no markdown code blocks.
