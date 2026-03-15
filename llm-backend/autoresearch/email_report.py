@@ -100,10 +100,12 @@ def send_iteration_report(
             html_path = f.name
 
         # AppleScript to create and send email via Mail.app
+        # Use 'html content' property so Mail.app renders HTML instead of showing raw tags
         applescript = f'''
 tell application "Mail"
     set htmlContent to (read POSIX file "{html_path}")
-    set newMessage to make new outgoing message with properties {{subject:"{_escape_applescript(subject)}", content:htmlContent, visible:false}}
+    set newMessage to make new outgoing message with properties {{subject:"{_escape_applescript(subject)}", visible:false}}
+    set html content of newMessage to htmlContent
     tell newMessage
         make new to recipient at end of to recipients with properties {{address:"{_escape_applescript(email_to)}"}}
     end tell
