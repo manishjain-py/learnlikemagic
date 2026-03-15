@@ -19,6 +19,8 @@ MERGE RULES:
 - Only merge topics that cover the SAME learning objective
 - Do NOT merge topics that are related but teach distinct skills
 - When merging, keep the more descriptive title
+- Aggressively merge topics that are sub-steps of a single procedure (e.g., "read numbers" and "write numbers" are one topic if they share the same skill)
+- Each final topic should represent a coherent 10-20 minute teachable unit — split any remaining umbrella topics that cover multiple independent skills
 
 NAMING RULES:
 - Titles should be concise (3-8 words)
