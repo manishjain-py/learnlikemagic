@@ -395,6 +395,7 @@ def main():
     if args.email:
         baseline = load_baseline()
         prompt_diff = get_prompt_diff()
+        run_dirs = [r["run_dir"] for r in results.get("per_persona", []) if r.get("run_dir")]
         from autoresearch.email_report import send_iteration_report
         send_iteration_report(
             iteration=args.iteration,
@@ -407,6 +408,7 @@ def main():
             problems_summary=results["problems"],
             prompt_diff=prompt_diff,
             email_to=args.email,
+            run_dirs=run_dirs,
         )
 
     return results
