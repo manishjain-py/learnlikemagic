@@ -37,3 +37,4 @@ c25206d	7.2667	21.4	discard	acknowledge correct parts before addressing errors (
 27a5761	6.2000	14.2	discard	reframe Rule 5 — natural conversation not unpredictable (3-run avg: 5.4,6.6,6.6)	{"authenticity": 6.3, "emotional_attunement": 6.7, "explanation_quality": 6.0, "pacing": 5.7, "responsiveness": 6.3}
 f8f707a	5.7333	15.7	discard	new Rule 14 — compute first before confirming answers (3-run avg: 5.6,5.6,6.0)	{"authenticity": 6.3, "emotional_attunement": 5.7, "explanation_quality": 6.0, "pacing": 4.7, "responsiveness": 6.0}
 05a7308	7.0000	26.9	discard	respond short and conversational (3-run avg: 6.4,7.2,7.4)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.3, "pacing": 6.7, "responsiveness": 7.0}
+16627a7	6.0000	17.8	discard	replication: acknowledge correct parts before errors (3-run avg: 6.0,7.0,5.0)	{"authenticity": 6.7, "emotional_attunement": 6.7, "explanation_quality": 6.0, "pacing": 4.7, "responsiveness": 6.0}
