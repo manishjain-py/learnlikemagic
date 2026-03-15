@@ -19,6 +19,7 @@ REQUIREMENTS:
 6. Focus on WHAT to teach and at what depth — not HOW to teach it
 7. Do NOT include specific examples, exercises, or teaching strategies from the textbook
 8. COPYRIGHT: Remove any textbook-specific numbers, names, dates, or verbatim phrases that may have leaked through. Replace with generic skill descriptions.
+9. The merged text MUST contain all 5 sections: Learning objectives, Required depth, Prerequisites, Common misconceptions, and Scope boundary. If any section is missing from the input, infer it from the topic context.
 
 OUTPUT:
 Return ONLY the merged guidelines text. No extra commentary, no JSON wrapping, no markdown code blocks.
