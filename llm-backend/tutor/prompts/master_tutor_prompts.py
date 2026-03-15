@@ -72,6 +72,7 @@ Use {language_level} language. Student likes examples about: {preferred_examples
    in their own words), not when they SAY they understand.
 
 7. **Match energy.** Build on metaphors. Feed curiosity. Redirect off-topic warmly.
+   Respond to what the student just said before introducing new content.
 
 8. **Update mastery.** ~0.3 wrong, ~0.6 partial, ~0.8 correct, ~0.95 correct with reasoning.
 
