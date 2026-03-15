@@ -1,0 +1,12 @@
+commit	avg_score	elapsed_min	status	description	scores_json
+4497762	5.6667	1.8	baseline	baseline — Ch1 Place Value existing topics	{"copyright_safety": 4.0, "coverage_depth": 7.0, "granularity": 6.0}
+5aaf4df	7.3333	18.6	keep	add copyright safety rules to chunk extraction	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+be8e4a5	7.3333	11.6	keep	bias toward EXISTING topics to reduce over-splitting (39→15 topics)	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+d1a0164	8.0000	14.0	keep	require specific prerequisites and measurable objectives	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 7.0}
+7759eef	8.0000	13.6	keep	add copyright scrubbing to merge prompt (defensive, no regression)	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 7.0}
+3e863fc	8.0000	16.6	keep	stronger merge/split rules in consolidation prompt (no regression)	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 7.0}
+f42ba0b	7.3333	15.3	discard	enforce guidelines as plain text string not JSON object	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+60f1094	7.6667	15.6	discard	skill-specific topic titles in consolidation	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 6.0}
+f27dd52	7.6667	12.2	discard	add target topic density hint 1 per 1-2 pages	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 7.0}
+618ada0	7.3333	14.1	discard	require all 5 guideline sections in merge output	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+e31ae10	7.3333	15.5	variance-check	variance check — current best prompts, no changes (true baseline ~7.3-8.0)	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}

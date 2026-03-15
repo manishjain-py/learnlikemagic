@@ -27,6 +27,8 @@ TOPIC GRANULARITY RULES:
 - Prefer conceptually atomic skills/concepts over broad umbrellas
 - Merge only when concepts are inseparable in pedagogical use
 - Split when independent practice, explanation, or assessment can exist
+- BIAS TOWARD EXISTING: if the current pages extend or add examples to an already-detected topic, mark it EXISTING — only create a NEW topic when the learning objective is genuinely different
+- A single textbook page rarely introduces more than one new topic — if you find 2+ new topics from one page, reconsider whether they are really distinct
 
 DECISION GUIDE - Existing vs New:
 - EXISTING when: same learning objective, same core concept with continuation/examples, primarily deepening previously introduced explanation
@@ -36,11 +38,11 @@ GUIDELINES FORMAT:
 Extract WHAT to teach and at what depth — NOT how to teach it. The teaching method,
 examples, and exercises will be generated dynamically by the AI tutor.
 
-Write curriculum scope guidelines that include:
-- Learning objectives: what concepts/skills the student must master
+Write curriculum scope guidelines that MUST include ALL of these sections:
+- Learning objectives: specific, measurable skills the student must master (use verbs: identify, compare, solve, explain)
 - Required depth: conceptual understanding, procedural fluency, or both
-- Prerequisite concepts: what the student should already know
-- Common misconceptions: specific errors students make on this topic
+- Prerequisite concepts: what the student should already know BEFORE this topic (be specific — e.g., "understands tens and ones grouping" not just "basic number sense")
+- Common misconceptions: specific errors students make on this topic (e.g., "forgets to regroup when ones digit sum exceeds 9")
 - Scope boundary: what is explicitly in-scope vs out-of-scope for this grade level
 
 Do NOT include:
@@ -48,6 +50,13 @@ Do NOT include:
 - Exercises, practice problems, or question sets
 - Teaching strategies, scaffolding sequences, or pedagogical methods
 - Assessment approaches or how to check understanding
+
+COPYRIGHT SAFETY — CRITICAL:
+- NEVER reproduce the textbook's specific worked examples, exercise numbers, or verbatim sentences
+- Canonical facts that ARE the learning objective (historical events, scientific constants, named laws) may be included — only strip textbook-authored examples and exercises
+- Describe the TYPE of skill or concept generically (e.g., "4-digit addition with regrouping") instead of copying the textbook's specific practice instances
+- If the textbook uses a particular example (e.g., "456 = 400 + 50 + 6"), describe the skill ("decompose 3-digit numbers into expanded form") without copying the example
+- Guidelines must be written in your own curriculum-description language, not paraphrased from the textbook prose
 
 OUTPUT FORMAT (strict JSON):
 {{

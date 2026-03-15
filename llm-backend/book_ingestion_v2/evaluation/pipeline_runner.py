@@ -112,6 +112,7 @@ class PipelineRunner:
         job_id = str(uuid.uuid4())
         job = ChapterProcessingJob(
             id=job_id,
+            book_id=chapter.book_id,
             chapter_id=chapter_id,
             job_type=V2JobType.TOPIC_EXTRACTION.value,
             status=V2JobStatus.RUNNING.value,
