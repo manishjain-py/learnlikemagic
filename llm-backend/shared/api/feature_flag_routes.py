@@ -1,5 +1,5 @@
 """Admin API for runtime feature flags."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
@@ -26,8 +26,10 @@ def update_feature_flag(
     request: UpdateFeatureFlagRequest,
     db: DBSession = Depends(get_db),
 ):
-    """Toggle a feature flag on/off."""
+    """Toggle a feature flag on/off. Only existing flags can be updated."""
     service = FeatureFlagService(db)
+    if not service.flag_exists(flag_name):
+        raise HTTPException(status_code=404, detail=f"Unknown feature flag '{flag_name}'")
     result = service.update_flag(flag_name=flag_name, enabled=request.enabled)
     db.commit()
     return result

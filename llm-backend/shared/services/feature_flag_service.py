@@ -14,6 +14,10 @@ class FeatureFlagService:
     def __init__(self, db: DBSession):
         self.repo = FeatureFlagRepository(db)
 
+    def flag_exists(self, flag_name: str) -> bool:
+        """Return True if the flag exists in the DB."""
+        return self.repo.get_by_name(flag_name) is not None
+
     def is_enabled(self, flag_name: str) -> bool:
         """Return True if the flag exists and is enabled, False otherwise."""
         row = self.repo.get_by_name(flag_name)
