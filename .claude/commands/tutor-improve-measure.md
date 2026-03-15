@@ -42,7 +42,7 @@ Wait for health check to pass.
 ```bash
 cd llm-backend && source venv/bin/activate
 python -c "
-from evaluation.config import EvalConfig
+from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 config = EvalConfig.__new__(EvalConfig)
 # List available guideline/topic IDs
 "
