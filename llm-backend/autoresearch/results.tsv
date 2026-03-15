@@ -32,3 +32,4 @@ a0f22cf	7.2667	18.3	keep	soften why-before-what — concrete task instead (3-run
 ebf2be4	7.2000	19.7	discard	add listens carefully to persona intro (3-run avg: 7.6,6.8,7.2)	{"authenticity": 7.0, "emotional_attunement": 7.7, "explanation_quality": 7.3, "pacing": 6.7, "responsiveness": 7.3}
 5a95ef7	6.0667	18.6	discard	turn prompt: build on reasoning instead of dont solve (3-run avg: 7.0,5.2,6.0)	{"authenticity": 6.3, "emotional_attunement": 6.0, "explanation_quality": 6.3, "pacing": 5.3, "responsiveness": 6.3}
 c25206d	7.2667	21.4	discard	acknowledge correct parts before addressing errors (3-run avg: 7.2,7.6,7.0)	{"authenticity": 7.0, "emotional_attunement": 7.3, "explanation_quality": 7.3, "pacing": 7.3, "responsiveness": 7.3}
+0630563	6.6000	17.3	discard	conversational paragraphs instead of formulaic bullets (3-run avg: 7.0,5.6,7.2)	{"authenticity": 6.7, "emotional_attunement": 6.7, "explanation_quality": 6.7, "pacing": 6.3, "responsiveness": 6.7}
