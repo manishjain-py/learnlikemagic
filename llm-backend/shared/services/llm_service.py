@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 # Models that use the OpenAI Responses API (vs Chat Completions)
 _RESPONSES_API_MODELS = {"gpt-5.4", "gpt-5.3-codex", "gpt-5.2", "gpt-5.1"}
+# Note: gpt-realtime-1.5 is excluded — it's a realtime-only model incompatible
+# with both Chat Completions and Responses API endpoints.
 
 
 class LLMService:
