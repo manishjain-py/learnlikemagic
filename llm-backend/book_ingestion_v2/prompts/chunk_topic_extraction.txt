@@ -38,11 +38,11 @@ GUIDELINES FORMAT:
 Extract WHAT to teach and at what depth — NOT how to teach it. The teaching method,
 examples, and exercises will be generated dynamically by the AI tutor.
 
-Write curriculum scope guidelines that include:
-- Learning objectives: what concepts/skills the student must master
+Write curriculum scope guidelines that MUST include ALL of these sections:
+- Learning objectives: specific, measurable skills the student must master (use verbs: identify, compare, solve, explain)
 - Required depth: conceptual understanding, procedural fluency, or both
-- Prerequisite concepts: what the student should already know
-- Common misconceptions: specific errors students make on this topic
+- Prerequisite concepts: what the student should already know BEFORE this topic (be specific — e.g., "understands tens and ones grouping" not just "basic number sense")
+- Common misconceptions: specific errors students make on this topic (e.g., "forgets to regroup when ones digit sum exceeds 9")
 - Scope boundary: what is explicitly in-scope vs out-of-scope for this grade level
 
 Do NOT include:
