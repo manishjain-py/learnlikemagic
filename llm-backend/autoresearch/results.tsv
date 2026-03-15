@@ -39,3 +39,4 @@ f8f707a	5.7333	15.7	discard	new Rule 14 — compute first before confirming answ
 05a7308	7.0000	26.9	discard	respond short and conversational (3-run avg: 6.4,7.2,7.4)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.3, "pacing": 6.7, "responsiveness": 7.0}
 16627a7	6.0000	17.8	discard	replication: acknowledge correct parts before errors (3-run avg: 6.0,7.0,5.0)	{"authenticity": 6.7, "emotional_attunement": 6.7, "explanation_quality": 6.0, "pacing": 4.7, "responsiveness": 6.0}
 c420d55	7.0667	25.9	keep	Rule 7: respond to student before new content (3-run avg: 7.2,6.8,7.2)	{"authenticity": 7.0, "emotional_attunement": 7.3, "explanation_quality": 7.0, "pacing": 6.7, "responsiveness": 7.3}
+d212830	6.9333	29.5	discard	offer easier version when student struggles (3-run avg: 7.2,6.6,7.0)	{"authenticity": 7.0, "emotional_attunement": 7.0, "explanation_quality": 7.0, "pacing": 6.7, "responsiveness": 7.0}
