@@ -113,7 +113,9 @@ class PlannedTopic(BaseModel):
     page_end: int                     # Primary page range end
     sequence_order: int               # Teaching sequence (1-based)
     grouping_rationale: str           # Why these pages form one unit
-    dependency_notes: str = ""        # What prior topics this builds on
+    dependency_notes: str = ""        # Planner's internal reasoning about topic dependencies
+                                      # (NOT the same as prior_topics_context, which is a
+                                      # tutor-facing instruction generated post-consolidation)
 ```
 
 **New model: `ChapterTopicPlan`**
@@ -145,7 +147,8 @@ class TopicUpdate(BaseModel):
 class ConsolidationDeviation(BaseModel):
     """Tracks a deviation from the planned topic structure."""
     deviation_type: str               # "split", "merge", "unplanned_ratified", "unplanned_merged"
-    topic_key: str
+    topic_key: str                    # Primary affected planned topic key
+    affected_target_key: str = ""     # For merges: the planned topic being merged into
     reasoning: str
 ```
 
@@ -207,10 +210,11 @@ class ChapterStatus(str, Enum):
     NEEDS_REVIEW = "needs_review"      # Planning failure — >30% deviation
 ```
 
-**Add planning deviation threshold:**
+**Add planning deviation constants:**
 
 ```python
-PLANNING_DEVIATION_THRESHOLD = 0.30  # 30% deviation triggers needs_review
+PLANNING_DEVIATION_THRESHOLD = 0.30    # Fraction of affected planned topics that triggers needs_review
+PLANNING_DEVIATION_MIN_COUNT = 3       # Minimum deviations before threshold applies (avoids noise with small plans)
 ```
 
 ### 4.3 Chapter Topic Planner Service (NEW)
@@ -262,22 +266,57 @@ Changes:
 
 Changes to `extract()`:
 
-1. **After acquiring job lock, before building chunk windows:**
-   - Load all OCR'd page texts for the chapter
-   - Call `ChapterTopicPlannerService.plan_chapter()`
-   - Save planned topics to `ChapterProcessingJob.planned_topics_json`
-   - Save planned topics to S3 at `{s3_run_base}/planned_topics.json`
-   - Initialize `RunningState.topic_guidelines_map` from planned topics (pre-populate with empty guidelines)
+1. **After acquiring job lock, before building chunk windows — run planner with explicit fallback:**
+   ```python
+   # Load all OCR'd page texts
+   page_texts = [...]
+
+   # Plan chapter — with graceful fallback to unguided extraction
+   planned_topics = None
+   try:
+       plan = planner_service.plan_chapter(book_metadata, chapter_metadata, page_texts)
+       planned_topics = plan.topics
+
+       # Save plan to job record (self-contained for resume)
+       job_record.planned_topics_json = json.dumps(plan.model_dump())
+       self.db.commit()
+
+       # Save to S3 for audit
+       self.s3_client.upload_bytes(
+           json.dumps(plan.model_dump(), indent=2).encode("utf-8"),
+           f"{s3_run_base}/planned_topics.json",
+       )
+
+       # Pre-populate RunningState from plan
+       for pt in planned_topics:
+           state.topic_guidelines_map[pt.topic_key] = TopicAccumulator(
+               topic_key=pt.topic_key, topic_title=pt.title,
+               guidelines="", source_page_start=pt.page_start, source_page_end=pt.page_end,
+           )
+   except Exception as e:
+       # FALLBACK: planner failed — proceed with unguided extraction (same as current behavior)
+       logger.warning(f"Chapter planner failed, falling back to unguided extraction: {e}")
+       planned_topics = None
+       # Save failure to S3 for debugging
+       self.s3_client.upload_bytes(
+           json.dumps({"error": str(e), "fallback": "unguided"}).encode("utf-8"),
+           f"{s3_run_base}/planning_failed.json",
+       )
+   ```
+
+   **Decision:** If the planner fails (timeout, token limit, parsing error), the orchestrator logs a warning and proceeds with `planned_topics=None`. This means the chunk extraction prompt falls back to the existing "discover topics" mode (the prompt conditionally includes the planned skeleton only when present). The planning phase cannot take down the ingestion pipeline.
 
 2. **In the chunk processing loop:**
-   - Pass `planned_topics` to `chunk_processor.process_chunk()`
-   - Change accumulator logic: `topic_assignment == "planned"` → always append (topic already exists in map); `topic_assignment == "unplanned"` → create new entry (with unplanned flag)
+   - Pass `planned_topics` to `chunk_processor.process_chunk()` (may be None for fallback)
+   - When `planned_topics` is provided: `topic_assignment == "planned"` → always append (topic already exists in map); `topic_assignment == "unplanned"` → create new entry
+   - When `planned_topics` is None: chunk processor uses original prompt with `is_new` field (backward-compatible path)
 
 3. **When persisting draft topics:**
-   - Set `topic_assignment` on each `ChapterTopic` record
+   - Set `topic_assignment` on each `ChapterTopic` record (null when running in unguided fallback mode)
 
 4. **Resume support:**
-   - When resuming, load planned topics from the previous job's `planned_topics_json`
+   - When resuming, load planned topics from the **previous** job's `planned_topics_json`
+   - **Also copy the plan to the current job's `planned_topics_json`** so the new job is self-contained for audit and potential future resume
 
 ### 4.6 Modified Chapter Finalization Service
 
@@ -285,28 +324,94 @@ Changes to `extract()`:
 
 Changes to `finalize()`:
 
-1. **Load planned topics** from the job's `planned_topics_json` (needed for deviation tracking)
+The current finalization flow (steps 1-8 in the existing code) is extended. New steps are inserted and the return type changes.
 
-2. **Updated consolidation prompt** passes planned topic skeleton as context. Consolidation role shifts from "discover merges" to "validate plan + reconcile unplanned topics"
+**Return type change:** `finalize()` currently returns `ConsolidationOutput`. Change to return a `FinalizationResult`:
 
-3. **After consolidation, count deviations:**
+```python
+class FinalizationResult(BaseModel):
+    consolidation: ConsolidationOutput
+    final_status: str   # "chapter_completed" or "needs_review"
+    deviation_ratio: float
+    deviation_count: int
+```
+
+**IMPORTANT — Caller contract:** Both callers (`topic_extraction_orchestrator.py:376-391` and `processing_routes.py:400-427` `_run_refinalization`) currently set `chapter.status = CHAPTER_COMPLETED` unconditionally after `finalize()` returns. **Both must be updated to use `result.final_status` instead:**
+
+```python
+# In topic_extraction_orchestrator.py — replace lines 386-387:
+result = finalization_service.finalize(chapter, job_id)
+self._refresh_db_session()
+chapter = self.chapter_repo.get_by_id(chapter_id)
+chapter.status = result.final_status  # NOT unconditionally CHAPTER_COMPLETED
+self.chapter_repo.update(chapter)
+
+# In processing_routes.py _run_refinalization — replace lines 413-414:
+result = service.finalize(chapter, job_id)
+# ... refresh session ...
+chapter.status = result.final_status  # NOT unconditionally CHAPTER_COMPLETED
+```
+
+**Modified finalization steps (numbered to match existing code structure):**
+
+1. Load draft topics *(unchanged)*
+2. Save pre-consolidation snapshot *(unchanged)*
+3. LLM-merge each topic's appended guidelines *(unchanged)*
+4. Run consolidation LLM — now with planned topic skeleton as context *(modified prompt)*
+4.5. **[NEW] Load planned topics** from the job's `planned_topics_json` (passed as parameter or loaded from DB)
+5. Execute merge actions *(unchanged)*
+6. Apply topic updates *(unchanged)*
+6.5. **[NEW] Compute deviation ratio and determine final status:**
    ```python
-   deviations = consolidation_output.deviations
+   # Count AFFECTED PLANNED TOPICS, not just deviation actions.
+   # A merge affects 2 planned topics (absorbed + absorber). A split affects 1.
+   # An unplanned_ratified doesn't affect any planned topic.
+   affected_planned_keys = set()
+   for dev in consolidation_output.deviations:
+       if dev.deviation_type == "merge":
+           # merge_from and merge_into are both affected
+           affected_planned_keys.add(dev.topic_key)
+           # Also need the merge_into key — include it in ConsolidationDeviation
+           if dev.affected_target_key:
+               affected_planned_keys.add(dev.affected_target_key)
+       elif dev.deviation_type == "split":
+           affected_planned_keys.add(dev.topic_key)
+       elif dev.deviation_type == "unplanned_ratified":
+           pass  # Doesn't affect a planned topic
+       elif dev.deviation_type == "unplanned_merged":
+           affected_planned_keys.add(dev.topic_key)  # The planned topic it merged into
+
    total_planned = len(planned_topics)
-   deviation_count = len(deviations)
-   deviation_ratio = deviation_count / total_planned if total_planned > 0 else 0
+   affected_count = len(affected_planned_keys)
+   deviation_ratio = affected_count / total_planned if total_planned > 0 else 0
 
-   if deviation_ratio > PLANNING_DEVIATION_THRESHOLD:
-       chapter.status = ChapterStatus.NEEDS_REVIEW.value
+   if affected_count >= PLANNING_DEVIATION_MIN_COUNT and deviation_ratio > PLANNING_DEVIATION_THRESHOLD:
+       final_status = ChapterStatus.NEEDS_REVIEW.value
+   else:
+       final_status = ChapterStatus.CHAPTER_COMPLETED.value
    ```
-
-4. **New step: Generate curriculum context** — After consolidation and topic updates, run a single LLM call using `curriculum_context_generation.txt` prompt to generate `prior_topics_context` for all topics (except the first). Save to each `ChapterTopic.prior_topics_context`.
-
-5. **Heartbeat updates** during context generation to prevent stale detection.
+6.75. **[NEW] Generate curriculum context** — Single LLM call using `curriculum_context_generation.txt` to generate `prior_topics_context` for all topics except the first. Requires:
+   - `_refresh_db_session()` after step 6 (topic updates involve LLM merges)
+   - Heartbeat update before the LLM call
+   - Save `prior_topics_context` to each `ChapterTopic` in DB
+7. Update chapter — set `display_name`, `summary`, **and `status = final_status`** *(modified — status set here, not by caller)*
+8. Save final output to S3 *(modified — include new fields, see below)*
+9. **[NEW] Return `FinalizationResult`**
 
 ### 4.7 Topic Sync Service
 
 **File:** `book_ingestion_v2/services/topic_sync_service.py`
+
+**`sync_chapter()` allowed status gate** — Allow sync from `needs_review` in addition to `chapter_completed`. Topics in a `needs_review` chapter are fully finalized, just flagged as potentially suboptimal. Blocking sync would prevent any use of these topics until an admin intervenes, which is too aggressive. The admin can reprocess later if needed.
+
+```python
+# In sync_chapter() — update the status check:
+if chapter.status not in [
+    ChapterStatus.CHAPTER_COMPLETED.value,
+    ChapterStatus.NEEDS_REVIEW.value,  # NEW — topics are finalized, just flagged
+]:
+    raise ValueError(...)
+```
 
 Change to `_sync_topic()`:
 
@@ -406,15 +511,42 @@ Update `_build_system_prompt()` to pass `prior_topics_context_section` to the te
 
 **File:** `book_ingestion_v2/api/processing_routes.py`
 
-Update `start_processing()` and `reprocess()` to allow `NEEDS_REVIEW` status for reprocessing:
+Three route handlers need changes:
+
+**`refinalize()` (line 156)** — Add `NEEDS_REVIEW` to allowed statuses. This is the primary recovery path for flagged chapters:
 
 ```python
-# In refinalize():
 if chapter.status not in [
     ChapterStatus.CHAPTER_COMPLETED.value,
     ChapterStatus.FAILED.value,
     ChapterStatus.NEEDS_REVIEW.value,  # NEW
 ]:
+```
+
+**`start_processing()` (line 58)** — Add `NEEDS_REVIEW` to resume-allowed statuses (admin may want to re-extract from scratch):
+
+```python
+if request.resume:
+    allowed_statuses.extend([
+        ChapterStatus.TOPIC_EXTRACTION.value,
+        ChapterStatus.FAILED.value,
+        ChapterStatus.NEEDS_REVIEW.value,  # NEW
+    ])
+```
+
+**`reprocess()` (line 102)** — No change needed. It unconditionally resets status to `UPLOAD_COMPLETE` before calling `start_processing()`, so it already handles any source status.
+
+**`get_chapter_topics()` (line 250) and `get_topic()` (line 290)** — Both manually construct `ChapterTopicResponse`. Must be updated to pass the new fields:
+
+```python
+# In get_chapter_topics():
+ChapterTopicResponse(
+    # ... existing fields ...
+    prior_topics_context=t.prior_topics_context,  # NEW
+    topic_assignment=t.topic_assignment,            # NEW
+)
+
+# Same pattern in get_topic()
 ```
 
 ### 4.11 Other Consumers Assessment
@@ -521,6 +653,19 @@ if chapter.status not in [
 
 **LLM config:** `book_ingestion_v2` component key, `json_mode=True`. No special reasoning effort needed — this is a straightforward summarization task.
 
+### S3 audit trail updates
+
+`_save_final_output()` (finalization_service.py:276-312) saves per-topic data to S3. The new fields must be included for audit completeness:
+
+```python
+# In _save_final_output(), add to topic_data dict:
+topic_data = {
+    # ... existing fields ...
+    "prior_topics_context": topic.prior_topics_context,  # NEW
+    "topic_assignment": topic.topic_assignment,            # NEW
+}
+```
+
 ### Cost and latency considerations
 
 | Call | Per Chapter | Estimated Tokens | Impact |
@@ -544,7 +689,8 @@ The planner uses the existing `book_ingestion_v2` LLM config from the `llm_confi
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `PLANNING_DEVIATION_THRESHOLD` | `0.30` | Fraction of plan deviations that triggers `needs_review` |
+| `PLANNING_DEVIATION_THRESHOLD` | `0.30` | Fraction of affected planned topics that triggers `needs_review` |
+| `PLANNING_DEVIATION_MIN_COUNT` | `3` | Minimum affected topics before threshold applies (avoids noise with small plans — a 5-topic plan with 2 deviations = 40% but shouldn't trigger review) |
 
 ---
 
@@ -568,7 +714,7 @@ The planner uses the existing `book_ingestion_v2` LLM config from the `llm_confi
 | 14 | **Tutor models** — TopicGuidelines.prior_topics_context | `tutor/models/study_plan.py` | — | Instantiate model with field |
 | 15 | **Topic adapter** — Pass through prior_topics_context | `tutor/services/topic_adapter.py` | Steps 13, 14 | Unit test: verify field flows from GuidelineResponse to TopicGuidelines |
 | 16 | **Master tutor prompt** — Add curriculum context section | `tutor/prompts/master_tutor_prompts.py`, `tutor/agents/master_tutor.py` | Step 14 | Unit test: verify prompt includes context when present, omits when null |
-| 17 | **Processing routes** — Allow needs_review for reprocessing | `book_ingestion_v2/api/processing_routes.py` | Step 3 | Manual: verify reprocess works on needs_review chapters |
+| 17 | **Processing routes** — Allow needs_review in status gates; update `get_chapter_topics()` and `get_topic()` to pass new fields | `book_ingestion_v2/api/processing_routes.py` | Steps 3, 18 | Manual: verify refinalize works on needs_review chapters; verify API response includes new fields |
 | 18 | **API response schemas** — Add fields to ChapterTopicResponse | `book_ingestion_v2/models/schemas.py` | Step 1 | Verify API response includes new fields |
 
 **Order rationale:** Database first (foundation), then models (types), then services bottom-up (planner → processor → orchestrator → finalization → sync), then the tutor data path (schemas → adapter → prompt). Each step is independently testable.
@@ -589,8 +735,12 @@ The planner uses the existing `book_ingestion_v2` LLM config from the `llm_confi
 | `test_orchestrator_calls_planner_before_extraction` | Planner called before chunk loop, planned topics saved to job | `ChapterTopicPlannerService`, `ChunkProcessorService`, DB session |
 | `test_orchestrator_initializes_state_from_plan` | RunningState.topic_guidelines_map pre-populated from plan | Mock planner output |
 | `test_orchestrator_handles_unplanned_topics` | Unplanned topics created as new entries in accumulator | Mock chunk output with unplanned topic |
+| `test_orchestrator_planner_failure_fallback` | Planner failure → logs warning, proceeds with unguided extraction, saves failure to S3 | `ChapterTopicPlannerService.plan_chapter` raises |
+| `test_orchestrator_resume_copies_plan_to_new_job` | Resumed job copies `planned_topics_json` from previous job to current job | DB session with two job records |
 | `test_finalization_counts_deviations` | Deviation ratio calculated correctly from consolidation output | Mock consolidation output |
-| `test_finalization_triggers_needs_review` | Chapter status set to `needs_review` when deviation > 30% | Mock consolidation with many deviations |
+| `test_finalization_triggers_needs_review` | `final_status == needs_review` when affected topics exceed threshold AND min count | Mock consolidation with many deviations |
+| `test_finalization_skips_needs_review_below_min_count` | `final_status == chapter_completed` when deviation ratio > 30% but count < 3 | Mock: 5-topic plan, 2 deviations (40% but < min) |
+| `test_finalization_callers_respect_final_status` | Orchestrator and `_run_refinalization` use `result.final_status`, not hardcoded CHAPTER_COMPLETED | Mock finalization returning `needs_review` |
 | `test_finalization_generates_curriculum_context` | `prior_topics_context` set on each topic (except first) | `LLMService.call` returns canned context |
 | `test_topic_sync_includes_prior_topics_context` | TeachingGuideline.prior_topics_context populated from ChapterTopic | DB session with test data |
 | `test_guideline_response_includes_prior_topics_context` | GuidelineResponse.prior_topics_context populated from DB | DB session with test data |
@@ -630,9 +780,9 @@ The planner uses the existing `book_ingestion_v2` LLM config from the `llm_confi
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Planning LLM hits token limit on large chapters (40+ pages) | Low | Med | Most primary school chapters are <30 pages. If token limit is hit, fail gracefully and fall back to existing unplanned extraction. Add a page-count check before planning. |
+| Planning LLM hits token limit on large chapters (40+ pages) | Low | Med | Most primary school chapters are <30 pages. If planner fails for any reason (token limit, timeout, parse error), orchestrator catches the exception and proceeds with `planned_topics=None` — unguided extraction identical to current behavior. Failure is logged + saved to S3 for debugging. |
 | Planning adds too much latency to pipeline | Low | Low | Planning is one LLM call per chapter (~10-30s). Total pipeline is already ~5-10 min. Acceptable overhead. |
-| Consolidation deviation threshold too strict/lenient at 30% | Med | Low | The threshold is a constant (`PLANNING_DEVIATION_THRESHOLD`). Easy to tune after observing real data. |
+| Consolidation deviation threshold too strict/lenient at 30% | Med | Low | The threshold is a constant (`PLANNING_DEVIATION_THRESHOLD`) with a minimum count floor (`PLANNING_DEVIATION_MIN_COUNT=3`). Prevents false positives on small plans (e.g., 5-topic plan with 2 deviations). Easy to tune after observing real data. |
 | `topic_assignment` backward compatibility with existing S3 audit data | Low | Low | Old S3 data uses `is_new`. New data uses `topic_assignment`. These are write-once audit artifacts — no code reads old S3 data during new processing. |
 | `needs_review` chapters pile up without resolution UI | Med | Low | Chapters in `needs_review` can be reprocessed via the existing Reprocess button. Add `needs_review` to allowed statuses for reprocess. No new UI needed. |
 | Curriculum context generation produces low-quality text | Low | Med | The context generation is a straightforward summarization task. If quality is poor, the tutor prompt simply includes weak context — it doesn't break anything. Can iterate on the prompt. |
@@ -645,4 +795,4 @@ The planner uses the existing `book_ingestion_v2` LLM config from the `llm_confi
 
 2. **Should the planner use a different LLM config key?** Currently all ingestion uses `book_ingestion_v2`. The planner needs `reasoning_effort="high"` while chunk extraction uses `"none"`. Since reasoning effort is set per-call (not per-config), a single config key works. If we later want to use a different model for planning (e.g., a reasoning model), we'd add a `book_ingestion_planner` config key. **Recommendation:** Use the same config key for now, override reasoning effort at the call site.
 
-3. **Should `needs_review` block sync?** Currently, only `chapter_completed` chapters can be synced. Should `needs_review` also allow sync (since the topics are still finalized, just flagged)? **Recommendation:** Yes — allow sync from `needs_review` status. The topics are complete, just potentially suboptimal. The admin can review and reprocess if needed, but shouldn't be blocked from using them.
+3. ~~**Should `needs_review` block sync?**~~ **Resolved:** `needs_review` chapters **can** be synced. Topics are fully finalized, just flagged as potentially suboptimal. Blocking sync would be too aggressive — it would prevent any use until admin intervention. The sync service's status gate and the topic sync service are updated accordingly (see Sections 4.7, 4.10).
