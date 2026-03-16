@@ -22,9 +22,9 @@ Related skills that serve the same big idea belong in one topic, even if the tex
 
 The tutor for Topic 3 must know what was taught in Topics 1-2. This prevents re-explaining concepts and lets the tutor build on prior understanding naturally. "You already learned about place value up to thousands — now let's use that to compare numbers" is vastly better than starting from scratch every time.
 
-## 6. No Page Overlap Between Topics
+## 6. Minimize Page Overlap — Assign Primary Ownership
 
-Each page should belong to exactly one topic. If two topics claim the same page range, the boundaries weren't properly identified. Overlapping pages mean overlapping content, which means the student hears the same thing twice.
+Each page should be primarily assigned to one topic. Real textbooks have transitional pages where one concept ends and another begins on the same page — that's fine. The planner assigns primary ownership; the extractor may note secondary contributions on boundary pages. What we avoid is two topics claiming the same 10-page range — that's a sign the boundaries weren't identified at all.
 
 ## 7. Meta-Skills Fold into Practice
 
