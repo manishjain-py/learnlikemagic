@@ -19,6 +19,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from config import get_settings
+from database import get_db_manager
 from shared.utils.s3_client import get_s3_client
 from shared.services.llm_service import LLMService
 from shared.services.llm_config_service import LLMConfigService
@@ -53,6 +54,24 @@ class TopicExtractionOrchestrator:
         self.topic_repo = TopicRepository(db)
         self.job_service = ChapterJobService(db)
         self.s3_client = get_s3_client()
+
+    def _refresh_db_session(self):
+        """Get a fresh DB session after long-running LLM calls.
+
+        The DB connection may have been killed by the server during a long
+        idle period (e.g. a 90-855s Claude Code call). This closes the old
+        session and gets a new connection from the pool.
+        """
+        try:
+            self.db.close()
+        except Exception:
+            pass
+        self.db = get_db_manager().get_session()
+        self.chapter_repo = ChapterRepository(self.db)
+        self.page_repo = ChapterPageRepository(self.db)
+        self.chunk_repo = ChunkRepository(self.db)
+        self.topic_repo = TopicRepository(self.db)
+        self.job_service = ChapterJobService(self.db)
 
     def extract(
         self, db: Session, job_id: str, chapter_id: str, book_id: str, resume: bool = False
@@ -229,6 +248,10 @@ class TopicExtractionOrchestrator:
             try:
                 output = chunk_processor.process_chunk(chunk_input)
 
+                # Refresh DB session — connection may have gone stale
+                # during the long LLM call
+                self._refresh_db_session()
+
                 # Update accumulator
                 state.chapter_summary_so_far = output.updated_chapter_summary
                 for topic_update in output.topics:
@@ -285,6 +308,8 @@ class TopicExtractionOrchestrator:
                 completed += 1
 
             except Exception as e:
+                # Refresh session in case the error was connection-related
+                self._refresh_db_session()
                 # Record failed chunk
                 chunk_record = ChapterChunk(
                     id=str(uuid.uuid4()),
@@ -302,6 +327,9 @@ class TopicExtractionOrchestrator:
                 failed += 1
                 logger.error(f"Chunk {chunk_idx} failed: {e}")
 
+        # Refresh session before batch DB writes
+        self._refresh_db_session()
+
         # Persist draft topics to DB
         self.topic_repo.delete_by_chapter_id(chapter_id)
         for topic_key, acc in state.topic_guidelines_map.items():
@@ -317,6 +345,9 @@ class TopicExtractionOrchestrator:
                 status="draft",
             )
             self.topic_repo.create(topic)
+
+        # Reload chapter (original object is detached after session refreshes)
+        chapter = self.chapter_repo.get_by_id(chapter_id)
 
         # Check for failures
         if failed > 0:
@@ -344,11 +375,14 @@ class TopicExtractionOrchestrator:
 
         try:
             finalization_service = ChapterFinalizationService(
-                db, llm_service, book_metadata,
+                self.db, llm_service, book_metadata,
                 job_service=self.job_service, job_id=job_id,
             )
             finalization_service.finalize(chapter, job_id)
 
+            # Refresh and reload after finalization (which does its own LLM calls)
+            self._refresh_db_session()
+            chapter = self.chapter_repo.get_by_id(chapter_id)
             chapter.status = ChapterStatus.CHAPTER_COMPLETED.value
             self.chapter_repo.update(chapter)
 
@@ -358,6 +392,8 @@ class TopicExtractionOrchestrator:
             logger.info(f"Chapter {chapter_id} extraction + finalization complete")
 
         except Exception as e:
+            self._refresh_db_session()
+            chapter = self.chapter_repo.get_by_id(chapter_id)
             chapter.status = ChapterStatus.FAILED.value
             chapter.error_message = f"Finalization failed: {e}"
             chapter.error_type = "retryable"

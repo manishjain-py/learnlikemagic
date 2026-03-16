@@ -342,18 +342,22 @@ def run_in_background_v2(target_fn, job_id: str, *args):
 
         except Exception as e:
             logger.error(f"V2 background task failed: {e}", exc_info=True)
-            for attempt in range(2):
+            # Use a fresh session for error handling — the original may be dead
+            # after a long LLM call timed out the DB connection
+            try:
+                error_session = db_manager.session_factory()
                 try:
-                    job_service = ChapterJobService(session)
+                    job_service = ChapterJobService(error_session)
                     job_service.release_lock(job_id, status="failed", error=str(e))
-                    break
-                except Exception:
-                    if attempt == 0:
-                        time.sleep(1)
-                    else:
-                        logger.error(f"Could not mark job {job_id} as failed")
+                finally:
+                    error_session.close()
+            except Exception:
+                logger.error(f"Could not mark job {job_id} as failed")
         finally:
-            session.close()
+            try:
+                session.close()
+            except Exception:
+                pass  # Session may already be closed by orchestrator refresh
 
     thread = threading.Thread(target=wrapper, daemon=True)
     thread.start()
@@ -401,11 +405,21 @@ def _run_refinalization(db: Session, job_id: str, chapter_id: str, book_id: str)
         )
         service.finalize(chapter, job_id)
 
+        # Refresh session after finalization (which does LLM calls)
+        from database import get_db_manager
+        db = get_db_manager().get_session()
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
         chapter.status = ChapterStatus.CHAPTER_COMPLETED.value
         chapter_repo.update(chapter)
 
+        job_service = ChapterJobService(db)
         job_service.release_lock(job_id, status="completed")
     except Exception as e:
+        from database import get_db_manager
+        db = get_db_manager().get_session()
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
         chapter.status = ChapterStatus.FAILED.value
         chapter.error_message = f"Refinalization failed: {e}"
         chapter.error_type = "retryable"

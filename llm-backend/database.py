@@ -76,6 +76,7 @@ class DatabaseManager:
             max_overflow=self.settings.db_max_overflow,
             pool_timeout=self.settings.db_pool_timeout,
             pool_pre_ping=True,  # Verify connections before using
+            pool_recycle=280,  # Recycle connections before server-side idle timeout
             echo=self.settings.log_level == "DEBUG",  # SQL logging
         )
 

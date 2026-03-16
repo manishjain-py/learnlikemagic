@@ -38,6 +38,20 @@ class ChapterFinalizationService:
         self.job_service = job_service
         self.job_id = job_id
 
+    def _refresh_db_session(self):
+        """Get a fresh DB session after long-running LLM calls."""
+        from database import get_db_manager
+        try:
+            self.db.close()
+        except Exception:
+            pass
+        self.db = get_db_manager().get_session()
+        self.topic_repo = TopicRepository(self.db)
+        self.chapter_repo = ChapterRepository(self.db)
+        if self.job_service:
+            from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+            self.job_service = ChapterJobService(self.db)
+
     def finalize(self, chapter: BookChapter, job_id: str) -> ConsolidationOutput:
         """
         Run full finalization pipeline for a chapter.
@@ -53,6 +67,11 @@ class ChapterFinalizationService:
         book_id = chapter.book_id
         ch_num = str(chapter.chapter_number).zfill(2)
         s3_run_base = f"books/{book_id}/chapters/{ch_num}/processing/runs/{job_id}"
+
+        # Save chapter metadata as plain values — ORM objects become detached
+        # after DB session refreshes between long LLM calls
+        chapter_title = chapter.chapter_title
+        chapter_number = chapter.chapter_number
 
         # 1. Load draft topics
         draft_topics = self.topic_repo.get_by_chapter_id(chapter_id)
@@ -73,20 +92,54 @@ class ChapterFinalizationService:
         )
 
         # 3. LLM-merge each topic's appended guidelines
-        merge_count = sum(1 for t in draft_topics if "## Pages" in t.guidelines)
+        # Pre-extract into plain dicts — ORM objects will become detached
+        # after the first session refresh
+        topics_to_merge = [
+            {
+                "topic_key": t.topic_key,
+                "topic_title": t.topic_title,
+                "guidelines": t.guidelines,
+            }
+            for t in draft_topics
+            if "## Pages" in t.guidelines
+        ]
+        merge_count = len(topics_to_merge)
         merged_so_far = 0
-        for topic in draft_topics:
-            if "## Pages" in topic.guidelines:
-                merged_so_far += 1
-                self._heartbeat(f"Merging guidelines: {merged_so_far}/{merge_count} topics")
-                merged = self._merge_topic_guidelines(chapter, topic)
+
+        for topic_data in topics_to_merge:
+            merged_so_far += 1
+            self._heartbeat(f"Merging guidelines: {merged_so_far}/{merge_count} topics")
+
+            # Build prompt from pre-extracted data (no ORM dependency)
+            prompt = _MERGE_TEMPLATE.format(
+                book_title=self.book_metadata.get("title", ""),
+                subject=self.book_metadata.get("subject", ""),
+                grade=self.book_metadata.get("grade", ""),
+                chapter_title=chapter_title,
+                topic_title=topic_data["topic_title"],
+                existing_guidelines=topic_data["guidelines"],
+            )
+            result = self.llm_service.call(prompt=prompt, json_mode=False)
+            merged = result.get("output_text", "").strip()
+
+            # Refresh DB session after LLM call, reload topic from DB
+            self._refresh_db_session()
+            topic = self.topic_repo.get_by_chapter_and_key(
+                chapter_id, topic_data["topic_key"]
+            )
+            if topic:
                 topic.guidelines = merged
                 topic.status = TopicStatus.CONSOLIDATED.value
                 self.topic_repo.update(topic)
 
-        # 4. Call consolidation LLM
+        # 4. Call consolidation LLM — reload everything from DB
         self._heartbeat("Running consolidation...")
+        draft_topics = self.topic_repo.get_by_chapter_id(chapter_id)
+        chapter = self.chapter_repo.get_by_id(chapter_id)
         consolidation_output = self._run_consolidation(chapter, draft_topics)
+
+        # Refresh DB session after LLM call
+        self._refresh_db_session()
 
         # Save consolidation output
         self.s3_client.upload_bytes(
@@ -96,7 +149,7 @@ class ChapterFinalizationService:
 
         # 5. Execute merge actions
         for merge in consolidation_output.merge_actions:
-            self._execute_merge(chapter, merge.merge_from, merge.merge_into)
+            self._execute_merge_by_id(chapter_id, merge.merge_from, merge.merge_into)
 
         # 6. Apply topic updates
         for update in consolidation_output.topic_updates:
@@ -112,6 +165,7 @@ class ChapterFinalizationService:
             self.topic_repo.update(topic)
 
         # 7. Update chapter
+        chapter = self.chapter_repo.get_by_id(chapter_id)
         chapter.display_name = consolidation_output.chapter_display_name
         chapter.summary = consolidation_output.final_chapter_summary
         self.chapter_repo.update(chapter)
@@ -189,10 +243,10 @@ class ChapterFinalizationService:
         data = json.loads(text.strip())
         return ConsolidationOutput(**data)
 
-    def _execute_merge(self, chapter: BookChapter, merge_from_key: str, merge_into_key: str):
+    def _execute_merge_by_id(self, chapter_id: str, merge_from_key: str, merge_into_key: str):
         """Merge one topic into another."""
-        from_topic = self.topic_repo.get_by_chapter_and_key(chapter.id, merge_from_key)
-        into_topic = self.topic_repo.get_by_chapter_and_key(chapter.id, merge_into_key)
+        from_topic = self.topic_repo.get_by_chapter_and_key(chapter_id, merge_from_key)
+        into_topic = self.topic_repo.get_by_chapter_and_key(chapter_id, merge_into_key)
 
         if not from_topic or not into_topic:
             logger.warning(
