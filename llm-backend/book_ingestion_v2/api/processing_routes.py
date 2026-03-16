@@ -1,4 +1,5 @@
 """API routes for V2 chapter processing — extraction, finalization, status, topics."""
+import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -404,12 +405,27 @@ def _run_refinalization(db: Session, job_id: str, chapter_id: str, book_id: str)
     chapter_repo.update(chapter)
 
     try:
+        # Load planned topics from the job record (if this chapter was planned)
+        from book_ingestion_v2.models.processing_models import ChapterTopicPlan
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+        planned_topics = None
+        job_record = db.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.chapter_id == chapter_id,
+            ChapterProcessingJob.planned_topics_json.isnot(None),
+        ).order_by(ChapterProcessingJob.created_at.desc()).first()
+        if job_record and job_record.planned_topics_json:
+            try:
+                plan = ChapterTopicPlan(**json.loads(job_record.planned_topics_json))
+                planned_topics = plan.topics
+            except Exception:
+                pass  # Proceed without plan
+
         job_service = ChapterJobService(db)
         service = ChapterFinalizationService(
             db, llm_service, book_metadata,
             job_service=job_service, job_id=job_id,
         )
-        result = service.finalize(chapter, job_id)
+        result = service.finalize(chapter, job_id, planned_topics=planned_topics)
 
         # Refresh session after finalization (which does LLM calls)
         from database import get_db_manager

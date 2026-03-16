@@ -125,49 +125,50 @@ class TopicExtractionOrchestrator:
         pages = self.page_repo.get_by_chapter_id(chapter_id)
         page_numbers = [p.page_number for p in pages if p.ocr_status == "completed"]
 
-        # ── Chapter-level topic planning ──
-        planner_service = ChapterTopicPlannerService(llm_service)
+        # ── Chapter-level topic planning (skip on resume — plan is restored later) ──
         planned_topics = None
 
-        try:
-            self.job_service.update_progress(
-                job_id, current_item="Planning chapter topics...", completed=0, failed=0
-            )
+        if not resume:
+            planner_service = ChapterTopicPlannerService(llm_service)
+            try:
+                self.job_service.update_progress(
+                    job_id, current_item="Planning chapter topics...", completed=0, failed=0
+                )
 
-            # Load all OCR'd page texts for the planner
-            all_page_texts = []
-            for pn in page_numbers:
-                page = self.page_repo.get_by_chapter_and_page_number(chapter_id, pn)
-                if page and page.text_s3_key:
-                    text = self.s3_client.download_bytes(page.text_s3_key).decode("utf-8")
-                    all_page_texts.append({"page_number": pn, "text": text})
+                # Load all OCR'd page texts for the planner
+                all_page_texts = []
+                for pn in page_numbers:
+                    page = self.page_repo.get_by_chapter_and_page_number(chapter_id, pn)
+                    if page and page.text_s3_key:
+                        text = self.s3_client.download_bytes(page.text_s3_key).decode("utf-8")
+                        all_page_texts.append({"page_number": pn, "text": text})
 
-            chapter_metadata = {
-                "number": chapter.chapter_number,
-                "title": chapter.chapter_title,
-                "page_range": f"{chapter.start_page}-{chapter.end_page}",
-            }
+                chapter_metadata = {
+                    "number": chapter.chapter_number,
+                    "title": chapter.chapter_title,
+                    "page_range": f"{chapter.start_page}-{chapter.end_page}",
+                }
 
-            plan = planner_service.plan_chapter(book_metadata, chapter_metadata, all_page_texts)
-            planned_topics = plan.topics
+                plan = planner_service.plan_chapter(book_metadata, chapter_metadata, all_page_texts)
+                planned_topics = plan.topics
 
-            # Refresh DB session after LLM call
-            self._refresh_db_session()
+                # Refresh DB session after LLM call
+                self._refresh_db_session()
 
-            # Save plan to job record
-            job_record = self.db.query(ChapterProcessingJob).filter(
-                ChapterProcessingJob.id == job_id
-            ).first()
-            if job_record:
-                job_record.planned_topics_json = json.dumps(plan.model_dump())
-                self.db.commit()
+                # Save plan to job record
+                job_record = self.db.query(ChapterProcessingJob).filter(
+                    ChapterProcessingJob.id == job_id
+                ).first()
+                if job_record:
+                    job_record.planned_topics_json = json.dumps(plan.model_dump())
+                    self.db.commit()
 
-            logger.info(f"Chapter planned: {len(planned_topics)} topics")
+                logger.info(f"Chapter planned: {len(planned_topics)} topics")
 
-        except Exception as e:
-            logger.warning(f"Chapter planner failed, falling back to unguided extraction: {e}")
-            planned_topics = None
-            self._refresh_db_session()
+            except Exception as e:
+                logger.warning(f"Chapter planner failed, falling back to unguided extraction: {e}")
+                planned_topics = None
+                self._refresh_db_session()
 
         # Update chapter status
         chapter = self.chapter_repo.get_by_id(chapter_id)

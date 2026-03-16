@@ -183,6 +183,7 @@ class ChapterFinalizationService:
 
         if planned_topics and consolidation_output.deviations:
             affected_planned_keys = set()
+            unplanned_ratified_count = 0
             for dev in consolidation_output.deviations:
                 if dev.deviation_type == "merge":
                     affected_planned_keys.add(dev.topic_key)
@@ -192,9 +193,13 @@ class ChapterFinalizationService:
                     affected_planned_keys.add(dev.topic_key)
                 elif dev.deviation_type == "unplanned_merged":
                     affected_planned_keys.add(dev.topic_key)
+                elif dev.deviation_type == "unplanned_ratified":
+                    unplanned_ratified_count += 1
 
             total_planned = len(planned_topics)
-            deviation_count = len(affected_planned_keys)
+            # Ratified unplanned topics don't affect a planned key, but each
+            # one represents a topic the planner missed — count them separately
+            deviation_count = len(affected_planned_keys) + unplanned_ratified_count
             deviation_ratio = deviation_count / total_planned if total_planned > 0 else 0
 
             if (deviation_count >= PLANNING_DEVIATION_MIN_COUNT and
