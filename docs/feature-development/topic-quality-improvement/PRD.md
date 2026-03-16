@@ -46,7 +46,7 @@ Before chunk-by-chunk extraction, add a **chapter-level planning phase** where t
 **Input:** All OCR'd pages for the chapter + book/chapter metadata.
 
 **Output:** A planned topic structure containing:
-- 5-7 topics (configurable per grade band: K-2 may want 4-5, grades 3-5 may want 5-7, grades 6+ may want 6-8)
+- A sensible number of topics — let the content dictate. Most chapters land around 5-7, but a short chapter with 3 natural topics is fine. No artificial minimum. The hard rule: don't go so granular that the list overwhelms the student.
 - For each topic: title, assigned page range (non-overlapping), 1-sentence description, rationale for grouping
 - Explicit teaching sequence with dependency reasoning
 
@@ -158,7 +158,7 @@ Sending all chapter pages to the planning LLM may hit token limits for large cha
 
 ## Success Criteria
 
-1. **Topic count:** Chapters produce 5-7 topics (± 1 for unusually short or long chapters)
+1. **Topic count:** Topic count is driven by content, not quotas. Most chapters land around 5-7 topics, but fewer is fine if the chapter is short. The key metric: no chapter produces 10+ topics.
 2. **No page overlap:** Every page maps to exactly one topic
 3. **Logical sequence:** Topics follow a progressive teaching order reviewable by a curriculum expert
 4. **No redundant tutoring:** The tutor for Topic N does not re-explain concepts from Topics 1 to N-1

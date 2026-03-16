@@ -6,9 +6,9 @@ These principles guide how we decompose a textbook chapter into topics for AI tu
 
 Topics should collectively tell the story of the chapter. A student who finishes all topics should have covered the entire chapter in a logical, progressive arc: **introduce → build → apply → explore → review.** No concept should be orphaned, repeated, or out of place.
 
-## 2. 5-7 Topics per Chapter
+## 2. Don't Overwhelm — Cap Topics, Not Floor Them
 
-A manageable number that doesn't overwhelm students. Each topic should be a substantial 20-40 minute lesson — something a student would naturally call "today's lesson." If a chapter has 13 topics, the student sees an endless list and loses motivation before starting.
+Each topic should be a substantial 20-40 minute lesson — something a student would naturally call "today's lesson." If a chapter has 13 topics, the student sees an endless list and loses motivation before starting. As a guideline, most chapters land in the 5-7 range, but a short chapter with 3 natural topics is perfectly fine. There's no minimum — let the content dictate the count. The hard rule is: don't go so granular that the list feels endless.
 
 ## 3. Student-Centered Boundaries
 
