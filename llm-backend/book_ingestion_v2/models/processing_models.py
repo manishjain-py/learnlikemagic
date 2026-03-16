@@ -25,6 +25,25 @@ class RunningState(BaseModel):
     topic_guidelines_map: Dict[str, TopicAccumulator] = {}  # topic_key → accumulator
 
 
+class PlannedTopic(BaseModel):
+    """A single topic from the chapter-level planning phase."""
+    topic_key: str
+    title: str
+    description: str
+    page_start: int
+    page_end: int
+    sequence_order: int
+    grouping_rationale: str
+    dependency_notes: str = ""
+
+
+class ChapterTopicPlan(BaseModel):
+    """Full output from the chapter-level planning phase."""
+    topics: List[PlannedTopic]
+    chapter_overview: str
+    planning_rationale: str
+
+
 class ChunkInput(BaseModel):
     """Full input for a chunk processing call."""
     book_metadata: Dict[str, Any]
@@ -41,9 +60,11 @@ class TopicUpdate(BaseModel):
     """Single topic detected/updated in a chunk."""
     topic_key: str
     topic_title: str
-    is_new: bool
+    is_new: bool = False  # Legacy field — kept for backward compat with unguided mode
+    topic_assignment: str = ""  # "planned" or "unplanned" — used in guided mode
     guidelines_for_this_chunk: str
     reasoning: str
+    unplanned_justification: str = ""
 
 
 class ChunkExtractionOutput(BaseModel):
@@ -69,9 +90,37 @@ class TopicFinalUpdate(BaseModel):
     name_change_reasoning: str
 
 
+class ConsolidationDeviation(BaseModel):
+    """Tracks a deviation from the planned topic structure."""
+    deviation_type: str  # "split", "merge", "unplanned_ratified", "unplanned_merged"
+    topic_key: str
+    affected_target_key: str = ""
+    reasoning: str
+
+
 class ConsolidationOutput(BaseModel):
     """LLM output for chapter finalization."""
     chapter_display_name: str
     final_chapter_summary: str
     merge_actions: List[MergeAction]
     topic_updates: List[TopicFinalUpdate]
+    deviations: List[ConsolidationDeviation] = []
+
+
+class TopicCurriculumContext(BaseModel):
+    """Curriculum context for a single topic."""
+    topic_key: str
+    prior_topics_context: str
+
+
+class CurriculumContextOutput(BaseModel):
+    """LLM output for curriculum context generation."""
+    contexts: List[TopicCurriculumContext]
+
+
+class FinalizationResult(BaseModel):
+    """Return type from finalize() — includes status determination."""
+    consolidation: ConsolidationOutput
+    final_status: str  # "chapter_completed" or "needs_review"
+    deviation_ratio: float
+    deviation_count: int

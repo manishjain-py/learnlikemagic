@@ -184,6 +184,8 @@ class ChapterTopicResponse(BaseModel):
     sequence_order: Optional[int] = None
     status: str
     version: int = 1
+    prior_topics_context: Optional[str] = None
+    topic_assignment: Optional[str] = None
 
 
 class ChapterTopicsResponse(BaseModel):

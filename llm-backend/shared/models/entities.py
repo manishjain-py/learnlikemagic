@@ -154,6 +154,7 @@ class TeachingGuideline(Base):
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String, nullable=True)
     version = Column(Integer, default=1)
+    prior_topics_context = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("idx_curriculum", "country", "board", "grade", "subject", "chapter"),

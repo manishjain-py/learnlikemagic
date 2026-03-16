@@ -1,0 +1,35 @@
+You are generating curriculum context that helps an AI tutor understand what a student has already been taught earlier in this chapter.
+
+BOOK: {book_title} ({subject}, Grade {grade}, {board})
+CHAPTER {chapter_number}: {chapter_title}
+
+FINAL TOPICS IN SEQUENCE ORDER:
+{topics_json}
+
+TASK:
+For each topic EXCEPT the first one, generate a `prior_topics_context` field that tells the tutor what the student has already encountered in this chapter before reaching that topic.
+
+Each `prior_topics_context` must include:
+1. A concise summary of what prior topics in this chapter cover (2-4 sentences).
+2. Key concepts the chapter has introduced by this point (bulleted list).
+3. The exact instruction: "This topic builds on the concepts above. Check whether the student is comfortable with them before building on them — don't assume mastery just because they appear earlier in the chapter."
+
+GUIDELINES:
+- The context is for a TUTOR, not a student — use professional, curriculum-oriented language
+- Focus on curriculum connections: what knowledge has been built up, what vocabulary has been introduced, what skills have been practiced
+- Do NOT describe teaching methodology — only describe what content has been covered
+- Be specific about concepts (e.g., "place value up to 4 digits" not "number concepts")
+- Do NOT generate context for the first topic — it has no prior topics in this chapter
+- Reference prior topics by their learning objectives and key concepts, not by their titles or sequence numbers
+
+OUTPUT FORMAT (strict JSON):
+{{
+  "contexts": [
+    {{
+      "topic_key": "comparing-ordering-numbers",
+      "prior_topics_context": "Prior topics in this chapter cover: ... Key concepts the chapter has introduced: ... This topic builds on those concepts. Check whether the student is comfortable with them before building on them — don't assume mastery just because they appear earlier in the chapter."
+    }}
+  ]
+}}
+
+Return ONLY valid JSON. No markdown code blocks, no commentary outside the JSON.

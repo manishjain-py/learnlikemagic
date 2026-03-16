@@ -98,6 +98,9 @@ def migrate():
         # Session feedback table (created by create_all, this is a no-op placeholder)
         _apply_session_feedback_table(db_manager)
 
+        # Topic planning columns for quality improvement
+        _apply_topic_planning_columns(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -540,6 +543,44 @@ def _apply_session_feedback_table(db_manager):
         print("  ✓ session_feedback table already exists")
     else:
         print("  ✓ session_feedback table created")
+
+
+def _apply_topic_planning_columns(db_manager):
+    """Add topic planning columns for chapter-to-topic quality improvement."""
+    inspector = inspect(db_manager.engine)
+    existing_tables = inspector.get_table_names()
+
+    with db_manager.engine.connect() as conn:
+        # chapter_processing_jobs.planned_topics_json
+        if "chapter_processing_jobs" in existing_tables:
+            existing = {col["name"] for col in inspector.get_columns("chapter_processing_jobs")}
+            if "planned_topics_json" not in existing:
+                print("  Adding planned_topics_json column to chapter_processing_jobs...")
+                conn.execute(text("ALTER TABLE chapter_processing_jobs ADD COLUMN planned_topics_json TEXT"))
+                print("  ✓ planned_topics_json column added")
+
+        # chapter_topics.prior_topics_context, chapter_topics.topic_assignment
+        if "chapter_topics" in existing_tables:
+            existing = {col["name"] for col in inspector.get_columns("chapter_topics")}
+            if "prior_topics_context" not in existing:
+                print("  Adding prior_topics_context column to chapter_topics...")
+                conn.execute(text("ALTER TABLE chapter_topics ADD COLUMN prior_topics_context TEXT"))
+                print("  ✓ prior_topics_context column added")
+            if "topic_assignment" not in existing:
+                print("  Adding topic_assignment column to chapter_topics...")
+                conn.execute(text("ALTER TABLE chapter_topics ADD COLUMN topic_assignment VARCHAR"))
+                print("  ✓ topic_assignment column added")
+
+        # teaching_guidelines.prior_topics_context
+        if "teaching_guidelines" in existing_tables:
+            existing = {col["name"] for col in inspector.get_columns("teaching_guidelines")}
+            if "prior_topics_context" not in existing:
+                print("  Adding prior_topics_context column to teaching_guidelines...")
+                conn.execute(text("ALTER TABLE teaching_guidelines ADD COLUMN prior_topics_context TEXT"))
+                print("  ✓ prior_topics_context column added")
+
+        conn.commit()
+    print("  ✓ topic planning columns applied")
 
 
 def _seed_llm_config(db_manager):

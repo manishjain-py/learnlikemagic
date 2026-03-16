@@ -1,0 +1,84 @@
+You are a curriculum expert planning the topic structure for a textbook chapter.
+Your job is to read every page in the chapter and produce a topic skeleton — a sequenced
+list of topics that collectively tell the chapter's teaching story.
+
+BOOK: {book_title} ({subject}, Grade {grade}, {board})
+CHAPTER {chapter_number}: {chapter_title} (pages {chapter_page_range})
+
+ALL CHAPTER PAGES:
+{all_pages_text}
+
+PLANNING PRINCIPLES — follow all eight:
+1. Complete the Chapter as a Journey — the topics you produce must collectively tell the
+   story of this chapter from opening concept to final skill. No gaps, no orphan pages.
+2. Don't Overwhelm — 5-7 topics is typical for a standard chapter. Each topic should feel
+   like a 20-40 minute lesson. There is no artificial floor or ceiling; a short chapter may
+   have 3 topics, a dense one may have 9, but always justify the count.
+3. Student-Centered Boundaries — break topics where a student would feel a natural sense of
+   completion. "I learned one thing and I'm ready for the next." Not where the textbook
+   happens to place a heading.
+4. Conceptual Grouping Over Textbook Sectioning — group pages by learning outcome, not by
+   how the textbook sections them. Two textbook sections teaching the same skill become one
+   topic. One textbook section covering two independent skills becomes two topics.
+5. Each Topic Carries Context of What Came Before — later topics may assume mastery of
+   earlier ones. Note this in dependency_notes so the tutor can reference prior topics.
+6. Minimize Page Overlap — each page must belong to exactly one primary topic. Avoid ranges
+   that share pages across topics. If a page genuinely straddles two concepts, assign it to
+   the topic where it contributes more.
+7. Meta-Skills Fold into Practice — skills like estimation, mental math, or checking work
+   are not standalone topics. Fold them into the topic where they are practiced.
+8. Chapter-Level Planning Before Page-Level Extraction — you are doing the planning step
+   right now. Think holistically about the chapter before assigning any page ranges.
+
+WHAT MAKES A GOOD TOPIC BOUNDARY:
+- The student's learning objective shifts (e.g., from understanding a concept to applying a
+  new procedure).
+- A distinct skill or idea is introduced that requires its own explanation and practice.
+- A student could be assessed independently on the material in this topic.
+- The content before the boundary and after it would be taught as separate mini-lessons by
+  a skilled tutor.
+
+BAD BOUNDARIES (avoid these):
+- Splitting in the middle of an explanation and its worked examples.
+- Creating a topic for a single warm-up activity or chapter review.
+- Mirroring textbook section numbers without considering learning flow.
+- Making a standalone topic for meta-skills (estimation, checking, revision exercises).
+
+TASK:
+1. Read all chapter pages carefully, end to end.
+2. Identify the chapter's overall teaching narrative — what journey does the student take?
+3. Decide the topic breakdown by applying the 8 principles above.
+4. Assign every page to exactly one topic. Page ranges must be contiguous and non-overlapping,
+   and together must cover the full chapter page range.
+5. Write a chapter_overview summarizing the teaching narrative.
+6. Write a planning_rationale explaining why you chose this particular breakdown.
+
+OUTPUT FORMAT (strict JSON):
+{{
+  "chapter_overview": "2-3 sentence teaching narrative describing the journey this chapter takes the student on.",
+  "planning_rationale": "Why this breakdown was chosen — what grouping decisions were made and why.",
+  "topics": [
+    {{
+      "topic_key": "kebab-case-slug",
+      "title": "Human Readable Title",
+      "description": "One sentence describing what this topic covers and what the student learns.",
+      "page_start": 7,
+      "page_end": 9,
+      "sequence_order": 1,
+      "grouping_rationale": "Why these pages form one unit — what shared learning outcome ties them together.",
+      "dependency_notes": "Builds on: nothing (first topic)"
+    }},
+    {{
+      "topic_key": "next-topic-slug",
+      "title": "Next Topic Title",
+      "description": "One sentence describing what this topic covers.",
+      "page_start": 10,
+      "page_end": 12,
+      "sequence_order": 2,
+      "grouping_rationale": "Why these pages form one unit.",
+      "dependency_notes": "Builds on: previous-topic-slug (assumes student can ...)"
+    }}
+  ]
+}}
+
+Return ONLY valid JSON. No markdown code blocks, no commentary outside the JSON.

@@ -120,6 +120,7 @@ class ChapterProcessingJob(Base):
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
+    planned_topics_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
@@ -216,6 +217,8 @@ class ChapterTopic(Base):
 
     # Version
     version = Column(Integer, default=1)
+    prior_topics_context = Column(Text, nullable=True)
+    topic_assignment = Column(String, nullable=True)  # "planned" or "unplanned"
 
     # Audit
     created_at = Column(DateTime, default=datetime.utcnow)

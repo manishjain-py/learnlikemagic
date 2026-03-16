@@ -21,6 +21,7 @@ class ChapterStatus(str, Enum):
     CHAPTER_FINALIZING = "chapter_finalizing"
     CHAPTER_COMPLETED = "chapter_completed"
     FAILED = "failed"
+    NEEDS_REVIEW = "needs_review"
 
 
 class V2JobType(str, Enum):
@@ -48,3 +49,8 @@ class TopicStatus(str, Enum):
     CONSOLIDATED = "consolidated"
     FINAL = "final"
     APPROVED = "approved"
+
+
+# Planning deviation thresholds
+PLANNING_DEVIATION_THRESHOLD = 0.30
+PLANNING_DEVIATION_MIN_COUNT = 3
