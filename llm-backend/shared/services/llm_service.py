@@ -64,6 +64,11 @@ class LLMService:
                 api_key=anthropic_api_key, timeout=timeout, model=model_id
             )
 
+        self.claude_code_adapter = None
+        if self.provider == "claude_code":
+            from shared.services.claude_code_adapter import ClaudeCodeAdapter
+            self.claude_code_adapter = ClaudeCodeAdapter(timeout=300)
+
     # ─── Primary entry point ───────────────────────────────────────────
 
     def call(
@@ -79,7 +84,11 @@ class LLMService:
 
         Always returns: {output_text: str, reasoning: str|None, parsed: dict|None}
         """
-        if self.provider in ("anthropic", "anthropic-haiku"):
+        if self.provider == "claude_code":
+            return self._call_claude_code(
+                prompt, reasoning_effort, json_mode, json_schema, schema_name
+            )
+        elif self.provider in ("anthropic", "anthropic-haiku"):
             return self._call_anthropic(
                 prompt, reasoning_effort, json_mode, json_schema, schema_name
             )
@@ -138,6 +147,12 @@ class LLMService:
         Supports OpenAI Responses API and Chat Completions streaming.
         Anthropic/Gemini fall back to non-streaming (yield full response as one chunk).
         """
+        if self.provider == "claude_code":
+            # Claude Code CLI doesn't support streaming; yield full response
+            result = self.call(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+            yield result.get("output_text", "")
+            return
+
         if self.provider in ("anthropic", "anthropic-haiku"):
             if self.anthropic_adapter:
                 yield from self.anthropic_adapter.stream_sync(
@@ -375,6 +390,27 @@ class LLMService:
         if not self.anthropic_adapter:
             raise LLMServiceError("Anthropic adapter not configured (missing API key)")
         return self.anthropic_adapter.call_sync(
+            prompt=prompt,
+            reasoning_effort=reasoning_effort,
+            json_mode=json_mode,
+            json_schema=json_schema,
+            schema_name=schema_name,
+        )
+
+    # ─── Claude Code CLI ──────────────────────────────────────────────
+
+    def _call_claude_code(
+        self,
+        prompt: str,
+        reasoning_effort: str = "none",
+        json_mode: bool = True,
+        json_schema: Optional[Dict[str, Any]] = None,
+        schema_name: str = "response",
+    ) -> Dict[str, Any]:
+        """Call Claude Code CLI via subprocess."""
+        if not self.claude_code_adapter:
+            raise LLMServiceError("Claude Code adapter not configured")
+        return self.claude_code_adapter.call_sync(
             prompt=prompt,
             reasoning_effort=reasoning_effort,
             json_mode=json_mode,
