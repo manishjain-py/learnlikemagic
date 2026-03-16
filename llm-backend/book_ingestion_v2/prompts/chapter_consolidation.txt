@@ -6,14 +6,23 @@ CHAPTER {chapter_number}: {chapter_title}
 EXTRACTED TOPICS ({topic_count} total):
 {topics_json}
 
+{planned_topics_section}
+
 TASK:
 1. Review all extracted topics for this chapter.
-2. Identify semantically overlapping topics that should be MERGED (same learning objective, just detected at different chunk boundaries).
-3. Normalize topic titles for consistency and clarity.
-4. Generate a chapter display name based on the actual content covered.
-5. Write a final chapter summary.
-6. Assign a teaching sequence order to each topic.
-7. Write a 20-40 word summary for each topic.
+2. If a PLANNED TOPIC SKELETON is provided below, validate the extraction against the plan:
+   - Confirm that planned topics received appropriate content
+   - Reconcile any UNPLANNED topics: merge into a planned topic (with justification) or ratify as genuinely new
+   - If a planned topic was too broad, you may SPLIT it (with justification)
+   - If a planned topic turned out trivial, you may MERGE it into an adjacent topic
+   - The bar for deviating from the plan should be HIGH — the plan was made with full chapter visibility
+3. If NO planned skeleton is provided, identify semantically overlapping topics that should be MERGED.
+4. Normalize topic titles for consistency and clarity.
+5. Generate a chapter display name based on the actual content covered.
+6. Write a final chapter summary.
+7. Assign a teaching sequence order to each topic.
+8. Write a 20-40 word summary for each topic.
+9. Track all deviations from the plan in the deviations array.
 
 MERGE RULES:
 - Only merge topics that cover the SAME learning objective
@@ -51,7 +60,22 @@ OUTPUT FORMAT (strict JSON):
       "sequence_order": 1,
       "name_change_reasoning": "Why renamed or 'No change needed'"
     }}
+  ],
+  "deviations": [
+    {{
+      "deviation_type": "merge|split|unplanned_ratified|unplanned_merged",
+      "topic_key": "primary-affected-planned-topic-key",
+      "affected_target_key": "for-merges-the-target-planned-topic",
+      "reasoning": "Why this deviation was necessary..."
+    }}
   ]
 }}
+
+DEVIATION TRACKING:
+- "merge": Two planned topics merged → topic_key is the absorbed one, affected_target_key is the survivor
+- "split": A planned topic split into multiple → topic_key is the original
+- "unplanned_ratified": An unplanned topic kept as-is → topic_key is the new topic key
+- "unplanned_merged": An unplanned topic merged into a planned one → topic_key is the planned topic it merged into
+- If NO planned skeleton was provided, deviations array should be empty.
 
 Return ONLY valid JSON. No markdown code blocks, no commentary outside the JSON.

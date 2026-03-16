@@ -8,12 +8,13 @@ import hashlib
 import logging
 import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 from book_ingestion_v2.constants import CHUNK_MAX_RETRIES
 from book_ingestion_v2.models.processing_models import (
     ChunkInput,
     ChunkExtractionOutput,
+    PlannedTopic,
     TopicAccumulator,
 )
 from shared.services.llm_service import LLMService
@@ -31,12 +32,15 @@ class ChunkProcessorService:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
 
-    def process_chunk(self, chunk_input: ChunkInput) -> ChunkExtractionOutput:
+    def process_chunk(self, chunk_input: ChunkInput, planned_topics: Optional[List[PlannedTopic]] = None) -> ChunkExtractionOutput:
         """
         Process a single chunk. Retries on failure up to CHUNK_MAX_RETRIES.
 
         Args:
             chunk_input: Full input for this chunk.
+            planned_topics: Optional list of planned topics from chapter planning phase.
+                When provided, the LLM assigns content to these topics (guided mode).
+                When None, the LLM discovers topics freely (unguided mode).
 
         Returns:
             Parsed ChunkExtractionOutput.
@@ -44,7 +48,7 @@ class ChunkProcessorService:
         Raises:
             ValueError: If all retries fail.
         """
-        prompt = self._build_prompt(chunk_input)
+        prompt = self._build_prompt(chunk_input, planned_topics)
         prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[:12]
 
         last_error = None
@@ -89,7 +93,7 @@ class ChunkProcessorService:
         """Return hash of the prompt template for audit."""
         return hashlib.md5(_PROMPT_TEMPLATE.encode()).hexdigest()[:12]
 
-    def _build_prompt(self, chunk_input: ChunkInput) -> str:
+    def _build_prompt(self, chunk_input: ChunkInput, planned_topics: Optional[List[PlannedTopic]] = None) -> str:
         """Build the LLM prompt from the chunk input."""
         # Format current pages
         current_pages_lines = []
@@ -111,6 +115,19 @@ class ChunkProcessorService:
         else:
             topics_so_far_text = "(No topics detected yet — this is the first chunk)"
 
+        # Build planned topics section (empty string in unguided mode)
+        planned_topics_section = ""
+        if planned_topics:
+            lines = ["PLANNED TOPIC SKELETON (assign content to these topics):", ""]
+            for pt in planned_topics:
+                lines.append(
+                    f"- {pt.topic_key}: \"{pt.title}\" "
+                    f"(pages {pt.page_start}-{pt.page_end}) — {pt.description}"
+                )
+            lines.append("")
+            lines.append("Your primary job is to ASSIGN content to the planned topics above, not to discover new ones.")
+            planned_topics_section = "\n".join(lines)
+
         return _PROMPT_TEMPLATE.format(
             book_title=chunk_input.book_metadata.get("title", ""),
             subject=chunk_input.book_metadata.get("subject", ""),
@@ -123,6 +140,7 @@ class ChunkProcessorService:
             previous_page_context=chunk_input.previous_page_context or "(First chunk — no previous page)",
             chapter_summary_so_far=chunk_input.chapter_summary_so_far or "(Empty — this is the first chunk)",
             topics_so_far_text=topics_so_far_text,
+            planned_topics_section=planned_topics_section,
         )
 
     def _parse_response(self, output_text: str) -> ChunkExtractionOutput:

@@ -16,6 +16,10 @@ class TopicGuidelines(BaseModel):
     prerequisite_concepts: list[str] = Field(default_factory=list, description="Concepts student should already know")
     common_misconceptions: list[str] = Field(default_factory=list, description="Common mistakes students make")
     scope_boundary: str = Field(default="", description="What is in-scope vs out-of-scope for this grade level")
+    prior_topics_context: Optional[str] = Field(
+        default=None,
+        description="Curriculum context: what prior topics in this chapter cover"
+    )
 
 
 class StudyPlanStep(BaseModel):

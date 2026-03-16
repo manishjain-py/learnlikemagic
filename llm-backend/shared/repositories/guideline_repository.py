@@ -85,7 +85,8 @@ class TeachingGuidelineRepository:
             chapter=guideline.chapter,
             topic=guideline.topic,
             guideline=guideline.guideline,
-            metadata=metadata
+            metadata=metadata,
+            prior_topics_context=guideline.prior_topics_context,
         )
 
     def get_guideline_by_id(self, guideline_id: str) -> Optional[GuidelineResponse]:
@@ -118,7 +119,8 @@ class TeachingGuidelineRepository:
             chapter=guideline.chapter,
             topic=guideline.topic,
             guideline=guideline.guideline,
-            metadata=metadata
+            metadata=metadata,
+            prior_topics_context=guideline.prior_topics_context,
         )
 
     def get_subjects(self, country: str, board: str, grade: int) -> List[str]:

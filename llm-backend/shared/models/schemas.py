@@ -51,6 +51,7 @@ class GuidelineResponse(BaseModel):
     topic: str
     guideline: str
     metadata: Optional["GuidelineMetadata"] = None  # Forward reference
+    prior_topics_context: Optional[str] = None
 
 
 class ChapterInfo(BaseModel):

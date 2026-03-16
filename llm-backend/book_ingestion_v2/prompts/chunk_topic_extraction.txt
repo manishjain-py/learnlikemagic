@@ -15,10 +15,14 @@ CHAPTER SUMMARY SO FAR:
 TOPICS DETECTED SO FAR:
 {topics_so_far_text}
 
+{planned_topics_section}
+
 TASK:
 1. Read the current pages carefully.
 2. Identify which topics are taught in these pages.
-3. For each topic, determine if it is NEW or a continuation of an EXISTING topic from the list above.
+3. For each topic on these pages:
+   - If a PLANNED TOPIC SKELETON was provided above, ASSIGN content to the matching planned topic (set topic_assignment to "planned"). Only propose an UNPLANNED topic if no planned topic fits — and you must justify why.
+   - If NO planned skeleton was provided, determine if the topic is NEW or a continuation of an EXISTING topic from the list above.
 4. Write curriculum scope guidelines for each topic based on what these pages cover.
 5. Update the chapter summary to incorporate what these pages add.
 
@@ -66,10 +70,18 @@ OUTPUT FORMAT (strict JSON):
       "topic_key": "kebab-case-slug",
       "topic_title": "Human Readable Title",
       "is_new": true,
+      "topic_assignment": "planned",
       "guidelines_for_this_chunk": "Teaching guidelines based on these pages...",
-      "reasoning": "Why this is a new/existing topic..."
+      "reasoning": "Why this is assigned to this planned topic...",
+      "unplanned_justification": ""
     }}
   ]
 }}
+
+PLAN DEVIATION PROTOCOL (only when a planned skeleton is provided):
+- Default: assign content to planned topics (topic_assignment = "planned")
+- UNPLANNED topics require HIGH justification: explain why no planned topic fits AND what learning objective the content serves
+- Do NOT force-assign unrelated content to the nearest planned topic — that corrupts the guidelines
+- When assigning to a planned topic, use its exact topic_key from the skeleton
 
 Return ONLY valid JSON. No markdown code blocks, no commentary outside the JSON.

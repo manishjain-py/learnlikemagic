@@ -42,7 +42,7 @@ class TopicSyncService:
         if not chapter or chapter.book_id != book_id:
             raise ValueError(f"Chapter not found: {chapter_id}")
 
-        if chapter.status != ChapterStatus.CHAPTER_COMPLETED.value:
+        if chapter.status not in [ChapterStatus.CHAPTER_COMPLETED.value, ChapterStatus.NEEDS_REVIEW.value]:
             raise ValueError(
                 f"Chapter must be completed to sync (status: {chapter.status})"
             )
@@ -84,7 +84,7 @@ class TopicSyncService:
         chapters = self.chapter_repo.get_by_book_id(book_id)
         completed = [
             ch for ch in chapters
-            if ch.status == ChapterStatus.CHAPTER_COMPLETED.value
+            if ch.status in [ChapterStatus.CHAPTER_COMPLETED.value, ChapterStatus.NEEDS_REVIEW.value]
         ]
 
         total_topics = 0
@@ -136,6 +136,7 @@ class TopicSyncService:
             book_id=book.id,
             source_page_start=topic.source_page_start,
             source_page_end=topic.source_page_end,
+            prior_topics_context=topic.prior_topics_context,
             status="approved",
             review_status="APPROVED",
             version=topic.version,
