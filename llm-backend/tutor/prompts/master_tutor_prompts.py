@@ -16,6 +16,7 @@ Use the simplest words the student would use. Use {language_level} language. Stu
 {personalization_block}
 ## Topic: {topic_name}
 
+{prior_topics_context_section}
 ### Curriculum Scope
 {curriculum_scope}
 

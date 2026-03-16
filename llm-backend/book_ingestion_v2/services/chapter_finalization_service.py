@@ -9,10 +9,19 @@ from pathlib import Path
 from typing import List
 
 from book_ingestion_v2.models.database import ChapterTopic, BookChapter
-from book_ingestion_v2.models.processing_models import ConsolidationOutput
+from book_ingestion_v2.models.processing_models import (
+    ConsolidationOutput,
+    FinalizationResult,
+    CurriculumContextOutput,
+    PlannedTopic,
+)
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
-from book_ingestion_v2.constants import TopicStatus
+from book_ingestion_v2.constants import (
+    TopicStatus, ChapterStatus,
+    PLANNING_DEVIATION_THRESHOLD,
+    PLANNING_DEVIATION_MIN_COUNT,
+)
 from shared.services.llm_service import LLMService
 from shared.utils.s3_client import get_s3_client
 
@@ -23,6 +32,9 @@ _CONSOLIDATION_TEMPLATE = _CONSOLIDATION_PROMPT_PATH.read_text()
 
 _MERGE_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "topic_guidelines_merge.txt"
 _MERGE_TEMPLATE = _MERGE_PROMPT_PATH.read_text()
+
+_CONTEXT_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "curriculum_context_generation.txt"
+_CONTEXT_TEMPLATE = _CONTEXT_PROMPT_PATH.read_text()
 
 
 class ChapterFinalizationService:
@@ -52,7 +64,7 @@ class ChapterFinalizationService:
             from book_ingestion_v2.services.chapter_job_service import ChapterJobService
             self.job_service = ChapterJobService(self.db)
 
-    def finalize(self, chapter: BookChapter, job_id: str) -> ConsolidationOutput:
+    def finalize(self, chapter: BookChapter, job_id: str, planned_topics: list = None) -> FinalizationResult:
         """
         Run full finalization pipeline for a chapter.
 
@@ -136,7 +148,7 @@ class ChapterFinalizationService:
         self._heartbeat("Running consolidation...")
         draft_topics = self.topic_repo.get_by_chapter_id(chapter_id)
         chapter = self.chapter_repo.get_by_id(chapter_id)
-        consolidation_output = self._run_consolidation(chapter, draft_topics)
+        consolidation_output = self._run_consolidation(chapter, draft_topics, planned_topics=planned_topics)
 
         # Refresh DB session after LLM call
         self._refresh_db_session()
@@ -164,6 +176,58 @@ class ChapterFinalizationService:
             topic.status = TopicStatus.FINAL.value
             self.topic_repo.update(topic)
 
+        # 6.5. Compute deviation ratio
+        final_status = ChapterStatus.CHAPTER_COMPLETED.value
+        deviation_ratio = 0.0
+        deviation_count = 0
+
+        if planned_topics and consolidation_output.deviations:
+            affected_planned_keys = set()
+            for dev in consolidation_output.deviations:
+                if dev.deviation_type == "merge":
+                    affected_planned_keys.add(dev.topic_key)
+                    if dev.affected_target_key:
+                        affected_planned_keys.add(dev.affected_target_key)
+                elif dev.deviation_type == "split":
+                    affected_planned_keys.add(dev.topic_key)
+                elif dev.deviation_type == "unplanned_merged":
+                    affected_planned_keys.add(dev.topic_key)
+
+            total_planned = len(planned_topics)
+            deviation_count = len(affected_planned_keys)
+            deviation_ratio = deviation_count / total_planned if total_planned > 0 else 0
+
+            if (deviation_count >= PLANNING_DEVIATION_MIN_COUNT and
+                    deviation_ratio > PLANNING_DEVIATION_THRESHOLD):
+                final_status = ChapterStatus.NEEDS_REVIEW.value
+                logger.warning(
+                    f"Chapter {chapter_id} flagged for review: "
+                    f"{deviation_count}/{total_planned} planned topics affected "
+                    f"({deviation_ratio:.0%} > {PLANNING_DEVIATION_THRESHOLD:.0%})"
+                )
+
+        # 6.75. Generate curriculum context
+        self._heartbeat("Generating curriculum context...")
+        self._refresh_db_session()
+        final_topics = self.topic_repo.get_by_chapter_id(chapter_id)
+        # Sort by sequence_order
+        final_topics.sort(key=lambda t: t.sequence_order or 999)
+
+        if len(final_topics) > 1:
+            try:
+                context_output = self._generate_curriculum_context(chapter_number, chapter_title, final_topics)
+                self._refresh_db_session()
+
+                # Save context to each topic
+                for ctx in context_output.contexts:
+                    topic = self.topic_repo.get_by_chapter_and_key(chapter_id, ctx.topic_key)
+                    if topic:
+                        topic.prior_topics_context = ctx.prior_topics_context
+                        self.topic_repo.update(topic)
+            except Exception as e:
+                logger.warning(f"Curriculum context generation failed: {e}")
+                # Non-fatal — topics are still usable without context
+
         # 7. Update chapter
         chapter = self.chapter_repo.get_by_id(chapter_id)
         chapter.display_name = consolidation_output.chapter_display_name
@@ -180,7 +244,12 @@ class ChapterFinalizationService:
             f"{len(consolidation_output.merge_actions)} merges"
         )
 
-        return consolidation_output
+        return FinalizationResult(
+            consolidation=consolidation_output,
+            final_status=final_status,
+            deviation_ratio=deviation_ratio,
+            deviation_count=deviation_count,
+        )
 
     def _heartbeat(self, detail: str = None):
         """Update job heartbeat to prevent stale detection."""
@@ -205,7 +274,7 @@ class ChapterFinalizationService:
         return result.get("output_text", "").strip()
 
     def _run_consolidation(
-        self, chapter: BookChapter, topics: List[ChapterTopic]
+        self, chapter: BookChapter, topics: List[ChapterTopic], planned_topics: list = None
     ) -> ConsolidationOutput:
         """Call the consolidation LLM."""
         topics_data = [
@@ -219,6 +288,19 @@ class ChapterFinalizationService:
             for t in topics
         ]
 
+        # Build planned topics section for prompt
+        planned_topics_section = ""
+        if planned_topics:
+            planned_data = [
+                {"topic_key": pt.topic_key, "title": pt.title,
+                 "description": pt.description, "page_range": f"{pt.page_start}-{pt.page_end}"}
+                for pt in planned_topics
+            ]
+            planned_topics_section = (
+                "\nPLANNED TOPIC SKELETON (validate extraction against this plan):\n"
+                + json.dumps(planned_data, indent=2)
+            )
+
         prompt = _CONSOLIDATION_TEMPLATE.format(
             book_title=self.book_metadata.get("title", ""),
             subject=self.book_metadata.get("subject", ""),
@@ -228,6 +310,7 @@ class ChapterFinalizationService:
             chapter_title=chapter.chapter_title,
             topic_count=len(topics),
             topics_json=json.dumps(topics_data, indent=2),
+            planned_topics_section=planned_topics_section,
         )
 
         result = self.llm_service.call(prompt=prompt, json_mode=True)
@@ -242,6 +325,43 @@ class ChapterFinalizationService:
 
         data = json.loads(text.strip())
         return ConsolidationOutput(**data)
+
+    def _generate_curriculum_context(
+        self, chapter_number, chapter_title, topics: List[ChapterTopic]
+    ) -> CurriculumContextOutput:
+        """Generate curriculum context for each topic (except first)."""
+        topics_data = [
+            {
+                "topic_key": t.topic_key,
+                "topic_title": t.topic_title,
+                "summary": t.summary or "",
+                "sequence_order": t.sequence_order,
+                "guidelines_preview": t.guidelines[:300] if t.guidelines else "",
+            }
+            for t in topics
+        ]
+
+        prompt = _CONTEXT_TEMPLATE.format(
+            book_title=self.book_metadata.get("title", ""),
+            subject=self.book_metadata.get("subject", ""),
+            grade=self.book_metadata.get("grade", ""),
+            board=self.book_metadata.get("board", ""),
+            chapter_number=chapter_number,
+            chapter_title=chapter_title,
+            topics_json=json.dumps(topics_data, indent=2),
+        )
+
+        result = self.llm_service.call(prompt=prompt, json_mode=True)
+        output_text = result.get("output_text", "")
+
+        text = output_text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+
+        data = json.loads(text.strip())
+        return CurriculumContextOutput(**data)
 
     def _execute_merge_by_id(self, chapter_id: str, merge_from_key: str, merge_into_key: str):
         """Merge one topic into another."""
@@ -305,6 +425,8 @@ class ChapterFinalizationService:
                 "source_page_start": topic.source_page_start,
                 "source_page_end": topic.source_page_end,
                 "sequence_order": topic.sequence_order,
+                "prior_topics_context": topic.prior_topics_context,
+                "topic_assignment": topic.topic_assignment,
             }
             self.s3_client.upload_bytes(
                 json.dumps(topic_data, indent=2).encode("utf-8"),

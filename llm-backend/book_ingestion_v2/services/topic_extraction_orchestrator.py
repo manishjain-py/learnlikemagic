@@ -27,10 +27,12 @@ from shared.services.llm_config_service import LLMConfigService
 from book_ingestion_v2.constants import (
     ChapterStatus, V2JobType, V2JobStatus, LLM_CONFIG_KEY,
 )
-from book_ingestion_v2.models.database import BookChapter, ChapterChunk, ChapterTopic
+from book_ingestion_v2.models.database import BookChapter, ChapterChunk, ChapterTopic, ChapterProcessingJob
 from book_ingestion_v2.models.processing_models import (
     ChunkInput, RunningState, TopicAccumulator,
+    PlannedTopic, ChapterTopicPlan,
 )
+from book_ingestion_v2.services.chapter_topic_planner_service import ChapterTopicPlannerService
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.chapter_page_repository import ChapterPageRepository
 from book_ingestion_v2.repositories.chunk_repository import ChunkRepository
@@ -119,7 +121,56 @@ class TopicExtractionOrchestrator:
             "board": book.board,
         }
 
+        # Build page list early — needed by both planner and chunk builder
+        pages = self.page_repo.get_by_chapter_id(chapter_id)
+        page_numbers = [p.page_number for p in pages if p.ocr_status == "completed"]
+
+        # ── Chapter-level topic planning ──
+        planner_service = ChapterTopicPlannerService(llm_service)
+        planned_topics = None
+
+        try:
+            self.job_service.update_progress(
+                job_id, current_item="Planning chapter topics...", completed=0, failed=0
+            )
+
+            # Load all OCR'd page texts for the planner
+            all_page_texts = []
+            for pn in page_numbers:
+                page = self.page_repo.get_by_chapter_and_page_number(chapter_id, pn)
+                if page and page.text_s3_key:
+                    text = self.s3_client.download_bytes(page.text_s3_key).decode("utf-8")
+                    all_page_texts.append({"page_number": pn, "text": text})
+
+            chapter_metadata = {
+                "number": chapter.chapter_number,
+                "title": chapter.chapter_title,
+                "page_range": f"{chapter.start_page}-{chapter.end_page}",
+            }
+
+            plan = planner_service.plan_chapter(book_metadata, chapter_metadata, all_page_texts)
+            planned_topics = plan.topics
+
+            # Refresh DB session after LLM call
+            self._refresh_db_session()
+
+            # Save plan to job record
+            job_record = self.db.query(ChapterProcessingJob).filter(
+                ChapterProcessingJob.id == job_id
+            ).first()
+            if job_record:
+                job_record.planned_topics_json = json.dumps(plan.model_dump())
+                self.db.commit()
+
+            logger.info(f"Chapter planned: {len(planned_topics)} topics")
+
+        except Exception as e:
+            logger.warning(f"Chapter planner failed, falling back to unguided extraction: {e}")
+            planned_topics = None
+            self._refresh_db_session()
+
         # Update chapter status
+        chapter = self.chapter_repo.get_by_id(chapter_id)
         chapter.status = ChapterStatus.TOPIC_EXTRACTION.value
         chapter.error_message = None
         chapter.error_type = None
@@ -130,8 +181,6 @@ class TopicExtractionOrchestrator:
         )
 
         # Build chunk windows from OCR'd pages
-        pages = self.page_repo.get_by_chapter_id(chapter_id)
-        page_numbers = [p.page_number for p in pages if p.ocr_status == "completed"]
         chunk_windows = build_chunk_windows(page_numbers)
 
         total_chunks = len(chunk_windows)
@@ -139,12 +188,22 @@ class TopicExtractionOrchestrator:
         # Initialize accumulator
         state = RunningState()
 
+        # Pre-populate state from plan
+        if planned_topics:
+            for pt in planned_topics:
+                state.topic_guidelines_map[pt.topic_key] = TopicAccumulator(
+                    topic_key=pt.topic_key,
+                    topic_title=pt.title,
+                    guidelines="",
+                    source_page_start=pt.page_start,
+                    source_page_end=pt.page_end,
+                )
+
         # Determine resume point
         start_chunk = 0
         if resume:
             # Find the previous job's chunks — query all jobs for this chapter,
             # pick the most recent one that isn't the current job.
-            from book_ingestion_v2.models.database import ChapterProcessingJob
             prev_job = db.query(ChapterProcessingJob).filter(
                 ChapterProcessingJob.chapter_id == chapter_id,
                 ChapterProcessingJob.job_type == V2JobType.TOPIC_EXTRACTION.value,
@@ -169,6 +228,21 @@ class TopicExtractionOrchestrator:
                     )
                 logger.info(f"Resuming from chunk {start_chunk}")
 
+            # Restore planned topics from previous job
+            if prev_job and prev_job.planned_topics_json:
+                try:
+                    prev_plan = ChapterTopicPlan(**json.loads(prev_job.planned_topics_json))
+                    planned_topics = prev_plan.topics
+                    # Copy plan to current job for self-containment
+                    job_record = self.db.query(ChapterProcessingJob).filter(
+                        ChapterProcessingJob.id == job_id
+                    ).first()
+                    if job_record:
+                        job_record.planned_topics_json = prev_job.planned_topics_json
+                        self.db.commit()
+                except Exception:
+                    logger.warning("Failed to restore planned topics from previous job")
+
         # S3 run directory
         ch_num = str(chapter.chapter_number).zfill(2)
         s3_run_base = f"books/{book_id}/chapters/{ch_num}/processing/runs/{job_id}"
@@ -188,6 +262,13 @@ class TopicExtractionOrchestrator:
             json.dumps(run_config, indent=2).encode("utf-8"),
             f"{s3_run_base}/config.json",
         )
+
+        # Save planned topics to S3 for audit
+        if planned_topics:
+            self.s3_client.upload_bytes(
+                json.dumps([pt.model_dump() for pt in planned_topics], indent=2).encode("utf-8"),
+                f"{s3_run_base}/planned_topics.json",
+            )
 
         # Process each chunk
         completed = start_chunk
@@ -246,7 +327,7 @@ class TopicExtractionOrchestrator:
 
             # Process chunk
             try:
-                output = chunk_processor.process_chunk(chunk_input)
+                output = chunk_processor.process_chunk(chunk_input, planned_topics=planned_topics)
 
                 # Refresh DB session — connection may have gone stale
                 # during the long LLM call
@@ -255,7 +336,14 @@ class TopicExtractionOrchestrator:
                 # Update accumulator
                 state.chapter_summary_so_far = output.updated_chapter_summary
                 for topic_update in output.topics:
-                    if topic_update.is_new:
+                    # Determine if this is a new topic
+                    is_new_topic = topic_update.is_new  # unguided mode
+                    if planned_topics and topic_update.topic_assignment == "unplanned":
+                        is_new_topic = True
+                    elif planned_topics and topic_update.topic_assignment == "planned":
+                        is_new_topic = False
+
+                    if is_new_topic and topic_update.topic_key not in state.topic_guidelines_map:
                         state.topic_guidelines_map[topic_update.topic_key] = TopicAccumulator(
                             topic_key=topic_update.topic_key,
                             topic_title=topic_update.topic_title,
@@ -333,6 +421,12 @@ class TopicExtractionOrchestrator:
         # Persist draft topics to DB
         self.topic_repo.delete_by_chapter_id(chapter_id)
         for topic_key, acc in state.topic_guidelines_map.items():
+            # Determine topic_assignment
+            topic_assignment = None
+            if planned_topics:
+                planned_keys = {pt.topic_key for pt in planned_topics}
+                topic_assignment = "planned" if acc.topic_key in planned_keys else "unplanned"
+
             topic = ChapterTopic(
                 id=str(uuid.uuid4()),
                 book_id=book_id,
@@ -343,6 +437,7 @@ class TopicExtractionOrchestrator:
                 source_page_start=acc.source_page_start,
                 source_page_end=acc.source_page_end,
                 status="draft",
+                topic_assignment=topic_assignment,
             )
             self.topic_repo.create(topic)
 
@@ -378,18 +473,18 @@ class TopicExtractionOrchestrator:
                 self.db, llm_service, book_metadata,
                 job_service=self.job_service, job_id=job_id,
             )
-            finalization_service.finalize(chapter, job_id)
+            result = finalization_service.finalize(chapter, job_id, planned_topics=planned_topics)
 
             # Refresh and reload after finalization (which does its own LLM calls)
             self._refresh_db_session()
             chapter = self.chapter_repo.get_by_id(chapter_id)
-            chapter.status = ChapterStatus.CHAPTER_COMPLETED.value
+            chapter.status = result.final_status  # NOT unconditionally CHAPTER_COMPLETED
             self.chapter_repo.update(chapter)
 
             self.job_service.release_lock(
                 job_id, status=V2JobStatus.COMPLETED.value
             )
-            logger.info(f"Chapter {chapter_id} extraction + finalization complete")
+            logger.info(f"Chapter {chapter_id} extraction + finalization complete (status={result.final_status})")
 
         except Exception as e:
             self._refresh_db_session()

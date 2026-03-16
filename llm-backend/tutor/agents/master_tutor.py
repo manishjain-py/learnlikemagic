@@ -414,12 +414,21 @@ class MasterTutorAgent(BaseAgent):
 
         misconceptions = format_list_for_prompt(topic.guidelines.common_misconceptions)
 
+        # Build prior topics context section
+        prior_topics_context_section = ""
+        if topic.guidelines.prior_topics_context:
+            prior_topics_context_section = (
+                "### Prior Topics in This Chapter\n"
+                f"{topic.guidelines.prior_topics_context}\n"
+            )
+
         return MASTER_TUTOR_SYSTEM_PROMPT.render(
             grade=session.student_context.grade,
             language_level=session.student_context.language_level,
             preferred_examples=", ".join(session.student_context.preferred_examples),
             personalization_block=personalization_block,
             topic_name=topic.topic_name,
+            prior_topics_context_section=prior_topics_context_section,
             curriculum_scope=topic.guidelines.scope_boundary,
             steps_formatted=steps_formatted,
             common_misconceptions=misconceptions,

@@ -59,6 +59,7 @@ def convert_guideline_to_topic(
         prerequisite_concepts=guideline.metadata.prerequisites if guideline.metadata else [],
         common_misconceptions=common_misconceptions,
         scope_boundary=scope_boundary,
+        prior_topics_context=guideline.prior_topics_context,
     )
 
     # Build StudyPlan from plan_json

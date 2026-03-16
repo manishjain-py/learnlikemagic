@@ -60,6 +60,7 @@ def start_processing(
             allowed_statuses.extend([
                 ChapterStatus.TOPIC_EXTRACTION.value,
                 ChapterStatus.FAILED.value,
+                ChapterStatus.NEEDS_REVIEW.value,
             ])
         if chapter.status not in allowed_statuses:
             raise HTTPException(
@@ -156,6 +157,7 @@ def refinalize(
         if chapter.status not in [
             ChapterStatus.CHAPTER_COMPLETED.value,
             ChapterStatus.FAILED.value,
+            ChapterStatus.NEEDS_REVIEW.value,
         ]:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -260,6 +262,8 @@ def get_chapter_topics(
                     sequence_order=t.sequence_order,
                     status=t.status,
                     version=t.version,
+                    prior_topics_context=t.prior_topics_context,
+                    topic_assignment=t.topic_assignment,
                 )
                 for t in topics
             ],
@@ -298,6 +302,8 @@ def get_topic(
             sequence_order=topic.sequence_order,
             status=topic.status,
             version=topic.version,
+            prior_topics_context=topic.prior_topics_context,
+            topic_assignment=topic.topic_assignment,
         )
     except HTTPException:
         raise
@@ -403,14 +409,14 @@ def _run_refinalization(db: Session, job_id: str, chapter_id: str, book_id: str)
             db, llm_service, book_metadata,
             job_service=job_service, job_id=job_id,
         )
-        service.finalize(chapter, job_id)
+        result = service.finalize(chapter, job_id)
 
         # Refresh session after finalization (which does LLM calls)
         from database import get_db_manager
         db = get_db_manager().get_session()
         chapter_repo = ChapterRepository(db)
         chapter = chapter_repo.get_by_id(chapter_id)
-        chapter.status = ChapterStatus.CHAPTER_COMPLETED.value
+        chapter.status = result.final_status
         chapter_repo.update(chapter)
 
         job_service = ChapterJobService(db)
