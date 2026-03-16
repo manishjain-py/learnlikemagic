@@ -1,0 +1,18 @@
+commit	avg_score	elapsed_min	status	description	scores_json
+90706f3	4.0000	0.3	pending	post-migration smoke test	{"copyright_safety": 10.0, "coverage_depth": 1.0, "granularity": 1.0}
+90706f3	7.0000	1.8	pending	post-migration smoke test ch1	{"copyright_safety": 7.0, "coverage_depth": 8.0, "granularity": 6.0}
+90706f3	0.0000	0.0	crash	3-run fresh extraction check on ch1	{}
+5aa5533	7.0000	10.4	pending	add page-span check to reduce umbrella topics	{"copyright_safety": 8.0, "coverage_depth": 7.0, "granularity": 6.0}
+5aa5533	7.0000	10.4	discard	add page-span check to reduce umbrella topics	{"copyright_safety": 8.0, "coverage_depth": 7.0, "granularity": 6.0}
+cc80e65	7.6667	11.3	pending	skip assessment-only topics without instructional backing	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 6.0}
+cc80e65	7.6667	11.3	discard	skip assessment-only topics without instructional backing	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 6.0}
+e6efda3	8.0000	11.8	pending	restrict consolidation merging to prevent umbrella topics	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 7.0}
+e6efda3	8.0000	11.8	discard	restrict consolidation merging to prevent umbrella topics	{"copyright_safety": 9.0, "coverage_depth": 8.0, "granularity": 7.0}
+061748f	7.3333	11.3	pending	ground guidelines in actual page content not generic curriculum	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+061748f	7.3333	11.3	discard	ground guidelines in actual page content not generic curriculum	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+b27f4e7	7.0000	10.1	pending	restrict consolidation merging + skip assessment-only topics	{"copyright_safety": 7.0, "coverage_depth": 8.0, "granularity": 6.0}
+b27f4e7	7.0000	10.1	discard	restrict consolidation merging + skip assessment-only topics	{"copyright_safety": 7.0, "coverage_depth": 8.0, "granularity": 6.0}
+7ba6049	7.0000	11.1	pending	require labeled sections in merged guidelines output	{"copyright_safety": 8.0, "coverage_depth": 7.0, "granularity": 6.0}
+7ba6049	7.0000	11.1	discard	require labeled sections in merged guidelines output	{"copyright_safety": 8.0, "coverage_depth": 7.0, "granularity": 6.0}
+c85ac34	7.3333	12.4	pending	handle review/recap pages to prevent umbrella review topics	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}
+c85ac34	7.3333	12.4	discard	handle review/recap pages to prevent umbrella review topics	{"copyright_safety": 9.0, "coverage_depth": 7.0, "granularity": 6.0}

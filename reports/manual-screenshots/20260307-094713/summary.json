@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "currentUrl": "http://localhost:3000/learn",
+  "screenshots": [
+    "01-login-page.png",
+    "02-email-login-form.png",
+    "03-post-login.png",
+    "04-profile-page.png"
+  ]
+}
