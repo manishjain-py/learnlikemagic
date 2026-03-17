@@ -22,9 +22,10 @@ from shared.services.llm_service import LLMService
 from shared.utils.exceptions import SessionNotFoundException, GuidelineNotFoundException, StaleStateError
 
 from tutor.orchestration import TeacherOrchestrator
-from tutor.models.session_state import SessionState, create_session
+from tutor.models.session_state import SessionState, CardPhaseState, create_session
 from tutor.models.messages import StudentContext, create_teacher_message
 from tutor.services.topic_adapter import convert_guideline_to_topic
+from shared.repositories.explanation_repository import ExplanationRepository
 
 logger = logging.getLogger("tutor.session_service")
 
@@ -120,62 +121,104 @@ class SessionService:
 
         logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode}")
 
-        # Initialize explanation phase if first step is "explain" (teach_me mode)
-        if mode == "teach_me":
-            first_step = session.topic.study_plan.get_step(1) if session.topic else None
-            if first_step and first_step.type == "explain":
-                session.start_explanation(first_step.concept, first_step.step_id)
-
-        # For exam mode, generate questions before welcome (sync call)
         import asyncio
-        if mode == "exam":
-            from tutor.services.exam_service import ExamService
-            exam_svc = ExamService(self.llm_service)
-            session.exam_questions = exam_svc.generate_questions(session)
-            logger.info(f"Generated {len(session.exam_questions)} exam questions for session {session_id}")
 
-        # Generate mode-specific welcome
-        if mode == "clarify_doubts":
-            welcome, audio_text = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
-        elif mode == "exam":
-            welcome, audio_text = asyncio.run(self.orchestrator.generate_exam_welcome(session))
-            # Append first question to welcome
-            if session.exam_questions:
-                first_q = session.exam_questions[0]
-                welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
+        # Check for pre-computed explanations (teach_me mode only)
+        explanations = []
+        if mode == "teach_me":
+            try:
+                explanation_repo = ExplanationRepository(self.db)
+                explanations = explanation_repo.get_by_guideline_id(request.goal.guideline_id)
+            except Exception:
+                explanations = []
+
+        if explanations and mode == "teach_me":
+            # Card phase: skip welcome LLM call AND explanation phase init
+            # Use first available variant (don't assume "A" exists — it may have failed validation)
+            first_variant = explanations[0]
+
+            session.card_phase = CardPhaseState(
+                guideline_id=request.goal.guideline_id,
+                active=True,
+                current_variant_key=first_variant.variant_key,
+                current_card_idx=0,
+                total_cards=len(first_variant.cards_json),
+                variants_shown=[first_variant.variant_key],
+                available_variant_keys=[e.variant_key for e in explanations],
+            )
+
+            welcome = f"Let's learn about {topic.topic_name}! I'll walk you through it, and then we can talk about any questions."
+            audio_text = welcome
+
+            first_turn = {
+                "message": welcome,
+                "audio_text": audio_text,
+                "hints": [],
+                "step_idx": session.current_step,
+                # Card phase fields
+                "explanation_cards": first_variant.cards_json,
+                "session_phase": "card_phase",
+                "card_phase_state": {
+                    "current_variant_key": first_variant.variant_key,
+                    "current_card_idx": 0,
+                    "total_cards": len(first_variant.cards_json),
+                    "available_variants": len(explanations),
+                },
+            }
+            logger.info(f"Card phase initialized for session {session_id}: variant={first_variant.variant_key}, cards={len(first_variant.cards_json)}")
         else:
-            welcome, audio_text = asyncio.run(self.orchestrator.generate_welcome_message(session))
+            # Existing path: init explanation phase + dynamic welcome
+            if mode == "teach_me":
+                first_step = session.topic.study_plan.get_step(1) if session.topic else None
+                if first_step and first_step.type == "explain":
+                    session.start_explanation(first_step.concept, first_step.step_id)
 
-        # Add welcome message to conversation history
+            # For exam mode, generate questions before welcome
+            if mode == "exam":
+                from tutor.services.exam_service import ExamService
+                exam_svc = ExamService(self.llm_service)
+                session.exam_questions = exam_svc.generate_questions(session)
+                logger.info(f"Generated {len(session.exam_questions)} exam questions for session {session_id}")
+
+            # Generate mode-specific welcome
+            if mode == "clarify_doubts":
+                welcome, audio_text = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
+            elif mode == "exam":
+                welcome, audio_text = asyncio.run(self.orchestrator.generate_exam_welcome(session))
+                if session.exam_questions:
+                    first_q = session.exam_questions[0]
+                    welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
+            else:
+                welcome, audio_text = asyncio.run(self.orchestrator.generate_welcome_message(session))
+
+            first_turn = {
+                "message": welcome,
+                "audio_text": audio_text,
+                "hints": [],
+                "step_idx": session.current_step,
+            }
+            if mode == "exam":
+                first_turn["exam_progress"] = {
+                    "current_question": 1,
+                    "total_questions": len(session.exam_questions),
+                    "answered_questions": 0,
+                }
+                first_turn["exam_questions"] = [
+                    {"question_idx": q.question_idx, "question_text": q.question_text}
+                    for q in session.exam_questions
+                ]
+
+        # Steps 5-8 happen for BOTH paths (card phase and dynamic):
         session.add_message(create_teacher_message(welcome, audio_text=audio_text))
 
-        # Persist to DB
         self._persist_session(session_id, session, request, user_id=user_id, subject=guideline.subject if guideline else None)
 
-        # Log event
         self.event_repo.log(
             session_id=session_id,
             node="welcome",
             step_idx=session.current_step,
             payload={"action": "session_created", "mode": mode},
         )
-
-        first_turn = {
-            "message": welcome,
-            "audio_text": audio_text,
-            "hints": [],
-            "step_idx": session.current_step,
-        }
-        if mode == "exam":
-            first_turn["exam_progress"] = {
-                "current_question": 1,
-                "total_questions": len(session.exam_questions),
-                "answered_questions": 0,
-            }
-            first_turn["exam_questions"] = [
-                {"question_idx": q.question_idx, "question_text": q.question_text}
-                for q in session.exam_questions
-            ]
 
         # Build response
         response = CreateSessionResponse(session_id=session_id, first_turn=first_turn, mode=mode)
@@ -199,6 +242,10 @@ class SessionService:
 
         # Deserialize SessionState
         session = SessionState.model_validate_json(db_session.state_json)
+
+        if session.is_in_card_phase():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Session is in card phase. Use /card-action endpoint.")
 
         # Process turn via orchestrator
         import asyncio
@@ -785,6 +832,147 @@ class SessionService:
             "new_total_steps": new_total,
             "feedback_count": feedback_count,
         }
+
+    # ─── Card Phase Methods ───────────────────────────────────────────────────
+
+    def complete_card_phase(self, session_id: str, action: str) -> dict:
+        """Handle card phase completion. action: 'clear' or 'explain_differently'."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+
+        if not session.is_in_card_phase():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Session is not in card phase")
+
+        if action == "clear":
+            session.complete_card_phase()
+            self._advance_past_explanation_steps(session)
+
+            # Build and persist summary for tutor prompt injection
+            precomputed_summary = self._build_precomputed_summary(session)
+            session.precomputed_explanation_summary = precomputed_summary
+
+            # Persist the transition message so it survives refresh
+            transition_msg = "Great! Now let's make sure you've got it. Feel free to ask any questions!"
+            session.add_message(create_teacher_message(transition_msg))
+
+            self._persist_session_state(session_id, session, expected_version)
+
+            return {
+                "action": "transition_to_interactive",
+                "message": "Great! Now let's make sure you've got it. Feel free to ask any questions!",
+                "precomputed_summary": precomputed_summary,
+            }
+
+        elif action == "explain_differently":
+            # Find next unseen variant
+            unseen = [
+                k for k in session.card_phase.available_variant_keys
+                if k not in session.card_phase.variants_shown
+            ]
+
+            if unseen:
+                return self._switch_variant_internal(session, session_id, unseen[0], expected_version)
+            else:
+                # All variants exhausted → fall back to dynamic ExplanationPhase
+                # Build summary before completing card phase (while card_phase is still available)
+                precomputed_summary = self._build_precomputed_summary(session)
+                session.precomputed_explanation_summary = precomputed_summary
+
+                session.complete_card_phase()
+                self._init_dynamic_fallback(session)
+
+                import asyncio
+                welcome, audio_text = asyncio.run(
+                    self.orchestrator.generate_welcome_message(session)
+                )
+                session.add_message(create_teacher_message(welcome, audio_text=audio_text))
+                self._persist_session_state(session_id, session, expected_version)
+
+                return {
+                    "action": "fallback_dynamic",
+                    "message": welcome,
+                    "audio_text": audio_text,
+                }
+
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Unknown card action: {action}")
+
+    def _switch_variant_internal(
+        self, session: SessionState, session_id: str, variant_key: str, expected_version: int
+    ) -> dict:
+        """Load a different explanation variant during card phase (internal, avoids double session load)."""
+        explanation_repo = ExplanationRepository(self.db)
+        explanation = explanation_repo.get_variant(
+            session.card_phase.guideline_id, variant_key
+        )
+        if not explanation:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Variant {variant_key} not found")
+
+        session.card_phase.current_variant_key = variant_key
+        session.card_phase.current_card_idx = 0
+        session.card_phase.total_cards = len(explanation.cards_json)
+        session.card_phase.variants_shown.append(variant_key)
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        return {
+            "action": "switch_variant",
+            "cards": explanation.cards_json,
+            "variant_key": variant_key,
+            "variant_label": explanation.variant_label,
+        }
+
+    def _build_precomputed_summary(self, session: SessionState) -> str:
+        """Build summary of shown explanations for tutor system prompt injection."""
+        if not session.card_phase:
+            return ""
+
+        explanation_repo = ExplanationRepository(self.db)
+        summaries = []
+        for variant_key in session.card_phase.variants_shown:
+            explanation = explanation_repo.get_variant(
+                session.card_phase.guideline_id, variant_key
+            )
+            if explanation and explanation.summary_json:
+                s = explanation.summary_json
+                summaries.append(
+                    f"Variant '{s.get('approach_label', variant_key)}': "
+                    f"Topics covered: {', '.join(s.get('card_titles', []))}. "
+                    f"Analogies used: {', '.join(s.get('key_analogies', []))}. "
+                    f"Examples used: {', '.join(s.get('key_examples', []))}."
+                )
+
+        return "\n".join(summaries)
+
+    def _advance_past_explanation_steps(self, session: SessionState):
+        """After successful card phase, skip consecutive leading explain steps.
+
+        Cards cover the topic's introductory explanation holistically. This method
+        skips consecutive "explain" steps at the start of the study plan, landing
+        on the first non-explain step (typically "check" or "practice").
+        """
+        if not session.topic or not session.topic.study_plan:
+            return
+
+        while session.current_step <= session.topic.study_plan.total_steps:
+            step = session.topic.study_plan.get_step(session.current_step)
+            if step and step.type == "explain":
+                session.concepts_covered_set.add(step.concept)
+                session.advance_step()
+            else:
+                break  # Found a non-explain step — stop here
+
+    def _init_dynamic_fallback(self, session: SessionState):
+        """Initialize ExplanationPhase for dynamic fallback after all card variants exhausted."""
+        first_step = session.topic.study_plan.get_step(1) if session.topic else None
+        if first_step and first_step.type == "explain":
+            session.start_explanation(first_step.concept, first_step.step_id)
 
     def _generate_suggestions(
         self,

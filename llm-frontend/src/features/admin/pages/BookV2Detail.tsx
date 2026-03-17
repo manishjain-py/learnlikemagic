@@ -4,10 +4,10 @@ import {
   getBookV2, deleteBookV2, uploadPageV2, deletePageV2, getChapterPages,
   startProcessing, reprocessChapter, refinalizeChapter,
   getLatestJobV2, getChapterTopics, syncChapter, syncBook,
-  getPageDetailV2, retryPageOcrV2,
+  getPageDetailV2, retryPageOcrV2, generateExplanations,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
-  SyncResponseV2,
+  SyncResponseV2, ExplanationGenerationResponse,
 } from '../api/adminApiV2';
 
 const POLL_INTERVAL = 3000;
@@ -47,6 +47,8 @@ const BookV2Detail: React.FC = () => {
   const [syncResult, setSyncResult] = useState<Record<string, SyncResponseV2>>({});
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncAllResult, setSyncAllResult] = useState<SyncResponseV2 | null>(null);
+  const [generatingExplanations, setGeneratingExplanations] = useState<string | null>(null);
+  const [explanationResult, setExplanationResult] = useState<Record<string, ExplanationGenerationResponse>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
 
@@ -225,6 +227,22 @@ const BookV2Detail: React.FC = () => {
       loadBook();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refinalize failed');
+    }
+  };
+
+  const handleGenerateExplanations = async (ch: ChapterResponseV2) => {
+    if (!id) return;
+    setGeneratingExplanations(ch.id);
+    try {
+      const result = await generateExplanations(id, ch.id);
+      setExplanationResult(prev => ({ ...prev, [ch.id]: result }));
+    } catch (err) {
+      setExplanationResult(prev => ({
+        ...prev,
+        [ch.id]: { generated: 0, skipped: 0, failed: 1, errors: [err instanceof Error ? err.message : 'Generation failed'] },
+      }));
+    } finally {
+      setGeneratingExplanations(null);
     }
   };
 
@@ -584,9 +602,30 @@ const BookV2Detail: React.FC = () => {
                         <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                           Reprocess
                         </button>
+                        <button onClick={() => handleGenerateExplanations(ch)} disabled={generatingExplanations === ch.id} style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: generatingExplanations === ch.id ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: generatingExplanations === ch.id ? 0.6 : 1 }}>
+                          {generatingExplanations === ch.id ? 'Generating...' : 'Generate Explanations'}
+                        </button>
                       </>
                     )}
                   </div>
+                  )}
+
+                  {/* Explanation generation result banner */}
+                  {explanationResult[ch.id] && (
+                    <div style={{
+                      marginTop: '12px',
+                      backgroundColor: explanationResult[ch.id].errors.length > 0 ? '#FEF3C7' : '#EDE9FE',
+                      color: explanationResult[ch.id].errors.length > 0 ? '#92400E' : '#5B21B6',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                    }}>
+                      <button onClick={() => setExplanationResult(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                      Explanations: {explanationResult[ch.id].generated} generated, {explanationResult[ch.id].skipped} skipped, {explanationResult[ch.id].failed} failed.
+                      {explanationResult[ch.id].errors.length > 0 && (
+                        <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                          {explanationResult[ch.id].errors.map((e, i) => <li key={i}>{e}</li>)}
+                        </ul>
+                      )}
+                    </div>
                   )}
 
                   {/* Sync result banner */}

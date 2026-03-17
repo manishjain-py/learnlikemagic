@@ -2936,3 +2936,140 @@ body {
 .visual-pop-in {
   animation: visualPopIn 0.5s ease-out both;
 }
+
+/* ─── Explanation Viewer (Pre-computed Cards) ─── */
+
+.explanation-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+  gap: 1rem;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.explanation-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.explanation-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.explanation-progress-fill {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.explanation-progress-text {
+  font-size: 0.85rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.explanation-card {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.explanation-card-type {
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.explanation-card-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.explanation-card-content {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.explanation-card-content p {
+  margin: 0.4rem 0;
+}
+
+.explanation-card-visual {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: pre;
+  color: #1f2937;
+}
+
+.explanation-nav {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.explanation-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.explanation-nav-btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.2s;
+}
+
+.explanation-nav-btn.primary {
+  background: #6366f1;
+  color: #fff;
+  flex: 1;
+}
+
+.explanation-nav-btn.primary:hover {
+  background: #4f46e5;
+}
+
+.explanation-nav-btn.secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.explanation-nav-btn.secondary:hover {
+  background: #e5e7eb;
+}
+
+.explanation-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

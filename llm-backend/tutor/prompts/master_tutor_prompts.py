@@ -17,6 +17,7 @@ Use the simplest words the student would use. Use {language_level} language. Stu
 ## Topic: {topic_name}
 
 {prior_topics_context_section}
+{precomputed_explanation_summary_section}
 ### Curriculum Scope
 {curriculum_scope}
 

@@ -422,6 +422,19 @@ class MasterTutorAgent(BaseAgent):
                 f"{topic.guidelines.prior_topics_context}\n"
             )
 
+        # Build pre-computed explanation summary section
+        precomputed_explanation_summary_section = ""
+        if session.precomputed_explanation_summary:
+            summary_text = session.precomputed_explanation_summary
+            if summary_text:
+                precomputed_explanation_summary_section = (
+                    "### Pre-Explained Content\n\n"
+                    "The student has already seen the following explanation(s) before this "
+                    "interactive session began. DO NOT repeat these analogies, examples, or "
+                    "explanations. If the student is confused, try a fundamentally different approach.\n\n"
+                    f"{summary_text}\n"
+                )
+
         return MASTER_TUTOR_SYSTEM_PROMPT.render(
             grade=session.student_context.grade,
             language_level=session.student_context.language_level,
@@ -429,6 +442,7 @@ class MasterTutorAgent(BaseAgent):
             personalization_block=personalization_block,
             topic_name=topic.topic_name,
             prior_topics_context_section=prior_topics_context_section,
+            precomputed_explanation_summary_section=precomputed_explanation_summary_section,
             curriculum_scope=topic.guidelines.scope_boundary,
             steps_formatted=steps_formatted,
             common_misconceptions=misconceptions,

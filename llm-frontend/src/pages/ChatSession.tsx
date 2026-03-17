@@ -9,11 +9,15 @@ import {
   transcribeAudio,
   synthesizeSpeech,
   submitFeedback,
+  cardAction,
   TutorWebSocket,
   Turn,
+  ExplanationCard,
+  CardPhaseDTO,
   SummaryResponse,
   VisualExplanation as VisualExplanationType,
 } from '../api';
+import ExplanationViewer from '../components/ExplanationViewer';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -83,6 +87,14 @@ export default function ChatSession() {
   const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
   const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
   const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
+
+  // Card phase state (pre-computed explanations)
+  const [sessionPhase, setSessionPhase] = useState<'card_phase' | 'interactive'>('interactive');
+  const [explanationCards, setExplanationCards] = useState<ExplanationCard[]>([]);
+  const [currentCardIdx, setCurrentCardIdx] = useState(0);
+  const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
+  const [cardActionLoading, setCardActionLoading] = useState(false);
+  const [variantsShown, setVariantsShown] = useState(1);
 
   // Streaming state
   const [streamingText, setStreamingText] = useState('');
@@ -224,6 +236,15 @@ export default function ChatSession() {
 
     if (locState?.firstTurn) {
       // Fresh session from ModeSelectPage
+      // Check for card phase (pre-computed explanations)
+      if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
+        setSessionPhase('card_phase');
+        setExplanationCards(locState.firstTurn.explanation_cards);
+        setCurrentCardIdx(0);
+        setCardPhaseState(locState.firstTurn.card_phase_state || null);
+        setVariantsShown(1);
+      }
+
       setMessages([{
         role: 'teacher',
         content: locState.firstTurn.message,
@@ -249,8 +270,8 @@ export default function ChatSession() {
       if (virtualTeacherOn && locState.firstTurn.message) {
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
       }
-      // Auto-open focus carousel on first turn
-      if ((user?.focus_mode !== false) && !virtualTeacherOn) {
+      // Auto-open focus carousel on first turn (skip during card phase — ExplanationViewer handles it)
+      if ((user?.focus_mode !== false) && !virtualTeacherOn && locState.firstTurn.session_phase !== 'card_phase') {
         setFocusCardIdx(0);
         prevFocusCardsLen.current = 1;
         focusDismissedRef.current = false;
@@ -299,6 +320,22 @@ export default function ChatSession() {
                 })),
               );
             }
+          }
+
+          // Hydrate card phase if active
+          if (state.card_phase?.active && state._replay_explanation_cards) {
+            const savedPos = localStorage.getItem(`card-pos-${sessionId}`);
+            const cardIdx = savedPos ? parseInt(savedPos, 10) : 0;
+            setSessionPhase('card_phase');
+            setExplanationCards(state._replay_explanation_cards);
+            setCurrentCardIdx(cardIdx);
+            setCardPhaseState({
+              current_variant_key: state.card_phase.current_variant_key,
+              current_card_idx: cardIdx,
+              total_cards: state.card_phase.total_cards,
+              available_variants: state.card_phase.available_variant_keys?.length || 0,
+            });
+            setVariantsShown(state.card_phase.variants_shown?.length || 1);
           }
 
           // Hydrate completion for all modes
@@ -852,6 +889,34 @@ export default function ChatSession() {
     focusSwipeDir.current = null;
   };
 
+  // ─── Card phase action handler ─────────────────────────────────────
+  const handleCardAction = async (action: 'clear' | 'explain_differently') => {
+    if (!sessionId) return;
+    setCardActionLoading(true);
+    try {
+      const result = await cardAction(sessionId, action);
+
+      if (result.action === 'transition_to_interactive') {
+        setSessionPhase('interactive');
+        setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
+        localStorage.removeItem(`card-pos-${sessionId}`);
+      } else if (result.action === 'switch_variant' && result.cards) {
+        setExplanationCards(result.cards);
+        setCurrentCardIdx(0);
+        setVariantsShown(prev => prev + 1);
+        localStorage.setItem(`card-pos-${sessionId}`, '0');
+      } else if (result.action === 'fallback_dynamic') {
+        setSessionPhase('interactive');
+        setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
+        localStorage.removeItem(`card-pos-${sessionId}`);
+      }
+    } catch (err: any) {
+      console.error('Card action failed:', err);
+    } finally {
+      setCardActionLoading(false);
+    }
+  };
+
   if (replayLoading) {
     return (
       <div className="app">
@@ -975,7 +1040,27 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? (
+          {sessionPhase === 'card_phase' && explanationCards.length > 0 ? (
+            <ExplanationViewer
+              cards={explanationCards}
+              currentIdx={currentCardIdx}
+              onNext={() => {
+                const next = Math.min(currentCardIdx + 1, explanationCards.length - 1);
+                setCurrentCardIdx(next);
+                localStorage.setItem(`card-pos-${sessionId}`, String(next));
+              }}
+              onPrevious={() => {
+                const prev = Math.max(currentCardIdx - 1, 0);
+                setCurrentCardIdx(prev);
+                localStorage.setItem(`card-pos-${sessionId}`, String(prev));
+              }}
+              onClear={() => handleCardAction('clear')}
+              onExplainDifferently={() => handleCardAction('explain_differently')}
+              availableVariants={cardPhaseState?.available_variants ?? 0}
+              variantsShown={variantsShown}
+              loading={cardActionLoading}
+            />
+          ) : sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? (
             <div className="virtual-teacher-view">
               {/* Close button */}
               <button
@@ -1141,7 +1226,7 @@ export default function ChatSession() {
           </div>
           ) : null}
 
-          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
+          {sessionPhase === 'card_phase' ? null : sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
             <>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
@@ -1437,8 +1522,8 @@ export default function ChatSession() {
         />
       )}
 
-      {/* Focus Carousel */}
-      {focusCardIdx !== null && focusCards.length > 0 && sessionMode !== 'exam' && !virtualTeacherOn && !isComplete && (
+      {/* Focus Carousel — hidden during card phase (ExplanationViewer owns the view) */}
+      {focusCardIdx !== null && focusCards.length > 0 && sessionMode !== 'exam' && !virtualTeacherOn && !isComplete && sessionPhase !== 'card_phase' && (
         <div className="focus-carousel">
           <div className="focus-header">
             <button className="focus-exit-btn" onClick={closeFocusCard} aria-label="Exit focus mode">

@@ -183,6 +183,30 @@ class DetailedSessionStateDTO(BaseModel):
     conversation_history: list[ConversationMessageDTO]
 
 
+# ─── Card Phase DTOs ─────
+
+class ExplanationCardDTO(BaseModel):
+    """Explanation card for frontend rendering."""
+    card_idx: int
+    card_type: Literal["concept", "example", "visual", "analogy", "summary"]
+    title: str
+    content: str
+    visual: Optional[str] = None
+
+
+class CardActionRequest(BaseModel):
+    """Request body for card phase actions."""
+    action: Literal["clear", "explain_differently"]
+
+
+class CardPhaseDTO(BaseModel):
+    """Card phase state summary for frontend."""
+    current_variant_key: str
+    current_card_idx: int
+    total_cards: int
+    available_variants: int
+
+
 class ServerMessagePayload(BaseModel):
     message: Optional[str] = None
     audio_text: Optional[str] = None

@@ -1,6 +1,7 @@
 """SQLAlchemy ORM database models."""
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Boolean, ForeignKey, Index
+from uuid import uuid4
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -312,6 +313,29 @@ class FeatureFlag(Base):
     description = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String, nullable=True)
+
+
+class TopicExplanation(Base):
+    """Pre-computed explanation variants for teaching guidelines.
+
+    Each guideline can have multiple variants (A, B, C), each representing
+    a different pedagogical approach. Cards are stored as JSONB for queryability.
+    Cascade-deleted when the parent guideline is deleted (e.g., during re-sync).
+    """
+    __tablename__ = "topic_explanations"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"), nullable=False)
+    variant_key = Column(String, nullable=False)       # 'A', 'B', 'C'
+    variant_label = Column(String, nullable=False)      # Human-readable: 'Everyday Analogies', etc.
+    cards_json = Column(JSONB, nullable=False)           # Ordered list of ExplanationCard objects
+    summary_json = Column(JSONB, nullable=True)          # Pre-computed summary for tutor context
+    generator_model = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("guideline_id", "variant_key", name="uq_explanation_guideline_variant"),
+    )
 
 
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model
