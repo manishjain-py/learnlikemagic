@@ -66,7 +66,7 @@ ONLINE (session time)
 | Module | Purpose |
 |--------|---------|
 | `book_ingestion_v2/services/explanation_generator_service.py` | Multi-pass LLM generation of explanation variants |
-| `book_ingestion_v2/repositories/explanation_repository.py` | CRUD for `topic_explanations` table |
+| `shared/repositories/explanation_repository.py` | CRUD for `topic_explanations` table |
 | `book_ingestion_v2/prompts/explanation_generation.txt` | Generation prompt |
 | `book_ingestion_v2/prompts/explanation_critique.txt` | Self-review prompt |
 | `llm-frontend/src/components/ExplanationViewer.tsx` | Card-based explanation UI |
@@ -85,7 +85,7 @@ ONLINE (session time)
 | `tutor/prompts/master_tutor_prompts.py` | `{explanation_context}` section |
 | `tutor/api/sessions.py` | Updated response shapes, card navigation endpoint |
 | `tutor/models/messages.py` | New DTOs for explanation cards |
-| `study_plans/services/generator_service.py` | Annotate explain steps with `explanation_source` |
+| `book_ingestion_v2/models/schemas.py` | Updated `SyncResponse` model |
 | `llm-frontend/src/api.ts` | New types and API functions |
 | `llm-frontend/src/pages/ChatSession.tsx` | Card phase rendering, transition to chat |
 
@@ -104,12 +104,12 @@ CREATE TABLE topic_explanations (
     cards_json JSONB NOT NULL,           -- ordered list of ExplanationCard objects
     summary_json JSONB,                  -- pre-computed summary for tutor context injection
     generator_model VARCHAR,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uq_explanation_guideline_variant UNIQUE (guideline_id, variant_key)
 );
-
-CREATE UNIQUE INDEX idx_topic_explanations_guideline_variant
-    ON topic_explanations (guideline_id, variant_key);
 ```
+
+**Decision: Single constraint mechanism.** The `UniqueConstraint` in the entity definition and the DDL both use the name `uq_explanation_guideline_variant`. `Base.metadata.create_all()` handles creation. The migration function only verifies it exists as a fallback for pre-existing tables — it does not create a separate index. This avoids the duplicate constraint/index issue that arises from mixing `UniqueConstraint` with `CREATE UNIQUE INDEX`.
 
 **Decision: `summary_json` column.** Pre-compute the tutor context summary (card titles + key analogies) at generation time rather than computing it at session time. This avoids parsing `cards_json` during session creation and keeps the read path simple.
 
@@ -155,7 +155,7 @@ teaching_guidelines ──1:N──► topic_explanations (cascade delete)
 
 ### Migration
 
-New function in `db.py`: `_apply_topic_explanations_table()`. Follows existing pattern — uses `Base.metadata.create_all()` for initial table creation, then checks for unique index and adds if missing.
+New function in `db.py`: `_apply_topic_explanations_table()`. The `UniqueConstraint` is defined in the entity and created by `Base.metadata.create_all()`. The migration function only verifies the table and constraint exist — it does not create a separate index.
 
 ---
 
@@ -193,22 +193,17 @@ Add `_apply_topic_explanations_table(db_manager)` to `migrate()` — after exist
 
 ```python
 def _apply_topic_explanations_table(db_manager):
+    """Verify topic_explanations table exists (created by Base.metadata.create_all()).
+
+    The UniqueConstraint on (guideline_id, variant_key) is defined in the entity
+    and created by create_all(). This function only logs verification — no separate
+    index creation to avoid duplicate constraint/index issues.
+    """
     inspector = inspect(db_manager.engine)
-    existing_tables = inspector.get_table_names()
-    if "topic_explanations" not in existing_tables:
-        # Base.metadata.create_all() in migrate() handles creation.
-        # Just ensure unique index exists.
-        pass
     if "topic_explanations" in inspector.get_table_names():
-        constraints = inspector.get_unique_constraints("topic_explanations")
-        constraint_names = {c["name"] for c in constraints}
-        if "uq_explanation_guideline_variant" not in constraint_names:
-            with db_manager.engine.connect() as conn:
-                conn.execute(text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_topic_explanations_guideline_variant "
-                    "ON topic_explanations (guideline_id, variant_key)"
-                ))
-                conn.commit()
+        print("  ✓ topic_explanations table exists")
+    else:
+        print("  ⚠ topic_explanations table not found — will be created by create_all()")
 ```
 
 Add `"explanation_generator"` to `_LLM_CONFIG_SEEDS` list:
@@ -223,7 +218,7 @@ Add `"explanation_generator"` to `_LLM_CONFIG_SEEDS` list:
 
 ### 4.3 Explanation Repository
 
-**New file:** `llm-backend/book_ingestion_v2/repositories/explanation_repository.py`
+**New file:** `llm-backend/shared/repositories/explanation_repository.py`
 
 ```python
 class ExplanationRepository:
@@ -247,7 +242,7 @@ class ExplanationRepository:
         """Quick existence check — used by session service."""
 ```
 
-**Decision: Repository lives in `book_ingestion_v2/repositories/`.** It's written by the ingestion pipeline and read by the tutor session service. The tutor module imports the repository directly (same pattern as how tutor imports `TeachingGuidelineRepository` from `shared/repositories/`). If this coupling feels wrong later, we can move it to `shared/repositories/`.
+**Decision: Repository lives in `shared/repositories/`.** It's written by the ingestion pipeline and read by the tutor session service. This matches the existing pattern — `TeachingGuidelineRepository` is also in `shared/repositories/` and is consumed by both modules. Avoids creating a new cross-module dependency direction (tutor → book_ingestion_v2).
 
 ### 4.4 Explanation Generator Service
 
@@ -302,6 +297,12 @@ class ExplanationGeneratorService:
 4. _build_summary()      → summary_json for tutor context
 5. repo.upsert()         → persist to DB
 ```
+
+**Card validation before storage:**
+- Minimum 3 cards per variant (reject if fewer — topic too thin for cards)
+- Maximum 15 cards per variant (split or summarize if exceeded)
+- Each card must have non-empty `title` and `content`
+- If critique returns `overall_quality: "poor"` after refinement, log a warning and skip storing that variant (don't store known-bad content). The topic falls back to dynamic tutoring for that variant slot.
 
 **LLM configuration:** Uses `reasoning_effort="high"`. Model from `LLMConfig` with `component_key="explanation_generator"`.
 
@@ -376,11 +377,28 @@ def _generate_explanations_for_synced(self, guideline_ids: list[str]) -> dict:
 
 **Decision: Sync is already slow (LLM calls for each topic's curriculum context). Adding explanation generation makes it slower.** Acceptable because sync is an admin-triggered, infrequent operation. We log progress per topic.
 
-### 4.7 Modified: Sync Routes
+**Re-sync recovery (cascade delete risk):** Sync deletes existing guideline rows before recreating them. With `ON DELETE CASCADE`, this wipes all explanations for the chapter. If explanation regeneration then fails for some topics, those topics silently lose their cards. Mitigations:
+1. `SyncResponse.explanation_errors` surfaces failures prominently (see 4.7)
+2. Standalone backfill endpoint allows re-generating explanations without a full re-sync:
 
-**File:** `llm-backend/book_ingestion_v2/api/sync_routes.py`
+```python
+# In sync_routes.py:
+@router.post("/{book_id}/generate-explanations")
+def generate_explanations(book_id: str, chapter_id: str = None, db=Depends(get_db)):
+    """Generate/regenerate explanations for synced guidelines. Does not re-sync topics."""
+    service = ExplanationGeneratorService(db, llm)
+    if chapter_id:
+        result = service.generate_for_chapter(book_id, chapter_id)
+    else:
+        result = service.generate_for_book(book_id)
+    return result
+```
 
-Update `SyncResponse` model to include explanation generation results:
+### 4.7 Modified: Sync Response Model
+
+**File:** `llm-backend/book_ingestion_v2/models/schemas.py` (where `SyncResponse` is defined)
+
+Update `SyncResponse` to include explanation generation results:
 
 ```python
 class SyncResponse(BaseModel):
@@ -391,6 +409,8 @@ class SyncResponse(BaseModel):
     explanation_errors: list[str] = []    # NEW
 ```
 
+**Explanation errors are surfaced prominently** so admins notice when re-sync silently downgrades topics from instant cards back to dynamic generation (due to cascade delete + regeneration failure).
+
 ### 4.8 Session State Changes
 
 **File:** `llm-backend/tutor/models/session_state.py`
@@ -400,6 +420,7 @@ New model:
 ```python
 class CardPhaseState(BaseModel):
     """Tracks card-based explanation phase for pre-computed explanations."""
+    guideline_id: str                     # FK for explanation lookups (NOT topic_id)
     active: bool = True
     current_variant_key: str = "A"
     current_card_idx: int = 0
@@ -408,6 +429,8 @@ class CardPhaseState(BaseModel):
     available_variant_keys: list[str] = [] # ["A", "B", "C"]
     completed: bool = False               # True when student says "clear" or exhausts variants
 ```
+
+**Decision: Store `guideline_id` in `CardPhaseState`.** All explanation lookups use `guideline_id` (not `topic_id`). While `topic_id` happens to equal `guideline_id` in the current `convert_guideline_to_topic()` implementation, relying on that is fragile. Storing `guideline_id` explicitly ensures correct lookups in `switch_explanation_variant()` and `_build_explanation_context()`.
 
 Add to `SessionState`:
 
@@ -431,22 +454,37 @@ class SessionState(BaseModel):
 
 **File:** `llm-backend/tutor/services/session_service.py`
 
+**Audit of `generate_welcome_message()` side effects:** The function is pure — it only calls the LLM and returns `(message, audio_text)`. No state mutations, no logging, no event recording. The important side effects (explanation phase init, `add_message()`, `_persist_session()`, `event_repo.log()`) happen in `create_new_session()` before and after the welcome call. For card phase sessions, we must replicate these surrounding side effects with the pre-computed welcome text.
+
+**What `create_new_session()` does today (in order):**
+1. Validate guideline, build `StudentContext`, load study plan
+2. `convert_guideline_to_topic()`, `create_session()`
+3. If teach_me and first step is "explain": `session.start_explanation(concept, step_id)` ← init explanation tracking
+4. **`generate_welcome_message()`** ← LLM call (this is what we skip)
+5. `session.add_message(create_teacher_message(welcome))` ← add to conversation history
+6. `_persist_session(...)` ← write to DB
+7. `event_repo.log(action="session_created")` ← audit trail
+8. Build `first_turn` dict and return `CreateSessionResponse`
+
+**For card phase, we skip step 3 (no ExplanationPhase init — cards replace it) and step 4 (no LLM call). Steps 5-8 must still happen with the pre-computed welcome text.**
+
 Changes to `create_new_session()`:
 
 ```python
 def create_new_session(self, request, user_id=None):
-    # ... existing: validate guideline, build StudentContext, load study plan ...
-    # ... existing: convert_guideline_to_topic(), create_session() ...
+    # ... existing steps 1-2: validate, build context, load plan, create session ...
 
     # NEW: check for pre-computed explanations
     explanation_repo = ExplanationRepository(self.db)
     explanations = explanation_repo.get_by_guideline_id(guideline.id)
 
-    if explanations and session_state.mode == "teach_me":
-        # Card phase: skip welcome LLM call, return cards
+    if explanations and mode == "teach_me":
+        # Card phase: skip welcome LLM call AND explanation phase init
+        # (cards replace ExplanationPhase — no start_explanation() call)
         variant_a = next((e for e in explanations if e.variant_key == "A"), explanations[0])
 
-        session_state.card_phase = CardPhaseState(
+        session.card_phase = CardPhaseState(
+            guideline_id=guideline.id,
             active=True,
             current_variant_key=variant_a.variant_key,
             current_card_idx=0,
@@ -456,27 +494,45 @@ def create_new_session(self, request, user_id=None):
         )
 
         welcome_text = f"Let's learn about {topic.topic_name}! I'll walk you through it, and then we can talk about any questions."
-        first_turn = Turn(
-            message=welcome_text,
-            audio_text=welcome_text,
-            hints=[],
-            step_idx=0,
-            mastery_score=0.0,
+        audio_text = welcome_text
+
+        # first_turn is a plain dict (matching existing codebase pattern)
+        first_turn = {
+            "message": welcome_text,
+            "audio_text": audio_text,
+            "hints": [],
+            "step_idx": session.current_step,
             # NEW fields:
-            explanation_cards=variant_a.cards_json,
-            session_phase="card_phase",
-            card_phase_state={
+            "explanation_cards": variant_a.cards_json,
+            "session_phase": "card_phase",
+            "card_phase_state": {
                 "current_variant_key": variant_a.variant_key,
                 "current_card_idx": 0,
                 "total_cards": len(variant_a.cards_json),
                 "available_variants": len(explanations),
             },
-        )
+        }
     else:
-        # Existing path: dynamic welcome
-        # ... generate_welcome_message() ...
+        # Existing path: init explanation phase + dynamic welcome
+        if mode == "teach_me":
+            first_step = session.topic.study_plan.get_step(1) if session.topic else None
+            if first_step and first_step.type == "explain":
+                session.start_explanation(first_step.concept, first_step.step_id)
+        welcome_text, audio_text = asyncio.run(self.orchestrator.generate_welcome_message(session))
+        first_turn = {
+            "message": welcome_text,
+            "audio_text": audio_text,
+            "hints": [],
+            "step_idx": session.current_step,
+        }
 
-    # ... persist session, return response ...
+    # Steps 5-8 happen for BOTH paths (card phase and dynamic):
+    session.add_message(create_teacher_message(welcome_text, audio_text=audio_text))
+    self._persist_session(session_id, session, request, user_id=user_id, ...)
+    self.event_repo.log(session_id=session_id, node="welcome",
+                        step_idx=session.current_step,
+                        payload={"action": "session_created", "mode": mode})
+    return CreateSessionResponse(session_id=session_id, first_turn=first_turn, mode=mode)
 ```
 
 New method for variant switching:
@@ -491,7 +547,7 @@ def switch_explanation_variant(self, session_id: str, variant_key: str) -> dict:
         raise ValueError("Not in card phase")
 
     explanation = ExplanationRepository(self.db).get_variant(
-        state.topic.topic_id, variant_key
+        state.card_phase.guideline_id, variant_key
     )
     if not explanation:
         raise ValueError(f"Variant {variant_key} not found")
@@ -520,8 +576,9 @@ def complete_card_phase(self, session_id: str, action: str) -> dict:
 
     if action == "clear":
         state.complete_card_phase()
-        # Initialize explanation tracking for the post-card interactive phase
-        # (skips ExplanationPhase, moves to next step type)
+        # Mark all "explain" steps at the start of the study plan as complete
+        # (cards covered the explanation). Advance current_step to the first
+        # non-explain step (check/practice).
         self._advance_past_explanation_steps(state)
         self._persist_session_state(session, state)
 
@@ -542,12 +599,22 @@ def complete_card_phase(self, session_id: str, action: str) -> dict:
         if unseen:
             return self.switch_explanation_variant(session_id, unseen[0])
         else:
-            # All variants exhausted → fall back to dynamic tutor
+            # All variants exhausted → fall back to dynamic ExplanationPhase
             state.complete_card_phase()
+            self._init_dynamic_fallback(state)
             self._persist_session_state(session, state)
+
+            # Generate a dynamic welcome for the fallback
+            welcome, audio_text = asyncio.run(
+                self.orchestrator.generate_welcome_message(state)
+            )
+            state.add_message(create_teacher_message(welcome, audio_text=audio_text))
+            self._persist_session_state(session, state)
+
             return {
                 "action": "fallback_dynamic",
-                "message": "Let me try explaining this in a completely different way...",
+                "message": welcome,
+                "audio_text": audio_text,
             }
 ```
 
@@ -562,7 +629,7 @@ def _build_explanation_context(self, state: SessionState) -> str:
     repo = ExplanationRepository(self.db)
     summaries = []
     for variant_key in state.card_phase.variants_shown:
-        explanation = repo.get_variant(state.topic.topic_id, variant_key)
+        explanation = repo.get_variant(state.card_phase.guideline_id, variant_key)
         if explanation and explanation.summary_json:
             s = explanation.summary_json
             summaries.append(
@@ -574,6 +641,95 @@ def _build_explanation_context(self, state: SessionState) -> str:
 
     return "\n".join(summaries)
 ```
+
+**Dynamic fallback initialization** (issue: card phase → ExplanationPhase transition):
+
+```python
+def _init_dynamic_fallback(self, state: SessionState):
+    """Initialize ExplanationPhase for dynamic fallback after all card variants exhausted.
+
+    This enters the existing ExplanationPhase state machine mid-session.
+    The orchestrator's process_turn() will naturally pick up from here.
+    """
+    # Find the first "explain" step in the study plan
+    first_step = state.topic.study_plan.get_step(1) if state.topic else None
+    if first_step and first_step.type == "explain":
+        # Start at "opening" phase — the tutor will generate its own opening
+        # since all pre-computed approaches failed
+        state.start_explanation(first_step.concept, first_step.step_id)
+        # The ExplanationPhase is now at "opening" (not_started → opening)
+        # The orchestrator's _handle_explanation_phase() will advance it
+        # through opening → explaining → informal_check → complete as normal
+    else:
+        # No explain step — just let the tutor proceed normally
+        pass
+```
+
+**`_advance_past_explanation_steps()`** (for "clear" action):
+
+```python
+def _advance_past_explanation_steps(self, state: SessionState):
+    """After successful card phase, skip past explain steps in the study plan.
+
+    Cards covered the explanation, so mark explain steps as done and advance
+    current_step to the first check/practice step.
+    """
+    while state.current_step <= state.topic.study_plan.total_steps:
+        step = state.topic.study_plan.get_step(state.current_step)
+        if step and step.type == "explain":
+            # Mark as covered (add concept to covered set)
+            state.concepts_covered_set.add(step.concept)
+            state.advance_step()
+        else:
+            break  # Found a non-explain step — stop here
+```
+
+**Session resume/refresh during card phase** (issue: complete user journey):
+
+The existing `GET /sessions/{session_id}/replay` endpoint returns full session state including `state_json`. For card-phase sessions:
+
+```python
+# In sessions.py — GET /{session_id}/replay
+@router.get("/{session_id}/replay")
+def get_session_replay(session_id: str, db=Depends(get_db)):
+    session = db.query(Session).get(session_id)
+    state = json.loads(session.state_json)
+
+    # If session is in card phase, include explanation cards for the active variant
+    if state.get("card_phase") and state["card_phase"].get("active"):
+        card_phase = state["card_phase"]
+        repo = ExplanationRepository(db)
+        explanation = repo.get_variant(
+            card_phase["guideline_id"],
+            card_phase["current_variant_key"]
+        )
+        if explanation:
+            state["_replay_explanation_cards"] = explanation.cards_json
+
+    return state
+```
+
+Frontend `ChatSession.tsx` handles this in the deep-link/refresh path:
+
+```typescript
+// In the "else → Deep link / page refresh" branch of useEffect:
+const replay = await getSessionReplay(sessionId);
+if (replay.card_phase?.active && replay._replay_explanation_cards) {
+  setSessionPhase('card_phase');
+  setExplanationCards(replay._replay_explanation_cards);
+  setCurrentCardIdx(replay.card_phase.current_card_idx);
+  setCardPhaseState({
+    current_variant_key: replay.card_phase.current_variant_key,
+    current_card_idx: replay.card_phase.current_card_idx,
+    total_cards: replay.card_phase.total_cards,
+    available_variants: replay.card_phase.available_variant_keys.length,
+  });
+} else {
+  // Existing replay path (card phase completed or never started)
+}
+```
+
+The `POST /sessions/{session_id}/resume` endpoint (for paused sessions) is not affected — card-phase sessions cannot be paused (pause only applies to teach_me sessions that have progressed past the explanation phase). If a card-phase session is abandoned (browser closed), the replay endpoint handles restoration.
 
 ### 4.10 Modified: Orchestrator
 
@@ -679,15 +835,7 @@ class CardPhaseDTO(BaseModel):
     available_variants: int
 ```
 
-Update `Turn` model:
-
-```python
-class Turn(BaseModel):
-    # ... existing fields ...
-    explanation_cards: Optional[list[dict]] = None    # NEW
-    session_phase: Optional[str] = None               # NEW: "card_phase" or "interactive"
-    card_phase_state: Optional[CardPhaseDTO] = None   # NEW
-```
+**Note on `first_turn` construction:** The codebase constructs `first_turn` as a plain Python dict, not a Pydantic model. The new card-phase fields are added as dict keys (see section 4.9). The `Turn` TypeScript interface in `api.ts` is updated to include the new optional fields. No Python `Turn` Pydantic model exists — the response is a dict serialized directly by FastAPI.
 
 ---
 
@@ -883,10 +1031,10 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 | Step | What to Build | Files | Depends On | Testable? |
 |------|---------------|-------|------------|-----------|
 | 1 | `TopicExplanation` entity + migration | `entities.py`, `db.py` | — | Run `migrate()`, verify table created |
-| 2 | `ExplanationRepository` | `book_ingestion_v2/repositories/explanation_repository.py` | Step 1 | Unit test: CRUD operations on `topic_explanations` |
+| 2 | `ExplanationRepository` | `shared/repositories/explanation_repository.py` | Step 1 | Unit test: CRUD operations on `topic_explanations` |
 | 3 | Generation + critique prompts | `book_ingestion_v2/prompts/explanation_generation.txt`, `explanation_critique.txt` | — | Manual review of prompt quality |
 | 4 | `ExplanationGeneratorService` | `book_ingestion_v2/services/explanation_generator_service.py` | Steps 2, 3 | Generate explanations for a test guideline, inspect cards in DB |
-| 5 | Integrate into `TopicSyncService` | `topic_sync_service.py`, `sync_routes.py` | Step 4 | Run sync on a book, verify explanations generated |
+| 5 | Integrate into `TopicSyncService` + backfill endpoint | `topic_sync_service.py`, `sync_routes.py`, `schemas.py` | Step 4 | Run sync on a book, verify explanations generated; run backfill endpoint independently |
 | 6 | `CardPhaseState` model | `session_state.py` | — | Unit test: serialization/deserialization |
 | 7 | `ExplanationCard`, `CardActionRequest`, updated `Turn` DTOs | `messages.py` | — | Unit test: model validation |
 | 8 | Session service changes: card detection, variant switching, phase completion, explanation context | `session_service.py` | Steps 2, 6, 7 | Create session for topic with explanations → verify cards in response, no LLM welcome call |
@@ -916,7 +1064,13 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 | `test_card_action_explain_differently` | Variant switched, cards returned | Mock repo |
 | `test_card_action_all_variants_exhausted` | Falls back to dynamic tutor | Mock repo |
 | `test_explanation_context_summary` | Summary built from shown variants | Mock repo with summary_json |
-| `test_card_phase_state_serialization` | CardPhaseState round-trips through JSON | Pure model test |
+| `test_card_phase_state_serialization` | CardPhaseState round-trips through JSON (including guideline_id) | Pure model test |
+| `test_dynamic_fallback_init` | All variants exhausted → ExplanationPhase initialized at "opening" | Session state assertions |
+| `test_advance_past_explanation_steps` | "Clear" action skips explain steps, lands on first check/practice | Session state + step index |
+| `test_session_replay_card_phase` | Replay endpoint returns explanation cards for active card phase | Mock repo + session state |
+| `test_card_validation_min_cards` | Variant with < 3 cards is not stored | Mock LLM returning 2 cards |
+| `test_card_validation_poor_quality` | Variant with "poor" critique after refine is not stored | Mock LLM |
+| `test_backfill_endpoint` | Generate explanations without re-sync | Mock generator service |
 
 ### Manual verification
 
@@ -926,7 +1080,10 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 4. **Variant switch:** Click "Explain differently" → verify new cards load instantly
 5. **Transition to interactive:** Click "I understand" → verify chat starts, tutor has context
 6. **Fallback:** Start session for topic without explanations → verify existing dynamic flow unchanged
-7. **Session resume:** Refresh page during card phase → verify card position restored
+7. **Session resume:** Refresh page during card phase → verify card position restored, correct variant loaded
+8. **Dynamic fallback:** Exhaust all variants → verify dynamic tutor takes over with ExplanationPhase, welcome generated, existing orchestrator flow works
+9. **Re-sync recovery:** Sync a chapter (wipes explanations), check explanation_errors in response, then run backfill endpoint to regenerate
+10. **Card validation:** Inspect generated cards for minimum count and quality — verify poor-quality variants are skipped
 
 ---
 
@@ -956,6 +1113,7 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | Sync becomes too slow with explanation generation | Medium | Low | Explanation generation errors don't fail sync. Can be made async/background job later. |
+| Re-sync cascade-deletes explanations; regeneration fails | Medium | Medium | Backfill endpoint for recovery. `SyncResponse.explanation_errors` surfaces failures. Admin can re-run backfill without full re-sync. |
 | LLM generates poor-quality cards | Low | Medium | Multi-pass pipeline (critique + refine). Manual review of first few chapters. Principles doc guides prompt. |
 | Card phase UX feels rigid (no mid-card questions) | Low | Medium | V1 trade-off accepted. Cards are short (15-30s). Escape hatch planned for v2. |
 | Large token usage for explanation generation | Low | Low | Offline batch processing, cost amortizes. ~30-50K tokens per topic is acceptable. |
