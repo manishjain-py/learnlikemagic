@@ -2945,8 +2945,11 @@ body {
   height: 100%;
   padding: 1rem;
   gap: 1rem;
+  width: 100%;
   max-width: 640px;
   margin: 0 auto;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .explanation-progress {
@@ -3008,6 +3011,8 @@ body {
   font-size: 1.05rem;
   line-height: 1.6;
   color: #374151;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .explanation-card-content p {
