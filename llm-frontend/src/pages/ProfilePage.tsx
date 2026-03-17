@@ -22,7 +22,6 @@ export default function ProfilePage() {
   const [schoolName, setSchoolName] = useState(user?.school_name || '');
   const [textLang, setTextLang] = useState(user?.text_language_preference || 'en');
   const [audioLang, setAudioLang] = useState(user?.audio_language_preference || 'en');
-  const [focusMode, setFocusMode] = useState(user?.focus_mode !== undefined ? user.focus_mode : true);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +49,6 @@ export default function ProfilePage() {
           school_name: schoolName.trim() || undefined,
           text_language_preference: textLang,
           audio_language_preference: audioLang,
-          focus_mode: focusMode,
         }),
       });
 
@@ -144,27 +142,6 @@ export default function ProfilePage() {
             placeholder="School name"
             disabled={!editing}
           />
-        </div>
-
-        <div className="profile-section">
-          <h3>Learning Preferences</h3>
-          <div className="auth-field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <label style={{ marginBottom: '2px' }}>Focus Mode</label>
-              <p style={{ fontSize: '0.8rem', color: '#666', margin: 0 }}>
-                Show tutor responses in full-screen with audio — great for younger students
-              </p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={focusMode}
-                onChange={(e) => setFocusMode(e.target.checked)}
-                disabled={!editing}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
         </div>
 
         <div className="profile-section">

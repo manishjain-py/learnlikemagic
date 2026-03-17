@@ -17,7 +17,6 @@ import {
   SummaryResponse,
   VisualExplanation as VisualExplanationType,
 } from '../api';
-import ExplanationViewer from '../components/ExplanationViewer';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -35,6 +34,18 @@ interface Message {
 interface ExamQuestionDraft {
   question_idx: number;
   question_text: string;
+}
+
+interface Slide {
+  id: string;
+  type: 'explanation' | 'message';
+  content: string;
+  title?: string;
+  cardType?: string;
+  visual?: string | null;
+  visualExplanation?: VisualExplanationType | null;
+  studentResponse?: string | null;
+  audioText?: string | null;
 }
 
 export default function ChatSession() {
@@ -65,7 +76,6 @@ export default function ChatSession() {
   const [mastery, setMastery] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
-  const [showHints, setShowHints] = useState<number | null>(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
   const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts' | 'exam'>(
@@ -85,13 +95,11 @@ export default function ChatSession() {
   const [replayLoading, setReplayLoading] = useState(false);
   const [examHydrationError, setExamHydrationError] = useState(false);
   const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
-  const [virtualTeacherOn, setVirtualTeacherOn] = useState(false);
-  const [playingMsgIdx, setPlayingMsgIdx] = useState<number | null>(null);
+  const [playingSlideId, setPlayingSlideId] = useState<string | null>(null);
 
   // Card phase state (pre-computed explanations)
   const [sessionPhase, setSessionPhase] = useState<'card_phase' | 'interactive'>('interactive');
   const [explanationCards, setExplanationCards] = useState<ExplanationCard[]>([]);
-  const [currentCardIdx, setCurrentCardIdx] = useState(0);
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
@@ -99,8 +107,6 @@ export default function ChatSession() {
   // Streaming state
   const [streamingText, setStreamingText] = useState('');
   const wsRef = useRef<TutorWebSocket | null>(null);
-  const virtualTeacherOnRef = useRef(virtualTeacherOn);
-  useEffect(() => { virtualTeacherOnRef.current = virtualTeacherOn; }, [virtualTeacherOn]);
   const streamResolveRef = useRef<(() => void) | null>(null);
 
   // Feedback modal state
@@ -114,19 +120,17 @@ export default function ChatSession() {
   const feedbackRecorderRef = useRef<MediaRecorder | null>(null);
   const feedbackChunksRef = useRef<Blob[]>([]);
   const [isFeedbackTranscribing, setIsFeedbackTranscribing] = useState(false);
-  const isSpeaking = playingMsgIdx !== null;
-  const [focusCardIdx, setFocusCardIdx] = useState<number | null>(null);
-  const focusDismissedRef = useRef(false);
-  const lastTapRef = useRef<{ idx: number; time: number }>({ idx: -1, time: 0 });
+  const isSpeaking = playingSlideId !== null;
+  const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
   const focusTrackRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const focusSwipeStartX = useRef(0);
   const focusSwipeStartY = useRef(0);
   const focusSwipeDir = useRef<'h' | 'v' | null>(null);
-  const prevFocusCardsLen = useRef(0);
+  const prevSlidesLen = useRef(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -136,40 +140,67 @@ export default function ChatSession() {
   const chapter = params.chapter || '';
   const topic = params.topic || '';
 
-  // Derive focus carousel cards: each card = tutor message + optional student reply
-  const focusCards = useMemo(() => {
-    const cards: { tutorMsg: Message; tutorIdx: number; studentMsg: Message | null }[] = [];
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i].role === 'teacher') {
-        const next = (i + 1 < messages.length && messages[i + 1].role === 'student')
-          ? messages[i + 1] : null;
-        cards.push({ tutorMsg: messages[i], tutorIdx: i, studentMsg: next });
-      }
-    }
-    return cards;
-  }, [messages]);
-
-  // Auto-advance carousel when new cards appear
-  useEffect(() => {
-    if (focusCardIdx === null || focusDismissedRef.current) return;
-    const prev = prevFocusCardsLen.current;
-    prevFocusCardsLen.current = focusCards.length;
-    if (focusCards.length > prev && prev > 0) {
-      // Only auto-advance if user was on the last card
-      if (focusCardIdx === prev - 1) {
-        setFocusCardIdx(focusCards.length - 1);
-        // Auto-play TTS for new card
-        const newCard = focusCards[focusCards.length - 1];
-        if (newCard && (user?.focus_mode !== false) && !virtualTeacherOn) {
-          playTeacherAudio(newCard.tutorMsg.audioText || newCard.tutorMsg.content, newCard.tutorIdx);
+  // Derive unified carousel slides from explanation cards or messages
+  const carouselSlides = useMemo(() => {
+    const slides: Slide[] = [];
+    if (sessionPhase === 'card_phase') {
+      explanationCards.forEach((card, i) => {
+        slides.push({
+          id: `card-${i}`,
+          type: 'explanation',
+          content: card.content,
+          title: card.title,
+          cardType: card.card_type,
+          visual: card.visual,
+          audioText: card.content,
+        });
+      });
+    } else {
+      for (let i = 0; i < messages.length; i++) {
+        if (messages[i].role === 'teacher') {
+          const next = (i + 1 < messages.length && messages[i + 1].role === 'student')
+            ? messages[i + 1] : null;
+          slides.push({
+            id: `msg-${i}`,
+            type: 'message',
+            content: messages[i].content,
+            visualExplanation: messages[i].visualExplanation,
+            studentResponse: next?.content || null,
+            audioText: messages[i].audioText,
+          });
         }
       }
     }
-  }, [focusCards.length]);
+    // Append provisional streaming slide
+    if (streamingText && sessionPhase === 'interactive') {
+      slides.push({
+        id: 'streaming',
+        type: 'message',
+        content: streamingText,
+      });
+    }
+    return slides;
+  }, [sessionPhase, explanationCards, messages, streamingText]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // Auto-advance carousel when new slides appear
+  useEffect(() => {
+    if (sessionMode === 'exam' || isComplete) return;
+    const prev = prevSlidesLen.current;
+    prevSlidesLen.current = carouselSlides.length;
+    if (carouselSlides.length > prev && prev > 0) {
+      // Only auto-advance if user was on the last slide
+      if (currentSlideIdx === prev - 1) {
+        const newIdx = carouselSlides.length - 1;
+        setCurrentSlideIdx(newIdx);
+        // Auto-play TTS for new slide (skip streaming slide)
+        const newSlide = carouselSlides[newIdx];
+        if (newSlide && newSlide.id !== 'streaming') {
+          playTeacherAudio(newSlide.audioText || newSlide.content, newSlide.id);
+        }
+      }
+    }
+  }, [carouselSlides.length]);
+
 
   const hydrateExamState = (state: any) => {
     if (!state?.exam_questions) return;
@@ -220,7 +251,6 @@ export default function ChatSession() {
       .finally(() => setReplayLoading(false));
   };
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
   useEffect(() => { examEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeExamQuestionIdx, examDraftAnswers]);
 
   useEffect(() => {
@@ -266,16 +296,16 @@ export default function ChatSession() {
         hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
       }
 
-      // Auto-play first turn in virtual teacher mode
-      if (virtualTeacherOn && locState.firstTurn.message) {
-        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
-      }
-      // Auto-open focus carousel on first turn (skip during card phase — ExplanationViewer handles it)
-      if ((user?.focus_mode !== false) && !virtualTeacherOn && locState.firstTurn.session_phase !== 'card_phase') {
-        setFocusCardIdx(0);
-        prevFocusCardsLen.current = 1;
-        focusDismissedRef.current = false;
-        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 0);
+      // Auto-play TTS for first slide
+      if (locState.firstTurn.session_phase === 'card_phase') {
+        const firstCard = locState.firstTurn.explanation_cards?.[0];
+        if (firstCard) {
+          prevSlidesLen.current = locState.firstTurn.explanation_cards!.length;
+          playTeacherAudio(firstCard.content, 'card-0');
+        }
+      } else {
+        prevSlidesLen.current = 1;
+        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 'msg-0');
       }
     } else if (locState?.conversationHistory) {
       // Resumed session
@@ -324,14 +354,15 @@ export default function ChatSession() {
 
           // Hydrate card phase if active
           if (state.card_phase?.active && state._replay_explanation_cards) {
-            const savedPos = localStorage.getItem(`card-pos-${sessionId}`);
-            const cardIdx = savedPos ? parseInt(savedPos, 10) : 0;
+            const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
+            const slideIdx = savedPos ? parseInt(savedPos, 10) : 0;
             setSessionPhase('card_phase');
             setExplanationCards(state._replay_explanation_cards);
-            setCurrentCardIdx(cardIdx);
+            setCurrentSlideIdx(slideIdx);
+            prevSlidesLen.current = state._replay_explanation_cards.length;
             setCardPhaseState({
               current_variant_key: state.card_phase.current_variant_key,
-              current_card_idx: cardIdx,
+              current_card_idx: slideIdx,
               total_cards: state.card_phase.total_cards,
               available_variants: state.card_phase.available_variant_keys?.length || 0,
             });
@@ -395,10 +426,7 @@ export default function ChatSession() {
         ]);
         setLoading(false);
 
-        // Auto-play TTS in virtual teacher mode (use ref to avoid stale closure)
-        if (virtualTeacherOnRef.current && message) {
-          playTeacherAudio(audioText || message);
-        }
+        // Auto-play TTS is handled by the auto-advance effect
 
         // Resolve the pending send promise
         streamResolveRef.current?.();
@@ -526,12 +554,7 @@ export default function ChatSession() {
       setStepIdx(response.next_turn.step_idx);
       setMastery(response.next_turn.mastery_score);
 
-      // Auto-play TTS in virtual teacher mode
-      if (virtualTeacherOn && response.next_turn.message) {
-        playTeacherAudio(response.next_turn.audio_text || response.next_turn.message);
-      }
-
-      // Focus carousel auto-advance is handled by the useEffect watching focusCards.length
+      // Auto-play TTS is handled by the auto-advance effect
 
       // Update concepts discussed for clarify_doubts mode
       if (response.next_turn.concepts_discussed) {
@@ -641,10 +664,6 @@ export default function ChatSession() {
     }
   };
 
-  const toggleHints = (index: number) => {
-    setShowHints(showHints === index ? null : index);
-  };
-
   const handleBack = () => {
     if (subject && chapter && topic) {
       navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
@@ -714,7 +733,7 @@ export default function ChatSession() {
     return audioRef.current;
   };
 
-  const playTeacherAudio = async (text: string, msgIdx?: number) => {
+  const playTeacherAudio = async (text: string, slideId?: string) => {
     try {
       const audio = getOrCreateAudio();
       // Stop any currently playing audio
@@ -726,13 +745,13 @@ export default function ChatSession() {
       const audioBlob = await synthesizeSpeech(text, audioLang);
       const url = URL.createObjectURL(audioBlob);
       audio.src = url;
-      audio.onended = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };
-      audio.onerror = () => { setPlayingMsgIdx(null); URL.revokeObjectURL(url); };
+      audio.onended = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); };
+      audio.onerror = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); };
       await audio.play();
-      setPlayingMsgIdx(msgIdx ?? -1);
+      setPlayingSlideId(slideId ?? null);
     } catch (err) {
       console.error('TTS playback failed:', err);
-      setPlayingMsgIdx(null);
+      setPlayingSlideId(null);
     }
   };
 
@@ -745,31 +764,7 @@ export default function ChatSession() {
       }
       audio.src = '';
     }
-    setPlayingMsgIdx(null);
-  };
-
-  const handleTeacherDoubleTap = (idx: number) => {
-    const now = Date.now();
-    if (lastTapRef.current.idx === idx && now - lastTapRef.current.time < 300) {
-      const cardIdx = focusCards.findIndex((c) => c.tutorIdx === idx);
-      if (cardIdx >= 0) {
-        setFocusCardIdx(cardIdx);
-        focusDismissedRef.current = false;
-        prevFocusCardsLen.current = focusCards.length;
-        if ((user?.focus_mode !== false) && messages[idx]) {
-          playTeacherAudio(messages[idx].audioText || messages[idx].content, idx);
-        }
-      }
-      lastTapRef.current = { idx: -1, time: 0 };
-    } else {
-      lastTapRef.current = { idx, time: now };
-    }
-  };
-
-  const closeFocusCard = () => {
-    setFocusCardIdx(null);
-    focusDismissedRef.current = true;
-    stopAudio();
+    setPlayingSlideId(null);
   };
 
   const handleFeedbackSubmit = async (action: 'continue' | 'restart') => {
@@ -846,6 +841,8 @@ export default function ChatSession() {
     }
   };
 
+  const getContainerWidth = () => containerRef.current?.clientWidth || window.innerWidth;
+
   const handleFocusSwipeStart = (e: React.TouchEvent) => {
     focusSwipeStartX.current = e.touches[0].clientX;
     focusSwipeStartY.current = e.touches[0].clientY;
@@ -863,28 +860,35 @@ export default function ChatSession() {
       focusSwipeDir.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
     }
 
-    if (focusSwipeDir.current === 'h' && focusCardIdx !== null) {
-      const baseOffset = -(focusCardIdx * window.innerWidth);
+    if (focusSwipeDir.current === 'h') {
+      const w = getContainerWidth();
+      const pxOffset = -(currentSlideIdx * w) + dx;
       if (focusTrackRef.current) {
-        focusTrackRef.current.style.transform = `translateX(${baseOffset + dx}px)`;
+        focusTrackRef.current.style.transform = `translateX(${pxOffset}px)`;
       }
     }
   };
 
   const handleFocusSwipeEnd = (e: React.TouchEvent) => {
-    let newIdx = focusCardIdx;
-    if (focusSwipeDir.current === 'h' && focusCardIdx !== null) {
+    let newIdx = currentSlideIdx;
+    if (focusSwipeDir.current === 'h') {
       const dx = e.changedTouches[0].clientX - focusSwipeStartX.current;
-      if (dx > 80 && focusCardIdx > 0) {
-        newIdx = focusCardIdx - 1;
-      } else if (dx < -80 && focusCardIdx < focusCards.length - 1) {
-        newIdx = focusCardIdx + 1;
+      if (dx > 80 && currentSlideIdx > 0) {
+        newIdx = currentSlideIdx - 1;
+      } else if (dx < -80 && currentSlideIdx < carouselSlides.length - 1) {
+        newIdx = currentSlideIdx + 1;
       }
-      if (newIdx !== focusCardIdx) setFocusCardIdx(newIdx);
+      if (newIdx !== currentSlideIdx) {
+        setCurrentSlideIdx(newIdx);
+        // Persist position for card phase
+        if (sessionPhase === 'card_phase' && sessionId) {
+          localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
+        }
+      }
     }
-    if (focusTrackRef.current && newIdx !== null) {
+    if (focusTrackRef.current) {
       focusTrackRef.current.style.transition = 'transform 0.3s ease-out';
-      focusTrackRef.current.style.transform = `translateX(${-(newIdx * window.innerWidth)}px)`;
+      focusTrackRef.current.style.transform = `translateX(${-(newIdx * 100)}%)`;
     }
     focusSwipeDir.current = null;
   };
@@ -898,17 +902,23 @@ export default function ChatSession() {
 
       if (result.action === 'transition_to_interactive') {
         setSessionPhase('interactive');
+        const teacherCount = messages.filter(m => m.role === 'teacher').length;
         setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
-        localStorage.removeItem(`card-pos-${sessionId}`);
+        setCurrentSlideIdx(teacherCount); // index of the new slide
+        prevSlidesLen.current = teacherCount + 1;
+        localStorage.removeItem(`slide-pos-${sessionId}`);
       } else if (result.action === 'switch_variant' && result.cards) {
         setExplanationCards(result.cards);
-        setCurrentCardIdx(0);
+        setCurrentSlideIdx(0);
         setVariantsShown(prev => prev + 1);
-        localStorage.setItem(`card-pos-${sessionId}`, '0');
+        localStorage.setItem(`slide-pos-${sessionId}`, '0');
       } else if (result.action === 'fallback_dynamic') {
         setSessionPhase('interactive');
+        const teacherCount = messages.filter(m => m.role === 'teacher').length;
         setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
-        localStorage.removeItem(`card-pos-${sessionId}`);
+        setCurrentSlideIdx(teacherCount);
+        prevSlidesLen.current = teacherCount + 1;
+        localStorage.removeItem(`slide-pos-${sessionId}`);
       }
     } catch (err: any) {
       console.error('Card action failed:', err);
@@ -959,30 +969,36 @@ export default function ChatSession() {
                 Feedback
               </button>
             )}
-            {sessionId && sessionMode !== 'exam' && (
-              <button
-                onClick={() => {
-                  const next = !virtualTeacherOn;
-                  setVirtualTeacherOn(next);
-                  if (next) {
-                    const audio = getOrCreateAudio();
-                    audio.play().catch(() => {});
-                    audio.pause();
-                    const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
-                    if (lastTeacher?.content) {
-                      playTeacherAudio(lastTeacher.audioText || lastTeacher.content);
+            {sessionId && sessionMode !== 'exam' && !isComplete && carouselSlides.length > 0 && (
+              <>
+                <button
+                  className={`focus-audio-btn${playingSlideId === carouselSlides[currentSlideIdx]?.id ? ' playing' : ''}`}
+                  onClick={() => {
+                    const slide = carouselSlides[currentSlideIdx];
+                    if (!slide) return;
+                    if (playingSlideId === slide.id) {
+                      stopAudio();
+                    } else {
+                      playTeacherAudio(slide.audioText || slide.content, slide.id);
                     }
-                  } else if (audioRef.current) {
-                    audioRef.current.pause();
-                    audioRef.current = null;
-                    setPlayingMsgIdx(null);
-                  }
-                }}
-                className="nav-action-btn"
-                title={virtualTeacherOn ? 'Text Mode' : 'Virtual Teacher'}
-              >
-                {virtualTeacherOn ? 'Text' : 'VT'}
-              </button>
+                  }}
+                  aria-label={playingSlideId === carouselSlides[currentSlideIdx]?.id ? 'Stop audio' : 'Play audio'}
+                >
+                  {playingSlideId === carouselSlides[currentSlideIdx]?.id ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="5" width="4" height="14" rx="1" />
+                      <rect x="14" y="5" width="4" height="14" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                  )}
+                </button>
+                <span className="focus-counter">{currentSlideIdx + 1}/{carouselSlides.length}</span>
+              </>
             )}
             {sessionId && (
               <button
@@ -1040,334 +1056,7 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {sessionPhase === 'card_phase' && explanationCards.length > 0 ? (
-            <ExplanationViewer
-              cards={explanationCards}
-              currentIdx={currentCardIdx}
-              onNext={() => {
-                const next = Math.min(currentCardIdx + 1, explanationCards.length - 1);
-                setCurrentCardIdx(next);
-                localStorage.setItem(`card-pos-${sessionId}`, String(next));
-              }}
-              onPrevious={() => {
-                const prev = Math.max(currentCardIdx - 1, 0);
-                setCurrentCardIdx(prev);
-                localStorage.setItem(`card-pos-${sessionId}`, String(prev));
-              }}
-              onClear={() => handleCardAction('clear')}
-              onExplainDifferently={() => handleCardAction('explain_differently')}
-              availableVariants={cardPhaseState?.available_variants ?? 0}
-              variantsShown={variantsShown}
-              loading={cardActionLoading}
-            />
-          ) : sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? (
-            <div className="virtual-teacher-view">
-              {/* Card content */}
-              <div className="explanation-card">
-                {messages.length > 0 && (() => {
-                  const lastTeacher = messages.filter((m) => m.role === 'teacher').slice(-1)[0];
-                  const lastTeacherMsg = lastTeacher?.content || '';
-                  return lastTeacherMsg ? (
-                    <>
-                      <div className="explanation-card-content">
-                        <ReactMarkdown>{lastTeacherMsg}</ReactMarkdown>
-                      </div>
-                      {lastTeacher?.visualExplanation && (
-                        <VisualExplanationComponent visual={lastTeacher.visualExplanation} />
-                      )}
-                    </>
-                  ) : null;
-                })()}
-              </div>
-
-              {/* Typing indicator or input area */}
-              {loading ? (
-                <div className="vt-typing-indicator">
-                  <div className="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                </div>
-              ) : !isSpeaking ? (
-                <div className="vt-input-area">
-                  <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
-                    <input
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                      disabled={loading || isTranscribing}
-                      className="input-field"
-                      data-testid="chat-input"
-                    />
-                    <button
-                      type="button"
-                      onClick={toggleRecording}
-                      disabled={loading || isTranscribing}
-                      className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                      data-testid="mic-button"
-                      title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                    >
-                      {isTranscribing ? (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M12 6v6l4 2" />
-                        </svg>
-                      ) : (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                          <line x1="12" y1="19" x2="12" y2="23" />
-                          <line x1="8" y1="23" x2="16" y2="23" />
-                        </svg>
-                      )}
-                    </button>
-                    <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label="Send">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="19" x2="12" y2="5" />
-                        <polyline points="5 12 12 5 19 12" />
-                      </svg>
-                    </button>
-                  </form>
-                </div>
-              ) : null}
-            </div>
-          ) : sessionMode !== 'exam' ? (
-          <div className="messages">
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`message ${msg.role}${msg.role === 'teacher' && msg.visualExplanation ? ' has-visual' : ''}`}
-                {...(msg.role === 'teacher' ? { 'data-testid': 'teacher-message', onClick: () => handleTeacherDoubleTap(idx) } : {})}
-              >
-                <div className="message-content">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                </div>
-                {msg.role === 'teacher' && msg.visualExplanation && (
-                  <VisualExplanationComponent visual={msg.visualExplanation} />
-                )}
-                {msg.role === 'teacher' && (
-                  <button
-                    className={`audio-play-btn${playingMsgIdx === idx ? ' playing' : ''}`}
-                    onClick={() => {
-                      if (playingMsgIdx === idx) {
-                        stopAudio();
-                      } else {
-                        playTeacherAudio(msg.audioText || msg.content, idx);
-                      }
-                    }}
-                    title={playingMsgIdx === idx ? 'Stop audio' : 'Play audio'}
-                    aria-label={playingMsgIdx === idx ? 'Stop audio' : 'Play audio'}
-                  >
-                    {playingMsgIdx === idx ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
-                    )}
-                  </button>
-                )}
-                {msg.hints && msg.hints.length > 0 && (
-                  <div className="hints-container">
-                    <button
-                      className="hints-toggle"
-                      onClick={() => toggleHints(idx)}
-                    >
-                      {showHints === idx ? '\u25BC' : '\u25B6'} Hints
-                    </button>
-                    {showHints === idx && (
-                      <ul className="hints">
-                        {msg.hints.map((hint, hintIdx) => (
-                          <li key={hintIdx}>{hint}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            {streamingText && (
-              <div className="message teacher streaming">
-                <div className="message-content">
-                  <ReactMarkdown>{streamingText}</ReactMarkdown>
-                </div>
-              </div>
-            )}
-            {loading && !streamingText && (
-              <div className="message teacher loading">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-          ) : null}
-
-          {sessionPhase === 'card_phase' ? null : sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
-            <>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
-                  ← Back
-                </button>
-              </div>
-              {sessionMode === 'exam' ? (() => {
-                const allAnswered = examQuestions.length > 0 && examQuestions.every((q) => (examDraftAnswers[q.question_idx] || '').trim());
-                return (
-                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-                  {examHydrationError && examQuestions.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-                      <p style={{ color: '#e53e3e', marginBottom: '12px' }}>Failed to load exam questions. Please try again.</p>
-                      <button type="button" onClick={retryExamHydration} disabled={replayLoading} className="send-button">
-                        {replayLoading ? 'Loading...' : 'Retry'}
-                      </button>
-                    </div>
-                  ) : (
-                  <>
-                    {/* Answered questions list */}
-                    {examQuestions.map((q, i) => {
-                      const answer = (examDraftAnswers[q.question_idx] || '').trim();
-                      const isActive = i === activeExamQuestionIdx && !allAnswered;
-
-                      // Not yet revealed
-                      if (!answer && !isActive) return null;
-
-                      // Completed Q&A pair
-                      if (answer && !isActive) return (
-                        <div key={q.question_idx} style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
-                          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                            <span style={{ color: '#4a5568' }}>{answer}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setActiveExamQuestionIdx(i); setInput(answer); setExamDraftAnswers(prev => { const next = {...prev}; delete next[q.question_idx]; return next; }); }}
-                              style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.8rem', padding: 0, whiteSpace: 'nowrap' }}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </div>
-                      );
-
-                      // Active question with input
-                      return (
-                        <div key={q.question_idx} style={{ marginBottom: '10px' }}>
-                          <div style={{ background: '#fff', border: '2px solid #667eea', borderRadius: '10px', padding: '12px 14px' }}>
-                            <div style={{ fontWeight: 600, marginBottom: '10px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
-                            <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit} style={{ margin: '0' }}>
-                              <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                                disabled={loading || isTranscribing}
-                                className="input-field"
-                                data-testid="chat-input"
-                                autoFocus
-                              />
-                              <button
-                                type="button"
-                                onClick={toggleRecording}
-                                disabled={loading || isTranscribing}
-                                className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                                data-testid="mic-button"
-                                title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                              >
-                                {isTranscribing ? (
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 6v6l4 2" />
-                                  </svg>
-                                ) : (
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                  </svg>
-                                )}
-                              </button>
-                              <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label={i < examQuestions.length - 1 ? 'Next' : 'Save'}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                  <line x1="12" y1="19" x2="12" y2="5" />
-                                  <polyline points="5 12 12 5 19 12" />
-                                </svg>
-                              </button>
-                            </form>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Submit button when all answered */}
-                    {allAnswered && (
-                      <div style={{ marginTop: '4px' }}>
-                        {examSubmitError && (
-                          <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginBottom: '8px' }}>{examSubmitError}</p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleSubmitAllExamAnswers}
-                          disabled={loading}
-                          className="send-button-wide"
-                        >
-                          {loading ? 'Submitting...' : 'Submit All Answers'}
-                        </button>
-                      </div>
-                    )}
-                    <div ref={examEndRef} />
-                  </>
-                  )}
-                </div>
-                );
-              })() : (
-                <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                    disabled={loading || isTranscribing}
-                    className="input-field"
-                    data-testid="chat-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={toggleRecording}
-                    disabled={loading || isTranscribing}
-                    className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                    data-testid="mic-button"
-                    title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                    aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                  >
-                    {isTranscribing ? (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 6v6l4 2" />
-                      </svg>
-                    ) : (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                        <line x1="12" y1="19" x2="12" y2="23" />
-                        <line x1="8" y1="23" x2="16" y2="23" />
-                      </svg>
-                    )}
-                  </button>
-                  <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label="Send">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="19" x2="12" y2="5" />
-                      <polyline points="5 12 12 5 19 12" />
-                    </svg>
-                  </button>
-                </form>
-              )}
-            </>
-          ) : (
+          {isComplete ? (
             <div className="summary-card" data-testid="session-summary" style={{ flex: 1, overflowY: 'auto' }}>
               {sessionMode === 'clarify_doubts' ? (
                 <>
@@ -1492,6 +1181,286 @@ export default function ChatSession() {
                 </>
               )}
             </div>
+          ) : sessionMode === 'exam' ? (
+            <>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
+                  ← Back
+                </button>
+              </div>
+              {(() => {
+                const allAnswered = examQuestions.length > 0 && examQuestions.every((q) => (examDraftAnswers[q.question_idx] || '').trim());
+                return (
+                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+                  {examHydrationError && examQuestions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                      <p style={{ color: '#e53e3e', marginBottom: '12px' }}>Failed to load exam questions. Please try again.</p>
+                      <button type="button" onClick={retryExamHydration} disabled={replayLoading} className="send-button">
+                        {replayLoading ? 'Loading...' : 'Retry'}
+                      </button>
+                    </div>
+                  ) : (
+                  <>
+                    {/* Answered questions list */}
+                    {examQuestions.map((q, i) => {
+                      const answer = (examDraftAnswers[q.question_idx] || '').trim();
+                      const isActive = i === activeExamQuestionIdx && !allAnswered;
+
+                      // Not yet revealed
+                      if (!answer && !isActive) return null;
+
+                      // Completed Q&A pair
+                      if (answer && !isActive) return (
+                        <div key={q.question_idx} style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <span style={{ color: '#4a5568' }}>{answer}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setActiveExamQuestionIdx(i); setInput(answer); setExamDraftAnswers(prev => { const next = {...prev}; delete next[q.question_idx]; return next; }); }}
+                              style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.8rem', padding: 0, whiteSpace: 'nowrap' }}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      );
+
+                      // Active question with input
+                      return (
+                        <div key={q.question_idx} style={{ marginBottom: '10px' }}>
+                          <div style={{ background: '#fff', border: '2px solid #667eea', borderRadius: '10px', padding: '12px 14px' }}>
+                            <div style={{ fontWeight: 600, marginBottom: '10px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
+                            <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit} style={{ margin: '0' }}>
+                              <input
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                                disabled={loading || isTranscribing}
+                                className="input-field"
+                                data-testid="chat-input"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={toggleRecording}
+                                disabled={loading || isTranscribing}
+                                className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                                data-testid="mic-button"
+                                title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                              >
+                                {isTranscribing ? (
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="M12 6v6l4 2" />
+                                  </svg>
+                                ) : (
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                  </svg>
+                                )}
+                              </button>
+                              <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label={i < examQuestions.length - 1 ? 'Next' : 'Save'}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <line x1="12" y1="19" x2="12" y2="5" />
+                                  <polyline points="5 12 12 5 19 12" />
+                                </svg>
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Submit button when all answered */}
+                    {allAnswered && (
+                      <div style={{ marginTop: '4px' }}>
+                        {examSubmitError && (
+                          <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginBottom: '8px' }}>{examSubmitError}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleSubmitAllExamAnswers}
+                          disabled={loading}
+                          className="send-button-wide"
+                        >
+                          {loading ? 'Submitting...' : 'Submit All Answers'}
+                        </button>
+                      </div>
+                    )}
+                    <div ref={examEndRef} />
+                  </>
+                  )}
+                </div>
+                );
+              })()}
+            </>
+          ) : (
+            /* Unified carousel for non-exam modes */
+            <div className="focus-carousel" ref={containerRef}>
+              <div
+                className="focus-track-container"
+                onTouchStart={handleFocusSwipeStart}
+                onTouchMove={handleFocusSwipeMove}
+                onTouchEnd={handleFocusSwipeEnd}
+              >
+                <div
+                  ref={focusTrackRef}
+                  className="focus-track"
+                  style={{
+                    transform: `translateX(${-(currentSlideIdx * 100)}%)`,
+                    transition: 'transform 0.3s ease-out',
+                  }}
+                >
+                  {carouselSlides.map((slide, i) => (
+                    <div key={slide.id} className="focus-slide">
+                      {slide.type === 'explanation' ? (
+                        <>
+                          <div className="explanation-card-type">
+                            <span>
+                              {slide.cardType === 'concept' ? 'Concept' :
+                               slide.cardType === 'example' ? 'Example' :
+                               slide.cardType === 'visual' ? 'Visual' :
+                               slide.cardType === 'analogy' ? 'Analogy' :
+                               slide.cardType === 'summary' ? 'Summary' : slide.cardType}
+                            </span>
+                          </div>
+                          {slide.title && <h2 className="explanation-card-title">{slide.title}</h2>}
+                          <div className="focus-tutor-msg">
+                            <ReactMarkdown>{slide.content}</ReactMarkdown>
+                          </div>
+                          {slide.visual && (
+                            <pre className="explanation-card-visual">{slide.visual}</pre>
+                          )}
+                          {slide.visualExplanation && (
+                            <VisualExplanationComponent visual={slide.visualExplanation} />
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="focus-tutor-msg">
+                            <ReactMarkdown>{slide.content}</ReactMarkdown>
+                            {slide.visualExplanation && (
+                              <VisualExplanationComponent visual={slide.visualExplanation} />
+                            )}
+                          </div>
+                          {slide.studentResponse && (
+                            <div className="focus-student-msg">
+                              <div className="focus-student-label">You</div>
+                              {slide.studentResponse}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {/* Typing indicator on last slide */}
+                      {i === carouselSlides.length - 1 && loading && !streamingText && (
+                        <div className="focus-typing">
+                          <div className="typing-indicator">
+                            <span></span><span></span><span></span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bottom action area */}
+              {sessionPhase === 'card_phase' ? (
+                currentSlideIdx < carouselSlides.length - 1 ? (
+                  <div className="explanation-nav">
+                    <button
+                      className="explanation-nav-btn secondary"
+                      onClick={() => {
+                        const prev = Math.max(currentSlideIdx - 1, 0);
+                        setCurrentSlideIdx(prev);
+                        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(prev));
+                      }}
+                      disabled={currentSlideIdx === 0}
+                    >
+                      Back
+                    </button>
+                    <button
+                      className="explanation-nav-btn primary"
+                      onClick={() => {
+                        const next = Math.min(currentSlideIdx + 1, carouselSlides.length - 1);
+                        setCurrentSlideIdx(next);
+                        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
+                      }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : (
+                  <div className="explanation-nav">
+                    <div className="explanation-actions">
+                      <button
+                        className="explanation-nav-btn primary"
+                        onClick={() => handleCardAction('clear')}
+                        disabled={cardActionLoading}
+                      >
+                        I understand!
+                      </button>
+                      <button
+                        className="explanation-nav-btn secondary"
+                        onClick={() => handleCardAction('explain_differently')}
+                        disabled={cardActionLoading}
+                      >
+                        {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still don't get it" : "Explain differently"}
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : !loading ? (
+                <div className="focus-input-area">
+                  <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
+                      disabled={loading || isTranscribing}
+                      className="input-field"
+                      data-testid="chat-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleRecording}
+                      disabled={loading || isTranscribing}
+                      className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
+                      data-testid="mic-button"
+                      title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+                      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                    >
+                      {isTranscribing ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 6v6l4 2" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" y1="19" x2="12" y2="23" />
+                          <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                    <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label="Send">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="19" x2="12" y2="5" />
+                        <polyline points="5 12 12 5 19 12" />
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
       </div>
@@ -1501,137 +1470,6 @@ export default function ChatSession() {
           isOpen={devToolsOpen}
           onClose={() => setDevToolsOpen(false)}
         />
-      )}
-
-      {/* Focus Carousel — hidden during card phase (ExplanationViewer owns the view) */}
-      {focusCardIdx !== null && focusCards.length > 0 && sessionMode !== 'exam' && !virtualTeacherOn && !isComplete && sessionPhase !== 'card_phase' && (
-        <div className="focus-carousel">
-          <div className="focus-header">
-            <button className="focus-exit-btn" onClick={closeFocusCard} aria-label="Exit focus mode">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-            {(subject || chapter || topic) && (
-              <span className="focus-breadcrumb">
-                {subject && <>{subject}</>}
-                {chapter && <> &rsaquo; {chapter}</>}
-                {topic && <> &rsaquo; {topic}</>}
-              </span>
-            )}
-            <div className="focus-header-right">
-              <button
-                className={`focus-audio-btn${playingMsgIdx === focusCards[focusCardIdx]?.tutorIdx ? ' playing' : ''}`}
-                onClick={() => {
-                  const card = focusCards[focusCardIdx!];
-                  if (!card) return;
-                  if (playingMsgIdx === card.tutorIdx) {
-                    stopAudio();
-                  } else {
-                    playTeacherAudio(card.tutorMsg.audioText || card.tutorMsg.content, card.tutorIdx);
-                  }
-                }}
-                aria-label={playingMsgIdx === focusCards[focusCardIdx]?.tutorIdx ? 'Stop audio' : 'Play audio'}
-              >
-                {playingMsgIdx === focusCards[focusCardIdx]?.tutorIdx ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="5" width="4" height="14" rx="1" />
-                    <rect x="14" y="5" width="4" height="14" rx="1" />
-                  </svg>
-                ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                  </svg>
-                )}
-              </button>
-              <span className="focus-counter">{(focusCardIdx ?? 0) + 1}/{focusCards.length}</span>
-            </div>
-          </div>
-          <div
-            className="focus-track-container"
-            onTouchStart={handleFocusSwipeStart}
-            onTouchMove={handleFocusSwipeMove}
-            onTouchEnd={handleFocusSwipeEnd}
-          >
-            <div
-              ref={focusTrackRef}
-              className="focus-track"
-              style={{
-                transform: `translateX(${-(focusCardIdx * window.innerWidth)}px)`,
-                transition: 'transform 0.3s ease-out',
-              }}
-            >
-              {focusCards.map((card, ci) => (
-                <div key={ci} className="focus-slide">
-                  <div className="focus-tutor-msg">
-                    <ReactMarkdown>{card.tutorMsg.content}</ReactMarkdown>
-                    {card.tutorMsg.visualExplanation && (
-                      <VisualExplanationComponent visual={card.tutorMsg.visualExplanation} />
-                    )}
-                  </div>
-                  {card.studentMsg && (
-                    <div className="focus-student-msg">
-                      <div className="focus-student-label">You</div>
-                      {card.studentMsg.content}
-                    </div>
-                  )}
-                  {ci === focusCards.length - 1 && loading && (
-                    <div className="focus-typing">
-                      <div className="typing-indicator">
-                        <span></span><span></span><span></span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-          {focusCardIdx === focusCards.length - 1 && !loading && !isComplete && (
-            <div className="focus-input-area">
-              <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                  disabled={loading || isTranscribing}
-                  className="input-field"
-                />
-                <button
-                  type="button"
-                  onClick={toggleRecording}
-                  disabled={loading || isTranscribing}
-                  className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                  title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                  aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                >
-                  {isTranscribing ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 6v6l4 2" />
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                      <line x1="12" y1="19" x2="12" y2="23" />
-                      <line x1="8" y1="23" x2="16" y2="23" />
-                    </svg>
-                  )}
-                </button>
-                <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" aria-label="Send">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="19" x2="12" y2="5" />
-                    <polyline points="5 12 12 5 19 12" />
-                  </svg>
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
       )}
       {/* Feedback Modal */}
       {feedbackModalOpen && (
