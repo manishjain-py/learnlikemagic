@@ -270,7 +270,7 @@ export default function ChatSession() {
       if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
         setSessionPhase('card_phase');
         setExplanationCards(locState.firstTurn.explanation_cards);
-        setCurrentCardIdx(0);
+        setCurrentSlideIdx(0);
         setCardPhaseState(locState.firstTurn.card_phase_state || null);
         setVariantsShown(1);
       }
