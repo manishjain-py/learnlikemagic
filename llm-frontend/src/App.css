@@ -3025,10 +3025,10 @@ body {
   border-radius: 8px;
   padding: 1rem;
   font-family: 'Courier New', monospace;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre;
+  overflow-x: auto;
   color: #1f2937;
 }
 
