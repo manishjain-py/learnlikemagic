@@ -77,16 +77,26 @@ class ClaudeCodeAdapter:
         #   --dangerously-skip-permissions  — no interactive permission prompts
         #   --no-session-persistence        — don't save sessions to disk
         #   --max-turns 1                   — single turn, no agentic loops
+        cmd = [
+            "claude",
+            "-p", full_prompt,
+            "--output-format", "json",
+            "--dangerously-skip-permissions",
+            "--no-session-persistence",
+            "--max-turns", "1",
+        ]
+
+        # Map reasoning_effort to Claude CLI --effort flag
+        if reasoning_effort and reasoning_effort != "none":
+            # CLI accepts: low, medium, high, max
+            # LLMService passes: none, low, medium, high, xhigh
+            effort_map = {"low": "low", "medium": "medium", "high": "high", "xhigh": "max"}
+            cli_effort = effort_map.get(reasoning_effort, reasoning_effort)
+            cmd.extend(["--effort", cli_effort])
+
         try:
             result = subprocess.run(
-                [
-                    "claude",
-                    "-p", full_prompt,
-                    "--output-format", "json",
-                    "--dangerously-skip-permissions",
-                    "--no-session-persistence",
-                    "--max-turns", "1",
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
