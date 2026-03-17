@@ -16,16 +16,25 @@ Define TOC (manual or OCR+LLM from TOC page images)
 Upload Pages (per chapter, inline OCR on each page)
     |
     v
-Topic Extraction (3-page chunks, LLM extracts topics + guidelines)
+Chapter Topic Planning (LLM reads full chapter, produces topic skeleton)
     |
     v
-Chapter Finalization (LLM merges, dedup, names, sequences topics)
+Topic Extraction (3-page chunks, LLM assigns content to planned topics — guided mode)
+    |
+    v
+Chapter Finalization (LLM merges, dedup, names, sequences, generates curriculum context)
+    |
+    v
+Deviation Check (if extraction deviates from plan → needs_review, otherwise → completed)
     |
     v
 Sync to teaching_guidelines table
     |
     v
-Study Plan Generation (LLM generate -> review -> improve loop)
+Pre-Computed Explanations (LLM generate → critique → refine per variant)
+    |
+    v
+Study Plan Generation (LLM generate → review → improve loop)
 ```
 
 All book ingestion code lives under `book_ingestion_v2/`. Study plan generation is a separate module under `study_plans/`. The ingestion quality evaluation pipeline lives under `autoresearch/book_ingestion_quality/`.
@@ -36,9 +45,9 @@ All book ingestion code lives under `book_ingestion_v2/`. Study plan generation 
 
 ```
 toc_defined -> upload_in_progress -> upload_complete -> topic_extraction -> chapter_finalizing -> chapter_completed
-                                         |                   |                     |
-                                         v                   v                     v
-                                       failed <----------  failed <----------    failed
+                                         |                   |                     |                     |
+                                         v                   v                     v                     v
+                                       failed <----------  failed <----------    failed            needs_review
 ```
 
 | Status | Meaning |
@@ -49,6 +58,7 @@ toc_defined -> upload_in_progress -> upload_complete -> topic_extraction -> chap
 | `topic_extraction` | Chunk-by-chunk extraction running in background |
 | `chapter_finalizing` | Consolidation/finalization running |
 | `chapter_completed` | All topics extracted and finalized |
+| `needs_review` | Finalization complete but extraction deviated significantly from the topic plan (see deviation tracking below) |
 | `failed` | Processing failed (retryable) |
 
 Defined in `book_ingestion_v2/constants.py` as `ChapterStatus` enum.
@@ -144,6 +154,21 @@ OCR model is determined by the `book_ingestion_v2` LLM config entry.
 
 ## Topic Extraction Pipeline
 
+### Chapter Topic Planning
+
+**Service:** `book_ingestion_v2/services/chapter_topic_planner_service.py` (`ChapterTopicPlannerService`)
+
+Runs before chunk extraction to produce a topic skeleton for the entire chapter:
+- Loads all OCR'd page texts for the chapter
+- Sends the full chapter content to LLM with `chapter_topic_planning.txt` prompt template
+- Uses `reasoning_effort="high"` since this makes structural decisions for the entire chapter
+- Returns `ChapterTopicPlan`: a list of `PlannedTopic` items (topic_key, title, description, page_start, page_end, sequence_order, grouping_rationale, dependency_notes) plus chapter_overview and planning_rationale
+- Retries up to 3 times with exponential backoff on failure
+
+The plan is saved to the `ChapterProcessingJob.planned_topics_json` column and to S3 at `{run_base}/planned_topics.json` for audit.
+
+If planning fails, extraction falls back to **unguided mode** where topics are discovered freely without a skeleton.
+
 ### Chunk Builder
 
 **File:** `book_ingestion_v2/utils/chunk_builder.py`
@@ -164,10 +189,15 @@ Configured via `CHUNK_SIZE=3` and `CHUNK_STRIDE=3` in `constants.py`.
 
 **Service:** `book_ingestion_v2/services/chunk_processor_service.py` (`ChunkProcessorService`)
 
-Processes a single chunk through the LLM:
-- Builds prompt from `chunk_topic_extraction.txt` template with book metadata, chapter metadata, current page texts, previous page context, chapter summary so far, and existing topics
+Processes a single chunk through the LLM. Supports two modes:
+
+- **Guided mode** (when `planned_topics` provided): The prompt includes the planned topic skeleton and instructs the LLM to assign content to planned topics. The LLM sets `topic_assignment="planned"` or `"unplanned"` on each `TopicUpdate`.
+- **Unguided mode** (when `planned_topics` is `None`): The LLM discovers topics freely, using the `is_new` flag to indicate new topics.
+
+Details:
+- Builds prompt from `chunk_topic_extraction.txt` template with book metadata, chapter metadata, current page texts, previous page context, chapter summary so far, existing topics, and (in guided mode) planned topics section
 - Calls LLM with `json_mode=True` and `reasoning_effort="none"` for speed
-- Parses response into `ChunkExtractionOutput`: updated chapter summary + list of `TopicUpdate` (topic_key, title, is_new flag, guidelines for this chunk)
+- Parses response into `ChunkExtractionOutput`: updated chapter summary + list of `TopicUpdate` (topic_key, title, topic_assignment, guidelines_for_this_chunk, reasoning, unplanned_justification)
 - Retries up to 3 times with exponential backoff (1s, 2s, 4s) on failure
 - Tracks prompt hash for audit
 
@@ -175,42 +205,48 @@ Processes a single chunk through the LLM:
 
 **Service:** `book_ingestion_v2/services/topic_extraction_orchestrator.py` (`TopicExtractionOrchestrator`)
 
-Runs the full extraction + auto-finalization pipeline for a chapter:
+Runs the full planning + extraction + auto-finalization pipeline for a chapter:
 
 1. Acquires job lock, builds LLM service from DB config
-2. Transitions chapter to `topic_extraction` status
-3. Builds chunk windows from OCR'd pages
-4. For each chunk:
+2. **Plans chapter topics** (new step): calls `ChapterTopicPlannerService.plan_chapter()` with all OCR'd page texts. On success, saves the plan to the job record and S3. On failure, falls back to unguided mode.
+3. Pre-populates the topic accumulator map from planned topics (empty guidelines, page ranges from the plan)
+4. Transitions chapter to `topic_extraction` status
+5. Builds chunk windows from OCR'd pages
+6. For each chunk:
    - Downloads page texts from S3
    - Builds `ChunkInput` with accumulated state (summary, topic map)
-   - Calls `ChunkProcessorService.process_chunk()`
-   - Updates running state: chapter summary, topic accumulator map
+   - Calls `ChunkProcessorService.process_chunk(planned_topics=...)` -- passes the plan for guided mode
+   - Updates running state: chapter summary, topic accumulator map. For unplanned topics, creates new accumulator entries; for planned topics, appends to existing ones.
    - Saves chunk input/output/state to S3 at `books/{book_id}/chapters/{ch_num}/processing/runs/{job_id}/chunks/{idx}/`
    - Creates `ChapterChunk` DB record
-5. Persists all accumulated topics as draft `ChapterTopic` records
-6. Auto-triggers finalization if no chunks failed
-7. On failure: marks chapter as `failed` with `retryable` error type
+7. Persists all accumulated topics as draft `ChapterTopic` records, tagging each as `topic_assignment="planned"` or `"unplanned"`
+8. Auto-triggers finalization if no chunks failed, passing planned topics to the finalization service
+9. Sets final chapter status from `FinalizationResult.final_status` (`chapter_completed` or `needs_review`)
+10. On failure: marks chapter as `failed` with `retryable` error type
 
-**Resume support:** When `resume=True`, finds the last completed chunk from the previous job, restores topic map and chapter summary from DB/chunk records, and resumes from the next chunk index.
+**Resume support:** When `resume=True`, finds the last completed chunk from the previous job, restores topic map and chapter summary from DB/chunk records, restores the planned topics from the previous job's `planned_topics_json`, and resumes from the next chunk index.
 
 ### Chapter Finalization
 
 **Service:** `book_ingestion_v2/services/chapter_finalization_service.py` (`ChapterFinalizationService`)
 
-Runs after all chunks are extracted:
+Runs after all chunks are extracted. Returns a `FinalizationResult` with the consolidation output, final status, deviation ratio, and deviation count.
 
 1. Loads draft topics from DB
 2. **LLM-merges** each topic's per-chunk appended guidelines into unified text using `topic_guidelines_merge.txt` prompt
-3. **Consolidation LLM call** using `chapter_consolidation.txt` prompt -- analyzes all topics and produces:
+3. **Consolidation LLM call** using `chapter_consolidation.txt` prompt -- analyzes all topics (and planned topics, if available) and produces:
    - `merge_actions`: topics that should be combined (dedup)
    - `topic_updates`: new keys, titles, summaries, sequence orders for each topic
    - `chapter_display_name` and `final_chapter_summary`
+   - `deviations`: list of `ConsolidationDeviation` items (deviation_type: split, merge, unplanned_ratified, unplanned_merged; topic_key; affected_target_key; reasoning)
 4. Executes merge actions (appends guidelines, expands page ranges, deletes merged-from topics)
 5. Applies topic updates (new key, title, summary, sequence_order, status -> `final`)
-6. Updates chapter with display_name and summary
-7. Saves final output to S3 at `books/{book_id}/chapters/{ch_num}/output/`
+6. **Deviation check** (plan-guided mode only): computes the ratio of planned topics affected by deviations. If deviation count >= `PLANNING_DEVIATION_MIN_COUNT` (3) and ratio > `PLANNING_DEVIATION_THRESHOLD` (30%), sets `final_status = "needs_review"` instead of `"chapter_completed"`.
+7. **Curriculum context generation**: calls LLM with `curriculum_context_generation.txt` prompt to generate `prior_topics_context` for each topic (except the first). Each topic gets a summary of what earlier topics in the chapter cover, enabling curriculum continuity in the tutor. Non-fatal: topics are usable without context.
+8. Updates chapter with display_name and summary
+9. Saves final output to S3 at `books/{book_id}/chapters/{ch_num}/output/`
 
-**Refinalization:** The `/refinalize` endpoint re-runs only the finalization step on existing topics without re-extracting from pages. Requires chapter status `chapter_completed` or `failed`.
+**Refinalization:** The `/refinalize` endpoint re-runs only the finalization step on existing topics without re-extracting from pages. Requires chapter status `chapter_completed`, `needs_review`, or `failed`. Restores planned topics from the most recent job record if available.
 
 ---
 
@@ -231,9 +267,9 @@ State machine: `pending -> running -> completed | completed_with_errors | failed
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `.../chapters/{chapter_id}/process` | Start topic extraction + finalization |
+| POST | `.../chapters/{chapter_id}/process` | Start topic extraction + finalization (also accepts resume from `needs_review`) |
 | POST | `.../chapters/{chapter_id}/reprocess` | Wipe topics, reprocess from scratch |
-| POST | `.../chapters/{chapter_id}/refinalize` | Re-run finalization only |
+| POST | `.../chapters/{chapter_id}/refinalize` | Re-run finalization only (accepts `chapter_completed`, `needs_review`, or `failed`) |
 | GET | `.../chapters/{chapter_id}/jobs/latest` | Get latest job status |
 | GET | `.../chapters/{chapter_id}/jobs/{job_id}` | Get specific job |
 | GET | `.../chapters/{chapter_id}/topics` | Get extracted topics |
@@ -253,18 +289,65 @@ For each topic, creates a `TeachingGuideline` record with:
 - Curriculum fields: country, board, grade, subject (from book)
 - Chapter fields: chapter_title (display_name or chapter_title), chapter_key, chapter_summary, chapter_sequence
 - Topic fields: topic_key, topic_title, topic_summary, topic_sequence, guidelines (full text), source pages
+- `prior_topics_context`: curriculum context from finalization (what earlier topics cover)
 - Status: `approved` / review_status: `APPROVED`
 - book_id reference for traceability
 
-Sync is idempotent: deletes existing guidelines for the chapter before creating new ones.
+Sync accepts chapters with status `chapter_completed` or `needs_review`.
+
+Sync is idempotent: deletes existing guidelines for the chapter before creating new ones. This also cascade-deletes any pre-computed explanations linked to those guidelines.
 
 **API routes:** `book_ingestion_v2/api/sync_routes.py`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/admin/v2/books/{book_id}/sync` | Sync all completed chapters |
+| POST | `/admin/v2/books/{book_id}/sync` | Sync all completed/needs_review chapters |
 | POST | `/admin/v2/books/{book_id}/chapters/{chapter_id}/sync` | Sync single chapter |
+| POST | `/admin/v2/books/{book_id}/generate-explanations` | Generate pre-computed explanations (optional `chapter_id` query param) |
 | GET | `/admin/v2/books/{book_id}/results` | Book-level results overview |
+
+---
+
+## Pre-Computed Explanations
+
+**Service:** `book_ingestion_v2/services/explanation_generator_service.py` (`ExplanationGeneratorService`)
+
+Generates multi-variant explanation cards for synced teaching guidelines. Runs after sync, independently triggered from the admin dashboard.
+
+### Variant Configurations
+
+| Key | Label | Approach |
+|-----|-------|----------|
+| A | Everyday Analogies | Analogy-driven with real-world examples |
+| B | Visual Walkthrough | Diagram-heavy with visual step-by-step |
+| C | Step-by-Step Procedure | Procedural walkthrough |
+
+### Pipeline Per Variant
+
+1. **Generate**: Calls LLM with `explanation_generation.txt` prompt using `reasoning_effort="high"` and strict JSON schema (`GenerationOutput`). Produces 3-15 `ExplanationCardOutput` items (card_idx, card_type, title, content, optional visual) plus `ExplanationSummaryOutput` (key_analogies, key_examples). Includes `prior_topics_context` when available.
+2. **Critique**: Calls LLM with `explanation_critique.txt` prompt using `reasoning_effort="medium"`. Returns `CritiqueOutput`: list of issues (card_idx, principle_violated, description), suggestions, and `overall_quality` (good / needs_improvement / poor).
+3. **Refine** (if `needs_improvement`): Re-generates cards incorporating critique feedback. Uses same strict schema.
+4. **Discard** (if `poor`): Variant is skipped entirely.
+5. **Store**: Upserts to `topic_explanations` table via `ExplanationRepository`.
+
+### Entry Points
+
+- `generate_for_guideline(guideline, variant_keys)`: single guideline, optional subset of variants
+- `generate_for_chapter(book_id, chapter_id)`: all synced guidelines in a chapter, skips topics with existing explanations
+- `generate_for_book(book_id)`: all synced guidelines in a book
+
+### Storage
+
+Each explanation is stored as a `TopicExplanation` row with:
+- `guideline_id` (FK to `teaching_guidelines`, cascade delete)
+- `variant_key` ("A", "B", "C")
+- `variant_label` (human-readable name)
+- `cards_json` (JSONB array of card objects)
+- `summary_json` (JSONB with card_titles, key_analogies, key_examples, approach_label)
+- `generator_model` (audit)
+- Unique constraint on (guideline_id, variant_key)
+
+**LLM config key:** `explanation_generator` (separate from `book_ingestion_v2` key)
 
 ---
 
@@ -384,13 +467,14 @@ Study plans are generated from teaching guidelines and used by the tutor during 
 | `books` | Shared book table (V2 uses `pipeline_version=2`) |
 | `book_chapters` | TOC entries and chapter state |
 | `chapter_pages` | Individual pages with OCR tracking |
-| `chapter_processing_jobs` | Background job tracking with heartbeat |
+| `chapter_processing_jobs` | Background job tracking with heartbeat; also stores `planned_topics_json` |
 | `chapter_chunks` | Per-chunk processing audit trail |
-| `chapter_topics` | Extracted topics (draft -> consolidated -> final) |
-| `teaching_guidelines` | Synced guidelines used by the tutor |
+| `chapter_topics` | Extracted topics (draft -> consolidated -> final); includes `prior_topics_context` and `topic_assignment` |
+| `teaching_guidelines` | Synced guidelines used by the tutor; includes `prior_topics_context` |
+| `topic_explanations` | Pre-computed explanation card variants per guideline (JSONB cards, cascade-deleted with guideline) |
 | `study_plans` | Generated study plans (per-guideline, optionally per-user) |
 
-See `book_ingestion_v2/models/database.py` for V2 ORM models. Study plan ORM model is in `shared/models/entities.py` (`StudyPlan`).
+See `book_ingestion_v2/models/database.py` for V2 ORM models. `TopicExplanation` and `StudyPlan` ORM models are in `shared/models/entities.py`.
 
 ---
 
@@ -410,6 +494,7 @@ books/{book_id}/
     processing/
       runs/{job_id}/
         config.json
+        planned_topics.json          # Topic skeleton from planning phase
         chunks/{idx}/
           input.json
           output.json
@@ -418,7 +503,7 @@ books/{book_id}/
         consolidation_output.json
     output/
       chapter_result.json
-      topics/{topic_key}.json
+      topics/{topic_key}.json       # Includes prior_topics_context and topic_assignment
 ```
 
 ---
@@ -427,10 +512,14 @@ books/{book_id}/
 
 | Prompt File | Used By | Purpose |
 |-------------|---------|---------|
+| `prompts/chapter_topic_planning.txt` | `ChapterTopicPlannerService` | Plan chapter-level topic skeleton before extraction |
 | `prompts/toc_extraction.txt` | `TOCExtractionService` | Extract structured TOC from OCR text |
-| `prompts/chunk_topic_extraction.txt` | `ChunkProcessorService` | Extract/update topics from a 3-page chunk |
+| `prompts/chunk_topic_extraction.txt` | `ChunkProcessorService` | Extract/update topics from a 3-page chunk (supports guided and unguided mode) |
 | `prompts/topic_guidelines_merge.txt` | `ChapterFinalizationService` | Merge per-chunk appended guidelines into unified text |
-| `prompts/chapter_consolidation.txt` | `ChapterFinalizationService` | Dedup, rename, sequence, summarize topics |
+| `prompts/chapter_consolidation.txt` | `ChapterFinalizationService` | Dedup, rename, sequence, summarize topics; track deviations from plan |
+| `prompts/curriculum_context_generation.txt` | `ChapterFinalizationService` | Generate prior-topics context for curriculum continuity |
+| `prompts/explanation_generation.txt` | `ExplanationGeneratorService` | Generate explanation cards for a teaching variant |
+| `prompts/explanation_critique.txt` | `ExplanationGeneratorService` | Critique explanation cards against quality principles |
 | `shared/prompts/templates/study_plan_generator.txt` | `StudyPlanGeneratorService` | Generate 3-5 step study plan from guideline |
 | `shared/prompts/templates/study_plan_reviewer.txt` | `StudyPlanReviewerService` | Review plan quality, approve/reject with feedback |
 | `shared/prompts/templates/study_plan_improve.txt` | `StudyPlanOrchestrator._improve_plan()` | Revise rejected plan using reviewer feedback |
@@ -440,11 +529,15 @@ books/{book_id}/
 
 ## Configuration
 
-- **LLM config key:** `book_ingestion_v2` -- stored in the `llm_configs` table, specifies provider and model_id
+- **LLM config key (extraction):** `book_ingestion_v2` -- stored in the `llm_configs` table, specifies provider and model_id for OCR, planning, chunk extraction, and finalization
+- **LLM config key (explanations):** `explanation_generator` -- separate config for explanation generation
 - **Chunk size:** 3 pages (`CHUNK_SIZE` in `constants.py`)
 - **Chunk retries:** 3 attempts with exponential backoff (`CHUNK_MAX_RETRIES`)
 - **Heartbeat stale threshold:** 600 seconds / 10 minutes (`HEARTBEAT_STALE_THRESHOLD`)
 - **Pending stale threshold:** 300 seconds / 5 minutes (`PENDING_STALE_THRESHOLD`)
+- **Planning deviation threshold:** 30% (`PLANNING_DEVIATION_THRESHOLD` in `constants.py`)
+- **Planning deviation min count:** 3 (`PLANNING_DEVIATION_MIN_COUNT` in `constants.py`)
+- **Explanation card limits:** 3 minimum, 15 maximum (`MIN_CARDS`, `MAX_CARDS` in `explanation_generator_service.py`)
 - **Max TOC images:** 5
 - **Max TOC image size:** 10 MB
 - **Max page image size:** 20 MB
@@ -458,8 +551,8 @@ books/{book_id}/
 |-----------|------|---------|
 | BookV2Dashboard | `llm-frontend/src/features/admin/pages/BookV2Dashboard.tsx` | Lists all V2 books with card grid |
 | CreateBookV2 | `llm-frontend/src/features/admin/pages/CreateBookV2.tsx` | Two-step wizard: metadata form, then TOC editor (upload or manual) |
-| BookV2Detail | `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` | Book detail with expandable chapters, page grid, upload, processing, topics, sync |
-| Admin API V2 | `llm-frontend/src/features/admin/api/adminApiV2.ts` | TypeScript API client for all V2 endpoints |
+| BookV2Detail | `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` | Book detail with expandable chapters, page grid, upload, processing, topics, sync, explanation generation |
+| Admin API V2 | `llm-frontend/src/features/admin/api/adminApiV2.ts` | TypeScript API client for all V2 endpoints (includes `generateExplanations()`) |
 
 **Routes:** `/admin/books-v2`, `/admin/books-v2/new`, `/admin/books-v2/{id}`
 
@@ -471,26 +564,29 @@ books/{book_id}/
 
 | File | Purpose |
 |------|---------|
-| `book_ingestion_v2/constants.py` | Enums (ChapterStatus, V2JobType, V2JobStatus, OCRStatus, TopicStatus), config constants |
-| `book_ingestion_v2/models/database.py` | ORM models: BookChapter, ChapterPage, ChapterProcessingJob, ChapterChunk, ChapterTopic |
-| `book_ingestion_v2/models/schemas.py` | Pydantic request/response schemas for all V2 APIs |
-| `book_ingestion_v2/models/processing_models.py` | Internal pipeline models: ChunkWindow, TopicAccumulator, RunningState, ChunkInput, ChunkExtractionOutput, ConsolidationOutput |
+| `book_ingestion_v2/constants.py` | Enums (ChapterStatus, V2JobType, V2JobStatus, OCRStatus, TopicStatus), config constants, deviation thresholds |
+| `book_ingestion_v2/models/database.py` | ORM models: BookChapter, ChapterPage, ChapterProcessingJob (with `planned_topics_json`), ChapterChunk, ChapterTopic (with `prior_topics_context`, `topic_assignment`) |
+| `book_ingestion_v2/models/schemas.py` | Pydantic request/response schemas for all V2 APIs including `ExplanationGenerationResponse` |
+| `book_ingestion_v2/models/processing_models.py` | Internal pipeline models: ChunkWindow, TopicAccumulator, RunningState, PlannedTopic, ChapterTopicPlan, ChunkInput, ChunkExtractionOutput (TopicUpdate with `topic_assignment`, `reasoning`, `unplanned_justification`), ConsolidationOutput (with `deviations`), ConsolidationDeviation, FinalizationResult, TopicCurriculumContext, CurriculumContextOutput |
 | `book_ingestion_v2/services/book_v2_service.py` | Book CRUD with cascade delete |
 | `book_ingestion_v2/services/toc_extraction_service.py` | OCR + LLM TOC extraction |
 | `book_ingestion_v2/services/toc_service.py` | TOC CRUD with validation |
 | `book_ingestion_v2/services/chapter_page_service.py` | Page upload with inline OCR |
-| `book_ingestion_v2/services/chunk_processor_service.py` | Single-chunk LLM processing |
-| `book_ingestion_v2/services/topic_extraction_orchestrator.py` | Full extraction + finalization pipeline |
-| `book_ingestion_v2/services/chapter_finalization_service.py` | Topic merge, consolidation, sequencing |
-| `book_ingestion_v2/services/topic_sync_service.py` | Sync to teaching_guidelines table |
+| `book_ingestion_v2/services/chapter_topic_planner_service.py` | Chapter-level topic planning before extraction (produces topic skeleton) |
+| `book_ingestion_v2/services/chunk_processor_service.py` | Single-chunk LLM processing (guided and unguided modes) |
+| `book_ingestion_v2/services/topic_extraction_orchestrator.py` | Full planning + extraction + finalization pipeline |
+| `book_ingestion_v2/services/chapter_finalization_service.py` | Topic merge, consolidation, sequencing, deviation tracking, curriculum context generation |
+| `book_ingestion_v2/services/topic_sync_service.py` | Sync to teaching_guidelines table (includes `prior_topics_context`) |
+| `book_ingestion_v2/services/explanation_generator_service.py` | Multi-variant pre-computed explanation generation (generate -> critique -> refine per variant) |
 | `book_ingestion_v2/services/chapter_job_service.py` | Job lock, progress tracking, stale detection |
 | `book_ingestion_v2/utils/chunk_builder.py` | Build 3-page processing windows |
 | `book_ingestion_v2/repositories/` | Data access: chapter_repository, chapter_page_repository, chunk_repository, topic_repository, processing_job_repository |
 | `shared/repositories/book_repository.py` | Shared book data access |
+| `shared/repositories/explanation_repository.py` | CRUD for `topic_explanations` table (written by ingestion pipeline, read by tutor) |
+| `shared/models/entities.py` | ORM models: `StudyPlan` (study_plans table), `TopicExplanation` (topic_explanations table, JSONB cards) |
 | `study_plans/services/orchestrator.py` | Study plan generate -> review -> improve loop |
 | `study_plans/services/generator_service.py` | LLM-based study plan generation with strict schema; also defines `StudyPlan`, `StudyPlanStep`, `StudyPlanMetadata` Pydantic models |
 | `study_plans/services/reviewer_service.py` | LLM-based study plan quality review |
-| `shared/models/entities.py` (StudyPlan class) | ORM model for `study_plans` table (guideline_id, user_id, plan_json, version) |
 | `shared/prompts/templates/study_plan_*.txt` | Prompts for study plan generation, review, and improvement |
 | `autoresearch/book_ingestion_quality/run_experiment.py` | CLI entry point for ingestion evaluation (runs extraction + LLM judge) |
 | `autoresearch/book_ingestion_quality/evaluation/evaluator.py` | LLM judge that scores extraction quality across 3 dimensions |

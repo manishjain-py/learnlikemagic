@@ -12,8 +12,10 @@ The report card is **deterministic only** — it shows coverage completion perce
 |--------|------|------|----------------|-------------|
 | `GET` | `/sessions/report-card` | Required | `ReportCardResponse` | Full student report card with coverage and exam data |
 | `GET` | `/sessions/topic-progress` | Required | `TopicProgressResponse` | Lightweight progress map for curriculum picker badges |
+| `GET` | `/sessions/guideline/{guideline_id}` | Required | `GuidelineSessionsResponse` | List sessions for a topic (mode selection, past exams, resume detection) |
+| `GET` | `/sessions/{session_id}/exam-review` | Required | `ExamReviewResponse` | Detailed question-by-question review of a completed exam |
 
-Both endpoints are in `tutor/api/sessions.py` and delegate to `ReportCardService`.
+All endpoints are in `tutor/api/sessions.py`. The first two delegate to `ReportCardService`; the guideline sessions endpoint delegates to `SessionRepository.list_by_guideline()`; the exam-review endpoint parses `SessionState` directly.
 
 ---
 
@@ -177,6 +179,91 @@ Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.t
 }
 ```
 
+### GuidelineSessionsResponse (`/sessions/guideline/{guideline_id}`)
+
+```python
+{
+    "sessions": [
+        {
+            "session_id": str,
+            "mode": str,                      # "teach_me" | "clarify_doubts" | "exam"
+            "created_at": str | None,         # ISO datetime
+            "is_complete": bool,
+            "exam_finished": bool,
+            "exam_score": float | None,       # sum of fractional scores (exam only)
+            "exam_total": int | None,         # number of questions (exam only)
+            "exam_answered": int | None,      # questions with a student answer (exam only)
+            "coverage": float | None          # 0-100% (teach_me only)
+        }
+    ]
+}
+```
+
+### ExamReviewResponse (`/sessions/{session_id}/exam-review`)
+
+```python
+{
+    "session_id": str,
+    "created_at": str | None,
+    "exam_feedback": {                        # null if no feedback generated
+        "score": float,
+        "total": int,
+        "percentage": float,
+        "strengths": [str],
+        "weak_areas": [str],
+        "patterns": [str],
+        "next_steps": [str]
+    } | None,
+    "questions": [
+        {
+            "question_idx": int,
+            "question_text": str,
+            "student_answer": str | None,
+            "expected_answer": str,
+            "result": str | None,
+            "score": float,                   # 0-1 fractional
+            "marks_rationale": str,
+            "feedback": str,
+            "concept": str,
+            "difficulty": str
+        }
+    ]
+}
+```
+
+---
+
+## Guideline Sessions
+
+The `/sessions/guideline/{guideline_id}` endpoint powers the mode selection screen. It returns all sessions for a user+guideline pair, with optional `mode` and `finished_only` query parameters.
+
+`SessionRepository.list_by_guideline()` computes per-session metadata from `state_json`:
+
+| Field | Logic |
+|-------|-------|
+| `is_complete` | teach_me: `current_step > total_steps`; exam: `exam_finished`; clarify_doubts: `clarify_complete` |
+| `exam_score` | Sum of fractional `score` fields across `exam_questions` (rounded to 1 decimal) |
+| `exam_answered` | Count of questions with a non-empty `student_answer` |
+| `coverage` | teach_me only: `\|concepts_covered_set & plan_concepts\| / \|plan_concepts\| * 100` |
+
+The frontend (`ModeSelection.tsx`) uses this to:
+- Detect incomplete teach_me sessions with progress (`coverage > 0`) and show "Continue Lesson"
+- Detect incomplete exams with progress (`exam_answered > 0`) and show "Resume Exam"
+- List completed exams in an expandable "Past Exams" section with date and score
+
+---
+
+## Exam Review
+
+The `/sessions/{session_id}/exam-review` endpoint returns a question-by-question breakdown of a completed exam. It requires the session to be an exam with `exam_finished == True`.
+
+Each question includes:
+- `question_text`, `student_answer`, `expected_answer`
+- `score` (0-1 fractional), `result`, `marks_rationale`
+- `feedback`, `concept`, `difficulty`
+
+The response also includes `exam_feedback` (when available) with `score`, `total`, `percentage`, `strengths`, `weak_areas`, `patterns`, and `next_steps`.
+
 ---
 
 ## Topic Hierarchy Resolution
@@ -191,12 +278,29 @@ The service resolves chapter/topic names from two sources, in order of preferenc
 
 ## Frontend
 
+### Report Card Page
+
 **File:** `llm-frontend/src/pages/ReportCardPage.tsx`
 
 The frontend calls `getReportCard()` which hits `/sessions/report-card`. It renders the report card in two views:
 
 - **Overview** — Title "My Report Card", session/chapter counts, subject cards grid
-- **Subject Detail** — Back navigation, expandable chapter/topic tree with coverage bars, exam scores, last-studied dates, and "Practice Again" buttons
+- **Subject Detail** — Back navigation, chapter/topic tree with coverage bars, exam scores, last-studied dates, and "Practice Again" buttons
+
+### Mode Selection (Past Exams and Resume)
+
+**File:** `llm-frontend/src/components/ModeSelection.tsx`
+
+On the topic mode selection screen, `ModeSelection` calls `getGuidelineSessions()` on mount. It uses the returned session list to:
+- Show "Continue Lesson" if an incomplete teach_me session with coverage > 0 exists
+- Show "Resume Exam" if an incomplete exam with answered questions exists
+- Show an expandable "Past Exams" section listing completed exams with date and score; tapping an entry navigates to the exam review page
+
+### Exam Review Page
+
+**File:** `llm-frontend/src/pages/ExamReviewPage.tsx`
+
+Calls `getExamReview(sessionId)` and displays the overall score/percentage, a question-by-question breakdown (question text, student answer, expected answer, score, grading rationale), and next steps when available. Score color-coding: green (>= 70%), orange (>= 40%), red (< 40%).
 
 ### Practice Again Flow
 
@@ -209,8 +313,9 @@ The frontend calls `getReportCard()` which hits `/sessions/report-card`. It rend
 | Path | Component | Description |
 |------|-----------|-------------|
 | `/report-card` | `ReportCardPage` | Report card view |
+| `/learn/:subject/:chapter/:topic/exam-review/:sessionId` | `ExamReviewPage` | Detailed exam review |
 
-The route is protected (requires authentication). The page is titled "My Report Card".
+All routes are protected (require authentication).
 
 ### Frontend API
 
@@ -218,6 +323,8 @@ The route is protected (requires authentication). The page is titled "My Report 
 |----------|----------|-------------|
 | `getReportCard()` | `GET /sessions/report-card` | `ReportCardResponse` |
 | `getTopicProgress()` | `GET /sessions/topic-progress` | `Record<string, TopicProgress>` |
+| `getGuidelineSessions(guidelineId, mode?, finishedOnly?)` | `GET /sessions/guideline/{id}` | `GuidelineSessionEntry[]` |
+| `getExamReview(sessionId)` | `GET /sessions/{id}/exam-review` | `ExamReviewResponse` |
 
 Types are defined in `llm-frontend/src/api.ts`.
 
@@ -235,9 +342,13 @@ The report card is accessible from:
 | File | Purpose |
 |------|---------|
 | `tutor/services/report_card_service.py` | Aggregation logic: coverage computation, exam score tracking, hierarchy grouping |
-| `tutor/api/sessions.py` | `/report-card` and `/topic-progress` endpoints |
-| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`) |
+| `tutor/api/sessions.py` | `/report-card`, `/topic-progress`, `/guideline/{id}`, and `/exam-review` endpoints |
+| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`, `GuidelineSessionsResponse`, `GuidelineSessionEntry`, `ExamReviewResponse`, `ExamReviewQuestion`) |
+| `shared/repositories/session_repository.py` | `list_by_guideline()` — computes per-session completion, exam score, and coverage from `state_json` |
 | `llm-frontend/src/pages/ReportCardPage.tsx` | Report card UI (overview + subject detail) |
+| `llm-frontend/src/pages/ExamReviewPage.tsx` | Question-by-question exam review page |
+| `llm-frontend/src/components/ModeSelection.tsx` | Mode selection with resume detection and past exams list |
+| `llm-frontend/src/pages/ModeSelectPage.tsx` | Hosts `ModeSelection` and handles exam review navigation |
 | `llm-frontend/src/pages/ChapterSelect.tsx` | Consumes `getTopicProgress()` to show progress badges per chapter |
 | `llm-frontend/src/pages/TopicSelect.tsx` | Consumes `getTopicProgress()` to show progress badges per topic |
 | `llm-frontend/src/api.ts` | Frontend API functions and TypeScript types |

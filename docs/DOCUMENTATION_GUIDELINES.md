@@ -26,10 +26,17 @@ docs/
 │   ├── dev-workflow.md               # Local setup, testing, git workflow
 │   ├── deployment.md                 # AWS infra, Terraform, CI/CD
 │   ├── database.md                   # Tables, schema, migrations
-│   └── new-machine-setup.md          # New machine dev environment setup
+│   ├── ai-agent-files.md             # Agent context file inventory, update policy
+│   ├── new-machine-setup.md          # New machine dev environment setup
+│   └── auto-research/
+│       └── overview.md               # Autonomous prompt optimization system
+├── principles/                       # Teaching & content principles
+│   ├── breaking-down-chapters-into-topics.md
+│   └── how-to-explain.md
+├── feature-development/              # Active PRDs, implementation plans, trackers
 └── archive/                          # Preserved historical docs
     ├── SESSION_LOG_TUTOR_REWRITE.md
-    └── feature-development/          # PRDs, implementation plans, trackers
+    └── feature-development/          # Completed feature docs
 ```
 
 **Functional docs** describe features from the user's perspective. No code, no file paths, no technical jargon. Written as if explaining the product to someone who will use it.
@@ -62,6 +69,7 @@ docs/
 | `docs/technical/database.md` | DB schema, migrations | Database changes |
 | `docs/technical/ai-agent-files.md` | Agent context file inventory, update policy | Understanding/updating agent files |
 | `docs/technical/new-machine-setup.md` | New machine dev environment setup | Setting up a new dev machine |
+| `docs/technical/auto-research/overview.md` | Autonomous prompt optimization system | Working on autoresearch |
 
 ---
 

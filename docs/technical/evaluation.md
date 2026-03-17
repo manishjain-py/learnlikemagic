@@ -167,7 +167,7 @@ Multi-persona comparison (`--persona all`): `comparison_{timestamp}/comparison.m
 | Persona ID | Name | Grade | Correct% | Key Trait |
 |------------|------|-------|----------|-----------|
 | `ace` | Arjun | 5 | 90% | Quick learner, gets bored easily |
-| `average_student` | Riya | 5 | 60% | Attentive but confused by new concepts |
+| `average_student` | Riya | 5 | 45% | Truly average, needs simple language and concrete examples |
 | `confused_confident` | Dev | 5 | 45% | Confident wrong answers |
 | `distractor` | Kabir | 5 | 65% | Bright but scattered, goes off-topic |
 | `quiet_one` | Meera | 5 | 60% | Shy, minimal responses |

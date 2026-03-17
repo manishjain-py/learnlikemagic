@@ -23,8 +23,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │           auth (+ enrichment, personality)                      │
 │  Root API: api/ (docs, test_scenarios, pixi_poc)                 │
 │  Shared: llm_service, llm_config_service, feature_flag_service, │
-│          anthropic_adapter, ocr_service, s3_client, api, models,│
-│          utils, repositories, prompts                           │
+│          anthropic_adapter, claude_code_adapter, ocr_service,   │
+│          s3_client, api, models, utils, repositories, prompts   │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -33,7 +33,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │          teaching_guidelines, study_plans, books, llm_config,    │
 │          feature_flags, session_feedback, kid_enrichment_profiles,│
 │          kid_personalities, book_chapters, chapter_pages,        │
-│          chapter_processing_jobs, chapter_chunks, chapter_topics │
+│          chapter_processing_jobs, chapter_chunks, chapter_topics,│
+│          topic_explanations                                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,6 +53,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | OpenAI | LLM provider (GPT-5.4, GPT-5.3, GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 | Google | LLM provider (Gemini) + Cloud TTS | Additional provider option, text-to-speech |
+| Claude Code | LLM provider via CLI subprocess | Local/admin workflows, no API key needed (uses local Claude Code session) |
 
 ### Frontend
 
@@ -85,15 +87,16 @@ llm-backend/
 │   ├── api/              # sessions, curriculum, transcription, tts endpoints
 │   ├── agents/           # master_tutor, safety, base_agent
 │   ├── orchestration/    # orchestrator
-│   ├── services/         # session_service, exam_service, report_card_service, topic_adapter
+│   ├── services/         # session_service, exam_service, report_card_service, topic_adapter, pixi_code_generator
 │   ├── models/           # session_state, messages, study_plan, agent_logs
-│   ├── prompts/          # master_tutor, exam, clarify_doubts, orchestrator, language_utils
+│   ├── prompts/          # master_tutor, exam, clarify_doubts, orchestrator, language_utils, templates
 │   └── utils/            # schema_utils, state_utils, prompt_utils
 ├── book_ingestion_v2/    # Book upload, TOC extraction, chapter processing, topic sync (V2 pipeline)
 │   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
-│   │                     #   chapter_finalization_service, topic_sync_service
+│   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
+│   │                     #   explanation_generator_service
 │   ├── repositories/     # chapter_repository, chapter_page_repository, chunk_repository,
 │   │                     #   processing_job_repository, topic_repository
 │   ├── models/           # schemas, database, processing_models
@@ -120,8 +123,8 @@ llm-backend/
 │   └── prompts/          # personality_prompts
 ├── shared/               # Cross-module utilities
 │   ├── api/              # Health checks, LLM config admin, feature flag admin endpoints
-│   ├── services/         # LLM service, Anthropic adapter, LLM config service, feature flag service, OCR service
-│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag repos
+│   ├── services/         # LLM service, Anthropic adapter, Claude Code adapter, LLM config service, feature flag service, OCR service
+│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag, explanation repos
 │   ├── models/           # Domain models, ORM entities, Pydantic schemas
 │   ├── prompts/          # Shared prompt loader
 │   └── utils/            # Constants, exceptions, formatting helpers, S3 client
@@ -207,6 +210,7 @@ llm-frontend/src/
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
 │   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/exam/resume)
 │   ├── VisualExplanation.tsx # Renders LLM-generated Pixi.js visuals in sandboxed iframe
+│   ├── ExplanationViewer.tsx # Step-by-step card viewer for pre-computed explanation variants
 │   └── enrichment/           # Enrichment form components
 │       ├── SectionCard.tsx
 │       ├── ChipSelector.tsx
@@ -332,6 +336,7 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 | OpenAI | `openai` | gpt-5.4, gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
 | Anthropic | `anthropic` | claude-opus-4-6, claude-haiku-4-5-20251001 | Tutor, evaluation |
 | Google | `google` | gemini-3-pro-preview | Alternative provider |
+| Claude Code | `claude_code` | claude-code | Local/admin workflows via CLI subprocess (book ingestion, etc.) |
 
 ### LLM Configuration (DB-Backed)
 
@@ -345,11 +350,13 @@ Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own ro
 
 | File | Purpose |
 |------|---------|
-| `shared/services/llm_service.py` | Centralized LLM call interface; routes to OpenAI, Anthropic, or Gemini based on provider |
-| `shared/services/anthropic_adapter.py` | Claude adapter: thinking budgets, tool_use structured output |
+| `shared/services/llm_service.py` | Centralized LLM call interface; routes to OpenAI, Anthropic, Gemini, or Claude Code based on provider |
+| `shared/services/anthropic_adapter.py` | Claude adapter: thinking budgets, tool_use structured output, streaming |
+| `shared/services/claude_code_adapter.py` | Claude Code CLI adapter: calls `claude` binary as subprocess for local/admin LLM tasks |
 | `shared/services/llm_config_service.py` | Reads/writes LLM config from `llm_config` DB table |
 | `shared/services/ocr_service.py` | OCR via OpenAI Vision API for textbook page image extraction |
 | `shared/repositories/llm_config_repository.py` | CRUD for `llm_config` table |
+| `shared/repositories/explanation_repository.py` | CRUD for `topic_explanations` table (pre-computed explanation variants) |
 | `shared/api/llm_config_routes.py` | Admin API endpoints for LLM config (list, update, options) |
 
 ### Provider Features
@@ -363,6 +370,7 @@ Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own ro
 - **Fast model**: `call_fast()` always uses gpt-4o-mini via Chat Completions for lightweight tasks (translation, safety checks) regardless of provider setting
 - **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls
 - **Gemini**: Google Generative AI client with JSON mode support
+- **Claude Code**: Calls the `claude` CLI as a subprocess (`--dangerously-skip-permissions --no-session-persistence --max-turns 1`). Maps reasoning effort to CLI `--effort` flag. Extracts JSON from response text (handles markdown fences and raw JSON). Used for local/admin workflows where the Claude Code CLI is available on the machine
 
 ---
 

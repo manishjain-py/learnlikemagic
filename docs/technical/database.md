@@ -136,6 +136,7 @@ Schema, tables, migrations, and connection management.
 | `generated_at` | DATETIME | When guideline was generated |
 | `reviewed_at` | DATETIME | When guideline was reviewed |
 | `reviewed_by` | VARCHAR | Who reviewed the guideline |
+| `prior_topics_context` | TEXT | Context from prior topics in the same chapter (for topic-quality planning) |
 | `version` | INT | Version counter (default 1) |
 | `created_at` | DATETIME | Timestamp |
 | `updated_at` | DATETIME | Timestamp |
@@ -190,6 +191,7 @@ Centralized model configuration per component. Single source of truth for which 
 | `eval_simulator` | openai | gpt-5.2 | Student simulator for evaluations |
 | `book_ingestion_v2` | openai | gpt-5.2 | Book ingestion V2 pipeline (chunk extraction, consolidation, merge) |
 | `personality_derivation` | openai | gpt-5.2 | Kid personality derivation from enrichment profile |
+| `explanation_generator` | openai | gpt-5.2 | Pre-computed explanation generation for topics |
 
 ### Session Feedback
 
@@ -296,14 +298,33 @@ Runtime feature flags toggled via the `/admin/feature-flags` UI. Each row is a n
 |-----------|---------|-------------|
 | `show_visuals_in_tutor_flow` | true | Show Pixi.js visual explanations during tutoring sessions |
 
+### Topic Explanations
+
+**Table:** `topic_explanations` | **Model:** `TopicExplanation` (`shared/models/entities.py`)
+
+Pre-computed explanation variants for teaching guidelines. Each guideline can have multiple variants (A, B, C), each representing a different pedagogical approach. Cards are stored as JSONB for queryability. Cascade-deleted when the parent guideline is deleted (e.g., during re-sync).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key (auto-generated UUID) |
+| `guideline_id` | VARCHAR | FK --> teaching_guidelines (CASCADE delete) |
+| `variant_key` | VARCHAR | Variant identifier: `A`, `B`, `C` |
+| `variant_label` | VARCHAR | Human-readable label (e.g., "Everyday Analogies") |
+| `cards_json` | JSONB | Ordered list of ExplanationCard objects |
+| `summary_json` | JSONB | Pre-computed summary for tutor context (nullable) |
+| `generator_model` | VARCHAR | LLM model used to generate the explanation |
+| `created_at` | DATETIME | Timestamp |
+
+**Unique constraint:** `uq_explanation_guideline_variant` (guideline_id, variant_key) -- at most one variant per key per guideline.
+
 ### V2 Pipeline Tables
 
 See `book_ingestion_v2/models/database.py` for the full V2 pipeline tables:
 - `book_chapters` — chapter definitions from TOC
 - `chapter_pages` — uploaded page images with OCR text
 - `chapter_chunks` — processing chunk records
-- `chapter_topics` — extracted topics with guidelines
-- `chapter_processing_jobs` — background job tracking
+- `chapter_topics` — extracted topics with guidelines (includes `prior_topics_context` and `topic_assignment` columns for topic-quality planning)
+- `chapter_processing_jobs` — background job tracking (includes `planned_topics_json` column for topic-quality planning)
 
 ---
 
@@ -316,6 +337,7 @@ users ──1:1──> kid_enrichment_profiles
 users ──1:N──> kid_personalities
 users ──1:N──> session_feedback
 teaching_guidelines ──1:N──> study_plans (per-user plans)
+teaching_guidelines ──1:N──> topic_explanations (pre-computed explanation variants)
 books ──1:N──> book_chapters ──1:N──> chapter_pages
 books ──1:N──> book_chapters ──1:N──> chapter_topics
 llm_config (standalone, no FKs)
@@ -331,6 +353,7 @@ feature_flags (standalone, no FKs)
 - `SessionFeedback.session_id` --> `Session.id` (SET NULL on delete, nullable)
 - `KidEnrichmentProfile.user_id` --> `User.id` (unique, 1:1)
 - `KidPersonality.user_id` --> `User.id`
+- `TopicExplanation.guideline_id` --> `TeachingGuideline.id` (CASCADE delete; unique on guideline_id + variant_key)
 
 ---
 
@@ -356,8 +379,10 @@ Custom imperative migration (not Alembic):
 14. `_apply_study_plan_user_column()` -- Adds `user_id` to study_plans, drops old single-column unique constraint on guideline_id, creates composite unique index on (user_id, guideline_id)
 15. `_apply_focus_mode_column()` -- Adds `focus_mode` column to users (default true); if column already exists, resets all `focus_mode = FALSE` to `TRUE`
 16. `_apply_session_feedback_table()` -- Verifies session_feedback table exists (created by `create_all`)
-17. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
-18. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
+17. `_apply_topic_planning_columns()` -- Adds `planned_topics_json` to chapter_processing_jobs, `prior_topics_context` and `topic_assignment` to chapter_topics, and `prior_topics_context` to teaching_guidelines (topic-quality planning support)
+18. `_apply_topic_explanations_table()` -- Verifies topic_explanations table exists (created by `create_all`); ensures `explanation_generator` LLM config entry exists via `_ensure_llm_config()`
+19. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+20. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
 
 ```bash
 # Run migrations
@@ -391,6 +416,7 @@ python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guide
 | `db_max_overflow` | 10 | Max overflow connections |
 | `db_pool_timeout` | 30s | Pool checkout timeout |
 | `pool_pre_ping` | true | Verify connections before use |
+| `pool_recycle` | 280s | Recycle connections before server-side idle timeout |
 | `echo` | false | SQL logging (enabled when `LOG_LEVEL=DEBUG`) |
 
 **FastAPI integration:** `get_db()` dependency yields a session and closes in `finally`.
@@ -407,7 +433,7 @@ python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guide
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag) |
+| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation) |
 | `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob) |
 | `db.py` | Migration CLI and migration functions |
 | `database.py` | DatabaseManager, connection pooling, `get_db()` dependency |

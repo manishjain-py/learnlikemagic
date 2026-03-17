@@ -202,7 +202,7 @@ The `auth_provider` field (`email`, `phone`, or `google`) is derived server-side
 |--------|------|-------------|
 | `id` | VARCHAR | Primary key (UUID) |
 | `user_id` | VARCHAR | FK to users |
-| `personality_json` | JSONB | Derived personality fields (teaching_approach, example_themes, encouragement_strategy, growth_focus) |
+| `personality_json` | JSONB | Derived personality fields: teaching_approach, example_themes, people_to_reference, communication_style, encouragement_strategy, pace_guidance, strength_leverage, growth_focus, things_to_avoid, fun_hooks (10 fields total; tutor_brief stored separately) |
 | `tutor_brief` | TEXT | Concise brief for tutor prompt injection |
 | `status` | VARCHAR | `generating`, `ready`, or `failed` |
 | `inputs_hash` | VARCHAR | Hash of enrichment+profile inputs for change detection |
@@ -300,11 +300,14 @@ The `useStudentProfile` hook (`hooks/useStudentProfile.ts`) bridges auth/profile
 2. Backend saves enrichment data and computes an `inputs_hash` (hash of all enrichment + profile fields)
 3. If data has changed and at least one section has meaningful data, schedules a debounced background task (5s delay)
 4. After 5s, re-checks hash to prevent duplicate generation if parent saved again within the window
-5. `PersonalityService.generate_personality()` calls an LLM to produce `personality_json` and `tutor_brief`
-6. Result stored in `kid_personalities` with `status=ready`
-7. Frontend polls `/profile/personality` every 5s while `status=generating`
+5. `PersonalityService.generate_personality()` loads LLM config via `LLMConfigService` (component key: `personality_derivation`), builds prompt from `personality_prompts.py`, calls the LLM in JSON mode to produce a structured personality object
+6. LLM output has 11 fields: `teaching_approach`, `example_themes`, `people_to_reference`, `communication_style`, `encouragement_strategy`, `pace_guidance`, `strength_leverage`, `growth_focus`, `things_to_avoid`, `fun_hooks`, `tutor_brief`. The `tutor_brief` field is extracted and stored in its own column; the remaining 10 fields are stored as `personality_json`.
+7. Result stored in `kid_personalities` with `status=ready`
+8. Frontend polls `/profile/personality` every 5s while `status=generating`
 
 Profile updates to personality-triggering fields (name, preferred_name, age, grade, board) also trigger regeneration if an enrichment profile exists.
+
+`POST /profile/personality/regenerate` calls `PersonalityService.force_regenerate()`, which bypasses the hash-based skip check and always creates a new personality version.
 
 ### Enrichment Service
 
@@ -354,7 +357,8 @@ Profile updates to personality-triggering fields (name, preferred_name, age, gra
 | `llm-backend/auth/services/auth_service.py` | User sync, phone provisioning, auth provider detection, user deletion |
 | `llm-backend/auth/services/profile_service.py` | Profile updates, auto-completion of onboarding |
 | `llm-backend/auth/services/enrichment_service.py` | Enrichment profile CRUD, input hashing, meaningful data checks |
-| `llm-backend/auth/services/personality_service.py` | LLM-driven personality generation from enrichment + profile data |
+| `llm-backend/auth/services/personality_service.py` | LLM-driven personality generation from enrichment + profile data; uses `LLMConfigService` with component key `personality_derivation` |
+| `llm-backend/auth/prompts/personality_prompts.py` | Personality derivation prompt template, JSON schema (11 fields), enrichment data formatter |
 | `llm-backend/auth/repositories/user_repository.py` | User CRUD operations |
 | `llm-backend/auth/repositories/enrichment_repository.py` | KidEnrichmentProfile CRUD |
 | `llm-backend/auth/repositories/personality_repository.py` | KidPersonality CRUD (versioned, latest = active) |

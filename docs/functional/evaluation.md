@@ -29,7 +29,7 @@ Eight simulated student types test the tutor from different angles:
 | Persona | Personality | Key Challenge for the Tutor |
 |---------|------------|----------------------------|
 | **Arjun** (Ace) | Quick learner, gets bored easily | Keep them challenged, skip ahead when appropriate |
-| **Riya** (Average) | Attentive but sometimes confused | Balance explanation depth with pacing |
+| **Riya** (Average) | Truly average learner, needs simple language and concrete examples | Break concepts into small steps, detect silent confusion |
 | **Dev** (Confused but Confident) | Gives wrong answers confidently | Probe confident mistakes, uncover misconceptions |
 | **Kabir** (Distractor) | Bright but scattered, goes off-topic | Handle tangents gracefully, redirect gently |
 | **Meera** (Quiet One) | Shy, minimal responses | Draw them out, don't overwhelm with questions |
@@ -37,7 +37,7 @@ Eight simulated student types test the tutor from different angles:
 | **Aanya** (Simplicity Seeker) | Easily overwhelmed | Keep explanations simple and concrete |
 | **Priya** (Struggler) | Hardworking but confused | Be patient, try different approaches |
 
-Each persona has a defined probability of answering correctly, ranging from 30% (Priya) to 90% (Arjun). The persona also influences how the simulated student responds -- Meera gives minimal 1-5 word answers, Kabir writes longer tangential responses, and Dev confidently states wrong answers.
+Each persona has a defined probability of answering correctly, ranging from 30% (Priya) to 90% (Arjun). Riya answers correctly about 45% of the time, reflecting a student who can learn but needs the right approach. The persona also influences how the simulated student responds -- Meera gives minimal 1-5 word answers, Kabir writes longer tangential responses, and Dev confidently states wrong answers.
 
 ---
 

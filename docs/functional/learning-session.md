@@ -31,6 +31,19 @@ A structured lesson where the tutor follows a study plan, explains concepts, ask
 
 See the detailed sections below for how the tutor teaches, session progression, and mastery tracking.
 
+#### Pre-Computed Explanations (Card Phase)
+
+For some subtopics, the tutor has pre-prepared explanation cards that walk you through the core concepts before the interactive lesson begins. When this is available:
+
+1. The session starts with a set of cards instead of the usual chat — each card covers one idea (a concept, an example, a visual, an analogy, or a summary)
+2. You read through the cards at your own pace
+3. When you finish, you choose one of two options:
+   - **"I understand"** — You move straight to practice and check questions, skipping the explanation chat. The tutor already knows what was covered and will not repeat those explanations.
+   - **"Explain differently"** — The tutor shows a different set of cards that explain the same ideas using a different approach (e.g., a different analogy or real-world context). If all available approaches have been shown, the tutor switches to the normal interactive explanation instead.
+4. Once you move past the cards, the session continues as a normal Teach Me lesson — the tutor asks questions, checks your understanding, and gives practice problems
+
+The cards are a quicker way to absorb the material when you prefer reading over back-and-forth conversation. The interactive tutor is always available as a fallback.
+
 #### Pausing and Resuming
 
 You can pause a Teach Me session at any time using the "Pause Session" button. When you pause:

@@ -34,11 +34,38 @@ The denominator (total concepts in the plan) comes from the most recent session'
 
 ---
 
+## Progress Badges
+
+When browsing chapters and topics to start a new session, each chapter and topic shows a progress badge based on the student's past Teach Me sessions. These badges give a quick at-a-glance sense of what has been started and how far along each topic is, without needing to open the report card.
+
+---
+
 ## Exam Scores
 
 When a student completes an exam on a topic, the report card shows the score from the most recent exam (for example, "7/10"). Only completed exams are counted — if a student starts an exam but does not finish, it does not appear.
 
 If a student takes multiple exams on the same topic, only the latest result is displayed.
+
+---
+
+## Past Exams and Exam Review
+
+On the mode selection screen (where students choose Teach Me, Clarify Doubts, or Take Exam), there is an expandable "Past Exams" section that lists all completed exams for that topic. Each entry shows the date and score.
+
+Tapping a past exam opens a detailed **Exam Review** page showing:
+
+- **Overall score** and percentage
+- **Question-by-question breakdown** — each question with the student's answer, the expected answer, the score, and the grading rationale
+- **Next steps** — suggestions for what to focus on, when available
+
+---
+
+## Resuming Sessions
+
+On the mode selection screen, if the student has an incomplete Teach Me lesson or an in-progress exam for that topic, the app shows a resume option:
+
+- **Continue Lesson** — Shows the coverage so far and lets the student pick up where they left off. A "Start Fresh" button is also available to begin a new lesson instead.
+- **Resume Exam** — Shows how many questions have been answered and lets the student continue the exam.
 
 ---
 
@@ -52,7 +79,7 @@ The button is only available for topics that are linked to a teaching guideline.
 
 ## Empty State
 
-When a student has no completed sessions, the report card shows an encouraging message and a "Start Learning" button that takes them to the subject selection screen.
+When a student has no completed sessions, the report card shows an encouraging message and a "Start Learning" button that takes them to the topic selection screen.
 
 ---
 
@@ -61,4 +88,3 @@ When a student has no completed sessions, the report card shows an encouraging m
 - The report card updates automatically after each completed session
 - Coverage only counts Teach Me sessions; exams and Clarify Doubts sessions do not contribute
 - The report card is accessible from the user menu ("My Report Card"), the session history page, and the end-of-session screen
-- The report card URL is `/report-card`

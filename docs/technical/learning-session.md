@@ -47,6 +47,8 @@ Visual Update to Client
 
 Pipeline: input translation and safety check run **in parallel** (saves 2-5s), then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech. When the tutor includes a `visual_explanation` and the `show_visuals_in_tutor_flow` feature flag is enabled, a secondary LLM call generates executable Pixi.js v8 code for client-side rendering.
 
+**Pre-computed explanations (card phase):** For subtopics that have pre-computed explanation variants in the `topic_explanations` table, session creation bypasses the welcome LLM call and explanation phase initialization. Instead, it initializes a `CardPhaseState` and returns the first variant's cards to the frontend. The student interacts with cards (read-only) until they either confirm understanding ("clear") or request a different approach ("explain_differently"). The card phase is handled entirely via the `POST /sessions/{id}/card-action` REST endpoint — it does not go through the orchestrator's `process_turn` pipeline. When the card phase completes, a summary of the shown explanations is injected into the master tutor's system prompt (`precomputed_explanation_summary_section`) so the tutor avoids repeating covered material.
+
 ---
 
 ## Session Modes
@@ -162,6 +164,8 @@ Only `teach_me` mode streams tokens. `clarify_doubts` and `exam` modes fall back
 Contains:
 - Student profile (grade, language level, preferred examples)
 - Personalization block: uses `tutor_brief` (rich personality prose from enrichment profile) when available, falling back to basic name/age/about_me from user profile
+- Prior topics context section (when `TopicGuidelines.prior_topics_context` is set — tells the tutor what earlier topics in the chapter cover)
+- Pre-computed explanation summary section (when `precomputed_explanation_summary` is set after card phase completion — tells the tutor what was already explained via cards, so it does not repeat those analogies/examples/approaches)
 - Study plan (steps with types, concepts, content hints)
 - Topic guidelines (curriculum scope, common misconceptions)
 - 14 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, detect false OKs (vague "hmm ok" / "I get it" requires diagnostic follow-up before moving on), match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking, visual explanations (strongly encouraged on explanation/demonstration turns via `visual_explanation` field)
@@ -238,6 +242,7 @@ Note: STEADY appends an attention span warning when the student's attention span
 | `POST` | `/sessions/{id}/resume` | Resume a paused session (returns conversation history) |
 | `POST` | `/sessions/{id}/end-clarify` | End a Clarify Doubts session (marks complete server-side) |
 | `POST` | `/sessions/{id}/end-exam` | End an exam early and get results |
+| `POST` | `/sessions/{id}/card-action` | Card phase action: "clear" (transition to interactive) or "explain_differently" (switch variant) |
 | `POST` | `/sessions/{id}/feedback` | Submit mid-session feedback to regenerate study plan (max 3/session) |
 | `GET` | `/sessions/{id}/summary` | Session performance summary |
 | `GET` | `/sessions` | List all sessions for current user |
@@ -308,10 +313,15 @@ Flow:
 - Load personalized study plan from DB (user_id + guideline_id), falling back to any plan for that guideline
 - For `teach_me`: if no plan exists, generate a personalized plan via `StudyPlanGeneratorService` using the student's personality context
 - Convert via topic_adapter → Create SessionState (with mode)
-- For `teach_me`: initialize explanation phase if first step is `explain` type
-- For `exam` mode: guard against duplicate incomplete exams (409 if one exists with progress), then generate exam questions via ExamService before welcome
-- Generate mode-specific welcome message (each mode has its own welcome generator) — returns `(message, audio_text)` tuple with language-appropriate content
-- For `exam`: append first question to welcome message
+- **Card phase check** (`teach_me` only): query `ExplanationRepository.get_by_guideline_id()`. If pre-computed explanations exist:
+  - Initialize `CardPhaseState` on the session (active=true, first variant selected, cards counted)
+  - Skip welcome LLM call and explanation phase initialization
+  - Return explanation cards in `first_turn` with `session_phase: "card_phase"` and `card_phase_state` metadata
+- **Standard path** (no pre-computed explanations, or non-teach_me modes):
+  - For `teach_me`: initialize explanation phase if first step is `explain` type
+  - For `exam` mode: guard against duplicate incomplete exams (409 if one exists with progress), then generate exam questions via ExamService before welcome
+  - Generate mode-specific welcome message (each mode has its own welcome generator) — returns `(message, audio_text)` tuple with language-appropriate content
+  - For `exam`: append first question to welcome message
 - Persist session to DB (with state_version=1)
 - For `clarify_doubts`: attach past discussions for same user + guideline (up to 5 most recent, only sessions with at least one concept discussed)
 - Return `{session_id, first_turn, mode}`
@@ -345,6 +355,9 @@ class SessionState(BaseModel):
     # Explanation tracking
     explanation_phases: dict[str, ExplanationPhase]  # Per-concept explanation lifecycle
     current_explanation_concept: Optional[str]        # Active explanation concept
+    # Pre-computed explanations (card phase)
+    card_phase: Optional[CardPhaseState]           # Card-based explanation state (None when not in card phase)
+    precomputed_explanation_summary: Optional[str]  # Summary of shown cards, injected into tutor system prompt
     # Clarify Doubts state
     concepts_discussed: list[str]        # Concepts discussed in Q&A
     clarify_complete: bool               # Whether student ended the Clarify session
@@ -465,6 +478,29 @@ Exam questions are generated at session creation time via `ExamService.generate_
 
 Scoring uses fractional values (0.0-1.0) per question via `TutorTurnOutput.answer_score`, with categorical result derived: score >= 0.8 → correct, >= 0.2 → partial, < 0.2 → incorrect. The `marks_rationale` provides a brief justification for each score.
 
+### Card Phase (Pre-Computed Explanations)
+
+```python
+class CardPhaseState(BaseModel):
+    guideline_id: str              # FK for explanation lookups
+    active: bool                   # Whether card phase is currently active
+    current_variant_key: str       # Current variant being shown (e.g., "A")
+    current_card_idx: int          # Current card index (0-based)
+    total_cards: int               # Total cards in current variant
+    variants_shown: list[str]      # Variant keys already shown
+    available_variant_keys: list[str]  # All available variant keys
+    completed: bool                # True when student says "clear" or exhausts variants
+```
+
+Card phase is initialized during session creation when `ExplanationRepository.get_by_guideline_id()` returns pre-computed explanation variants for the guideline. The `POST /sessions/{id}/card-action` endpoint handles two actions:
+
+- **`clear`**: Student understood the cards. Calls `_advance_past_explanation_steps()` to skip consecutive leading explain steps in the study plan (landing on the first check/practice step). Builds `precomputed_explanation_summary` from the shown variants' summaries, which is injected into the master tutor system prompt so the tutor avoids repeating covered analogies/examples. Adds a transition message to conversation history.
+- **`explain_differently`**: Switches to the next unseen variant from `available_variant_keys`. If all variants are exhausted, completes the card phase and falls back to the standard dynamic explanation flow: initializes `ExplanationPhase` for step 1 and generates a welcome message via the orchestrator.
+
+The `process_step()` REST endpoint rejects calls during an active card phase (HTTP 400), directing the client to use `/card-action` instead. The `/replay` endpoint includes explanation cards for sessions still in card phase.
+
+Pre-computed explanations are stored in the `topic_explanations` DB table, managed by `ExplanationRepository` (shared/repositories). Each variant has a `variant_key`, `variant_label`, `cards_json` (array of card objects with `card_idx`, `card_type`, `title`, `content`, optional `visual`), and `summary_json` (approach label, card titles, key analogies, key examples).
+
 ### Persistence and Concurrency
 
 Session state is persisted to the database as serialized JSON (`state_json`). All writes use **compare-and-swap (CAS)** via a `state_version` column:
@@ -485,6 +521,8 @@ DB StudyPlan.plan_json → topic_adapter.convert_guideline_to_topic() → Topic 
 ```
 
 Study plan steps have types: `explain`, `check`, `practice`. Step type is inferred from the plan item's title/description keywords or defaults to a pattern (explain, check, explain, check, ..., practice at end). Explain steps can include sub-plan fields: `explanation_approach`, `explanation_building_blocks` (ordered sub-ideas to cover across turns), `explanation_analogy`, and `min_explanation_turns`.
+
+The `TopicGuidelines` model also carries `prior_topics_context` (optional), which provides curriculum context about what prior topics in the same chapter cover. When present, it is rendered as a "Prior Topics in This Chapter" section in the master tutor system prompt, helping the tutor understand what the student may have already learned.
 
 Plan resolution order at session creation:
 1. Personalized plan for this user + guideline (from `study_plans` table)
@@ -563,9 +601,9 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 
 | File | Purpose |
 |------|---------|
-| `session_state.py` | SessionState, ExplanationPhase, Question, Misconception, SessionSummary, ExamQuestion (with score, marks_rationale), ExamFeedback (with float score), create_session() |
+| `session_state.py` | SessionState, CardPhaseState (pre-computed explanation card tracking), ExplanationPhase, Question, Misconception, SessionSummary, ExamQuestion (with score, marks_rationale), ExamFeedback (with float score), create_session() |
 | `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep (with explanation sub-plan fields: approach, building_blocks, analogy, min_turns) |
-| `messages.py` | Message (with audio_text), StudentContext (with text/audio language prefs, tutor_brief, personality_json, attention_span), WebSocket DTOs (ClientMessage, ServerMessage with audio_text and token type, SessionStateDTO), factory functions (`create_token_message`, `create_typing_indicator`, etc.) |
+| `messages.py` | Message (with audio_text), StudentContext (with text/audio language prefs, tutor_brief, personality_json, attention_span), WebSocket DTOs (ClientMessage, ServerMessage with audio_text and token type, SessionStateDTO), Card Phase DTOs (ExplanationCardDTO, CardActionRequest, CardPhaseDTO), factory functions (`create_token_message`, `create_typing_indicator`, etc.) |
 | `agent_logs.py` | AgentLogEntry, AgentLogStore (in-memory, thread-safe) |
 
 ### Prompts (`tutor/prompts/`)
@@ -591,15 +629,16 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 
 | File | Purpose |
 |------|---------|
-| `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation and duplicate exam guard), step processing, pause/resume, end clarify, end exam, mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
+| `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation, duplicate exam guard, and card phase initialization), step processing (with card phase guard), pause/resume, end clarify, end exam, card phase actions (complete_card_phase with clear/explain_differently, variant switching, precomputed summary building, explanation step advancement), mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
 | `tutor/services/exam_service.py` | Exam question generation via LLM with retry and personalization. ExamGenerationError (LearnLikeMagicException subclass) |
 | `tutor/services/pixi_code_generator.py` | PixiCodeGenerator: translates natural language visual descriptions into executable Pixi.js v8 code via LLM (uses the tutor's configured model). Gated by `show_visuals_in_tutor_flow` feature flag. Used by the orchestrator for `visual_explanation` rendering. Canvas 500x350. Returns empty string on failure (never crashes the turn). |
 | `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model |
 | `tutor/services/report_card_service.py` | Report card aggregation, topic progress |
-| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint, feedback endpoint, exam-review endpoint, guideline sessions endpoint |
+| `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint, card-action endpoint, feedback endpoint, exam-review endpoint, guideline sessions endpoint |
 | `tutor/api/transcription.py` | Audio transcription endpoint (OpenAI Whisper) |
 | `tutor/api/tts.py` | Text-to-speech endpoint (Google Cloud TTS, Hindi/English/Hinglish voices) |
 | `tutor/api/curriculum.py` | Curriculum discovery endpoints |
+| `shared/repositories/explanation_repository.py` | ExplanationRepository: CRUD for `topic_explanations` table (pre-computed explanation variants). Read by session service during card phase, written by the ingestion pipeline. Methods: `get_by_guideline_id()`, `get_variant()`, `upsert()`, `has_explanations()`, `parse_cards()`. |
 | `tutor/exceptions.py` | Custom exception hierarchy (TutorAgentError, LLMError, AgentError, SessionError, StateError, PromptError, ConfigurationError) |
 | `shared/services/llm_service.py` | LLM wrapper (OpenAI Responses API, Chat Completions, Gemini, Anthropic) |
 | `shared/services/anthropic_adapter.py` | Claude API adapter (tool_use for structured output, thinking budgets) |

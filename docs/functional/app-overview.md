@@ -34,6 +34,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
 | **Feature Flags** | Admin tool to toggle runtime features on or off (e.g., visuals in tutor flow). Changes take effect immediately for new sessions |
+| **Pre-Computed Explanations** | During book ingestion, the system pre-generates multiple explanation variants for each topic (e.g., everyday analogies, visual/hands-on, story-based). During a Teach Me session, the tutor can present these as step-by-step explanation cards. If the student wants a different approach, they can request an alternative variant |
 | **Visual Explanations (PoC)** | Admin tool to generate interactive diagrams and animations from text prompts using AI + Pixi.js |
 | **Test Scenarios** | Admin tool to view end-to-end test results and screenshots |
 | **Docs Viewer** | Admin tool to browse project documentation inside the app |
