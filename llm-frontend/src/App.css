@@ -3029,6 +3029,9 @@ body {
   line-height: 1.4;
   white-space: pre;
   overflow-x: auto;
+  overflow-y: auto;
+  min-height: 10rem;
+  flex-shrink: 0;
   color: #1f2937;
 }
 
