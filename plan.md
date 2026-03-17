@@ -1,177 +1,132 @@
-# Implementation Plan: Replace Visual Explanations with PixiJS
+# Plan: Unify Card Design — Remove Chat View, Make Everything Cards
 
-## Overview
+## Summary
 
-Replace the current hardcoded SVG-based `VisualExplanation` system (5 math scene types) with an LLM-generated PixiJS illustration system that can produce **any** static or animated visual for **any** subject.
+Promote the focus carousel from an overlay to THE primary view for all non-exam tutoring sessions. Explanation cards (card_phase) and interactive messages all render through the same card-based UI. Remove the chat bubble view and virtual teacher toggle entirely.
 
----
+## Current State
 
-## Architecture: Two-LLM-Call Approach
+Three separate view modes in `ChatSession.tsx`:
+1. **ExplanationViewer** — card_phase pre-computed explanation cards (separate component)
+2. **Virtual Teacher** — single focused message with markdown, TTS
+3. **Chat bubbles** + **Focus Carousel overlay** — message list with optional full-screen carousel
 
-The master tutor continues to decide **when** a visual helps and **what** to show (natural language description). A second, separate LLM call generates the **Pixi.js code** from that description.
+## Target State
 
-**Flow:**
-```
-Student message
-  → Master Tutor LLM (teaching response + visual_prompt + output_type)
-  → [if visual_prompt present] Pixi Code Generator LLM (visual_prompt → JS code)
-  → Frontend receives { text response, pixi_code, output_type, title, narration }
-  → PixiJS renderer executes code inline in chat
-```
+One unified card view for all non-exam modes:
+- **Card phase**: Explanation cards render as carousel slides (same visual style as focus cards)
+- **Interactive phase**: Each tutor message is a card slide, student replies shown inline
+- No chat bubbles, no VT toggle, no overlay — the carousel IS the view
+- Exam mode unchanged
 
-The Pixi code generation runs **in parallel** with streaming the text response — minimal added latency. The frontend already uses a "Visualise" button, so code just needs to be ready by the time the user clicks.
+## Implementation Steps
 
----
+### Step 1: Convert focus carousel from overlay to inline view
 
-## Step-by-Step Implementation
+**File: `ChatSession.tsx`**
+- Remove `position: fixed` and `z-index: 100` from focus carousel — make it a normal flex child of `.chat-container`
+- Remove the close/exit button and `focusDismissedRef` logic
+- Always render the carousel for non-exam modes (no more conditional on `focusCardIdx !== null`)
+- Remove `handleTeacherDoubleTap` (no longer needed to "open" carousel)
 
-### Step 1: Update Master Tutor Output Schema
+**File: `App.css`**
+- `.focus-carousel`: change from fixed overlay to `flex: 1; display: flex; flex-direction: column; overflow: hidden`
+- Remove `z-index: 100`, `position: fixed`, `top/left/right/bottom: 0`
 
-**File:** `llm-backend/tutor/agents/master_tutor.py`
+### Step 2: Render card_phase explanation cards as carousel slides
 
-Replace `VisualExplanation` and `VisualAnimationStep` models with:
+**File: `ChatSession.tsx`**
+- When `sessionPhase === 'card_phase'`, the carousel renders explanation cards as slides instead of message-based focus cards
+- Create a unified `carouselSlides` memo that:
+  - In card_phase: maps `explanationCards[]` → slides with type badge, title, content, visual
+  - In interactive: maps tutor messages → slides (current `focusCards` logic)
+- Each explanation card slide uses the same `.focus-slide` / `.focus-tutor-msg` styling
+- Card type badge (concept/example/visual/analogy/summary) shown at top of slide
+- Progress counter in header: "1/5" for both phases
 
-```python
-class VisualExplanation(BaseModel):
-    """Visual prompt for PixiJS illustration generation."""
-    visual_prompt: str = Field(
-        description="Natural language description of the visual to generate. "
-        "Be specific about objects, layout, colors, labels, and any animation. "
-        "Example: 'Show 3 red apples on the left and 4 green apples on the right. "
-        "Animate them merging into a single group of 7 with a label showing 3+4=7.'"
-    )
-    output_type: str = Field(
-        default="image",
-        description="'image' for static illustrations, 'animation' for animated visuals. "
-        "Use animation for processes, merging/splitting, or sequences. "
-        "Use image for diagrams, charts, labeled structures."
-    )
-    title: Optional[str] = Field(default=None, description="Short title like '3 + 4 = 7'")
-    narration: Optional[str] = Field(default=None, description="Short narration text")
-```
+### Step 3: Unify the input/action area at bottom
 
-Keep `visual_explanation: Optional[VisualExplanation]` on `TutorTurnOutput` — same field name, new shape.
+**File: `ChatSession.tsx`**
+- Single bottom area that changes based on phase:
+  - **card_phase, not last card**: Back / Next buttons
+  - **card_phase, last card**: "I understand!" / "Explain differently" buttons
+  - **interactive**: text input + mic + send (current `.focus-input-area`)
+  - **loading**: typing indicator
+  - **complete**: nothing (summary takes over)
+- Extract one `<InputArea>` section to avoid the current 4 duplicated input forms
 
-### Step 2: Update Master Tutor Prompt
+### Step 4: Move audio button into main nav
 
-**File:** `llm-backend/tutor/prompts/master_tutor_prompts.py`
+**File: `ChatSession.tsx`**
+- The focus carousel header had its own audio button — move this to the main `<nav>` actions area
+- Add card counter ("1/5") to the nav as well
+- Remove the separate `.focus-header` entirely since the main nav already has breadcrumb
 
-Rewrite rule #13: Instead of listing 5 fixed scene types, tell the LLM to write a **natural language visual_prompt** describing any illustration — diagrams, animations, charts, structures, processes — and to choose `output_type` ('image' or 'animation') based on what serves the explanation best. Remove all references to `scene_type`, `group1_count`, `group2_count`, etc.
+### Step 5: Remove old view modes
 
-### Step 3: Create Pixi Code Generator Service
+**File: `ChatSession.tsx`**
+- Remove `ExplanationViewer` import and its rendering block
+- Remove virtual teacher view block (the `virtualTeacherOn` conditional)
+- Remove the `.messages` chat bubble rendering block
+- Remove `virtualTeacherOn` state + toggle button from nav
+- Remove `focusDismissedRef`, `lastTapRef`, `handleTeacherDoubleTap`
+- Remove conditions gating focus carousel display
 
-**New file:** `llm-backend/tutor/services/pixi_code_generator.py`
+### Step 6: Handle card_phase → interactive transition
 
-- Extract the LLM prompt from `api/pixi_poc.py` into a reusable service class `PixiCodeGenerator`.
-- Method: `async def generate(self, visual_prompt: str, output_type: str) -> str` — returns Pixi.js v8 code.
-- Same Pixi v8 system prompt rules as the POC, but with a smaller canvas (500x350 for inline chat).
-- Uses `LLMService` with OpenAI/Codex.
-- Strips markdown fences from output.
+**File: `ChatSession.tsx`**
+- When user clicks "I understand!" (card action 'clear'):
+  - `sessionPhase` transitions from 'card_phase' to 'interactive'
+  - Carousel seamlessly switches from explanation card slides to message slides
+  - First message slide contains the transition message from backend
+- When "Explain differently" is clicked:
+  - Swap explanation cards in the carousel (same logic as current `handleCardAction('explain_differently')`)
+  - Reset carousel to first slide
 
-### Step 4: Integrate Pixi Generation into Orchestrator
+### Step 7: Auto-play TTS on new slides
 
-**File:** `llm-backend/tutor/orchestration/orchestrator.py`
+**File: `ChatSession.tsx`**
+- In card_phase: auto-play TTS when navigating to a new explanation card (read card content)
+- In interactive: auto-play TTS when new tutor message arrives (existing logic)
+- Single audio play/pause button in nav works for both phases
 
-After the master tutor returns `TutorTurnOutput`:
-- If `visual_explanation` is present, fire `PixiCodeGenerator.generate()` concurrently (`asyncio.create_task`) while the text response streams.
-- Once pixi code is generated, attach `pixi_code` to the `TurnResult.visual_explanation` dict.
-- Update `TurnResult.visual_explanation` shape to: `{ visual_prompt, pixi_code, output_type, title, narration }`.
+### Step 8: Clean up CSS
 
-### Step 5: Update API/WebSocket Layer
+**File: `App.css`**
+- Remove/comment out: `.messages`, `.message.teacher`, `.message.student`, `.virtual-teacher-view`, `.vt-typing-indicator`, `.vt-input-area`
+- Keep: `.focus-carousel` (adapted), `.focus-slide`, `.focus-tutor-msg`, `.focus-input-area`, `.focus-track`
+- Keep: `.explanation-card-type`, `.explanation-card-title` styles (reused in card_phase slides)
+- Adapt `.explanation-nav-btn` styles for the unified bottom action area
 
-**File:** `llm-backend/tutor/api/sessions.py`
+### Step 9: Clean up dead code
 
-- For streaming sessions: send pixi code as a separate `visual_ready` WebSocket message once generation completes (text may still be streaming). This way the frontend knows the visual is ready without blocking text.
-- For non-streaming (REST) responses: include pixi_code in the visual_explanation payload as before.
+- Delete `ExplanationViewer.tsx` component file
+- Remove unused state variables: `virtualTeacherOn`, `focusDismissedRef`, `lastTapRef`
+- Remove unused CSS classes
 
-**File:** `llm-backend/tutor/services/session_service.py`
+## What Stays Unchanged
 
-- Pass new visual shape (with `pixi_code`) through to the response.
-
-### Step 6: Update Frontend Types
-
-**File:** `llm-frontend/src/api.ts`
-
-Update `VisualExplanation` interface:
-```typescript
-export interface VisualExplanation {
-  pixi_code: string;
-  output_type: 'image' | 'animation';
-  title?: string;
-  narration?: string;
-}
-```
-
-Remove `VisualAnimationStep` interface. Add handler for `visual_ready` WebSocket message type.
-
-### Step 7: Rewrite VisualExplanation Component
-
-**File:** `llm-frontend/src/components/VisualExplanation.tsx`
-
-Complete rewrite — replace all SVG rendering with PixiJS renderer:
-- On "Visualise" click: create `PIXI.Application` (500x350), execute `pixi_code` via `new Function('app', 'PIXI', code)`.
-- Title + narration text around the canvas.
-- Replay button (destroys + recreates app).
-- Cleanup on unmount.
-- Error boundary: if code execution fails, show "Visual couldn't load" fallback.
-- Reuse patterns from `PixiJsPocPage.tsx`.
-
-### Step 8: Update CSS
-
-**File:** `llm-frontend/src/App.css`
-
-Update `.visual-explanation` styles:
-- Canvas container sized for inline chat (max-width 500px).
-- Dark background (#1a1a2e) matching POC.
-- Rounded corners, overflow hidden.
-- Keep existing button styles with minor size adjustments.
-
-### Step 9: Update ChatSession Integration
-
-**File:** `llm-frontend/src/pages/ChatSession.tsx`
-
-- Handle `visual_ready` WebSocket message: attach `pixi_code` to the latest teacher message.
-- The `VisualExplanationComponent` usage stays the same in all 3 render locations (focus subtitle, message thread, focus carousel) — just passes new data shape.
-
-### Step 10: Handle First-Turn Visuals
-
-- `session_service.py` already includes `visual_explanation` in first turn — ensure the new shape (with pixi code generation) flows through the same path.
-
----
-
-## Files Modified Summary
-
-| File | Change |
-|------|--------|
-| `llm-backend/tutor/agents/master_tutor.py` | Replace VisualExplanation model |
-| `llm-backend/tutor/prompts/master_tutor_prompts.py` | Rewrite rule #13 |
-| `llm-backend/tutor/services/pixi_code_generator.py` | **NEW** — Pixi code generation service |
-| `llm-backend/tutor/orchestration/orchestrator.py` | Add parallel pixi generation call |
-| `llm-backend/tutor/api/sessions.py` | Add `visual_ready` WS message type |
-| `llm-backend/tutor/services/session_service.py` | Pass new visual shape |
-| `llm-frontend/src/api.ts` | Update VisualExplanation type + WS handler |
-| `llm-frontend/src/components/VisualExplanation.tsx` | Full rewrite → PixiJS renderer |
-| `llm-frontend/src/pages/ChatSession.tsx` | Handle `visual_ready` WS message |
-| `llm-frontend/src/App.css` | Update visual container styles |
-
----
+- Exam mode (its own card-like Q&A UI)
+- Session completion/summary view
+- Feedback modal
+- DevTools drawer
+- TTS/audio playback logic
+- Streaming text display
+- WebSocket communication
+- Backend API (no backend changes needed)
+- Visual explanations (PixiJS) — just rendered inside card slides
 
 ## Key Design Decisions
 
-1. **Two-call approach** — Master tutor describes, Codex generates code. Clean separation.
-2. **Parallel generation** — Pixi code generates concurrently with text streaming. No added latency for the user.
-3. **Lazy rendering** — Code executes only when user clicks "Visualise" (same UX as today).
-4. **Same execution tech as POC** — `new Function('app', 'PIXI', code)` pattern, proven to work.
-5. **Smaller canvas for chat** — 500x350 (vs POC's 800x600) to fit inline in messages.
-6. **Fallback on error** — If pixi code fails to execute, show friendly fallback instead of crashing.
-7. **`visual_ready` WS message** — Decouples visual generation from text streaming so neither blocks the other.
+1. **Focus carousel becomes the primary view** — it already has the right UX (swipe, one-card-at-a-time, large text). We promote it rather than building something new.
+2. **Unified slide model** — a memo (`carouselSlides`) abstracts over both explanation cards and message-based cards, so the carousel renderer doesn't care about the source.
+3. **No user preference needed** — everyone gets the card view. Removes complexity of VT toggle and focus_mode pref.
+4. **Exam mode untouched** — it has its own distinct UX that works well as-is.
 
----
+## Files Modified
 
-## Out of Scope (for now)
-
-- Caching/reusing generated pixi code across sessions
-- User ability to regenerate/modify visuals
-- Removing the admin POC page (keep for testing)
-- Updating evaluation/exam flows (only teach_me and clarify_doubts)
-- Unit tests for the new pixi code generator service
+| File | Change |
+|------|--------|
+| `llm-frontend/src/pages/ChatSession.tsx` | Major refactor — unified card view |
+| `llm-frontend/src/App.css` | Remove old styles, adapt focus carousel |
+| `llm-frontend/src/components/ExplanationViewer.tsx` | **DELETE** |
