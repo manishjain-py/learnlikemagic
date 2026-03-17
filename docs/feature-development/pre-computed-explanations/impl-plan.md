@@ -14,7 +14,7 @@ Pre-computed explanations are structured, multi-card teaching artifacts generate
 **High-level approach:**
 - New `TopicExplanation` entity + `ExplanationRepository` for storage
 - New `ExplanationGeneratorService` with multi-pass LLM pipeline (generate → critique → refine)
-- Triggered post-sync via existing sync routes
+- Triggered via standalone endpoint (decoupled from sync to avoid timeout issues)
 - `SessionService` detects pre-computed explanations at session creation, returns cards instead of calling `generate_welcome_message()`
 - New `CardPhase` in session state replaces `ExplanationPhase` for pre-computed topics
 - New `ExplanationViewer` frontend component for card-based navigation
@@ -58,7 +58,7 @@ ONLINE (session time)
   "Clear" / "Explain differently" / all variants exhausted
        ↓
   Transition to interactive tutor
-  (inject {explanation_context} summary into system prompt)
+  (inject {precomputed_explanation_summary} into system prompt)
 ```
 
 ### New modules
@@ -82,7 +82,7 @@ ONLINE (session time)
 | `tutor/models/session_state.py` | New `CardPhaseState` model |
 | `tutor/services/session_service.py` | Card detection at session creation, skip welcome LLM call |
 | `tutor/orchestration/orchestrator.py` | Card navigation handling, transition to interactive |
-| `tutor/prompts/master_tutor_prompts.py` | `{explanation_context}` section |
+| `tutor/prompts/master_tutor_prompts.py` | `{precomputed_explanation_summary}` section |
 | `tutor/api/sessions.py` | Updated response shapes, card navigation endpoint |
 | `tutor/models/messages.py` | New DTOs for explanation cards |
 | `book_ingestion_v2/models/schemas.py` | Updated `SyncResponse` model |
@@ -216,6 +216,21 @@ Add `"explanation_generator"` to `_LLM_CONFIG_SEEDS` list:
 }
 ```
 
+**Decision: Idempotent upsert for LLM config.** The existing `_seed_llm_config()` only seeds when the table is empty (won't apply to production). Add an `_ensure_llm_config()` function that inserts if the component_key is missing:
+```python
+def _ensure_llm_config(db_manager, component_key, provider, model_id, description):
+    with db_manager.engine.connect() as conn:
+        exists = conn.execute(text(
+            "SELECT 1 FROM llm_config WHERE component_key = :key"
+        ), {"key": component_key}).fetchone()
+        if not exists:
+            conn.execute(text(
+                "INSERT INTO llm_config (component_key, provider, model_id, description) "
+                "VALUES (:key, :provider, :model, :desc)"
+            ), {"key": component_key, "provider": provider, "model": model_id, "desc": description})
+            conn.commit()
+```
+
 ### 4.3 Explanation Repository
 
 **New file:** `llm-backend/shared/repositories/explanation_repository.py`
@@ -240,6 +255,11 @@ class ExplanationRepository:
 
     def has_explanations(self, guideline_id: str) -> bool:
         """Quick existence check — used by session service."""
+
+    @staticmethod
+    def parse_cards(cards_json: list[dict]) -> list[ExplanationCard]:
+        """Validate and parse raw JSONB cards into ExplanationCard models.
+        Ensures DB data matches the expected Pydantic schema on read."""
 ```
 
 **Decision: Repository lives in `shared/repositories/`.** It's written by the ingestion pipeline and read by the tutor session service. This matches the existing pattern — `TeachingGuidelineRepository` is also in `shared/repositories/` and is consumed by both modules. Avoids creating a new cross-module dependency direction (tutor → book_ingestion_v2).
@@ -282,8 +302,8 @@ class ExplanationGeneratorService:
                       guideline: TeachingGuideline, variant_config: dict) -> list[dict]:
         """LLM call: refine cards based on critique feedback."""
 
-    def _build_summary(self, cards: list[dict], variant_label: str) -> dict:
-        """Extract summary_json from cards (card titles, key analogies, key examples)."""
+    def _build_summary(self, generation_output: dict) -> dict:
+        """Build summary_json from LLM-returned structured metadata (not parsed from freeform text)."""
 
     def generate_for_chapter(self, book_id: str, chapter_id: str) -> dict:
         """Generate explanations for all synced guidelines in a chapter."""
@@ -291,11 +311,12 @@ class ExplanationGeneratorService:
 
 **Multi-pass pipeline per variant:**
 ```
-1. _generate_cards()     → raw cards list
+1. _generate_cards()     → raw cards list + structured summary metadata
 2. _critique_cards()     → critique feedback (issues, suggestions)
-3. _refine_cards()       → improved cards list
-4. _build_summary()      → summary_json for tutor context
-5. repo.upsert()         → persist to DB
+3. _refine_cards()       → improved cards list (if critique says needs_improvement)
+4. _validate_cards()     → reject if < 3 cards or critique was "poor" after refine
+5. _build_summary()      → summary_json from LLM-returned metadata (not text extraction)
+6. repo.upsert()         → persist to DB (skipped if validation fails)
 ```
 
 **Card validation before storage:**
@@ -323,9 +344,15 @@ Output schema (strict JSON):
       "content": "explanation text, simple language",
       "visual": "optional ASCII/formatted visual or null"
     }
-  ]
+  ],
+  "summary": {
+    "key_analogies": ["pizza slices", "chocolate bar"],
+    "key_examples": ["1/2 of a pizza", "3/4 of a glass"]
+  }
 }
 ```
+
+**Decision: LLM returns structured summary metadata alongside cards.** Extracting analogies and examples algorithmically from freeform card content is fragile (regex for "like a..." patterns). Having the LLM identify its own key analogies/examples during generation is reliable and adds negligible token overhead. `_build_summary()` combines this with card titles and the variant label — no text parsing needed.
 
 **New file:** `llm-backend/book_ingestion_v2/prompts/explanation_critique.txt`
 
@@ -344,72 +371,69 @@ Output schema:
 }
 ```
 
-### 4.6 Modified: Topic Sync Service
+### 4.6 Explanation Generation — Decoupled from Sync
 
-**File:** `llm-backend/book_ingestion_v2/services/topic_sync_service.py`
+**Decision: Explanation generation is a separate step from sync, not inline.**
 
-Add explanation generation after sync completes:
+Sync creates/recreates `TeachingGuideline` rows (fast, ~seconds). Explanation generation is 6-9 LLM calls per topic × 5-7 topics per chapter = 30-63 LLM calls at ~5-15s each = **4-17 minutes per chapter**. Running this inline with sync would:
+- Hit HTTP request timeouts (most ASGI servers/load balancers timeout at 30-60s)
+- Provide no progress feedback to the admin
+- Lose partial progress if the request dies mid-chapter
 
-```python
-def sync_chapter(self, book_id: str, chapter_id: str) -> SyncResponse:
-    # ... existing sync logic (unchanged) ...
+**Architecture: Sync stays fast. Explanation generation runs separately.**
 
-    # NEW: trigger explanation generation for synced guidelines
-    explanation_results = self._generate_explanations_for_synced(synced_guideline_ids)
-
-    return SyncResponse(
-        synced_chapters=1,
-        synced_topics=len(synced_guideline_ids),
-        explanations_generated=explanation_results["generated"],
-        explanation_errors=explanation_results["errors"],
-        errors=errors
-    )
-
-def _generate_explanations_for_synced(self, guideline_ids: list[str]) -> dict:
-    """Generate explanations for each synced guideline."""
-    # Create ExplanationGeneratorService with LLM config
-    # For each guideline_id: generate_for_guideline()
-    # Catch and log errors per guideline (don't fail sync)
-    # Return {"generated": count, "errors": [error_msgs]}
+```
+Admin clicks "Sync" → fast sync (seconds)
+Admin clicks "Generate Explanations" → separate endpoint, per-guideline progress logging
 ```
 
-**Decision: Explanation generation is part of sync, not a separate step.** Simplifies the admin workflow — one button does everything. Errors in explanation generation don't fail the sync (topics are still usable with dynamic tutoring). This matches the PRD: "triggered as part of the same admin pipeline action."
+**File:** `llm-backend/book_ingestion_v2/services/topic_sync_service.py` — **No changes.** Sync remains unchanged.
 
-**Decision: Sync is already slow (LLM calls for each topic's curriculum context). Adding explanation generation makes it slower.** Acceptable because sync is an admin-triggered, infrequent operation. We log progress per topic.
-
-**Re-sync recovery (cascade delete risk):** Sync deletes existing guideline rows before recreating them. With `ON DELETE CASCADE`, this wipes all explanations for the chapter. If explanation regeneration then fails for some topics, those topics silently lose their cards. Mitigations:
-1. `SyncResponse.explanation_errors` surfaces failures prominently (see 4.7)
-2. Standalone backfill endpoint allows re-generating explanations without a full re-sync:
+**File:** `llm-backend/book_ingestion_v2/api/sync_routes.py` — New endpoint:
 
 ```python
-# In sync_routes.py:
 @router.post("/{book_id}/generate-explanations")
 def generate_explanations(book_id: str, chapter_id: str = None, db=Depends(get_db)):
-    """Generate/regenerate explanations for synced guidelines. Does not re-sync topics."""
+    """Generate/regenerate explanations for synced guidelines.
+
+    Runs independently from sync. Idempotent — regenerates existing variants.
+    Logs WARNING per failed topic so admin monitoring catches silent degradation.
+    """
+    llm = get_llm_service("explanation_generator")
     service = ExplanationGeneratorService(db, llm)
+
     if chapter_id:
         result = service.generate_for_chapter(book_id, chapter_id)
     else:
         result = service.generate_for_book(book_id)
+
+    # Log warnings for failures so they surface in admin monitoring
+    for error in result.get("errors", []):
+        logger.warning(f"Explanation generation failed: {error}")
+
     return result
 ```
 
-### 4.7 Modified: Sync Response Model
-
-**File:** `llm-backend/book_ingestion_v2/models/schemas.py` (where `SyncResponse` is defined)
-
-Update `SyncResponse` to include explanation generation results:
-
+Response shape:
 ```python
-class SyncResponse(BaseModel):
-    synced_chapters: int
-    synced_topics: int
-    errors: list[str]
-    explanations_generated: int = 0       # NEW
-    explanation_errors: list[str] = []    # NEW
+class ExplanationGenerationResponse(BaseModel):
+    generated: int           # topics with explanations successfully generated
+    skipped: int             # topics that already had explanations (unless force=True)
+    failed: int              # topics where generation errored
+    errors: list[str]        # per-topic error messages
 ```
 
-**Explanation errors are surfaced prominently** so admins notice when re-sync silently downgrades topics from instant cards back to dynamic generation (due to cascade delete + regeneration failure).
+**Re-sync cascade delete risk:** Sync deletes/recreates guideline rows → `ON DELETE CASCADE` wipes explanations. Admin must re-run "Generate Explanations" after sync. This is acceptable because:
+1. The admin workflow is: Sync → Generate Explanations (two separate actions)
+2. If they forget step 2, topics gracefully fall back to dynamic tutoring
+3. WARNING logs per failed topic surface in admin monitoring
+4. Future: add a health-check endpoint listing topics with guidelines but missing explanations
+
+### 4.7 Sync Response — No Changes
+
+**File:** `llm-backend/book_ingestion_v2/models/schemas.py`
+
+`SyncResponse` is unchanged — sync no longer triggers explanation generation. The new `ExplanationGenerationResponse` model (defined in 4.6) is returned by the separate generate-explanations endpoint.
 
 ### 4.8 Session State Changes
 
@@ -430,7 +454,7 @@ class CardPhaseState(BaseModel):
     completed: bool = False               # True when student says "clear" or exhausts variants
 ```
 
-**Decision: Store `guideline_id` in `CardPhaseState`.** All explanation lookups use `guideline_id` (not `topic_id`). While `topic_id` happens to equal `guideline_id` in the current `convert_guideline_to_topic()` implementation, relying on that is fragile. Storing `guideline_id` explicitly ensures correct lookups in `switch_explanation_variant()` and `_build_explanation_context()`.
+**Decision: Store `guideline_id` in `CardPhaseState`.** All explanation lookups use `guideline_id` (not `topic_id`). While `topic_id` happens to equal `guideline_id` in the current `convert_guideline_to_topic()` implementation, relying on that is fragile. Storing `guideline_id` explicitly ensures correct lookups in `switch_explanation_variant()` and `_build_precomputed_summary()`.
 
 Add to `SessionState`:
 
@@ -481,15 +505,17 @@ def create_new_session(self, request, user_id=None):
     if explanations and mode == "teach_me":
         # Card phase: skip welcome LLM call AND explanation phase init
         # (cards replace ExplanationPhase — no start_explanation() call)
-        variant_a = next((e for e in explanations if e.variant_key == "A"), explanations[0])
+        # Use first available variant (don't assume "A" exists — it may have
+        # failed validation). available_variant_keys comes from actual DB results.
+        first_variant = explanations[0]
 
         session.card_phase = CardPhaseState(
             guideline_id=guideline.id,
             active=True,
-            current_variant_key=variant_a.variant_key,
+            current_variant_key=first_variant.variant_key,
             current_card_idx=0,
-            total_cards=len(variant_a.cards_json),
-            variants_shown=[variant_a.variant_key],
+            total_cards=len(first_variant.cards_json),
+            variants_shown=[first_variant.variant_key],
             available_variant_keys=[e.variant_key for e in explanations],
         )
 
@@ -503,12 +529,12 @@ def create_new_session(self, request, user_id=None):
             "hints": [],
             "step_idx": session.current_step,
             # NEW fields:
-            "explanation_cards": variant_a.cards_json,
+            "explanation_cards": first_variant.cards_json,
             "session_phase": "card_phase",
             "card_phase_state": {
-                "current_variant_key": variant_a.variant_key,
+                "current_variant_key": first_variant.variant_key,
                 "current_card_idx": 0,
-                "total_cards": len(variant_a.cards_json),
+                "total_cards": len(first_variant.cards_json),
                 "available_variants": len(explanations),
             },
         }
@@ -583,12 +609,12 @@ def complete_card_phase(self, session_id: str, action: str) -> dict:
         self._persist_session_state(session, state)
 
         # Build explanation context summary for tutor
-        explanation_context = self._build_explanation_context(state)
+        precomputed_summary = self._build_precomputed_summary(state)
 
         return {
             "action": "transition_to_interactive",
             "message": "Great! Now let's make sure you've got it. Feel free to ask any questions!",
-            "explanation_context": explanation_context,
+            "precomputed_summary": precomputed_summary,
         }
 
     elif action == "explain_differently":
@@ -597,7 +623,8 @@ def complete_card_phase(self, session_id: str, action: str) -> dict:
                   if k not in state.card_phase.variants_shown]
 
         if unseen:
-            return self.switch_explanation_variant(session_id, unseen[0])
+            # Use internal method to avoid double session load
+            return self._switch_variant_internal(state, session, unseen[0])
         else:
             # All variants exhausted → fall back to dynamic ExplanationPhase
             state.complete_card_phase()
@@ -621,7 +648,7 @@ def complete_card_phase(self, session_id: str, action: str) -> dict:
 Helper for tutor context:
 
 ```python
-def _build_explanation_context(self, state: SessionState) -> str:
+def _build_precomputed_summary(self, state: SessionState) -> str:
     """Build summary of shown explanations for tutor system prompt injection."""
     if not state.card_phase:
         return ""
@@ -669,15 +696,25 @@ def _init_dynamic_fallback(self, state: SessionState):
 
 ```python
 def _advance_past_explanation_steps(self, state: SessionState):
-    """After successful card phase, skip past explain steps in the study plan.
+    """After successful card phase, skip consecutive leading explain steps.
 
-    Cards covered the explanation, so mark explain steps as done and advance
-    current_step to the first check/practice step.
+    Cards cover the topic's introductory explanation holistically. This method
+    skips consecutive "explain" steps at the start of the study plan, landing
+    on the first non-explain step (typically "check" or "practice").
+
+    ASSUMPTION: Pre-computed cards replace the leading explain block only.
+    If the study plan has interleaved explain steps later (e.g., explain →
+    check → explain → practice), the later explain steps are handled by the
+    dynamic tutor. This is intentional — later explain steps often cover
+    advanced sub-topics that benefit from interactive, personalized teaching.
+
+    Example: [explain, explain, check, explain, practice]
+              ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              skipped by cards  handled by dynamic tutor
     """
     while state.current_step <= state.topic.study_plan.total_steps:
         step = state.topic.study_plan.get_step(state.current_step)
         if step and step.type == "explain":
-            # Mark as covered (add concept to covered set)
             state.concepts_covered_set.add(step.concept)
             state.advance_step()
         else:
@@ -715,12 +752,16 @@ Frontend `ChatSession.tsx` handles this in the deep-link/refresh path:
 // In the "else → Deep link / page refresh" branch of useEffect:
 const replay = await getSessionReplay(sessionId);
 if (replay.card_phase?.active && replay._replay_explanation_cards) {
+  // Restore card position from localStorage (server only stores variant, not card index)
+  const savedPos = localStorage.getItem(`card-pos-${sessionId}`);
+  const cardIdx = savedPos ? parseInt(savedPos, 10) : 0;
+
   setSessionPhase('card_phase');
   setExplanationCards(replay._replay_explanation_cards);
-  setCurrentCardIdx(replay.card_phase.current_card_idx);
+  setCurrentCardIdx(cardIdx);
   setCardPhaseState({
     current_variant_key: replay.card_phase.current_variant_key,
-    current_card_idx: replay.card_phase.current_card_idx,
+    current_card_idx: cardIdx,
     total_cards: replay.card_phase.total_cards,
     available_variants: replay.card_phase.available_variant_keys.length,
   });
@@ -728,6 +769,8 @@ if (replay.card_phase?.active && replay._replay_explanation_cards) {
   // Existing replay path (card phase completed or never started)
 }
 ```
+
+**Decision: Card position stored in localStorage, not server.** Card navigation is rapid (tap/swipe) — persisting every position change to the server would create unnecessary API calls. localStorage is sufficient for refresh recovery. On variant switch, localStorage is reset. On card phase completion, localStorage entry is cleaned up.
 
 The `POST /sessions/{session_id}/resume` endpoint (for paused sessions) is not affected — card-phase sessions cannot be paused (pause only applies to teach_me sessions that have progressed past the explanation phase). If a card-phase session is abandoned (browser closed), the replay endpoint handles restoration.
 
@@ -755,28 +798,28 @@ def _apply_state_updates(self, session, tutor_output):
 
 **File:** `llm-backend/tutor/prompts/master_tutor_prompts.py`
 
-Add `{explanation_context_section}` to `MASTER_TUTOR_SYSTEM_PROMPT`:
+Add `{precomputed_explanation_summary_section}` to `MASTER_TUTOR_SYSTEM_PROMPT`:
 
 ```python
 # After {prior_topics_context_section}, add:
 
-EXPLANATION_CONTEXT_BLOCK = """
+PRECOMPUTED_EXPLANATION_BLOCK = """
 
 ## Pre-Explained Content
 
 The student has already seen the following explanation(s) before this interactive session began. DO NOT repeat these analogies, examples, or explanations. If the student is confused, try a fundamentally different approach.
 
-{explanation_context}
+{precomputed_explanation_summary}
 """
 ```
 
 In the prompt construction function, conditionally include this block:
 
 ```python
-explanation_context_section = ""
-if explanation_context:  # passed from session service
-    explanation_context_section = EXPLANATION_CONTEXT_BLOCK.format(
-        explanation_context=explanation_context
+precomputed_explanation_summary_section = ""
+if precomputed_summary:  # passed from session service
+    precomputed_explanation_summary_section = PRECOMPUTED_EXPLANATION_BLOCK.format(
+        precomputed_summary=precomputed_summary
     )
 ```
 
@@ -797,18 +840,18 @@ New endpoints for card phase:
 ```python
 @router.post("/{session_id}/card-action")
 def card_action(session_id: str, request: CardActionRequest, db=Depends(get_db)):
-    """Handle card phase actions: switch variant or complete."""
+    """Handle card phase actions: clear (understood) or explain differently."""
     service = SessionService(db)
 
-    if request.action == "switch_variant":
-        result = service.switch_explanation_variant(session_id, request.variant_key)
-    elif request.action in ("clear", "explain_differently"):
+    if request.action in ("clear", "explain_differently"):
         result = service.complete_card_phase(session_id, request.action)
     else:
         raise HTTPException(400, f"Unknown action: {request.action}")
 
     return result
 ```
+
+**Decision: No public `switch_variant` action.** Variant switching is an internal operation triggered by `explain_differently` → `complete_card_phase()` finds the next unseen variant internally. Exposing `switch_variant` publicly would bypass the "all variants exhausted" fallback logic. The frontend only needs two actions: "I understand" and "Explain differently".
 
 ### 4.14 Modified: Messages / DTOs
 
@@ -825,8 +868,7 @@ class ExplanationCard(BaseModel):
     visual: Optional[str] = None
 
 class CardActionRequest(BaseModel):
-    action: Literal["switch_variant", "clear", "explain_differently"]
-    variant_key: Optional[str] = None  # required for switch_variant
+    action: Literal["clear", "explain_differently"]
 
 class CardPhaseDTO(BaseModel):
     current_variant_key: str
@@ -914,8 +956,16 @@ if (locState?.firstTurn?.session_phase === 'card_phase') {
     totalCards={explanationCards.length}
     availableVariants={cardPhaseState?.available_variants ?? 0}
     variantsShown={/* track locally */}
-    onNext={() => setCurrentCardIdx(i => Math.min(i + 1, explanationCards.length - 1))}
-    onPrevious={() => setCurrentCardIdx(i => Math.max(i - 1, 0))}
+    onNext={() => {
+      const next = Math.min(currentCardIdx + 1, explanationCards.length - 1);
+      setCurrentCardIdx(next);
+      localStorage.setItem(`card-pos-${sessionId}`, String(next));
+    }}
+    onPrevious={() => {
+      const prev = Math.max(currentCardIdx - 1, 0);
+      setCurrentCardIdx(prev);
+      localStorage.setItem(`card-pos-${sessionId}`, String(prev));
+    }}
     onClear={() => handleCardAction('clear')}
     onExplainDifferently={() => handleCardAction('explain_differently')}
   />
@@ -981,12 +1031,11 @@ New API function:
 ```typescript
 export async function cardAction(
   sessionId: string,
-  action: 'switch_variant' | 'clear' | 'explain_differently',
-  variantKey?: string
+  action: 'clear' | 'explain_differently'
 ): Promise<any> {
   return apiFetch(`/sessions/${sessionId}/card-action`, {
     method: 'POST',
-    body: JSON.stringify({ action, variant_key: variantKey }),
+    body: JSON.stringify({ action }),
   });
 }
 ```
@@ -1034,12 +1083,12 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 | 2 | `ExplanationRepository` | `shared/repositories/explanation_repository.py` | Step 1 | Unit test: CRUD operations on `topic_explanations` |
 | 3 | Generation + critique prompts | `book_ingestion_v2/prompts/explanation_generation.txt`, `explanation_critique.txt` | — | Manual review of prompt quality |
 | 4 | `ExplanationGeneratorService` | `book_ingestion_v2/services/explanation_generator_service.py` | Steps 2, 3 | Generate explanations for a test guideline, inspect cards in DB |
-| 5 | Integrate into `TopicSyncService` + backfill endpoint | `topic_sync_service.py`, `sync_routes.py`, `schemas.py` | Step 4 | Run sync on a book, verify explanations generated; run backfill endpoint independently |
+| 5 | Generate-explanations endpoint + response model | `sync_routes.py`, `schemas.py` | Step 4 | POST generate-explanations for a chapter, verify explanations in DB |
 | 6 | `CardPhaseState` model | `session_state.py` | — | Unit test: serialization/deserialization |
 | 7 | `ExplanationCard`, `CardActionRequest`, updated `Turn` DTOs | `messages.py` | — | Unit test: model validation |
 | 8 | Session service changes: card detection, variant switching, phase completion, explanation context | `session_service.py` | Steps 2, 6, 7 | Create session for topic with explanations → verify cards in response, no LLM welcome call |
 | 9 | Card action API endpoint | `sessions.py` | Step 8 | POST card-action with clear/explain_differently, verify state transitions |
-| 10 | Master tutor prompt: `{explanation_context}` section | `master_tutor_prompts.py` | Step 8 | Start session with explanations, complete card phase, verify context in tutor prompt |
+| 10 | Master tutor prompt: `{precomputed_explanation_summary}` section | `master_tutor_prompts.py` | Step 8 | Start session with explanations, complete card phase, verify context in tutor prompt |
 | 11 | Frontend: `ExplanationViewer` component | `ExplanationViewer.tsx` | — | Render mock cards, test navigation |
 | 12 | Frontend: `ChatSession.tsx` card phase integration | `ChatSession.tsx` | Steps 9, 11 | End-to-end: start session → see cards → clear → interactive chat |
 | 13 | Frontend: `api.ts` types + `cardAction()` function | `api.ts` | Step 9 | API calls work with backend |
@@ -1063,7 +1112,7 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 | `test_card_action_clear` | Card phase completed, state transitions | Session state assertions |
 | `test_card_action_explain_differently` | Variant switched, cards returned | Mock repo |
 | `test_card_action_all_variants_exhausted` | Falls back to dynamic tutor | Mock repo |
-| `test_explanation_context_summary` | Summary built from shown variants | Mock repo with summary_json |
+| `test_precomputed_summary_summary` | Summary built from shown variants | Mock repo with summary_json |
 | `test_card_phase_state_serialization` | CardPhaseState round-trips through JSON (including guideline_id) | Pure model test |
 | `test_dynamic_fallback_init` | All variants exhausted → ExplanationPhase initialized at "opening" | Session state assertions |
 | `test_advance_past_explanation_steps` | "Clear" action skips explain steps, lands on first check/practice | Session state + step index |
@@ -1112,8 +1161,7 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Sync becomes too slow with explanation generation | Medium | Low | Explanation generation errors don't fail sync. Can be made async/background job later. |
-| Re-sync cascade-deletes explanations; regeneration fails | Medium | Medium | Backfill endpoint for recovery. `SyncResponse.explanation_errors` surfaces failures. Admin can re-run backfill without full re-sync. |
+| Re-sync cascade-deletes explanations; admin forgets to regenerate | Medium | Medium | Two-step admin workflow (Sync → Generate Explanations). WARNING logs for missing explanations. Graceful fallback to dynamic tutoring. |
 | LLM generates poor-quality cards | Low | Medium | Multi-pass pipeline (critique + refine). Manual review of first few chapters. Principles doc guides prompt. |
 | Card phase UX feels rigid (no mid-card questions) | Low | Medium | V1 trade-off accepted. Cards are short (15-30s). Escape hatch planned for v2. |
 | Large token usage for explanation generation | Low | Low | Offline batch processing, cost amortizes. ~30-50K tokens per topic is acceptable. |
@@ -1126,5 +1174,5 @@ No changes to `config.py`. New `LLMConfig` seed entry (component_key: `explanati
 
 - **Variant count:** Should we always generate 3 variants, or make it configurable per grade/subject? For v1, hardcoded 3 is simplest.
 - **Card count target:** Should the prompt specify a target card count (e.g., 5-8 cards)? Or let the LLM decide based on topic complexity? Recommend: soft guidance ("typically 5-10 cards") in the prompt.
-- **TTS for cards:** Should cards be read aloud (TTS) in virtual teacher mode? Not in v1 scope, but worth considering. The content field is suitable for TTS.
+- **TTS for cards / virtual teacher mode:** During card phase, the virtual teacher avatar shows the still image for the entire duration (no audio, no speaking state). This is a known UX gap. Future enhancement: auto-play TTS per card with animated GIF synced to playback — the card `content` field is suitable for TTS input.
 - **Analytics:** Track which variant students choose and whether they understand after each variant? Useful for optimizing variant ordering. Deferred to post-v1.
