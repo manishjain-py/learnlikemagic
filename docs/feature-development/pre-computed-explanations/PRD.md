@@ -5,8 +5,8 @@
 ### What We Have Today
 
 When a student starts a topic, the system:
-1. **Generates a study plan on-the-fly** — LLM creates 3-5 teaching steps including an "explain" step
-2. **Dynamically generates explanation content turn-by-turn** — each sentence/paragraph is an LLM call during the live session
+1. **Generates a study plan on-the-fly** — LLM creates 3-5 teaching steps, each with scaffolding metadata (`teaching_approach`, `building_blocks`, `analogy`, `success_criteria`)
+2. **Master tutor dynamically generates explanation content turn-by-turn** — using the study plan's scaffolding, the tutor produces explanation turns during the live session, tracking progress through an `ExplanationPhase` state machine (`not_started → opening → explaining → informal_check → complete`)
 3. **Student navigates with "OK"** through explanation turns, each taking 20-30+ seconds
 
 The explanation phase is the student's **first impression** of a topic. It's the moment that determines whether a kid feels "this is interesting" or "this is boring/confusing."
@@ -31,7 +31,7 @@ Explanation is the foundation of learning. A well-crafted explanation with clear
 
 ## Solution Overview
 
-Make explanations a **first-class, pre-computed artifact** in the topic pipeline. Generate them offline during book ingestion — after topic finalization, before sync — so they're ready instantly when a student starts a session.
+Make explanations a **first-class, pre-computed artifact** in the topic pipeline. Generate them offline after topic sync — so they're ready instantly when a student starts a session.
 
 | Concept | Description |
 |---------|-------------|
@@ -46,34 +46,38 @@ Make explanations a **first-class, pre-computed artifact** in the topic pipeline
 
 ### R1: Offline Explanation Generation (New Pipeline Stage)
 
-Add a new stage after topic finalization (Stage 3) and before sync (Stage 4):
+Add a new stage **after topic sync** (post-sync), triggered as part of the same admin action or as a follow-up step:
 
 ```
-Plan → Extract → Consolidate/Finalize → Generate Explanations → Sync → Study Plan → Tutor
+Plan → Extract → Consolidate/Finalize → Sync → Generate Explanations → Study Plan → Tutor
 ```
 
-**Input:** Finalized topic with merged guidelines, learning objectives, prerequisites, misconceptions, scope boundary, and `prior_topics_context`.
+**Why post-sync (not pre-sync):** Explanations are keyed by `guideline_id`, which is created during sync. Generating post-sync ensures a stable FK relationship. Since sync may delete/recreate guideline rows on re-sync, explanations are regenerated alongside — acceptable because the underlying topic content may have changed.
+
+**Input:** The synced `TeachingGuideline` record — its freeform `guideline` text contains learning objectives, prerequisites, misconceptions, scope boundary, and depth requirements. The generation prompt parses these from the guideline text (same as the tutor does today). Also uses `prior_topics_context` to weave references to earlier topics into explanation cards naturally.
 
 **Output:** 2-3 `ExplanationVariant` objects per topic, each containing an ordered list of `ExplanationCard` items.
 
 **Each `ExplanationCard` contains:**
 - `card_type`: "concept", "example", "visual", "analogy", "summary"
 - `title`: Short heading for the card
-- `content`: The explanation text — simple language, short sentences
-- `visual`: Optional structured visual description (ASCII diagram, image prompt, or reference to a pre-generated image)
+- `content`: The explanation text — simple language, short sentences. Should naturally incorporate `prior_topics_context` references where relevant ("Remember how we learned about place value? Now let's use that to compare numbers.")
+- `visual`: Optional structured visual (ASCII diagram, formatted example, styled text illustration). V1 uses text-based visuals only — no PixiJS or image generation.
 
-**Each `ExplanationVariant` represents a different teaching approach:**
+**Each `ExplanationVariant` represents a fundamentally different teaching approach:**
 - Variant A: Primary approach (e.g., analogy-driven with everyday examples)
 - Variant B: Alternative approach (e.g., visual/diagram-heavy)
 - Variant C (optional): Step-by-step procedural walkthrough
+
+Variants must be genuinely different pedagogical strategies (different analogies, different sequencing, different emphasis), not the same explanation rephrased.
 
 **Generation quality levers (enabled by offline processing):**
 - Multi-pass: generate → self-critique against explanation principles (see `docs/principles/how-to-explain.md`) → refine
 - Higher reasoning effort (`reasoning_effort="high"`)
 - Deliberate visual planning per card
-- Each variant is independently coherent (not just a reshuffled version of another)
+- Each variant is independently coherent
 
-**LLM configuration:** One call per variant per topic. Since this runs offline during ingestion, cost and latency are not constraints. Quality is the only priority.
+**LLM configuration:** One call per variant per topic. Since this runs offline, cost and latency are not constraints. Quality is the only priority.
 
 ### R2: Structured Storage
 
@@ -82,7 +86,7 @@ Plan → Extract → Consolidate/Finalize → Generate Explanations → Sync →
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | UUID | Primary key |
-| `guideline_id` | UUID | FK to `teaching_guidelines` |
+| `guideline_id` | UUID | FK to `teaching_guidelines` (cascade delete) |
 | `variant_key` | VARCHAR | "A", "B", "C" |
 | `variant_label` | VARCHAR | Human-readable: "Everyday Analogies", "Visual Walkthrough", etc. |
 | `cards_json` | JSONB | Ordered list of `ExplanationCard` objects |
@@ -95,63 +99,123 @@ Plan → Extract → Consolidate/Finalize → Generate Explanations → Sync →
 - Can regenerate explanations without touching guidelines
 - Supports future per-variant analytics (which variant works best)
 
+**Cascade delete on `guideline_id`:** When sync deletes/recreates guideline rows, explanation rows are cleaned up automatically. The post-sync explanation generation step recreates them.
+
+**No S3 backup.** Cards are small structured JSON — DB (JSONB) is sufficient and queryable. S3 storage is unnecessary complexity for this data shape.
+
+**Book/chapter hierarchy:** Queryable via JOIN through `teaching_guidelines` (which has `book_id`, `chapter` fields). No denormalization needed on `topic_explanations`.
+
 ### R3: Study Plan Integration
 
-The study plan's "explain" step changes from "generate explanation content" to "serve pre-computed explanation."
+**Clarification on current study plan behavior:** Study plans do not contain explanation text. They contain scaffolding metadata (`teaching_approach`, `building_blocks`, `analogy`, `success_criteria`) that the master tutor uses to dynamically generate explanation turns at session time. The latency problem is in the tutor's turn-by-turn generation, not in study plan creation.
 
-**Changes to study plan generation:**
-- When a pre-computed explanation exists, the "explain" step references it: `"source": "pre_computed", "variant_key": "A"`
-- The study plan still defines the overall sequence (explain → check → practice), but the explain step's content is pre-built
-- Study plan generation becomes faster since it doesn't need to plan explanation content
+**Changes:**
+- When pre-computed explanations exist for a guideline, the study plan's "explain" step is annotated with `"explanation_source": "pre_computed"` to signal the session orchestrator to use card mode
+- The study plan still defines the overall teaching sequence (explain → check → practice). Its scaffolding metadata (`building_blocks`, `analogy`, etc.) is retained — it's used if the session falls back to dynamic tutoring (variant exhaustion or topics without pre-computed explanations)
+- **Study plan generation itself does not get faster** — the win is session-time latency (no LLM calls during the explanation phase)
 
-**Fallback:** If no pre-computed explanation exists (old topics, edge cases), the study plan falls back to the current dynamic explanation behavior. No breaking change.
+**Fallback:** If no pre-computed explanation exists (old topics, edge cases), the session uses the current dynamic `ExplanationPhase` behavior unchanged. No breaking change.
 
-### R4: Frontend Explanation Experience
+### R4: Session Runtime — Card Phase vs. Explanation Phase
+
+Pre-computed explanations introduce a new runtime mode that replaces the current `ExplanationPhase` state machine for topics that have pre-computed content.
+
+**Current state machine (retained for dynamic fallback):**
+```
+not_started → opening → explaining (multi-turn, building_blocks tracked) → informal_check → complete
+```
+
+**New card mode (for pre-computed topics):**
+```
+card_phase (no LLM calls, card navigation) → transition_prompt → check/practice phases
+```
+
+**How it works:**
+1. **Session creation** detects pre-computed explanations exist for the guideline
+2. Session state enters `CardPhase` instead of `ExplanationPhase`
+3. Pre-computed explanation cards (variant A) are returned as part of session initialization — **no LLM call, no `generate_welcome_message()`**
+4. A short pre-computed welcome is prepended: *"Let's learn about [topic]! I'll walk you through it, and then we can talk about any questions."*
+5. Frontend renders cards; student navigates with tap/swipe
+6. After the last card, transition prompt: *"That's the overview! Is everything clear, or would you like me to explain it differently?"*
+7. Student response determines next state:
+   - **"Clear"** → Session transitions to check-understanding / practice phases (interactive tutor)
+   - **"Explain differently"** → Load variant B cards (instant), remain in `CardPhase`
+   - **All variants exhausted + still confused** → Session transitions to dynamic `ExplanationPhase` with full tutor, using study plan scaffolding as before
+
+**What this replaces:**
+- The `ExplanationPhase` state machine (`opening`, `explaining`, `informal_check` sub-phases) — skipped entirely for pre-computed topics
+- The `generate_welcome_message()` LLM call — replaced by a pre-computed welcome string
+- Building blocks tracking during explanation — the cards *are* the building blocks, pre-sequenced
+- Minimum-turn enforcement and advancement guards during explanation — not applicable to card navigation
+
+**What this does NOT replace:**
+- `ExplanationPhase` for dynamic fallback (when all variants are exhausted)
+- `ExplanationPhase` for topics without pre-computed explanations (backward compatibility)
+- All post-explanation phases (check understanding, practice, Q&A)
+
+**`student_shows_prior_knowledge` detection:** Does not apply during card phase (no student text input). This is an acceptable trade-off — prior knowledge is detected in the post-card interactive phase instead. If a student already knows the material, the check-understanding phase will surface that quickly.
+
+**Hard-gated interaction during cards:** No text input during card phase. Navigation controls only (next/previous) plus an "I don't understand" button that triggers variant switch. Students are accustomed to swiping through content. Cards are short (15-30 seconds each per principle #7 in `how-to-explain.md`). Questions are asked after the explanation completes. An "ask mid-explanation" escape hatch may be added in v2 if usage data shows students dropping off mid-cards.
+
+### R5: Frontend Explanation Experience
 
 The explanation phase shifts from chat-style turns to a **card-by-card reading experience.**
 
 **UX flow:**
-1. Student opens a topic → sees first explanation card immediately (no loading spinner)
+1. Student opens a topic → sees pre-computed welcome + first explanation card immediately (no loading spinner, no LLM call)
 2. Student taps/swipes to advance through cards — each card appears instantly
-3. After the last card, a transition message: *"That's the overview! Is everything clear, or would you like me to explain it differently?"*
+3. After the last card, transition message: *"That's the overview! Is everything clear, or would you like me to explain it differently?"*
 4. Student responds:
-   - **"Clear"** → Tutor moves to check-understanding / practice phase (interactive)
+   - **"Clear"** → Tutor moves to check-understanding / practice phase (interactive chat resumes)
    - **"Explain differently"** → Load variant B cards (instant again)
    - **Still confused after all variants** → Dynamic tutor takes over with personalized re-explanation
 
 **Key UX properties:**
 - Zero latency during explanation card navigation
 - Progress indicator (card 3 of 7)
-- Cards support rich content: text, visuals/diagrams, highlighted examples
-- No text input box during explanation phase — just navigation controls + "I don't understand" button
+- Cards support rich content: styled text, formatted examples, ASCII diagrams, highlighted key terms
+- No text input box during explanation phase — navigation controls + "I don't understand" button only
+- V1 visual system: text-based visuals (formatted examples, ASCII diagrams, styled text). Separate from the chat's PixiJS visual pipeline. PixiJS integration is a future enhancement.
 
-### R5: Tutor Awareness of Pre-Computed Content
+**Session state and history:**
+- Card phase content is tracked in session state (which variant was shown, which cards were viewed)
+- When chat resumes after cards, conversation history starts fresh from the transition prompt — card content is not replayed as chat messages
+- On session resume/refresh, if the student was in card phase, restore card position from session state
 
-When the session transitions from pre-computed explanation to interactive tutoring, the tutor must know:
+**Frontend architecture:**
+- New `ExplanationViewer` component: card-based, swipeable/tappable, renders card types (concept, example, visual, analogy, summary)
+- Sits alongside `ChatSession` — explanation viewer is active during `CardPhase`, chat is active during interactive phases
+- Requires new session initialization response shape: must include `explanation_cards` array + `session_phase: "card_phase"` alongside existing session data
 
-1. **What was explained** — the full content of the variant(s) shown
-2. **How it was explained** — which analogies, examples, visuals were used
-3. **Which variants were seen** — so it doesn't repeat the same approach
+### R6: Tutor Awareness of Pre-Computed Content
 
-**Implementation:** Inject the shown explanation content into the tutor's context (system prompt or conversation history preamble). The tutor prompt should include instructions like: *"The student has already seen the following explanation. Do not repeat these analogies. If they're confused, try a fundamentally different approach."*
+When the session transitions from pre-computed explanation to interactive tutoring, the tutor must know what was already shown — but efficiently.
+
+**Inject a summary, not full card text.** The tutor's system prompt is already dense. Injecting 2-3 full card sets (7-12 cards each) would bloat token usage. Instead, inject:
+- Card titles (the concept sequence)
+- Key analogies and examples used
+- Which variants the student saw
+- Instruction: *"The student has already seen the following explanation approaches. Do not repeat these analogies or examples. If they're confused, try a fundamentally different approach."*
 
 **Data flow:**
 ```
 topic_explanations (DB)
   → session_service loads variant(s) shown
-  → injected into tutor system prompt as "explanation_context"
-  → master_tutor_prompts uses {explanation_context} section
+  → generates summary: titles + key analogies + variant labels
+  → injected into tutor system prompt as {explanation_context} section
+  → master_tutor_prompts uses this to avoid repetition
 ```
 
 ---
 
 ## Non-Goals
 
-- **Personalized pre-computed explanations.** Explanations are generic (grade-appropriate). Personalization happens in the dynamic tutor phase after explanation. Future: we may generate age-band variants, but not per-student.
+- **Personalized pre-computed explanations.** Explanations are generic (grade-appropriate). Personalization happens in the dynamic tutor phase after explanation. Future: we may generate age-band or persona variants, but not per-student.
 - **Replacing the dynamic tutor.** The tutor remains essential for Q&A, re-explanation, check-understanding, and practice. Pre-computed explanations only replace the initial "explain" phase.
-- **Image generation in v1.** Visuals in v1 are structured text descriptions (ASCII diagrams, formatted examples). Actual image generation (DALL-E, etc.) is a future enhancement.
-- **Re-ingesting all books immediately.** Explanations generate for newly processed topics. Existing topics can be backfilled on-demand.
-- **Admin UI for editing explanations.** Initially, explanations are LLM-generated and reviewed by inspecting the DB/S3 output. A dedicated editor is a future tool.
+- **PixiJS or image generation in v1.** Visuals in v1 are text-based (ASCII diagrams, formatted examples, styled text). The card viewer has its own simple rendering — it does not use the chat's PixiJS visual pipeline. Image generation (DALL-E, etc.) and PixiJS integration are future enhancements.
+- **Re-ingesting all books immediately.** Explanations generate for newly processed/synced topics. Existing topics can be backfilled on-demand.
+- **Admin UI for editing explanations.** Initially, explanations are LLM-generated and reviewed by inspecting the DB output. A dedicated editor is a future tool.
+- **Mid-explanation interruption.** V1 is hard-gated to card navigation. No freeform text input during card phase. May revisit in v2 based on usage data.
 
 ---
 
@@ -159,38 +223,58 @@ topic_explanations (DB)
 
 ### New: Explanation Generator Service
 
-- **New service:** `ExplanationGeneratorService` — takes a finalized topic + guidelines, produces structured explanation variants
+- **New service:** `ExplanationGeneratorService` — takes a `TeachingGuideline` record, produces structured explanation variants
 - **New prompts:** `explanation_generation.txt` (generate), `explanation_critique.txt` (self-review against principles)
 - **Multi-pass pipeline:** Generate variant → critique against `how-to-explain` principles → refine → store
-- **Storage:** Cards JSON in DB (`topic_explanations` table) + S3 backup at `books/{book_id}/chapters/{ch_num}/output/explanations/{topic_key}/variant_{key}.json`
+- **Storage:** `topic_explanations` table (JSONB). No S3 backup — cards are small structured JSON.
+- **Trigger:** Runs post-sync as part of the same admin pipeline action, after `TeachingGuideline` rows are created/updated
 
 ### Modified: Topic Sync Service
 
-- After syncing `TeachingGuideline` rows, also sync/generate explanation variants for each topic
-- Or: explanation generation runs as a separate post-sync step triggered by the same admin action
+- After syncing `TeachingGuideline` rows, trigger explanation generation for each synced guideline
+- On re-sync (delete/recreate), cascade-deleted explanations are regenerated automatically
+- Explanation generation can also run independently for backfilling existing topics
 
 ### Modified: Session Service
 
-- On session creation, load pre-computed explanations for the guideline
-- Pass explanation content to the frontend as part of session initialization
-- Track which variants the student has viewed in session state
+- On session creation, check for pre-computed explanations via `guideline_id`
+- If found: set `session_phase: "card_phase"`, include `explanation_cards` in session initialization response, skip `generate_welcome_message()` LLM call
+- If not found: fall back to current `ExplanationPhase` behavior unchanged
+- Track in session state: current variant key, card index, variants already shown
+
+### Modified: Session Orchestrator
+
+- New `CardPhase` handling alongside existing `ExplanationPhase`
+- `CardPhase` processes only navigation events (next card, previous card, "explain differently", "clear")
+- No LLM calls during `CardPhase` — all responses are pre-computed or templated
+- Transition from `CardPhase` to interactive phases triggers `{explanation_context}` injection into tutor prompt
+- Fallback: when all variants exhausted and student still confused, transitions to `ExplanationPhase` with dynamic tutor
 
 ### Modified: Study Plan Generator
 
-- "explain" step checks for pre-computed explanations
-- If available: references them instead of planning dynamic explanation content
-- Study plan still controls the overall flow (explain → check → practice)
+- Annotates "explain" steps with `"explanation_source": "pre_computed"` when pre-computed explanations exist
+- Retains all scaffolding metadata (`building_blocks`, `analogy`, etc.) — needed for dynamic fallback
+- No changes to the generation prompt's core logic
 
-### Modified: Tutor System Prompt
+### Modified: Master Tutor System Prompt
 
-- New `{explanation_context}` section injected when transitioning from pre-computed to interactive
-- Contains the shown explanation content + instructions not to repeat
+- New `{explanation_context}` section: summary of shown cards (titles, key analogies, variant labels)
+- Instructions not to repeat shown approaches
+- Active only when transitioning from `CardPhase` to interactive tutoring
 
 ### Frontend Changes
 
-- New `ExplanationViewer` component: card-based, swipeable/tappable, no text input
-- Transition UI: "Clear / Explain differently" choice after last card
-- Integration with existing `ChatSession`: explanation viewer replaces chat during explain phase, chat resumes for interactive phase
+- New `ExplanationViewer` component: card-based, swipeable/tappable, text-based visual rendering
+- New session initialization response shape: `explanation_cards` array + `session_phase` field
+- `ExplanationViewer` is active during `CardPhase`; `ChatSession` resumes for interactive phases
+- Session state persistence: card position restored on refresh/resume
+- Conversation history starts fresh from transition prompt — cards are not replayed as chat messages
+
+### API / Protocol Changes
+
+- Session creation response gains: `session_phase`, `explanation_cards`, `current_variant_key`
+- New card navigation events (next, previous, switch_variant, mark_clear) — can be REST calls or WebSocket messages
+- Session state must track card progress for resume/refresh scenarios
 
 ---
 
@@ -200,5 +284,6 @@ topic_explanations (DB)
 2. **Higher explanation quality.** Explanations use simple language, relatable examples, and structured visuals. A curriculum expert rates them higher than current dynamic explanations.
 3. **Smooth fallback chain.** Variant A → Variant B → dynamic tutor works seamlessly. The tutor doesn't repeat what was already shown.
 4. **No regression in interactive tutoring.** The Q&A, check-understanding, and practice phases work exactly as before, with the added benefit of the tutor knowing what was already explained.
-5. **Pipeline integration.** Explanation generation fits naturally into the existing ingestion pipeline without breaking existing flows.
-6. **Qualitative.** A kid opening a topic for the first time feels "this makes sense" within the first 30 seconds.
+5. **Pipeline integration.** Explanation generation fits naturally as a post-sync step without breaking existing flows.
+6. **Backward compatibility.** Topics without pre-computed explanations use the existing `ExplanationPhase` dynamic behavior unchanged.
+7. **Qualitative.** A kid opening a topic for the first time feels "this makes sense" within the first 30 seconds.
