@@ -124,8 +124,13 @@ class SessionService:
         import asyncio
 
         # Check for pre-computed explanations (teach_me mode only)
-        explanation_repo = ExplanationRepository(self.db)
-        explanations = explanation_repo.get_by_guideline_id(request.goal.guideline_id) if mode == "teach_me" else []
+        explanations = []
+        if mode == "teach_me":
+            try:
+                explanation_repo = ExplanationRepository(self.db)
+                explanations = explanation_repo.get_by_guideline_id(request.goal.guideline_id)
+            except Exception:
+                explanations = []
 
         if explanations and mode == "teach_me":
             # Card phase: skip welcome LLM call AND explanation phase init
@@ -237,6 +242,10 @@ class SessionService:
 
         # Deserialize SessionState
         session = SessionState.model_validate_json(db_session.state_json)
+
+        if session.is_in_card_phase():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Session is in card phase. Use /card-action endpoint.")
 
         # Process turn via orchestrator
         import asyncio
@@ -847,6 +856,10 @@ class SessionService:
             precomputed_summary = self._build_precomputed_summary(session)
             session.precomputed_explanation_summary = precomputed_summary
 
+            # Persist the transition message so it survives refresh
+            transition_msg = "Great! Now let's make sure you've got it. Feel free to ask any questions!"
+            session.add_message(create_teacher_message(transition_msg))
+
             self._persist_session_state(session_id, session, expected_version)
 
             return {
@@ -866,6 +879,10 @@ class SessionService:
                 return self._switch_variant_internal(session, session_id, unseen[0], expected_version)
             else:
                 # All variants exhausted → fall back to dynamic ExplanationPhase
+                # Build summary before completing card phase (while card_phase is still available)
+                precomputed_summary = self._build_precomputed_summary(session)
+                session.precomputed_explanation_summary = precomputed_summary
+
                 session.complete_card_phase()
                 self._init_dynamic_fallback(session)
 

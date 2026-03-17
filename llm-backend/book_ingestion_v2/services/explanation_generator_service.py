@@ -195,6 +195,9 @@ class ExplanationGeneratorService:
             if len(cards) > MAX_CARDS:
                 cards = cards[:MAX_CARDS]
 
+            # Rebuild summary from refined output (not the original gen_output)
+            gen_output = refined_output
+
         elif critique.overall_quality == "poor":
             logger.warning(f"Critique rated quality as 'poor', skipping variant")
             return None, None
@@ -400,8 +403,15 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
             TeachingGuideline.review_status == "APPROVED",
         )
         if chapter_id:
-            # chapter_id in the ingestion pipeline maps to chapter_key
-            query = query.filter(TeachingGuideline.chapter_key == chapter_id)
+            # chapter_id is a UUID from book_chapters — look up the chapter title
+            # and filter guidelines by matching chapter name
+            from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+            chapter = ChapterRepository(self.db).get_by_id(chapter_id)
+            if chapter:
+                query = query.filter(TeachingGuideline.chapter == chapter.chapter_title)
+            else:
+                logger.warning(f"Chapter {chapter_id} not found, falling back to chapter_key filter")
+                query = query.filter(TeachingGuideline.chapter_key == chapter_id)
 
         guidelines = query.order_by(TeachingGuideline.topic_sequence).all()
 

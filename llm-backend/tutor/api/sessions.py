@@ -717,8 +717,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         )
         await websocket.send_json(create_state_update(state_dto).model_dump())
 
-        # Send welcome if first turn
-        if session.turn_count == 0:
+        # Send welcome if first turn (skip if already in card phase from session creation)
+        if session.turn_count == 0 and not session.is_in_card_phase():
             welcome, audio_text = await orchestrator.generate_welcome_message(session)
             from tutor.models.messages import create_teacher_message
 

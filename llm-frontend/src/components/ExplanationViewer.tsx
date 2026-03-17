@@ -110,15 +110,13 @@ export default function ExplanationViewer({
             >
               I understand!
             </button>
-            {variantsShown < availableVariants && (
-              <button
-                className="explanation-nav-btn secondary"
-                onClick={onExplainDifferently}
-                disabled={loading}
-              >
-                Explain differently
-              </button>
-            )}
+            <button
+              className="explanation-nav-btn secondary"
+              onClick={onExplainDifferently}
+              disabled={loading}
+            >
+              {variantsShown >= availableVariants ? "I still don't get it" : "Explain differently"}
+            </button>
           </div>
         )}
       </div>
