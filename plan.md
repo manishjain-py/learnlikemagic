@@ -1,5 +1,9 @@
 # Plan: Unify Card Design — Remove Chat View, Make Everything Cards
 
+> **Note:** This plan replaces the previous PixiJS visual explanation plan. The PixiJS work
+> (LLM-generated Pixi.js visuals) has already been implemented and merged in earlier PRs.
+> This plan focuses solely on unifying the frontend tutoring UI.
+
 ## Summary
 
 Promote the focus carousel from an overlay to THE primary view for all non-exam tutoring sessions. Explanation cards (card_phase) and interactive messages all render through the same card-based UI. Remove the chat bubble view and virtual teacher toggle entirely.
@@ -21,30 +25,85 @@ One unified card view for all non-exam modes:
 
 ## Implementation Steps
 
-### Step 1: Convert focus carousel from overlay to inline view
+### Step 1: Define a unified `Slide` data model
 
 **File: `ChatSession.tsx`**
-- Remove `position: fixed` and `z-index: 100` from focus carousel — make it a normal flex child of `.chat-container`
+
+Before touching any UI, create a single `Slide` interface that represents both explanation cards and interactive messages:
+
+```typescript
+interface Slide {
+  id: string;                          // Stable ID for audio tracking (e.g., "card-0", "msg-2")
+  type: 'explanation' | 'message';     // Source type
+  content: string;                     // Markdown content (card content or tutor message)
+  title?: string;                      // Explanation card title (null for messages)
+  cardType?: string;                   // 'concept' | 'example' | 'visual' | 'analogy' | 'summary'
+  visual?: string | null;              // ASCII visual from explanation card
+  visualExplanation?: VisualExplanationType | null;  // PixiJS visual
+  studentResponse?: string | null;     // Student reply (for message slides)
+  audioText?: string | null;           // TTS-optimized text
+}
+```
+
+Create a unified `carouselSlides` memo:
+- In `card_phase`: maps `explanationCards[]` → Slide[] with `type: 'explanation'`, stable IDs like `"card-0"`, `"card-1"`
+- In `interactive`: maps tutor messages → Slide[] with `type: 'message'`, stable IDs like `"msg-0"`, `"msg-2"` (using message array index)
+- This replaces the current `focusCards` memo
+
+**Audio tracking migration**: Replace `playingMsgIdx: number | null` with `playingSlideId: string | null`. Audio play/stop functions reference slide IDs instead of message array indices, so merging explanation cards and messages into one carousel doesn't break TTS state.
+
+### Step 2: Convert focus carousel from overlay to inline view
+
+**File: `ChatSession.tsx`**
+- Remove the overlay rendering condition (`focusCardIdx !== null && ...`)
+- Always render the carousel as a direct child of `.chat-container` for non-exam modes
 - Remove the close/exit button and `focusDismissedRef` logic
-- Always render the carousel for non-exam modes (no more conditional on `focusCardIdx !== null`)
 - Remove `handleTeacherDoubleTap` (no longer needed to "open" carousel)
 
 **File: `App.css`**
 - `.focus-carousel`: change from fixed overlay to `flex: 1; display: flex; flex-direction: column; overflow: hidden`
 - Remove `z-index: 100`, `position: fixed`, `top/left/right/bottom: 0`
 
-### Step 2: Render card_phase explanation cards as carousel slides
+**Container-relative sizing fix** (addresses reviewer finding #1):
+- Replace `window.innerWidth` in swipe transform calculations (lines 867, 887, 1563) with `containerRef.current.clientWidth`
+- Add a `containerRef = useRef<HTMLDivElement>(null)` on the `.focus-carousel` div
+- In CSS: change `.focus-slide` from `flex: 0 0 100vw; width: 100vw` to `flex: 0 0 100%; width: 100%`
+- This ensures slides match the container width, not the viewport, on desktop/tablet layouts
+
+### Step 3: Add streaming slide support
+
+**File: `ChatSession.tsx`** (addresses reviewer finding #2)
+
+The current streaming text renderer lives inside the `.messages` block we're deleting. Add streaming support to the carousel:
+
+- When `streamingText` is non-empty, append a **provisional streaming slide** to `carouselSlides`:
+  ```typescript
+  // In carouselSlides memo:
+  if (streamingText) {
+    slides.push({
+      id: 'streaming',
+      type: 'message',
+      content: streamingText,
+      // no studentResponse, no audioText yet
+    });
+  }
+  ```
+- The carousel auto-advances to this streaming slide (same as current auto-advance logic)
+- When streaming completes and the real message arrives, the provisional slide is replaced by the final message slide
+- Typing indicator: when `loading && !streamingText`, show a typing indicator inside the last slide instead of as a separate chat bubble
+
+### Step 4: Render card_phase explanation cards as carousel slides
 
 **File: `ChatSession.tsx`**
-- When `sessionPhase === 'card_phase'`, the carousel renders explanation cards as slides instead of message-based focus cards
-- Create a unified `carouselSlides` memo that:
-  - In card_phase: maps `explanationCards[]` → slides with type badge, title, content, visual
-  - In interactive: maps tutor messages → slides (current `focusCards` logic)
-- Each explanation card slide uses the same `.focus-slide` / `.focus-tutor-msg` styling
-- Card type badge (concept/example/visual/analogy/summary) shown at top of slide
-- Progress counter in header: "1/5" for both phases
+- The `carouselSlides` memo (from Step 1) already maps explanation cards to slides
+- Each slide renders using the same `.focus-slide` / `.focus-tutor-msg` styling
+- For `type: 'explanation'` slides, additionally render:
+  - Card type badge at top (concept/example/visual/analogy/summary) using `.explanation-card-type` styles
+  - Title using `.explanation-card-title` styles
+  - ASCII visual using `.explanation-card-visual` styles (if present)
+- Progress counter in nav: "1/5" works for both phases (just uses `carouselSlides.length`)
 
-### Step 3: Unify the input/action area at bottom
+### Step 5: Unify the input/action area at bottom
 
 **File: `ChatSession.tsx`**
 - Single bottom area that changes based on phase:
@@ -53,16 +112,17 @@ One unified card view for all non-exam modes:
   - **interactive**: text input + mic + send (current `.focus-input-area`)
   - **loading**: typing indicator
   - **complete**: nothing (summary takes over)
-- Extract one `<InputArea>` section to avoid the current 4 duplicated input forms
+- Extract one `<BottomActionArea>` inline section to replace the current 4 duplicated input forms
 
-### Step 4: Move audio button into main nav
+### Step 6: Move audio button + counter into main nav
 
 **File: `ChatSession.tsx`**
 - The focus carousel header had its own audio button — move this to the main `<nav>` actions area
 - Add card counter ("1/5") to the nav as well
+- Audio button uses `playingSlideId` (from Step 1) instead of `playingMsgIdx`
 - Remove the separate `.focus-header` entirely since the main nav already has breadcrumb
 
-### Step 5: Remove old view modes
+### Step 7: Remove old view modes
 
 **File: `ChatSession.tsx`**
 - Remove `ExplanationViewer` import and its rendering block
@@ -72,36 +132,59 @@ One unified card view for all non-exam modes:
 - Remove `focusDismissedRef`, `lastTapRef`, `handleTeacherDoubleTap`
 - Remove conditions gating focus carousel display
 
-### Step 6: Handle card_phase → interactive transition
+### Step 8: Handle card_phase → interactive transition
 
 **File: `ChatSession.tsx`**
 - When user clicks "I understand!" (card action 'clear'):
   - `sessionPhase` transitions from 'card_phase' to 'interactive'
-  - Carousel seamlessly switches from explanation card slides to message slides
+  - `carouselSlides` memo automatically switches from explanation slides to message slides
   - First message slide contains the transition message from backend
+  - Reset `currentSlideIdx` to 0
 - When "Explain differently" is clicked:
   - Swap explanation cards in the carousel (same logic as current `handleCardAction('explain_differently')`)
   - Reset carousel to first slide
 
-### Step 7: Auto-play TTS on new slides
+### Step 9: Port localStorage resume logic
+
+**File: `ChatSession.tsx`** (addresses reviewer finding #4)
+
+The current `ExplanationViewer` persists card position via `localStorage.setItem('card-pos-${sessionId}', ...)`. Port this to the unified carousel:
+
+- On slide navigation: `localStorage.setItem('slide-pos-${sessionId}', String(currentSlideIdx))`
+- On session init: restore `currentSlideIdx` from localStorage
+- On card_phase → interactive transition: clear the stored position
+- On session complete: clear the stored position
+
+### Step 10: Clean up focus_mode user preference
+
+**File: `ChatSession.tsx`, `ProfilePage.tsx`** (addresses reviewer finding #3)
+
+Since the card view is now always-on, the `focus_mode` user preference is no longer meaningful:
+
+- `ChatSession.tsx`: Remove all `user?.focus_mode !== false` checks (3 locations)
+- `ProfilePage.tsx`: Remove the focus mode toggle from the settings UI
+- `AuthContext.tsx`: Keep the `focus_mode` field on the user type (no DB migration needed, just unused)
+- Backend: No changes — the field stays in the DB, just ignored
+
+### Step 11: Auto-play TTS on new slides
 
 **File: `ChatSession.tsx`**
-- In card_phase: auto-play TTS when navigating to a new explanation card (read card content)
-- In interactive: auto-play TTS when new tutor message arrives (existing logic)
+- In card_phase: auto-play TTS when navigating to a new explanation card (read `slide.content` or `slide.audioText`)
+- In interactive: auto-play TTS when new tutor message arrives (existing logic, adapted to use `playingSlideId`)
 - Single audio play/pause button in nav works for both phases
 
-### Step 8: Clean up CSS
+### Step 12: Clean up CSS
 
 **File: `App.css`**
-- Remove/comment out: `.messages`, `.message.teacher`, `.message.student`, `.virtual-teacher-view`, `.vt-typing-indicator`, `.vt-input-area`
+- Remove: `.messages`, `.message.teacher`, `.message.student`, `.virtual-teacher-view`, `.vt-typing-indicator`, `.vt-input-area`
 - Keep: `.focus-carousel` (adapted), `.focus-slide`, `.focus-tutor-msg`, `.focus-input-area`, `.focus-track`
 - Keep: `.explanation-card-type`, `.explanation-card-title` styles (reused in card_phase slides)
 - Adapt `.explanation-nav-btn` styles for the unified bottom action area
 
-### Step 9: Clean up dead code
+### Step 13: Clean up dead code
 
 - Delete `ExplanationViewer.tsx` component file
-- Remove unused state variables: `virtualTeacherOn`, `focusDismissedRef`, `lastTapRef`
+- Remove unused state variables: `virtualTeacherOn`, `focusDismissedRef`, `lastTapRef`, `playingMsgIdx`
 - Remove unused CSS classes
 
 ## What Stays Unchanged
@@ -110,23 +193,25 @@ One unified card view for all non-exam modes:
 - Session completion/summary view
 - Feedback modal
 - DevTools drawer
-- TTS/audio playback logic
-- Streaming text display
 - WebSocket communication
 - Backend API (no backend changes needed)
 - Visual explanations (PixiJS) — just rendered inside card slides
 
 ## Key Design Decisions
 
-1. **Focus carousel becomes the primary view** — it already has the right UX (swipe, one-card-at-a-time, large text). We promote it rather than building something new.
-2. **Unified slide model** — a memo (`carouselSlides`) abstracts over both explanation cards and message-based cards, so the carousel renderer doesn't care about the source.
-3. **No user preference needed** — everyone gets the card view. Removes complexity of VT toggle and focus_mode pref.
-4. **Exam mode untouched** — it has its own distinct UX that works well as-is.
+1. **Unified `Slide` data model** — A single interface abstracts over explanation cards and messages. This is the foundation that makes audio tracking, resume, and transitions work correctly. Treat this as a state-model refactor, not just a UI cleanup.
+2. **Focus carousel becomes the primary view** — it already has the right UX (swipe, one-card-at-a-time, large text). We promote it rather than building something new.
+3. **Container-relative sizing** — Use `containerRef.clientWidth` instead of `window.innerWidth` so the carousel works correctly as an inline element on desktop/tablet.
+4. **Streaming slide** — A provisional slide appended to the carousel during streaming, replaced by the final message when complete. Ensures streaming text isn't lost when chat bubbles are removed.
+5. **Stable slide IDs for audio** — Replace message-index-based audio tracking with string IDs (`"card-0"`, `"msg-2"`) that survive the explanation→interactive transition.
+6. **No user preference needed** — Everyone gets the card view. Removes complexity of VT toggle and focus_mode pref. The `focus_mode` DB field is left in place (no migration) but ignored.
+7. **Exam mode untouched** — It has its own distinct UX that works well as-is.
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `llm-frontend/src/pages/ChatSession.tsx` | Major refactor — unified card view |
-| `llm-frontend/src/App.css` | Remove old styles, adapt focus carousel |
+| `llm-frontend/src/pages/ChatSession.tsx` | Major refactor — unified Slide model + card view |
+| `llm-frontend/src/App.css` | Remove old styles, adapt focus carousel to inline + container-relative |
+| `llm-frontend/src/pages/ProfilePage.tsx` | Remove focus_mode toggle |
 | `llm-frontend/src/components/ExplanationViewer.tsx` | **DELETE** |
