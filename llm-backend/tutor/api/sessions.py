@@ -29,6 +29,7 @@ from tutor.models.session_state import SessionState
 from tutor.models.messages import (
     ClientMessage,
     SessionStateDTO,
+    CardActionRequest,
     create_assistant_response,
     create_error_response,
     create_state_update,
@@ -242,7 +243,21 @@ def get_session_replay(
     if session.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your session")
 
-    return json.loads(session.state_json)
+    state = json.loads(session.state_json)
+
+    # If session is in card phase, include explanation cards for the active variant
+    card_phase = state.get("card_phase")
+    if card_phase and card_phase.get("active"):
+        from shared.repositories.explanation_repository import ExplanationRepository
+        explanation_repo = ExplanationRepository(db)
+        explanation = explanation_repo.get_variant(
+            card_phase["guideline_id"],
+            card_phase["current_variant_key"],
+        )
+        if explanation:
+            state["_replay_explanation_cards"] = explanation.cards_json
+
+    return state
 
 
 @router.post("", response_model=CreateSessionResponse)
@@ -397,6 +412,33 @@ def end_exam_early(
         return EndExamResponse(**result)
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
+
+
+@router.post("/{session_id}/card-action")
+def card_action(
+    session_id: str,
+    request: CardActionRequest,
+    current_user=Depends(get_optional_user),
+    db: DBSession = Depends(get_db),
+):
+    """Handle card phase actions: 'clear' (understood) or 'explain_differently'."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    try:
+        service = SessionService(db)
+        return service.complete_card_phase(session_id, request.action)
+    except HTTPException:
+        raise
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+    except Exception as e:
+        import traceback
+        logger.error(f"Error processing card action: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error processing card action: {e}")
 
 
 class FeedbackRequest(BaseModel):

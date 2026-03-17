@@ -202,6 +202,15 @@ class SyncResponse(BaseModel):
     errors: List[str]
 
 
+# ───── Explanation Generation ─────
+
+class ExplanationGenerationResponse(BaseModel):
+    generated: int           # topics with explanations successfully generated
+    skipped: int             # topics that already had explanations
+    failed: int              # topics where generation errored
+    errors: List[str]        # per-topic error messages
+
+
 # ───── Results ─────
 
 class ChapterResultSummary(BaseModel):

@@ -53,6 +53,12 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "gpt-5.2",
         "description": "Kid personality derivation from enrichment profile",
     },
+    {
+        "component_key": "explanation_generator",
+        "provider": "openai",
+        "model_id": "gpt-5.2",
+        "description": "Pre-computed explanation generation for topics",
+    },
 ]
 
 
@@ -100,6 +106,9 @@ def migrate():
 
         # Topic planning columns for quality improvement
         _apply_topic_planning_columns(db_manager)
+
+        # Topic explanations table (created by create_all, verify + seed LLM config)
+        _apply_topic_explanations_table(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -581,6 +590,50 @@ def _apply_topic_planning_columns(db_manager):
 
         conn.commit()
     print("  ✓ topic planning columns applied")
+
+
+def _apply_topic_explanations_table(db_manager):
+    """Verify topic_explanations table exists (created by Base.metadata.create_all()).
+
+    The UniqueConstraint on (guideline_id, variant_key) is defined in the entity
+    and created by create_all(). This function only logs verification — no separate
+    index creation to avoid duplicate constraint/index issues.
+
+    Also ensures the explanation_generator LLM config exists for existing deployments
+    where _seed_llm_config() won't run (it only seeds when the table is empty).
+    """
+    inspector = inspect(db_manager.engine)
+    if "topic_explanations" in inspector.get_table_names():
+        print("  ✓ topic_explanations table exists")
+    else:
+        print("  ⚠ topic_explanations table not found — will be created by create_all()")
+
+    _ensure_llm_config(
+        db_manager,
+        component_key="explanation_generator",
+        provider="openai",
+        model_id="gpt-5.2",
+        description="Pre-computed explanation generation for topics",
+    )
+
+
+def _ensure_llm_config(db_manager, component_key, provider, model_id, description):
+    """Insert an LLM config entry if the component_key is missing.
+
+    Unlike _seed_llm_config() which only runs on empty tables, this is idempotent
+    and works on existing deployments.
+    """
+    with db_manager.engine.connect() as conn:
+        exists = conn.execute(text(
+            "SELECT 1 FROM llm_config WHERE component_key = :key"
+        ), {"key": component_key}).fetchone()
+        if not exists:
+            conn.execute(text(
+                "INSERT INTO llm_config (component_key, provider, model_id, description) "
+                "VALUES (:key, :provider, :model, :desc)"
+            ), {"key": component_key, "provider": provider, "model": model_id, "desc": description})
+            conn.commit()
+            print(f"  ✓ Seeded {component_key} LLM config")
 
 
 def _seed_llm_config(db_manager):

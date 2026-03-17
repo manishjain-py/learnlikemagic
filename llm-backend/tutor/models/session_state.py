@@ -20,6 +20,18 @@ SessionMode = Literal["teach_me", "clarify_doubts", "exam"]
 ExplanationPhaseName = Literal["not_started", "opening", "explaining", "informal_check", "complete"]
 
 
+class CardPhaseState(BaseModel):
+    """Tracks card-based explanation phase for pre-computed explanations."""
+    guideline_id: str = Field(description="FK for explanation lookups (NOT topic_id)")
+    active: bool = Field(default=True, description="Whether card phase is currently active")
+    current_variant_key: str = Field(default="A", description="Current variant being shown")
+    current_card_idx: int = Field(default=0, description="Current card index (0-based)")
+    total_cards: int = Field(default=0, description="Total cards in current variant")
+    variants_shown: list[str] = Field(default_factory=list, description="Variant keys already shown")
+    available_variant_keys: list[str] = Field(default_factory=list, description="All available variant keys")
+    completed: bool = Field(default=False, description="True when student says 'clear' or exhausts variants")
+
+
 class ExplanationPhase(BaseModel):
     """Tracks the explanation lifecycle for a single concept."""
 
@@ -166,6 +178,14 @@ class SessionState(BaseModel):
         description="Whether this Clarify Doubts session has been ended by the student"
     )
 
+    # Card Phase (pre-computed explanations)
+    card_phase: Optional[CardPhaseState] = Field(
+        default=None, description="Card-based explanation phase state (pre-computed explanations)"
+    )
+    precomputed_explanation_summary: Optional[str] = Field(
+        default=None, description="Summary of pre-computed explanations shown, for tutor context injection"
+    )
+
     # Explanation tracking
     explanation_phases: dict[str, ExplanationPhase] = Field(
         default_factory=dict, description="Per-concept explanation phase tracking (keyed by concept name)"
@@ -264,6 +284,19 @@ class SessionState(BaseModel):
     def increment_turn(self) -> None:
         self.turn_count += 1
         self.updated_at = datetime.utcnow()
+
+    # --- Card phase helpers ---
+
+    def is_in_card_phase(self) -> bool:
+        """Check if the session is currently in the card-based explanation phase."""
+        return self.card_phase is not None and self.card_phase.active
+
+    def complete_card_phase(self):
+        """Mark card phase as completed."""
+        if self.card_phase:
+            self.card_phase.active = False
+            self.card_phase.completed = True
+            self.updated_at = datetime.utcnow()
 
     # --- Explanation phase helpers ---
 

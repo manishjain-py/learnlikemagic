@@ -80,6 +80,21 @@ export interface VisualExplanation {
   scene_type?: string;
 }
 
+export interface ExplanationCard {
+  card_idx: number;
+  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary';
+  title: string;
+  content: string;
+  visual?: string | null;
+}
+
+export interface CardPhaseDTO {
+  current_variant_key: string;
+  current_card_idx: number;
+  total_cards: number;
+  available_variants: number;
+}
+
 export interface Turn {
   message: string;
   audio_text?: string | null;
@@ -89,6 +104,11 @@ export interface Turn {
   is_complete?: boolean;
   visual_explanation?: VisualExplanation | null;
   concepts_discussed?: string[];
+  // Card phase fields (pre-computed explanations)
+  explanation_cards?: ExplanationCard[];
+  session_phase?: 'card_phase' | 'interactive';
+  card_phase_state?: CardPhaseDTO;
+  // Exam fields
   exam_progress?: {
     current_question: number;
     total_questions: number;
@@ -513,6 +533,25 @@ export async function submitFeedback(sessionId: string, feedbackText: string, ac
   const response = await apiFetch(`/sessions/${sessionId}/feedback`, {
     method: 'POST',
     body: JSON.stringify({ feedback_text: feedbackText, action }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail || response.statusText);
+  }
+  return response.json();
+}
+
+// ──────────────────────────────────────────────
+// Card phase actions (pre-computed explanations)
+// ──────────────────────────────────────────────
+
+export async function cardAction(
+  sessionId: string,
+  action: 'clear' | 'explain_differently',
+): Promise<any> {
+  const response = await apiFetch(`/sessions/${sessionId}/card-action`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
