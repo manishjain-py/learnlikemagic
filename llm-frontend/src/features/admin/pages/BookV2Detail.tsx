@@ -4,10 +4,10 @@ import {
   getBookV2, deleteBookV2, uploadPageV2, deletePageV2, getChapterPages,
   startProcessing, reprocessChapter, refinalizeChapter,
   getLatestJobV2, getChapterTopics, syncChapter, syncBook,
-  getPageDetailV2, retryPageOcrV2, generateExplanations,
+  getPageDetailV2, retryPageOcrV2, generateExplanations, getExplanationJobStatus,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
-  SyncResponseV2, ExplanationGenerationResponse,
+  SyncResponseV2,
 } from '../api/adminApiV2';
 
 const POLL_INTERVAL = 3000;
@@ -47,15 +47,16 @@ const BookV2Detail: React.FC = () => {
   const [syncResult, setSyncResult] = useState<Record<string, SyncResponseV2>>({});
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncAllResult, setSyncAllResult] = useState<SyncResponseV2 | null>(null);
-  const [generatingExplanations, setGeneratingExplanations] = useState<string | null>(null);
-  const [explanationResult, setExplanationResult] = useState<Record<string, ExplanationGenerationResponse>>({});
+  const [explanationJobs, setExplanationJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
+  const explPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     if (id) loadBook(true);
     return () => {
       Object.values(pollingRef.current).forEach(clearInterval);
+      Object.values(explPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
@@ -97,6 +98,22 @@ const BookV2Detail: React.FC = () => {
     // Immediate first fetch, then every POLL_INTERVAL
     poll();
     pollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
+  const startExplanationPolling = useCallback((chapterId: string) => {
+    if (!id || explPollingRef.current[chapterId]) return;
+    const poll = async () => {
+      try {
+        const job = await getExplanationJobStatus(id!, chapterId);
+        setExplanationJobs(prev => ({ ...prev, [chapterId]: job }));
+        if (job.status === 'completed' || job.status === 'failed' || job.status === 'completed_with_errors') {
+          clearInterval(explPollingRef.current[chapterId]);
+          delete explPollingRef.current[chapterId];
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    explPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
 
   const handleDeleteBook = async () => {
@@ -232,17 +249,12 @@ const BookV2Detail: React.FC = () => {
 
   const handleGenerateExplanations = async (ch: ChapterResponseV2) => {
     if (!id) return;
-    setGeneratingExplanations(ch.id);
     try {
-      const result = await generateExplanations(id, ch.id);
-      setExplanationResult(prev => ({ ...prev, [ch.id]: result }));
+      const job = await generateExplanations(id, ch.id);
+      setExplanationJobs(prev => ({ ...prev, [ch.id]: job }));
+      startExplanationPolling(ch.id);
     } catch (err) {
-      setExplanationResult(prev => ({
-        ...prev,
-        [ch.id]: { generated: 0, skipped: 0, failed: 1, errors: [err instanceof Error ? err.message : 'Generation failed'] },
-      }));
-    } finally {
-      setGeneratingExplanations(null);
+      setError(err instanceof Error ? err.message : 'Explanation generation failed');
     }
   };
 
@@ -602,31 +614,49 @@ const BookV2Detail: React.FC = () => {
                         <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                           Reprocess
                         </button>
-                        <button onClick={() => handleGenerateExplanations(ch)} disabled={generatingExplanations === ch.id} style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: generatingExplanations === ch.id ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: generatingExplanations === ch.id ? 0.6 : 1 }}>
-                          {generatingExplanations === ch.id ? 'Generating...' : 'Generate Explanations'}
+                        <button onClick={() => handleGenerateExplanations(ch)} disabled={explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status)} style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status) ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status) ? 0.6 : 1 }}>
+                          {explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status) ? 'Generating...' : 'Generate Explanations'}
                         </button>
                       </>
                     )}
                   </div>
                   )}
 
-                  {/* Explanation generation result banner */}
-                  {explanationResult[ch.id] && (
-                    <div style={{
-                      marginTop: '12px',
-                      backgroundColor: explanationResult[ch.id].errors.length > 0 ? '#FEF3C7' : '#EDE9FE',
-                      color: explanationResult[ch.id].errors.length > 0 ? '#92400E' : '#5B21B6',
-                      padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
-                    }}>
-                      <button onClick={() => setExplanationResult(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
-                      Explanations: {explanationResult[ch.id].generated} generated, {explanationResult[ch.id].skipped} skipped, {explanationResult[ch.id].failed} failed.
-                      {explanationResult[ch.id].errors.length > 0 && (
-                        <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
-                          {explanationResult[ch.id].errors.map((e, i) => <li key={i}>{e}</li>)}
-                        </ul>
-                      )}
-                    </div>
-                  )}
+                  {/* Explanation generation progress/result banner */}
+                  {explanationJobs[ch.id] && (() => {
+                    const ej = explanationJobs[ch.id];
+                    const isRunning = ['pending', 'running'].includes(ej.status);
+                    const isDone = ['completed', 'completed_with_errors', 'failed'].includes(ej.status);
+                    const detail = ej.progress_detail as { generated?: number; skipped?: number; failed?: number; errors?: string[] } | undefined;
+                    if (isRunning) return (
+                      <div style={{ marginTop: '12px', backgroundColor: '#EDE9FE', color: '#5B21B6', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                        Generating explanations{ej.current_item ? `: ${ej.current_item}` : '...'}
+                        {ej.total_items ? ` (${ej.completed_items + ej.failed_items}/${ej.total_items})` : ''}
+                      </div>
+                    );
+                    if (isDone) {
+                      const hasErrors = ej.status === 'failed' || (detail?.errors && detail.errors.length > 0);
+                      return (
+                        <div style={{
+                          marginTop: '12px',
+                          backgroundColor: hasErrors ? '#FEF3C7' : '#EDE9FE',
+                          color: hasErrors ? '#92400E' : '#5B21B6',
+                          padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                        }}>
+                          <button onClick={() => setExplanationJobs(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                          {ej.status === 'failed' && ej.error_message
+                            ? `Explanation generation failed: ${ej.error_message}`
+                            : `Explanations: ${detail?.generated ?? ej.completed_items} generated, ${detail?.skipped ?? 0} skipped, ${detail?.failed ?? ej.failed_items} failed.`}
+                          {detail?.errors && detail.errors.length > 0 && (
+                            <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                              {detail.errors.map((e, i) => <li key={i}>{e}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {/* Sync result banner */}
                   {syncResult[ch.id] && (

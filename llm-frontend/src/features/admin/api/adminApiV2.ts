@@ -222,20 +222,22 @@ export async function syncChapter(
 
 // ===== Explanation Generation =====
 
-export interface ExplanationGenerationResponse {
-  generated: number;
-  skipped: number;
-  failed: number;
-  errors: string[];
-}
-
 export async function generateExplanations(
   bookId: string, chapterId?: string
-): Promise<ExplanationGenerationResponse> {
+): Promise<ProcessingJobResponseV2> {
   const qs = chapterId ? `?chapter_id=${chapterId}` : '';
-  return apiFetch<ExplanationGenerationResponse>(
+  return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/generate-explanations${qs}`,
     { method: 'POST' }
+  );
+}
+
+export async function getExplanationJobStatus(
+  bookId: string, chapterId?: string
+): Promise<ProcessingJobResponseV2> {
+  const qs = chapterId ? `?chapter_id=${chapterId}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/explanation-jobs/latest${qs}`
   );
 }
 

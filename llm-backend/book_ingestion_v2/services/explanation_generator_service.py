@@ -392,8 +392,20 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
             "approach_label": variant_config["label"],
         }
 
-    def generate_for_chapter(self, book_id: str, chapter_id: Optional[str] = None) -> dict:
+    def generate_for_chapter(
+        self,
+        book_id: str,
+        chapter_id: Optional[str] = None,
+        job_service=None,
+        job_id: Optional[str] = None,
+    ) -> dict:
         """Generate explanations for all synced guidelines in a chapter (or book).
+
+        Args:
+            book_id: The book to generate for.
+            chapter_id: Optional chapter UUID to scope generation.
+            job_service: Optional ChapterJobService for progress tracking.
+            job_id: Optional job ID for progress tracking.
 
         Returns:
             Dict with generated, skipped, failed counts and error messages.
@@ -425,6 +437,15 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
         for guideline in guidelines:
             topic = guideline.topic_title or guideline.topic
             try:
+                # Report progress if job tracking is available
+                if job_service and job_id:
+                    job_service.update_progress(
+                        job_id,
+                        current_item=topic,
+                        completed=generated,
+                        failed=failed,
+                    )
+
                 # Check if explanations already exist
                 if self.repo.has_explanations(guideline.id):
                     logger.info(f"Explanations already exist for {topic}, skipping")
@@ -442,6 +463,22 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
                 failed += 1
                 errors.append(f"{topic}: {str(e)}")
                 logger.error(f"Explanation generation failed for {topic}: {e}")
+
+        # Final progress update with result summary in detail
+        if job_service and job_id:
+            import json
+            job_service.update_progress(
+                job_id,
+                current_item=None,
+                completed=generated,
+                failed=failed,
+                detail=json.dumps({
+                    "generated": generated,
+                    "skipped": skipped,
+                    "failed": failed,
+                    "errors": errors,
+                }),
+            )
 
         return {
             "generated": generated,
