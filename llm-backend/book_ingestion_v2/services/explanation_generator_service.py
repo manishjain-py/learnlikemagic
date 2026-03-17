@@ -403,15 +403,17 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
             TeachingGuideline.review_status == "APPROVED",
         )
         if chapter_id:
-            # chapter_id is a UUID from book_chapters — look up the chapter title
-            # and filter guidelines by matching chapter name
+            # chapter_id is a UUID from book_chapters. Sync service sets
+            # chapter_key = f"chapter-{chapter_number}" on guidelines.
+            # Look up the chapter to get its number, then filter by chapter_key.
             from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
             chapter = ChapterRepository(self.db).get_by_id(chapter_id)
             if chapter:
-                query = query.filter(TeachingGuideline.chapter == chapter.chapter_title)
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
             else:
-                logger.warning(f"Chapter {chapter_id} not found, falling back to chapter_key filter")
-                query = query.filter(TeachingGuideline.chapter_key == chapter_id)
+                logger.warning(f"Chapter {chapter_id} not found")
+                return {"generated": 0, "skipped": 0, "failed": 0, "errors": [f"Chapter {chapter_id} not found"]}
 
         guidelines = query.order_by(TeachingGuideline.topic_sequence).all()
 
