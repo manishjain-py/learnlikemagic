@@ -270,8 +270,8 @@ export default function ChatSession() {
       if (virtualTeacherOn && locState.firstTurn.message) {
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message);
       }
-      // Auto-open focus carousel on first turn
-      if ((user?.focus_mode !== false) && !virtualTeacherOn) {
+      // Auto-open focus carousel on first turn (skip during card phase — ExplanationViewer handles it)
+      if ((user?.focus_mode !== false) && !virtualTeacherOn && locState.firstTurn.session_phase !== 'card_phase') {
         setFocusCardIdx(0);
         prevFocusCardsLen.current = 1;
         focusDismissedRef.current = false;
@@ -1226,7 +1226,7 @@ export default function ChatSession() {
           </div>
           ) : null}
 
-          {sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
+          {sessionPhase === 'card_phase' ? null : sessionMode !== 'exam' && virtualTeacherOn && !isComplete ? null : !isComplete ? (
             <>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
@@ -1522,8 +1522,8 @@ export default function ChatSession() {
         />
       )}
 
-      {/* Focus Carousel */}
-      {focusCardIdx !== null && focusCards.length > 0 && sessionMode !== 'exam' && !virtualTeacherOn && !isComplete && (
+      {/* Focus Carousel — hidden during card phase (ExplanationViewer owns the view) */}
+      {focusCardIdx !== null && focusCards.length > 0 && sessionMode !== 'exam' && !virtualTeacherOn && !isComplete && sessionPhase !== 'card_phase' && (
         <div className="focus-carousel">
           <div className="focus-header">
             <button className="focus-exit-btn" onClick={closeFocusCard} aria-label="Exit focus mode">
