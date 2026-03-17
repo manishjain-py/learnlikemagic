@@ -2978,11 +2978,13 @@ body {
 
 .explanation-card {
   flex: 1;
+  min-width: 0;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 1.5rem;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -3018,11 +3020,12 @@ body {
   border-radius: 8px;
   padding: 1rem;
   font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
+  font-size: 0.75rem;
   line-height: 1.4;
   overflow-x: auto;
   white-space: pre;
   color: #1f2937;
+  max-width: 100%;
 }
 
 .explanation-nav {
