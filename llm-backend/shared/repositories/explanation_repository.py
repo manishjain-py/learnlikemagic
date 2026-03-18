@@ -2,8 +2,9 @@
 from uuid import uuid4
 from typing import Optional
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
-from shared.models.entities import TopicExplanation
+from shared.models.entities import TeachingGuideline, TopicExplanation
 
 
 class ExplanationCard(BaseModel):
@@ -96,6 +97,41 @@ class ExplanationRepository:
             .filter(TopicExplanation.guideline_id == guideline_id)
             .first()
         ) is not None
+
+    def get_variant_counts_for_chapter(self, book_id: str, chapter_key: str) -> dict[str, int]:
+        """Returns {guideline_id: variant_count} for all guidelines in a chapter."""
+        rows = (
+            self.db.query(
+                TopicExplanation.guideline_id,
+                func.count(TopicExplanation.id).label("cnt"),
+            )
+            .join(TeachingGuideline, TeachingGuideline.id == TopicExplanation.guideline_id)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+            )
+            .group_by(TopicExplanation.guideline_id)
+            .all()
+        )
+        return {row.guideline_id: row.cnt for row in rows}
+
+    def delete_by_chapter(self, book_id: str, chapter_key: str) -> int:
+        """Delete all explanation variants for every guideline in a chapter."""
+        guideline_ids = (
+            self.db.query(TeachingGuideline.id)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+            )
+            .subquery()
+        )
+        count = (
+            self.db.query(TopicExplanation)
+            .filter(TopicExplanation.guideline_id.in_(guideline_ids))
+            .delete(synchronize_session="fetch")
+        )
+        self.db.commit()
+        return count
 
     @staticmethod
     def parse_cards(cards_json: list[dict]) -> list[ExplanationCard]:

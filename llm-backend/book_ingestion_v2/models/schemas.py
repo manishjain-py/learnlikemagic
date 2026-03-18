@@ -211,6 +211,42 @@ class ExplanationGenerationResponse(BaseModel):
     errors: List[str]        # per-topic error messages
 
 
+# ───── Explanation Status & Detail ─────
+
+class TopicExplanationStatus(BaseModel):
+    guideline_id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    variant_count: int
+
+
+class ChapterExplanationStatusResponse(BaseModel):
+    chapter_id: str
+    chapter_key: str
+    topics: List[TopicExplanationStatus]
+
+
+class ExplanationVariantResponse(BaseModel):
+    id: str
+    variant_key: str
+    variant_label: str
+    cards_json: List[Dict[str, Any]]
+    summary_json: Optional[Dict[str, Any]] = None
+    generator_model: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class TopicExplanationsDetailResponse(BaseModel):
+    guideline_id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    variants: List[ExplanationVariantResponse]
+
+
+class DeleteExplanationsResponse(BaseModel):
+    deleted_count: int
+
+
 # ───── Results ─────
 
 class ChapterResultSummary(BaseModel):

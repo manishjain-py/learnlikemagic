@@ -11,6 +11,11 @@ from book_ingestion_v2.models.schemas import (
     ProcessingJobResponse,
     BookResultsResponse,
     ChapterResultSummary,
+    ChapterExplanationStatusResponse,
+    TopicExplanationStatus,
+    TopicExplanationsDetailResponse,
+    ExplanationVariantResponse,
+    DeleteExplanationsResponse,
 )
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
@@ -101,38 +106,52 @@ def get_book_results(book_id: str, db: Session = Depends(get_db)):
 def generate_explanations(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
+    force: bool = Query(False, description="Delete existing explanations before regenerating"),
     db: Session = Depends(get_db),
 ):
     """Generate/regenerate pre-computed explanations for synced guidelines.
 
     Launches a background job and returns 202 immediately.
-    Runs independently from sync. Idempotent — skips topics that already have
-    explanations (delete existing rows first to force regeneration).
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    By default skips topics that already have explanations; set force=true to regenerate.
     """
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
     from shared.models.entities import TeachingGuideline
 
     try:
-        # Count guidelines to set total_items
-        query = db.query(TeachingGuideline).filter(
-            TeachingGuideline.book_id == book_id,
-            TeachingGuideline.review_status == "APPROVED",
-        )
-        if chapter_id:
-            chapter_repo = ChapterRepository(db)
-            chapter = chapter_repo.get_by_id(chapter_id)
-            if not chapter or chapter.book_id != book_id:
+        if guideline_id:
+            # Single-topic generation
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
                 )
-            chapter_key = f"chapter-{chapter.chapter_number}"
-            query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            total_items = 1
+            lock_chapter_id = guideline_id  # use guideline_id as lock scope
+        else:
+            # Chapter or book-wide generation
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
 
-        total_items = query.count()
-
-        # Use chapter_id for lock scope, or book_id as sentinel for book-wide generation
-        lock_chapter_id = chapter_id or book_id
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
 
         job_service = ChapterJobService(db)
         job_id = job_service.acquire_lock(
@@ -143,7 +162,8 @@ def generate_explanations(
         )
 
         run_in_background_v2(
-            _run_explanation_generation, job_id, book_id, chapter_id or ""
+            _run_explanation_generation, job_id, book_id,
+            chapter_id or "", guideline_id or "", str(force),
         )
 
         return job_service.get_job(job_id)
@@ -163,11 +183,12 @@ def generate_explanations(
 def get_latest_explanation_job(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Chapter ID (omit for book-wide job)"),
+    guideline_id: Optional[str] = Query(None, description="Guideline ID for single-topic job"),
     db: Session = Depends(get_db),
 ):
-    """Get the latest explanation generation job for a chapter or book."""
+    """Get the latest explanation generation job for a topic, chapter, or book."""
     try:
-        lock_chapter_id = chapter_id or book_id
+        lock_chapter_id = guideline_id or chapter_id or book_id
         job_service = ChapterJobService(db)
         result = job_service.get_latest_job(
             lock_chapter_id,
@@ -187,15 +208,181 @@ def get_latest_explanation_job(
         )
 
 
+@router.get("/explanation-status", response_model=ChapterExplanationStatusResponse)
+def get_explanation_status(
+    book_id: str,
+    chapter_id: str = Query(..., description="Chapter ID to get explanation status for"),
+    db: Session = Depends(get_db),
+):
+    """Get per-topic explanation variant counts for a chapter."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chapter {chapter_id} not found in book {book_id}",
+            )
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        repo = ExplanationRepository(db)
+        counts = repo.get_variant_counts_for_chapter(book_id, chapter_key)
+
+        # Get all guidelines for this chapter to list even those without explanations
+        guidelines = (
+            db.query(TeachingGuideline)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            .order_by(TeachingGuideline.topic_sequence)
+            .all()
+        )
+
+        topics = [
+            TopicExplanationStatus(
+                guideline_id=g.id,
+                topic_title=g.topic_title or g.topic,
+                topic_key=g.topic_key,
+                variant_count=counts.get(g.id, 0),
+            )
+            for g in guidelines
+        ]
+
+        return ChapterExplanationStatusResponse(
+            chapter_id=chapter_id,
+            chapter_key=chapter_key,
+            topics=topics,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get("/explanations", response_model=TopicExplanationsDetailResponse)
+def get_topic_explanations(
+    book_id: str,
+    guideline_id: str = Query(..., description="Guideline ID to get explanations for"),
+    db: Session = Depends(get_db),
+):
+    """Get all explanation variants with full card data for a topic."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    try:
+        guideline = db.query(TeachingGuideline).filter(
+            TeachingGuideline.id == guideline_id,
+            TeachingGuideline.book_id == book_id,
+        ).first()
+        if not guideline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Guideline {guideline_id} not found in book {book_id}",
+            )
+
+        repo = ExplanationRepository(db)
+        explanations = repo.get_by_guideline_id(guideline_id)
+
+        variants = [
+            ExplanationVariantResponse(
+                id=e.id,
+                variant_key=e.variant_key,
+                variant_label=e.variant_label,
+                cards_json=e.cards_json,
+                summary_json=e.summary_json,
+                generator_model=e.generator_model,
+                created_at=e.created_at,
+            )
+            for e in explanations
+        ]
+
+        return TopicExplanationsDetailResponse(
+            guideline_id=guideline_id,
+            topic_title=guideline.topic_title or guideline.topic,
+            topic_key=guideline.topic_key,
+            variants=variants,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.delete("/explanations", response_model=DeleteExplanationsResponse)
+def delete_explanations(
+    book_id: str,
+    guideline_id: Optional[str] = Query(None, description="Delete explanations for a specific topic"),
+    chapter_id: Optional[str] = Query(None, description="Delete explanations for all topics in a chapter"),
+    db: Session = Depends(get_db),
+):
+    """Delete explanation variants for a topic or chapter."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    try:
+        if not guideline_id and not chapter_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Must specify either guideline_id or chapter_id",
+            )
+
+        repo = ExplanationRepository(db)
+
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            count = repo.delete_by_guideline_id(guideline_id)
+        else:
+            chapter_repo = ChapterRepository(db)
+            chapter = chapter_repo.get_by_id(chapter_id)
+            if not chapter or chapter.book_id != book_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Chapter {chapter_id} not found in book {book_id}",
+                )
+            chapter_key = f"chapter-{chapter.chapter_number}"
+            count = repo.delete_by_chapter(book_id, chapter_key)
+
+        return DeleteExplanationsResponse(deleted_count=count)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
 def _run_explanation_generation(
-    db: Session, job_id: str, book_id: str, chapter_id: str
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False",
 ):
     """Background task for explanation generation."""
+    import json as _json
     from config import get_settings
+    from shared.models.entities import TeachingGuideline
     from shared.services.llm_config_service import LLMConfigService
     from shared.services.llm_service import LLMService
     from book_ingestion_v2.services.explanation_generator_service import ExplanationGeneratorService
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    force = force_str.lower() == "true"
 
     settings = get_settings()
     config = LLMConfigService(db).get_config("explanation_generator")
@@ -211,18 +398,47 @@ def _run_explanation_generation(
     service = ExplanationGeneratorService(db, llm_service)
 
     try:
-        result = service.generate_for_chapter(
-            book_id,
-            chapter_id=chapter_id or None,
-            job_service=job_service,
-            job_id=job_id,
-        )
+        if guideline_id:
+            # Single-topic generation
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                raise ValueError(f"Guideline {guideline_id} not found")
 
-        # Log warnings for failures
-        for error in result.get("errors", []):
-            logger.warning(f"Explanation generation failed: {error}")
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
 
-        final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+            if force:
+                service.repo.delete_by_guideline_id(guideline_id)
+
+            results = service.generate_for_guideline(guideline)
+            generated = 1 if results else 0
+            failed = 0 if results else 1
+            errors = [] if results else [f"{topic}: no variants passed validation"]
+
+            job_service.update_progress(
+                job_id, current_item=None, completed=generated, failed=failed,
+                detail=_json.dumps({
+                    "generated": generated, "skipped": 0, "failed": failed, "errors": errors,
+                }),
+            )
+            final_status = "completed" if failed == 0 else "completed_with_errors"
+        else:
+            # Chapter or book-wide generation
+            result = service.generate_for_chapter(
+                book_id,
+                chapter_id=chapter_id or None,
+                job_service=job_service,
+                job_id=job_id,
+                force=force,
+            )
+
+            for error in result.get("errors", []):
+                logger.warning(f"Explanation generation failed: {error}")
+
+            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+
         job_service.release_lock(job_id, status=final_status)
 
     except Exception:

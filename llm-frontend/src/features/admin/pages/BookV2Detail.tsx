@@ -5,9 +5,11 @@ import {
   startProcessing, reprocessChapter, refinalizeChapter,
   getLatestJobV2, getChapterTopics, syncChapter, syncBook,
   getPageDetailV2, retryPageOcrV2, generateExplanations, getExplanationJobStatus,
+  getExplanationStatus, getTopicExplanations, deleteExplanations,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
-  SyncResponseV2,
+  SyncResponseV2, TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
+  ExplanationVariantV2,
 } from '../api/adminApiV2';
 
 const POLL_INTERVAL = 3000;
@@ -48,15 +50,21 @@ const BookV2Detail: React.FC = () => {
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncAllResult, setSyncAllResult] = useState<SyncResponseV2 | null>(null);
   const [explanationJobs, setExplanationJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
+  const [explanationStatus, setExplanationStatus] = useState<Record<string, TopicExplanationStatusV2[]>>({});
+  const [viewingExplanations, setViewingExplanations] = useState<TopicExplanationsDetailResponseV2 | null>(null);
+  const [viewingExplanationsLoading, setViewingExplanationsLoading] = useState(false);
+  const [topicExplJobs, setTopicExplJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
   const explPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const topicExplPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     if (id) loadBook(true);
     return () => {
       Object.values(pollingRef.current).forEach(clearInterval);
       Object.values(explPollingRef.current).forEach(clearInterval);
+      Object.values(topicExplPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
@@ -104,16 +112,43 @@ const BookV2Detail: React.FC = () => {
     if (!id || explPollingRef.current[chapterId]) return;
     const poll = async () => {
       try {
-        const job = await getExplanationJobStatus(id!, chapterId);
+        const job = await getExplanationJobStatus(id!, { chapterId });
         setExplanationJobs(prev => ({ ...prev, [chapterId]: job }));
-        if (job.status === 'completed' || job.status === 'failed' || job.status === 'completed_with_errors') {
+        if (['completed', 'failed', 'completed_with_errors'].includes(job.status)) {
           clearInterval(explPollingRef.current[chapterId]);
           delete explPollingRef.current[chapterId];
+          // Refresh explanation status after completion
+          loadExplanationStatus(chapterId);
         }
       } catch { /* ignore polling errors */ }
     };
     poll();
     explPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
+  const startTopicExplPolling = useCallback((guidelineId: string, chapterId: string) => {
+    if (!id || topicExplPollingRef.current[guidelineId]) return;
+    const poll = async () => {
+      try {
+        const job = await getExplanationJobStatus(id!, { guidelineId });
+        setTopicExplJobs(prev => ({ ...prev, [guidelineId]: job }));
+        if (['completed', 'failed', 'completed_with_errors'].includes(job.status)) {
+          clearInterval(topicExplPollingRef.current[guidelineId]);
+          delete topicExplPollingRef.current[guidelineId];
+          loadExplanationStatus(chapterId);
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    topicExplPollingRef.current[guidelineId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
+  const loadExplanationStatus = useCallback(async (chapterId: string) => {
+    if (!id) return;
+    try {
+      const status = await getExplanationStatus(id, chapterId);
+      setExplanationStatus(prev => ({ ...prev, [chapterId]: status.topics }));
+    } catch { /* ignore */ }
   }, [id]);
 
   const handleDeleteBook = async () => {
@@ -145,6 +180,9 @@ const BookV2Detail: React.FC = () => {
         const topicsResp = await getChapterTopics(id!, chId);
         setChapterTopics(prev => ({ ...prev, [chId]: topicsResp.topics }));
       } catch { /* ignore */ }
+    }
+    if (ch.status === 'chapter_completed' && !explanationStatus[chId]) {
+      loadExplanationStatus(chId);
     }
   };
 
@@ -247,14 +285,49 @@ const BookV2Detail: React.FC = () => {
     }
   };
 
-  const handleGenerateExplanations = async (ch: ChapterResponseV2) => {
+  const handleGenerateExplanations = async (ch: ChapterResponseV2, force = false) => {
     if (!id) return;
     try {
-      const job = await generateExplanations(id, ch.id);
+      const job = await generateExplanations(id, { chapterId: ch.id, force });
       setExplanationJobs(prev => ({ ...prev, [ch.id]: job }));
       startExplanationPolling(ch.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Explanation generation failed');
+    }
+  };
+
+  const handleGenerateTopicExplanation = async (guidelineId: string, chapterId: string, force = false) => {
+    if (!id) return;
+    try {
+      const job = await generateExplanations(id, { guidelineId, force });
+      setTopicExplJobs(prev => ({ ...prev, [guidelineId]: job }));
+      startTopicExplPolling(guidelineId, chapterId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Topic explanation generation failed');
+    }
+  };
+
+  const handleDeleteTopicExplanation = async (guidelineId: string, chapterId: string, topicTitle: string) => {
+    if (!id) return;
+    if (!confirm(`Delete all explanations for "${topicTitle}"?`)) return;
+    try {
+      await deleteExplanations(id, { guidelineId });
+      loadExplanationStatus(chapterId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  };
+
+  const handleViewExplanations = async (guidelineId: string) => {
+    if (!id) return;
+    try {
+      setViewingExplanationsLoading(true);
+      const detail = await getTopicExplanations(id, guidelineId);
+      setViewingExplanations(detail);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load explanations');
+    } finally {
+      setViewingExplanationsLoading(false);
     }
   };
 
@@ -614,9 +687,17 @@ const BookV2Detail: React.FC = () => {
                         <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                           Reprocess
                         </button>
-                        <button onClick={() => handleGenerateExplanations(ch)} disabled={explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status)} style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status) ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status) ? 0.6 : 1 }}>
-                          {explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status) ? 'Generating...' : 'Generate Explanations'}
-                        </button>
+                        {(() => {
+                          const isRunning = explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status);
+                          return <>
+                            <button onClick={() => handleGenerateExplanations(ch)} disabled={isRunning} style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: isRunning ? 0.6 : 1 }}>
+                              {isRunning ? 'Generating...' : 'Generate Explanations'}
+                            </button>
+                            <button onClick={() => handleGenerateExplanations(ch, true)} disabled={isRunning} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: isRunning ? 0.6 : 1 }}>
+                              Force Regenerate All
+                            </button>
+                          </>;
+                        })()}
                       </>
                     )}
                   </div>
@@ -692,6 +773,12 @@ const BookV2Detail: React.FC = () => {
                           if (s === 'consolidated') return { bg: '#DBEAFE', color: '#1D4ED8' };
                           return { bg: '#FEF3C7', color: '#92400E' }; // draft or other
                         })();
+                        // Look up explanation status for this topic
+                        const explStatus = (explanationStatus[ch.id] || []).find(s => s.topic_key === topic.topic_key);
+                        const variantCount = explStatus?.variant_count ?? 0;
+                        const guidelineId = explStatus?.guideline_id;
+                        const topicJob = guidelineId ? topicExplJobs[guidelineId] : undefined;
+                        const topicJobRunning = topicJob && ['pending', 'running'].includes(topicJob.status);
                         return (
                           <div key={topic.id} style={{ backgroundColor: '#F9FAFB', borderRadius: '6px', marginBottom: '6px', overflow: 'hidden' }}>
                             <div
@@ -705,6 +792,20 @@ const BookV2Detail: React.FC = () => {
                                 </span>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {variantCount > 0 ? (
+                                  <span style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                                    {variantCount} variant{variantCount !== 1 ? 's' : ''}
+                                  </span>
+                                ) : explStatus ? (
+                                  <span style={{ backgroundColor: '#F3F4F6', color: '#6B7280', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                                    No explanations
+                                  </span>
+                                ) : null}
+                                {topicJobRunning && (
+                                  <span style={{ backgroundColor: '#EDE9FE', color: '#5B21B6', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                                    Generating...
+                                  </span>
+                                )}
                                 <span style={{ backgroundColor: topicStatusBadge.bg, color: topicStatusBadge.color, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
                                   {topic.status}
                                 </span>
@@ -735,6 +836,64 @@ const BookV2Detail: React.FC = () => {
                                     }}>
                                       {topic.guidelines}
                                     </pre>
+                                  </div>
+                                )}
+
+                                {/* Topic-level explanation actions */}
+                                {guidelineId && (
+                                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    {variantCount > 0 && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleViewExplanations(guidelineId); }}
+                                        style={{ backgroundColor: '#3B82F6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                                      >
+                                        View Explanations
+                                      </button>
+                                    )}
+                                    {variantCount === 0 ? (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleGenerateTopicExplanation(guidelineId, ch.id); }}
+                                        disabled={!!topicJobRunning}
+                                        style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '5px', cursor: topicJobRunning ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600, opacity: topicJobRunning ? 0.6 : 1 }}
+                                      >
+                                        Generate Explanations
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleGenerateTopicExplanation(guidelineId, ch.id, true); }}
+                                        disabled={!!topicJobRunning}
+                                        style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '5px', cursor: topicJobRunning ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600, opacity: topicJobRunning ? 0.6 : 1 }}
+                                      >
+                                        Regenerate
+                                      </button>
+                                    )}
+                                    {variantCount > 0 && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteTopicExplanation(guidelineId, ch.id, topic.topic_title); }}
+                                        style={{ backgroundColor: '#FEE2E2', color: '#991B1B', border: 'none', padding: '6px 12px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                                      >
+                                        Delete Explanations
+                                      </button>
+                                    )}
+                                    {/* Topic-level job status */}
+                                    {topicJob && (() => {
+                                      const tj = topicJob;
+                                      if (topicJobRunning) return (
+                                        <span style={{ fontSize: '12px', color: '#5B21B6' }}>
+                                          Generating{tj.current_item ? `: ${tj.current_item}` : '...'}
+                                        </span>
+                                      );
+                                      if (['completed', 'completed_with_errors', 'failed'].includes(tj.status)) {
+                                        const td = tj.progress_detail as { generated?: number; failed?: number; errors?: string[] } | undefined;
+                                        return (
+                                          <span style={{ fontSize: '12px', color: tj.status === 'failed' ? '#991B1B' : '#065F46' }}>
+                                            {tj.status === 'failed' ? `Failed: ${tj.error_message}` : `Done: ${td?.generated ?? tj.completed_items} generated`}
+                                            <button onClick={() => setTopicExplJobs(prev => { const next = { ...prev }; delete next[guidelineId]; return next; })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit', marginLeft: '4px' }}>&times;</button>
+                                          </span>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                   </div>
                                 )}
                               </div>
@@ -929,6 +1088,152 @@ const BookV2Detail: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Explanations Viewer Modal */}
+      {viewingExplanations && (
+        <div
+          onClick={() => setViewingExplanations(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white', borderRadius: '12px', width: '90vw',
+              maxWidth: '1000px', maxHeight: '85vh', overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px', borderBottom: '1px solid #E5E7EB',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px' }}>
+                  Explanations: {viewingExplanations.topic_title}
+                </h3>
+                <span style={{ fontSize: '12px', color: '#6B7280' }}>
+                  {viewingExplanations.variants.length} variant{viewingExplanations.variants.length !== 1 ? 's' : ''}
+                  {viewingExplanations.topic_key ? ` — ${viewingExplanations.topic_key}` : ''}
+                </span>
+              </div>
+              <button
+                onClick={() => setViewingExplanations(null)}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#6B7280', padding: '4px 8px' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+              {viewingExplanations.variants.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
+                  No explanations generated yet.
+                </div>
+              ) : (
+                viewingExplanations.variants.map((variant) => (
+                  <VariantSection key={variant.id} variant={variant} />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─── Explanation Variant Section Component ─── */
+const VariantSection: React.FC<{ variant: ExplanationVariantV2 }> = ({ variant }) => {
+  const [expanded, setExpanded] = useState(true);
+  const summary = variant.summary_json as { card_titles?: string[]; key_analogies?: string[]; key_examples?: string[]; approach_label?: string } | null;
+  return (
+    <div style={{ marginBottom: '16px', border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          padding: '12px 16px', backgroundColor: '#F9FAFB', cursor: 'pointer',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{expanded ? '▼' : '▶'}</span>
+          <span style={{ fontWeight: 700, fontSize: '14px' }}>
+            Variant {variant.variant_key}: {variant.variant_label}
+          </span>
+          <span style={{ fontSize: '12px', color: '#6B7280' }}>
+            ({variant.cards_json.length} cards)
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#9CA3AF' }}>
+          {variant.generator_model && <span>Model: {variant.generator_model}</span>}
+          {variant.created_at && <span>{new Date(variant.created_at).toLocaleDateString()}</span>}
+        </div>
+      </div>
+      {expanded && (
+        <div style={{ padding: '12px 16px' }}>
+          {/* Summary */}
+          {summary && (
+            <div style={{ marginBottom: '12px', padding: '10px', backgroundColor: '#F0F9FF', borderRadius: '6px', fontSize: '12px', color: '#1E40AF' }}>
+              {summary.approach_label && <div><strong>Approach:</strong> {summary.approach_label}</div>}
+              {summary.key_analogies && summary.key_analogies.length > 0 && (
+                <div><strong>Key Analogies:</strong> {summary.key_analogies.join(', ')}</div>
+              )}
+              {summary.key_examples && summary.key_examples.length > 0 && (
+                <div><strong>Key Examples:</strong> {summary.key_examples.join(', ')}</div>
+              )}
+            </div>
+          )}
+          {/* Cards */}
+          {variant.cards_json.map((card, ci) => (
+            <div key={ci} style={{
+              marginBottom: '8px', padding: '10px 14px',
+              border: '1px solid #E5E7EB', borderRadius: '6px',
+              backgroundColor: card.card_type === 'visual' ? '#FFFBEB' : 'white',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                  {card.card_idx}. {card.title}
+                </span>
+                <span style={{
+                  fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '8px',
+                  backgroundColor:
+                    card.card_type === 'concept' ? '#EDE9FE' :
+                    card.card_type === 'example' ? '#DBEAFE' :
+                    card.card_type === 'visual' ? '#FEF3C7' :
+                    card.card_type === 'analogy' ? '#D1FAE5' :
+                    card.card_type === 'summary' ? '#F3F4F6' : '#F3F4F6',
+                  color:
+                    card.card_type === 'concept' ? '#5B21B6' :
+                    card.card_type === 'example' ? '#1D4ED8' :
+                    card.card_type === 'visual' ? '#92400E' :
+                    card.card_type === 'analogy' ? '#065F46' :
+                    '#374151',
+                }}>
+                  {card.card_type}
+                </span>
+              </div>
+              <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                {card.content}
+              </div>
+              {card.visual && (
+                <pre style={{
+                  marginTop: '8px', padding: '10px', backgroundColor: '#F9FAFB',
+                  border: '1px solid #E5E7EB', borderRadius: '4px', fontSize: '12px',
+                  lineHeight: '1.4', overflow: 'auto', fontFamily: 'monospace',
+                }}>
+                  {card.visual}
+                </pre>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -398,6 +398,7 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
         chapter_id: Optional[str] = None,
         job_service=None,
         job_id: Optional[str] = None,
+        force: bool = False,
     ) -> dict:
         """Generate explanations for all synced guidelines in a chapter (or book).
 
@@ -406,6 +407,7 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
             chapter_id: Optional chapter UUID to scope generation.
             job_service: Optional ChapterJobService for progress tracking.
             job_id: Optional job ID for progress tracking.
+            force: If True, delete existing explanations and regenerate instead of skipping.
 
         Returns:
             Dict with generated, skipped, failed counts and error messages.
@@ -448,9 +450,13 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
 
                 # Check if explanations already exist
                 if self.repo.has_explanations(guideline.id):
-                    logger.info(f"Explanations already exist for {topic}, skipping")
-                    skipped += 1
-                    continue
+                    if force:
+                        logger.info(f"Force mode: deleting existing explanations for {topic}")
+                        self.repo.delete_by_guideline_id(guideline.id)
+                    else:
+                        logger.info(f"Explanations already exist for {topic}, skipping")
+                        skipped += 1
+                        continue
 
                 results = self.generate_for_guideline(guideline)
                 if results:

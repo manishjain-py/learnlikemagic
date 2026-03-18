@@ -223,9 +223,14 @@ export async function syncChapter(
 // ===== Explanation Generation =====
 
 export async function generateExplanations(
-  bookId: string, chapterId?: string
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
 ): Promise<ProcessingJobResponseV2> {
-  const qs = chapterId ? `?chapter_id=${chapterId}` : '';
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.force) params.set('force', 'true');
+  const qs = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/generate-explanations${qs}`,
     { method: 'POST' }
@@ -233,11 +238,44 @@ export async function generateExplanations(
 }
 
 export async function getExplanationJobStatus(
-  bookId: string, chapterId?: string
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
 ): Promise<ProcessingJobResponseV2> {
-  const qs = chapterId ? `?chapter_id=${chapterId}` : '';
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/explanation-jobs/latest${qs}`
+  );
+}
+
+export async function getExplanationStatus(
+  bookId: string, chapterId: string
+): Promise<ExplanationStatusResponseV2> {
+  return apiFetch<ExplanationStatusResponseV2>(
+    `/admin/v2/books/${bookId}/explanation-status?chapter_id=${chapterId}`
+  );
+}
+
+export async function getTopicExplanations(
+  bookId: string, guidelineId: string
+): Promise<TopicExplanationsDetailResponseV2> {
+  return apiFetch<TopicExplanationsDetailResponseV2>(
+    `/admin/v2/books/${bookId}/explanations?guideline_id=${guidelineId}`
+  );
+}
+
+export async function deleteExplanations(
+  bookId: string,
+  opts: { guidelineId?: string; chapterId?: string },
+): Promise<DeleteExplanationsResponseV2> {
+  const params = new URLSearchParams();
+  if (opts.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts.chapterId) params.set('chapter_id', opts.chapterId);
+  return apiFetch<DeleteExplanationsResponseV2>(
+    `/admin/v2/books/${bookId}/explanations?${params.toString()}`,
+    { method: 'DELETE' }
   );
 }
 
@@ -422,4 +460,48 @@ export interface BookResultsResponseV2 {
   title: string;
   chapters: ChapterResultSummaryV2[];
   total_topics: number;
+}
+
+// ===== Explanation Status & Detail Types =====
+
+export interface TopicExplanationStatusV2 {
+  guideline_id: string;
+  topic_title: string;
+  topic_key?: string;
+  variant_count: number;
+}
+
+export interface ExplanationStatusResponseV2 {
+  chapter_id: string;
+  chapter_key: string;
+  topics: TopicExplanationStatusV2[];
+}
+
+export interface ExplanationCardV2 {
+  card_idx: number;
+  card_type: string;
+  title: string;
+  content: string;
+  visual?: string | null;
+}
+
+export interface ExplanationVariantV2 {
+  id: string;
+  variant_key: string;
+  variant_label: string;
+  cards_json: ExplanationCardV2[];
+  summary_json?: Record<string, unknown> | null;
+  generator_model?: string;
+  created_at?: string;
+}
+
+export interface TopicExplanationsDetailResponseV2 {
+  guideline_id: string;
+  topic_title: string;
+  topic_key?: string;
+  variants: ExplanationVariantV2[];
+}
+
+export interface DeleteExplanationsResponseV2 {
+  deleted_count: number;
 }
