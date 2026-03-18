@@ -415,14 +415,14 @@ def main():
         config.evaluator_provider = args.provider
         config.simulator_provider = args.provider
 
-    if config.evaluator_provider == "anthropic" or config.simulator_provider == "anthropic":
-        if not config.anthropic_api_key:
-            print("ERROR: ANTHROPIC_API_KEY not found in environment. Check your .env file.")
-            sys.exit(1)
-    if config.evaluator_provider != "anthropic" or config.simulator_provider != "anthropic":
-        if not config.openai_api_key:
-            print("ERROR: OPENAI_API_KEY not found in environment. Check your .env file.")
-            sys.exit(1)
+    # Validate API keys based on provider (claude_code needs no API key)
+    providers = {config.evaluator_provider, config.simulator_provider}
+    if "anthropic" in providers and not config.anthropic_api_key:
+        print("ERROR: ANTHROPIC_API_KEY not found in environment. Check your .env file.")
+        sys.exit(1)
+    if ("openai" in providers) and not config.openai_api_key:
+        print("ERROR: OPENAI_API_KEY not found in environment. Check your .env file.")
+        sys.exit(1)
 
     started_at = datetime.now()
     timestamp = started_at.strftime("%Y%m%d_%H%M%S")

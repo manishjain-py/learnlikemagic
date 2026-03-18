@@ -78,12 +78,12 @@ def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
         finally:
             db.close()
 
-        if config.evaluator_provider == "anthropic" or config.simulator_provider == "anthropic":
-            if not config.anthropic_api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
-        if config.evaluator_provider != "anthropic" or config.simulator_provider != "anthropic":
-            if not config.openai_api_key:
-                raise RuntimeError("OPENAI_API_KEY not found in environment")
+        # Validate API keys based on provider (claude_code needs no API key)
+        providers = {config.evaluator_provider, config.simulator_provider}
+        if "anthropic" in providers and not config.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
+        if "openai" in providers and not config.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY not found in environment")
 
         started_at = datetime.now()
         timestamp = started_at.strftime("%Y%m%d_%H%M%S")
@@ -174,12 +174,11 @@ def _run_session_evaluation(session_id: str):
         finally:
             db.close()
 
-        if config.evaluator_provider == "anthropic":
-            if not config.anthropic_api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
-        if config.evaluator_provider != "anthropic":
-            if not config.openai_api_key:
-                raise RuntimeError("OPENAI_API_KEY not found in environment")
+        # Validate API keys based on provider (claude_code needs no API key)
+        if config.evaluator_provider == "anthropic" and not config.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not found in environment")
+        if config.evaluator_provider == "openai" and not config.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY not found in environment")
 
         # Extract messages: prefer full_conversation_log, fall back to conversation_history
         messages = session.full_conversation_log if session.full_conversation_log else session.conversation_history

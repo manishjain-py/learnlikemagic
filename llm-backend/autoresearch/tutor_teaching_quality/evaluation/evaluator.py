@@ -1,18 +1,17 @@
 """
 Conversation Evaluator
 
-Uses OpenAI Responses API (gpt-5.2) or Anthropic Messages API (claude-opus-4-6)
-with high reasoning effort to evaluate a tutoring conversation across 5 dimensions.
+Uses LLMService (supports openai, anthropic, claude_code providers) with high
+reasoning effort to evaluate a tutoring conversation across 5 dimensions.
 """
 
 import json
-from openai import OpenAI
 
 from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 
 EVALUATION_DIMENSIONS = [
     "responsiveness",
-    "explanation_quality", 
+    "explanation_quality",
     "emotional_attunement",
     "pacing",
     "authenticity",
@@ -139,13 +138,7 @@ class ConversationEvaluator:
 
     def __init__(self, config: EvalConfig):
         self.config = config
-        self.provider = config.evaluator_provider
-
-        if self.provider == "anthropic":
-            import anthropic
-            self.anthropic_client = anthropic.Anthropic(api_key=config.anthropic_api_key)
-        else:
-            self.client = OpenAI(api_key=config.openai_api_key)
+        self.llm = config.create_llm_service("evaluator")
 
     def _format_transcript(self, conversation: list[dict]) -> str:
         lines = []
@@ -167,7 +160,7 @@ class ConversationEvaluator:
             for trait in persona.get('personality_traits', []):
                 user_message += f"- {trait}\n"
             user_message += f"\n**Correct answer probability:** {int(persona.get('correct_answer_probability', 0.6) * 100)}%\n"
-            
+
             if 'persona_specific_behaviors' in persona:
                 user_message += f"\n**Behavioral tendencies:**\n"
                 for behavior, prob in persona['persona_specific_behaviors'].items():
@@ -186,51 +179,11 @@ class ConversationEvaluator:
         user_message += "\n\nPlease evaluate this tutoring conversation according to the rubric, taking into account how well the tutor adapted to THIS specific student persona. Return your evaluation as JSON."
         return user_message
 
-    def _evaluate_openai(self, user_message: str) -> dict:
-        response = self.client.responses.create(
-            model=self.config.evaluator_model,
-            instructions=EVALUATOR_PROMPT,
-            input=user_message,
-            reasoning={"effort": self.config.evaluator_reasoning_effort},
-            text={"format": {"type": "json_object"}},
-        )
-        return json.loads(response.output_text)
-
-    def _evaluate_anthropic(self, user_message: str) -> dict:
-        thinking_budget = self.config.anthropic_evaluator_thinking_budget
-        max_tokens = max(thinking_budget + 8192, 25000)
-
-        text_content = ""
-        with self.anthropic_client.messages.stream(
-            model=self.config.anthropic_evaluator_model,
-            max_tokens=max_tokens,
-            system=EVALUATOR_PROMPT,
-            thinking={
-                "type": "enabled",
-                "budget_tokens": thinking_budget,
-            },
-            messages=[{"role": "user", "content": user_message}],
-        ) as stream:
-            for event in stream:
-                pass
-            response = stream.get_final_message()
-
-        for block in response.content:
-            if block.type == "text":
-                text = block.text.strip()
-                if text.startswith("```"):
-                    text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-                    if text.endswith("```"):
-                        text = text[:-3]
-                    text = text.strip()
-                return json.loads(text)
-
-        raise ValueError("No text block found in Anthropic response")
-
     def evaluate(self, conversation: list[dict], topic_info: dict | None = None, persona: dict | None = None) -> dict:
         """Evaluate a conversation transcript."""
         user_message = self._build_user_message(conversation, topic_info, persona)
+        prompt = f"{EVALUATOR_PROMPT}\n\n{user_message}"
 
-        if self.provider == "anthropic":
-            return self._evaluate_anthropic(user_message)
-        return self._evaluate_openai(user_message)
+        result = self.llm.call(prompt=prompt, reasoning_effort="high", json_mode=True)
+        parsed = result.get("parsed") or self.llm.parse_json_response(result["output_text"])
+        return parsed

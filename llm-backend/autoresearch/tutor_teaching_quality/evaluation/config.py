@@ -104,17 +104,49 @@ class EvalConfig:
         kwargs["evaluator_provider"] = eval_cfg["provider"]
         if eval_cfg["provider"] == "anthropic":
             kwargs["anthropic_evaluator_model"] = eval_cfg["model_id"]
-        else:
+        elif eval_cfg["provider"] != "claude_code":
             kwargs["evaluator_model"] = eval_cfg["model_id"]
 
         # Simulator
         kwargs["simulator_provider"] = sim_cfg["provider"]
         if sim_cfg["provider"] == "anthropic":
             kwargs["anthropic_simulator_model"] = sim_cfg["model_id"]
-        else:
+        elif sim_cfg["provider"] != "claude_code":
             kwargs["simulator_model"] = sim_cfg["model_id"]
 
         return cls(**kwargs)
+
+    def create_llm_service(self, component: str):
+        """Create an LLMService for the given component ('evaluator' or 'simulator').
+
+        Routes through the same LLMService abstraction used by the rest of the app,
+        so the provider (openai, anthropic, claude_code) is driven by llm_configs.
+        """
+        from shared.services.llm_service import LLMService
+
+        if component == "evaluator":
+            provider = self.evaluator_provider
+            model_id = (
+                self.anthropic_evaluator_model if provider == "anthropic"
+                else "claude-code" if provider == "claude_code"
+                else self.evaluator_model
+            )
+        elif component == "simulator":
+            provider = self.simulator_provider
+            model_id = (
+                self.anthropic_simulator_model if provider == "anthropic"
+                else "claude-code" if provider == "claude_code"
+                else self.simulator_model
+            )
+        else:
+            raise ValueError(f"Unknown component: {component}")
+
+        return LLMService(
+            api_key=self.openai_api_key,
+            provider=provider,
+            model_id=model_id,
+            anthropic_api_key=self.anthropic_api_key or None,
+        )
 
     @property
     def tutor_model_label(self) -> str:

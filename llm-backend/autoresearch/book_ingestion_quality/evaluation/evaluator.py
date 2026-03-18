@@ -1,14 +1,13 @@
 """
 Book Ingestion Evaluator
 
-Uses OpenAI Responses API (gpt-5.2) or Anthropic Messages API (claude-opus-4-6)
+Uses LLMService (supports openai, anthropic, claude_code providers)
 to evaluate topic extraction quality across 3 dimensions:
 granularity, coverage depth, and copyright safety.
 """
 
 import json
 from pathlib import Path
-from openai import OpenAI
 
 from autoresearch.book_ingestion_quality.evaluation.config import IngestionEvalConfig
 
@@ -44,13 +43,7 @@ class IngestionEvaluator:
 
     def __init__(self, config: IngestionEvalConfig):
         self.config = config
-        self.provider = config.evaluator_provider
-
-        if self.provider == "anthropic":
-            import anthropic
-            self.anthropic_client = anthropic.Anthropic(api_key=config.anthropic_api_key)
-        else:
-            self.client = OpenAI(api_key=config.openai_api_key)
+        self.llm = config.create_llm_service()
 
     def _build_user_message(self, pipeline_output: dict) -> str:
         """Build the user message from pipeline output."""
@@ -109,52 +102,12 @@ class IngestionEvaluator:
 
         return "\n".join(lines)
 
-    def _evaluate_openai(self, user_message: str) -> dict:
-        judge_prompt = _load_judge_prompt()
-        response = self.client.responses.create(
-            model=self.config.evaluator_model,
-            instructions=judge_prompt,
-            input=user_message,
-            reasoning={"effort": self.config.evaluator_reasoning_effort},
-            text={"format": {"type": "json_object"}},
-        )
-        return json.loads(response.output_text)
-
-    def _evaluate_anthropic(self, user_message: str) -> dict:
-        judge_prompt = _load_judge_prompt()
-        thinking_budget = self.config.anthropic_evaluator_thinking_budget
-        max_tokens = max(thinking_budget + 8192, 25000)
-
-        with self.anthropic_client.messages.stream(
-            model=self.config.anthropic_evaluator_model,
-            max_tokens=max_tokens,
-            system=judge_prompt,
-            thinking={
-                "type": "enabled",
-                "budget_tokens": thinking_budget,
-            },
-            messages=[{"role": "user", "content": user_message}],
-        ) as stream:
-            for event in stream:
-                pass
-            response = stream.get_final_message()
-
-        for block in response.content:
-            if block.type == "text":
-                text = block.text.strip()
-                if text.startswith("```"):
-                    text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-                    if text.endswith("```"):
-                        text = text[:-3]
-                    text = text.strip()
-                return json.loads(text)
-
-        raise ValueError("No text block found in Anthropic response")
-
     def evaluate(self, pipeline_output: dict) -> dict:
         """Evaluate a pipeline extraction result."""
+        judge_prompt = _load_judge_prompt()
         user_message = self._build_user_message(pipeline_output)
+        prompt = f"{judge_prompt}\n\n{user_message}"
 
-        if self.provider == "anthropic":
-            return self._evaluate_anthropic(user_message)
-        return self._evaluate_openai(user_message)
+        result = self.llm.call(prompt=prompt, reasoning_effort="high", json_mode=True)
+        parsed = result.get("parsed") or self.llm.parse_json_response(result["output_text"])
+        return parsed

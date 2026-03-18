@@ -47,7 +47,26 @@ class IngestionEvalConfig:
     def evaluator_model_label(self) -> str:
         if self.evaluator_provider == "anthropic":
             return self.anthropic_evaluator_model
+        if self.evaluator_provider == "claude_code":
+            return "claude-code"
         return self.evaluator_model
+
+    def create_llm_service(self):
+        """Create an LLMService for the evaluator component."""
+        from shared.services.llm_service import LLMService
+
+        provider = self.evaluator_provider
+        model_id = (
+            self.anthropic_evaluator_model if provider == "anthropic"
+            else "claude-code" if provider == "claude_code"
+            else self.evaluator_model
+        )
+        return LLMService(
+            api_key=self.openai_api_key,
+            provider=provider,
+            model_id=model_id,
+            anthropic_api_key=self.anthropic_api_key or None,
+        )
 
     def to_dict(self) -> dict:
         d = asdict(self)
