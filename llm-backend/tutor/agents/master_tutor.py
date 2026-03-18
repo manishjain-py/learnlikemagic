@@ -161,6 +161,14 @@ class MasterTutorAgent(BaseAgent):
         trend = session.session_summary.progress_trend
 
         if turn == 1:
+            if session.precomputed_explanation_summary:
+                return (
+                    "PACING: FIRST TURN (after explanation cards) — The student just read "
+                    "explanation cards. Start by connecting to what the cards taught: reference "
+                    "a specific analogy or example from the cards and ask the student to explain "
+                    "it back in their own words. This checks what they absorbed. Do NOT introduce "
+                    "new analogies yet — build on the cards' framing first. Keep it to 2-3 sentences."
+                )
             return (
                 "PACING: FIRST TURN — Start with a curiosity-building hook that connects "
                 "to the student's world. End with an inviting question like 'Have you ever "
