@@ -43,6 +43,22 @@ class IngestionEvalConfig:
         default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", "")
     )
 
+    @classmethod
+    def from_db(cls, db_session, **kwargs) -> "IngestionEvalConfig":
+        """Create config with evaluator model read from the DB llm_config table."""
+        from shared.services.llm_config_service import LLMConfigService
+
+        config_service = LLMConfigService(db_session)
+        eval_cfg = config_service.get_config("eval_evaluator")
+
+        kwargs["evaluator_provider"] = eval_cfg["provider"]
+        if eval_cfg["provider"] == "anthropic":
+            kwargs["anthropic_evaluator_model"] = eval_cfg["model_id"]
+        elif eval_cfg["provider"] != "claude_code":
+            kwargs["evaluator_model"] = eval_cfg["model_id"]
+
+        return cls(**kwargs)
+
     @property
     def evaluator_model_label(self) -> str:
         if self.evaluator_provider == "anthropic":

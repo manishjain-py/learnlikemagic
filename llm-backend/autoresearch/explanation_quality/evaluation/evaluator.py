@@ -1,0 +1,165 @@
+"""
+Explanation Quality Evaluator
+
+Uses LLMService with high reasoning effort to evaluate pre-computed
+explanation cards across 5 dimensions focused on whether the explanation
+actually helps a struggling student understand the concept.
+"""
+
+import json
+
+from autoresearch.explanation_quality.evaluation.config import ExplanationEvalConfig
+
+EVALUATION_DIMENSIONS = [
+    "simplicity",
+    "concept_clarity",
+    "examples_and_analogies",
+    "structure_and_flow",
+    "overall_effectiveness",
+]
+
+ROOT_CAUSE_CATEGORIES = [
+    "complex_language",
+    "abstract_explanation",
+    "missing_visual",
+    "too_dense",
+    "wrong_sequence",
+    "weak_analogy",
+    "missing_anchor",
+    "textbook_tone",
+    "misconception_gap",
+    "other",
+]
+
+EVALUATOR_PROMPT = """You are an expert evaluator of educational content for young students. Your focus: does this explanation ACTUALLY help a struggling student understand the concept?
+
+You will review a set of explanation cards created for a Grade {grade} student studying {subject}. Assume the student is average or below-average — they find this topic hard, need extra clarity, and won't ask for help when confused.
+
+## EVALUATION DIMENSIONS (score each 1-10)
+
+### 1. **Simplicity** (1-10)
+*Would a struggling Grade {grade} student understand every word and sentence without re-reading?*
+
+- **9-10:** Every word is one the student would naturally use. Sentences are short and direct. Technical terms are introduced gently with plain explanations right alongside. A struggling student could read this aloud and understand it first time.
+- **7-8:** Mostly simple with occasional words that might trip up a weaker student. Generally readable for the grade level.
+- **5-6:** Some sentences require re-reading. A few words feel too "textbook-y" for this grade. Complex or compound sentences that lose a young reader.
+- **3-4:** Regularly uses language above the student's level. Dense sentences. Technical terms dropped without explanation.
+- **1-2:** Written for adults, not children. Complex vocabulary and sentence structure throughout.
+
+### 2. **Concept Clarity** (1-10)
+*After reading all cards, would a struggling student actually understand the concept — the WHY, not just the WHAT?*
+
+- **9-10:** The concept is crystal clear. A struggling student could explain it in their own words to a friend. The "why" is as clear as the "what." No gaps in the chain of understanding.
+- **7-8:** The concept is explained well. Most students would get it, though a struggling student might need one more example or a slightly different angle.
+- **5-6:** The concept is described but not truly made clear. Student might be able to repeat what was said but couldn't apply it to a new situation.
+- **3-4:** Explanation is incomplete or confusing. Key ideas are buried, skipped, or presented out of order.
+- **1-2:** Student would walk away more confused than when they started.
+
+### 3. **Examples & Analogies** (1-10)
+*Are examples concrete, everyday, and relatable for a Grade {grade} student?*
+
+- **9-10:** Examples use things from the student's daily life (sharing food, pocket money, games, sports, counting objects). Analogies map precisely to the concept without creating misconceptions. Examples come BEFORE rules. Multiple worked examples that build understanding.
+- **7-8:** Good examples that mostly connect to the student's world. Some everyday references. Analogies are mostly accurate.
+- **5-6:** Examples exist but feel generic or abstract. Analogies are weak, forced, or could mislead. Rules stated before examples.
+- **3-4:** Few examples. Abstract language dominates. Analogies are missing or incorrect.
+- **1-2:** No examples or analogies. Pure definitions and rules — textbook style.
+
+### 4. **Structure & Flow** (1-10)
+*Does each card build naturally on the previous one? One idea per card? No leaps?*
+
+- **9-10:** Each card feels like a small, natural step from the previous one. Exactly one idea per card. A student reading card N finds it obvious after reading cards 1 to N-1. The sequence is perfect for a beginner learning this for the first time.
+- **7-8:** Generally good flow with one minor gap or a card that tries to cover slightly too much.
+- **5-6:** Some cards feel out of order or jump too far ahead. Occasional "leap" that would lose a struggling student. Some cards try to teach two things.
+- **3-4:** Cards feel randomly ordered or multiple ideas crammed into single cards. Noticeable gaps in the progression.
+- **1-2:** No logical progression. Cards could be in any order.
+
+### 5. **Overall Effectiveness** (1-10)
+*Would a struggling Grade {grade} student walk away feeling "I can do this"?*
+
+- **9-10:** A student who found this topic hard would finish these cards thinking "that was actually easy." The explanation builds genuine understanding AND confidence. The student could tackle a problem on this topic right after reading.
+- **7-8:** Student would mostly understand and feel somewhat confident. Might need one or two things clarified.
+- **5-6:** Student gets the gist but has significant gaps. Doesn't feel fully confident to try problems.
+- **3-4:** Student is partially confused. Some cards helped but the overall picture is unclear.
+- **1-2:** Student is more confused than before. The explanation failed.
+
+## PROBLEM IDENTIFICATION
+
+Identify the **top 5 most significant problems** in this explanation. For each:
+- Cite specific card numbers where the problem occurs
+- Describe what would confuse a struggling student
+- Rate severity: "critical", "major", or "minor"
+- Assign a root cause from: complex_language, abstract_explanation, missing_visual, too_dense, wrong_sequence, weak_analogy, missing_anchor, textbook_tone, misconception_gap, other
+
+## OUTPUT FORMAT (JSON)
+
+Return a JSON object with this exact structure:
+{{
+  "scores": {{
+    "simplicity": <1-10>,
+    "concept_clarity": <1-10>,
+    "examples_and_analogies": <1-10>,
+    "structure_and_flow": <1-10>,
+    "overall_effectiveness": <1-10>
+  }},
+  "dimension_analysis": {{
+    "simplicity": "<2-3 sentence analysis>",
+    "concept_clarity": "<2-3 sentence analysis>",
+    "examples_and_analogies": "<2-3 sentence analysis>",
+    "structure_and_flow": "<2-3 sentence analysis>",
+    "overall_effectiveness": "<2-3 sentence analysis>"
+  }},
+  "problems": [
+    {{
+      "title": "<short problem title>",
+      "cards": [<card numbers>],
+      "description": "<what would confuse a struggling student>",
+      "quote": "<exact text from the card showing the problem>",
+      "severity": "critical|major|minor",
+      "root_cause": "<category from list above>"
+    }}
+  ],
+  "summary": "<3-5 sentence overall assessment of whether these cards would help a struggling student>"
+}}"""
+
+
+class ExplanationEvaluator:
+    """Evaluates explanation cards using an LLM judge."""
+
+    def __init__(self, config: ExplanationEvalConfig):
+        self.config = config
+        self.llm = config.create_llm_service("evaluator")
+
+    def _format_cards(self, cards: list[dict]) -> str:
+        """Format cards for the evaluator prompt."""
+        lines = []
+        for card in cards:
+            idx = card.get("card_idx", "?")
+            card_type = card.get("card_type", "?")
+            title = card.get("title", "Untitled")
+            content = card.get("content", "")
+            visual = card.get("visual", "")
+
+            lines.append(f"### Card {idx} [{card_type}]: {title}")
+            lines.append(content)
+            if visual:
+                lines.append(f"\n**Visual:**\n```\n{visual}\n```")
+            lines.append("")
+        return "\n".join(lines)
+
+    def evaluate(self, cards: list[dict], topic_title: str, grade: int, subject: str, guideline_text: str = "") -> dict:
+        """Evaluate a set of explanation cards. Returns scores + analysis."""
+        formatted_cards = self._format_cards(cards)
+
+        system_prompt = EVALUATOR_PROMPT.format(grade=grade, subject=subject)
+
+        user_message = f"## TOPIC: {topic_title}\n\n"
+        if guideline_text:
+            user_message += f"## TEACHING GUIDELINE\n{guideline_text}\n\n"
+        user_message += f"## EXPLANATION CARDS ({len(cards)} cards)\n\n{formatted_cards}"
+        user_message += "\n\nPlease evaluate these explanation cards according to the rubric. Return your evaluation as JSON."
+
+        prompt = f"{system_prompt}\n\n{user_message}"
+
+        result = self.llm.call(prompt=prompt, reasoning_effort="high", json_mode=True)
+        parsed = result.get("parsed") or self.llm.parse_json_response(result["output_text"])
+        return parsed

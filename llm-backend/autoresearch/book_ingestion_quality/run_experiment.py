@@ -208,7 +208,13 @@ def main():
 
     args = parser.parse_args()
 
-    config = IngestionEvalConfig(chapter_id=args.chapter_id)
+    from database import get_db_manager
+    db = get_db_manager().session_factory()
+    try:
+        config = IngestionEvalConfig.from_db(db, chapter_id=args.chapter_id)
+    finally:
+        db.close()
+
     if args.provider:
         config.evaluator_provider = args.provider
 

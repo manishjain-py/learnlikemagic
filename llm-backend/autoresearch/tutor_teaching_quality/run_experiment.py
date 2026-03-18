@@ -111,11 +111,19 @@ def run_single_persona(
     provider: str | None = None,
 ) -> dict:
     """Run one evaluation session and return results dict."""
-    config = EvalConfig(
-        topic_id=topic_id,
-        max_turns=max_turns,
-        persona_file=persona_file,
-    )
+    from database import get_db_manager
+
+    db = get_db_manager().session_factory()
+    try:
+        config = EvalConfig.from_db(
+            db,
+            topic_id=topic_id,
+            max_turns=max_turns,
+            persona_file=persona_file,
+        )
+    finally:
+        db.close()
+
     if provider:
         config.evaluator_provider = provider
         config.simulator_provider = provider

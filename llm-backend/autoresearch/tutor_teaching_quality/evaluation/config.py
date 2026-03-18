@@ -156,6 +156,8 @@ class EvalConfig:
     def evaluator_model_label(self) -> str:
         if self.evaluator_provider == "anthropic":
             return self.anthropic_evaluator_model
+        if self.evaluator_provider == "claude_code":
+            return "claude-code"
         return self.evaluator_model
 
     @property
