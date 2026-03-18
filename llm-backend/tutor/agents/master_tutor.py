@@ -436,11 +436,10 @@ class MasterTutorAgent(BaseAgent):
             summary_text = session.precomputed_explanation_summary
             if summary_text:
                 precomputed_explanation_summary_section = (
-                    "### Pre-Explained Content\n\n"
-                    "The student has already seen the following explanation(s) before this "
-                    "interactive session began. DO NOT repeat these analogies, examples, or "
-                    "explanations. If the student is confused, try a fundamentally different approach.\n\n"
-                    f"{summary_text}\n"
+                    "### Pre-Explained Content (Cards Student Already Read)\n\n"
+                    f"{summary_text}\n\n"
+                    "Build on these — reference the cards' analogies and examples naturally. "
+                    "Do not re-explain from scratch. If the student is confused, try a different approach.\n"
                 )
 
         return MASTER_TUTOR_SYSTEM_PROMPT.render(
