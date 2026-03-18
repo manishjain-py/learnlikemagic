@@ -4,6 +4,7 @@ Session Runner
 Manages the full lifecycle of a tutoring session for evaluation:
 - Starts the backend server as a subprocess (or verifies health in-process)
 - Creates a session via REST API
+- Handles card phase if pre-computed explanations exist (reads cards, calls /card-action)
 - Runs the conversation loop over WebSocket
 - Captures all messages and metadata
 """
@@ -46,6 +47,7 @@ class SessionRunner:
         self.conversation: list[dict] = []
         self.session_id: str | None = None
         self.session_metadata: dict | None = None
+        self.card_phase_data: dict | None = None  # Stores card phase info for evaluator
         self._log_file = open(run_dir / "run.log", "a")
 
     def _log(self, message: str):
@@ -133,7 +135,115 @@ class SessionRunner:
             data = resp.json()
             self.session_id = data["session_id"]
             self._log(f"Session created: {self.session_id}")
+
+            # Detect card phase
+            first_turn = data.get("first_turn", {})
+            if first_turn.get("session_phase") == "card_phase":
+                self._handle_card_phase(first_turn)
+            else:
+                # No card phase — record the welcome message from the REST response
+                welcome = first_turn.get("message", "")
+                if welcome:
+                    self.conversation.append({
+                        "role": "tutor",
+                        "content": welcome,
+                        "turn": 0,
+                        "timestamp": datetime.now().isoformat(),
+                        "phase": "welcome",
+                    })
+                    self._log(f"[Turn 0] TUTOR (welcome): {welcome[:100]}...")
+
             return self.session_id
+
+    def _handle_card_phase(self, first_turn: dict):
+        """Handle the card phase: read cards, add to transcript, call /card-action."""
+        cards = first_turn.get("explanation_cards", [])
+        card_phase_state = first_turn.get("card_phase_state", {})
+        welcome = first_turn.get("message", "")
+
+        self._log(
+            f"Card phase detected: {len(cards)} cards, "
+            f"variant={card_phase_state.get('current_variant_key', '?')}, "
+            f"available_variants={card_phase_state.get('available_variants', '?')}"
+        )
+
+        # Store card phase data for evaluator context
+        self.card_phase_data = {
+            "cards": cards,
+            "variant_key": card_phase_state.get("current_variant_key"),
+            "total_variants": card_phase_state.get("available_variants", 1),
+        }
+
+        # Add welcome message to conversation
+        if welcome:
+            self.conversation.append({
+                "role": "tutor",
+                "content": welcome,
+                "turn": 0,
+                "timestamp": datetime.now().isoformat(),
+                "phase": "card_phase_welcome",
+            })
+
+        # Add each card as a conversation entry so evaluator sees the full experience
+        for card in cards:
+            card_content = self._format_card_for_transcript(card)
+            self.conversation.append({
+                "role": "explanation_card",
+                "content": card_content,
+                "turn": 0,
+                "timestamp": datetime.now().isoformat(),
+                "phase": "card_phase",
+                "card_data": card,
+            })
+
+        self._log(f"Added {len(cards)} explanation cards to transcript")
+
+        # Complete card phase by calling /card-action with "clear"
+        self._complete_card_phase()
+
+    def _format_card_for_transcript(self, card: dict) -> str:
+        """Format an explanation card for readable transcript output."""
+        parts = []
+        card_idx = card.get("card_idx", "?")
+        card_type = card.get("card_type", "")
+        title = card.get("title", "")
+        content = card.get("content", "")
+        visual = card.get("visual")
+
+        parts.append(f"**Card {card_idx}** ({card_type}): {title}")
+        parts.append(content)
+        if visual:
+            parts.append(f"\n{visual}")
+
+        return "\n".join(parts)
+
+    def _complete_card_phase(self):
+        """Call /card-action to transition from card phase to interactive teaching."""
+        self._log("Completing card phase (action=clear)...")
+        with httpx.Client() as client:
+            resp = client.post(
+                f"{self.config.base_url}/sessions/{self.session_id}/card-action",
+                json={"action": "clear"},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        action = data.get("action", "")
+        transition_msg = data.get("message", "")
+
+        self._log(f"Card phase completed: action={action}")
+
+        # Add the transition message to conversation
+        if transition_msg:
+            self.conversation.append({
+                "role": "tutor",
+                "content": transition_msg,
+                "turn": 0,
+                "timestamp": datetime.now().isoformat(),
+                "phase": "card_to_interactive_transition",
+            })
+            self._log(f"[Transition] TUTOR: {transition_msg[:100]}...")
 
     async def _run_websocket_session(self):
         """Run the conversation loop over WebSocket."""
@@ -148,18 +258,26 @@ class SessionRunner:
             msg = json.loads(raw)
             self._log(f"Received: {msg['type']}")
 
-            # Receive welcome message
+            # Receive welcome/transition message from WebSocket
+            # If we went through card phase, this is the post-card-phase state;
+            # if no card phase, the welcome was already captured in _create_session
             raw = await asyncio.wait_for(ws.recv(), timeout=self.config.turn_timeout)
             msg = json.loads(raw)
             if msg["type"] == "assistant":
-                welcome = msg["payload"]["message"]
-                self.conversation.append({
-                    "role": "tutor",
-                    "content": welcome,
-                    "turn": 0,
-                    "timestamp": datetime.now().isoformat(),
-                })
-                self._log(f"[Turn 0] TUTOR: {welcome[:100]}...")
+                ws_welcome = msg["payload"]["message"]
+                # Only add if we didn't already capture this from REST
+                if not self.card_phase_data and not any(
+                    m.get("phase") == "welcome" for m in self.conversation
+                ):
+                    self.conversation.append({
+                        "role": "tutor",
+                        "content": ws_welcome,
+                        "turn": 0,
+                        "timestamp": datetime.now().isoformat(),
+                    })
+                    self._log(f"[Turn 0] TUTOR: {ws_welcome[:100]}...")
+                else:
+                    self._log(f"[Turn 0] TUTOR (WS echo, skipped): {ws_welcome[:80]}...")
 
             # Conversation loop
             turn = 1

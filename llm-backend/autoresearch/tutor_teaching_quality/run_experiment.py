@@ -146,14 +146,16 @@ def run_single_persona(
         conversation = runner.run_session()
         metadata = runner.session_metadata
 
-        report.save_conversation_md(conversation)
-        report.save_conversation_json(conversation, metadata)
+        card_phase_data = runner.card_phase_data
+        report.save_conversation_md(conversation, card_phase_data=card_phase_data)
+        report.save_conversation_json(conversation, metadata, card_phase_data=card_phase_data)
 
         evaluator = ConversationEvaluator(config)
-        evaluation = evaluator.evaluate(conversation, persona=persona)
+        evaluation = evaluator.evaluate(conversation, persona=persona, card_phase_data=card_phase_data)
 
+        has_cards = card_phase_data is not None
         report.save_evaluation_json(evaluation)
-        report.save_review(evaluation)
+        report.save_review(evaluation, has_card_phase=has_cards)
         report.save_problems(evaluation)
 
         scores = evaluation.get("scores", {})

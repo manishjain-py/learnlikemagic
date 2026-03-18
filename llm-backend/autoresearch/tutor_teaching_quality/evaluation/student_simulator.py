@@ -122,9 +122,25 @@ CRITICAL RULES:
                 f"for grade {topic_info.get('grade_level', 5)}]"
             )
 
-        if conversation:
+        # Include card phase content so the student has context of what was explained
+        card_entries = [m for m in conversation if m.get("role") == "explanation_card"]
+        if card_entries:
+            parts.append(
+                "\n[EXPLANATION CARDS YOU WERE SHOWN: Before the interactive session, "
+                "you were shown the following explanation cards. You read them and said "
+                "you understood (clicked 'Clear'). You may reference things you remember "
+                "from these cards naturally — ask about parts that were confusing, or "
+                "mention analogies/examples you liked. You're a real kid who read these, "
+                "so you might remember some parts clearly and forget others.]"
+            )
+            for entry in card_entries:
+                parts.append(f"  {entry['content']}")
+
+        # Build conversation history (excluding card entries — those are context, not dialogue)
+        dialogue_entries = [m for m in conversation if m.get("role") in ("tutor", "student")]
+        if dialogue_entries:
             parts.append("\nCONVERSATION SO FAR:")
-            for msg in conversation:
+            for msg in dialogue_entries:
                 role = "TUTOR" if msg["role"] == "tutor" else "STUDENT"
                 parts.append(f"{role}: {msg['content']}")
 
@@ -155,5 +171,5 @@ CRITICAL RULES:
         )
 
         prompt = self._build_prompt(conversation, topic_info, directive)
-        result = self.llm.call(prompt=prompt, reasoning_effort="low")
+        result = self.llm.call(prompt=prompt, reasoning_effort="low", json_mode=False)
         return result["output_text"].strip()

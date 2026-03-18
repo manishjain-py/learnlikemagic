@@ -4,8 +4,8 @@ LLM Service — Centralized interface for all LLM API calls.
 Routes calls to the correct provider (OpenAI, Anthropic, Google) based on
 provider + model_id set from the DB-backed LLM config.
 
-The primary entry point is `call()`. Legacy methods (call_gpt_5_2, call_gpt_4o, etc.)
-are kept as internal helpers.
+The primary entry point is `call()`. `call_fast()` uses a separate lightweight
+model (also DB-configurable via the 'fast_model' llm_config entry).
 """
 
 import json
@@ -38,6 +38,7 @@ class LLMService:
         *,
         provider: str,
         model_id: str,
+        fast_model_id: str = "gpt-4o-mini",
         gemini_api_key: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
         max_retries: int = 3,
@@ -50,6 +51,7 @@ class LLMService:
         self.timeout = timeout
         self.provider = provider
         self.model_id = model_id
+        self.fast_model_id = fast_model_id
 
         if gemini_api_key:
             self.gemini_client = genai.Client(api_key=gemini_api_key)
@@ -117,17 +119,19 @@ class LLMService:
         schema_name: str = "response",
     ) -> Dict[str, Any]:
         """
-        Fast LLM call using gpt-4o-mini for lightweight tasks
-        (translation, safety checks, etc.). Always uses OpenAI Chat Completions
-        regardless of the main provider setting.
+        Fast LLM call for lightweight tasks (translation, safety checks, etc.).
+
+        Uses self.fast_model_id (from DB 'fast_model' config, defaults to gpt-4o-mini).
+        Always uses OpenAI Chat Completions regardless of the main provider setting.
         """
+        model = self.fast_model_id
         logger.info(json.dumps({
             "step": "LLM_CALL_FAST",
             "status": "starting",
-            "model": "gpt-4o-mini",
+            "model": model,
         }))
         text = self._call_chat_completions(
-            prompt, "gpt-4o-mini", max_tokens=512, temperature=0.3, json_mode=json_mode
+            prompt, model, max_tokens=512, temperature=0.3, json_mode=json_mode
         )
         return {"output_text": text, "reasoning": None}
 
@@ -448,62 +452,6 @@ class LLMService:
             return response.text
 
         return self._execute_with_retry(_api_call, f"Gemini-{model_name}")
-
-    # ─── Legacy methods (kept for internal use / backward compat) ─────
-
-    def call_anthropic(
-        self,
-        prompt: str,
-        reasoning_effort: str = "none",
-        json_mode: bool = True,
-        json_schema: Optional[Dict[str, Any]] = None,
-        schema_name: str = "response",
-    ) -> Dict[str, Any]:
-        """Legacy: Call Anthropic Claude."""
-        return self._call_anthropic(prompt, reasoning_effort, json_mode, json_schema, schema_name)
-
-    def call_gpt_5_2(
-        self,
-        prompt: str,
-        reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "none",
-        json_mode: bool = True,
-        json_schema: Optional[Dict[str, Any]] = None,
-        schema_name: str = "response",
-    ) -> Dict[str, Any]:
-        """Legacy: Call GPT-5.2 (or Anthropic if provider is set)."""
-        if self.provider in ("anthropic", "anthropic-haiku") and self.anthropic_adapter:
-            return self._call_anthropic(prompt, reasoning_effort, json_mode, json_schema, schema_name)
-        return self._call_responses_api(prompt, "gpt-5.2", reasoning_effort, json_mode, json_schema, schema_name)
-
-    def call_gpt_5_1(
-        self,
-        prompt: str,
-        reasoning_effort: Literal["low", "medium", "high"] = "low",
-        max_tokens: int = 4096,
-        json_mode: bool = True,
-    ) -> Dict[str, Any]:
-        """Legacy: Call GPT-5.1."""
-        return self._call_responses_api(prompt, "gpt-5.1", reasoning_effort, json_mode)
-
-    def call_gpt_4o(
-        self,
-        prompt: str,
-        max_tokens: int = 2048,
-        temperature: float = 0.7,
-        json_mode: bool = True,
-    ) -> str:
-        """Legacy: Call GPT-4o. Returns raw text string."""
-        return self._call_chat_completions(prompt, "gpt-4o", max_tokens, temperature, json_mode)
-
-    def call_gemini(
-        self,
-        prompt: str,
-        model_name: str = "gemini-3-pro-preview",
-        temperature: float = 0.7,
-        json_mode: bool = True,
-    ) -> str:
-        """Legacy: Call Gemini. Returns raw text string."""
-        return self._call_gemini(prompt, model_name, temperature, json_mode)
 
     # ─── Helpers ──────────────────────────────────────────────────────
 

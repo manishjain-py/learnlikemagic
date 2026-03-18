@@ -2,7 +2,7 @@
 Report Generator
 
 Generates human-readable markdown reports and machine-readable JSON
-for each evaluation run.
+for each evaluation run. Supports card phase content in transcripts.
 """
 
 import json
@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
+from autoresearch.tutor_teaching_quality.evaluation.evaluator import CARD_PHASE_DIMENSIONS
 
 
 class ReportGenerator:
@@ -45,7 +46,7 @@ class ReportGenerator:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def save_conversation_md(self, conversation: list[dict]):
+    def save_conversation_md(self, conversation: list[dict], card_phase_data: dict | None = None):
         lines = [
             "# Conversation Transcript",
             "",
@@ -54,7 +55,7 @@ class ReportGenerator:
             f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"**Total Messages:** {len(conversation)}",
         ]
-        
+
         # Add persona information if available
         if self.persona:
             lines.extend([
@@ -62,17 +63,74 @@ class ReportGenerator:
                 f"**Persona Description:** {self.persona.get('description', 'No description')}",
                 f"**Correct Answer Probability:** {int(self.persona.get('correct_answer_probability', 0.6) * 100)}%",
             ])
-        
+
+        # Add card phase metadata if present
+        if card_phase_data:
+            cards = card_phase_data.get("cards", [])
+            variant = card_phase_data.get("variant_key", "?")
+            total = card_phase_data.get("total_variants", 1)
+            lines.extend([
+                f"**Card Phase:** Yes ({len(cards)} cards, variant {variant} of {total})",
+            ])
+
         lines.extend([
             "",
             "---",
             "",
         ])
 
+        # Render card phase section if cards exist in conversation
+        card_entries = [m for m in conversation if m.get("role") == "explanation_card"]
+        if card_entries:
+            lines.extend([
+                "## Explanation Cards (Pre-Session)",
+                "",
+                "*The student was shown these explanation cards before the interactive session began.*",
+                "",
+            ])
+            for entry in card_entries:
+                card = entry.get("card_data", {})
+                card_idx = card.get("card_idx", "?")
+                card_type = card.get("card_type", "")
+                title = card.get("title", "")
+                lines.append(f"### Card {card_idx} ({card_type}): {title}")
+                lines.append("")
+                lines.append(card.get("content", entry["content"]))
+                visual = card.get("visual")
+                if visual:
+                    lines.extend(["", "```", visual, "```"])
+                lines.append("")
+
+            lines.extend([
+                "---",
+                "",
+                "## Interactive Session",
+                "",
+            ])
+
+        # Render dialogue entries
         for msg in conversation:
-            role = "TUTOR" if msg["role"] == "tutor" else "STUDENT"
+            role = msg.get("role", "unknown")
+            if role == "explanation_card":
+                continue  # Already rendered above
+
             turn = msg.get("turn", "?")
-            lines.append(f"### [Turn {turn}] {role}")
+            phase = msg.get("phase", "")
+
+            if role == "tutor":
+                phase_suffix = ""
+                if phase == "card_phase_welcome":
+                    phase_suffix = " (Card Phase Welcome)"
+                elif phase == "card_to_interactive_transition":
+                    phase_suffix = " (Transition)"
+                elif phase == "welcome":
+                    phase_suffix = " (Welcome)"
+                lines.append(f"### [Turn {turn}] TUTOR{phase_suffix}")
+            elif role == "student":
+                lines.append(f"### [Turn {turn}] STUDENT")
+            else:
+                lines.append(f"### [Turn {turn}] {role.upper()}")
+
             lines.append("")
             lines.append(msg["content"])
             lines.append("")
@@ -81,11 +139,13 @@ class ReportGenerator:
         with open(path, "w") as f:
             f.write("\n".join(lines))
 
-    def save_conversation_json(self, conversation: list[dict], metadata: dict | None = None):
+    def save_conversation_json(self, conversation: list[dict], metadata: dict | None = None, card_phase_data: dict | None = None):
         data = {
             "config": self.config.to_dict(),
             "generated_at": datetime.now().isoformat(),
             "message_count": len(conversation),
+            "has_card_phase": card_phase_data is not None,
+            "card_phase_data": card_phase_data,
             "messages": conversation,
             "session_metadata": metadata or {},
         }
@@ -94,7 +154,7 @@ class ReportGenerator:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def save_review(self, evaluation: dict):
+    def save_review(self, evaluation: dict, has_card_phase: bool = False):
         scores = evaluation.get("scores", {})
         analysis = evaluation.get("dimension_analysis", {})
         problems = evaluation.get("problems", [])
@@ -111,7 +171,10 @@ class ReportGenerator:
             f"**Evaluator Model:** {self.config.evaluator_model_label}",
             f"**Average Score:** {avg_score:.1f}/10",
         ]
-        
+
+        if has_card_phase:
+            lines.append("**Card Phase:** Yes (E2E evaluation)")
+
         # Add persona information if available
         if self.persona:
             lines.extend([
@@ -119,7 +182,7 @@ class ReportGenerator:
                 f"**Persona Description:** {self.persona.get('description', 'No description')}",
                 f"**Correct Answer Probability:** {int(self.persona.get('correct_answer_probability', 0.6) * 100)}%",
             ])
-        
+
         lines.extend([
             "",
             "---",
@@ -139,7 +202,13 @@ class ReportGenerator:
         for dim, score in scores.items():
             display_name = dim.replace("_", " ").title()
             bar = _score_bar(score)
-            lines.append(f"| {display_name} | {score}/10 {bar} |")
+            # Mark card-phase-specific dimensions
+            marker = " *" if dim in CARD_PHASE_DIMENSIONS else ""
+            lines.append(f"| {display_name}{marker} | {score}/10 {bar} |")
+
+        if has_card_phase:
+            lines.append("")
+            lines.append("*\\* Card-phase-specific dimension (only scored when explanation cards are present)*")
 
         lines.extend(["", "---", "", "## Detailed Analysis", ""])
 
@@ -180,14 +249,14 @@ class ReportGenerator:
             f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"**Topic:** {self.config.topic_id}",
         ]
-        
+
         # Add persona information if available
         if self.persona:
             lines.extend([
                 f"**Student Persona:** {self.persona['name']} ({self.persona['persona_id']})",
                 f"**Persona Description:** {self.persona.get('description', 'No description')}",
             ])
-        
+
         lines.append("")
 
         if problems:
@@ -262,6 +331,9 @@ def _root_cause_suggestion(cause: str) -> str:
         "conversation_history_window": "Increase the conversation history window or improve the turn summary to preserve conversational arc across the sliding window.",
         "prompt_quality": "Review and improve the relevant agent prompts for clarity, specificity, and natural language generation.",
         "model_capability": "This may be a model limitation. Consider testing with different models or adjusting temperature/sampling.",
+        "card_content_ignored": "Improve the pre-computed explanation summary injection in master_tutor_prompts.py. The tutor should actively reference and build on card content, not just avoid repeating it.",
+        "abrupt_transition": "Replace the hardcoded transition message with an LLM-generated bridge that references card content and probes understanding before jumping to practice.",
+        "card_repetition": "Strengthen the 'DO NOT repeat' instruction in the precomputed_explanation_summary_section, or improve the summary to be more specific about what was covered.",
         "other": "Investigate the specific turns cited to determine whether this is a prompt, model, or architectural issue.",
     }
     return suggestions.get(cause, "")

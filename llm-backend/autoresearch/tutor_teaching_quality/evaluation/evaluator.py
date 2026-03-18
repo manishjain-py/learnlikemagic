@@ -2,7 +2,11 @@
 Conversation Evaluator
 
 Uses LLMService (supports openai, anthropic, claude_code providers) with high
-reasoning effort to evaluate a tutoring conversation across 5 dimensions.
+reasoning effort to evaluate a tutoring conversation across 7 dimensions.
+
+Dimensions 1-5 evaluate interactive teaching quality (original).
+Dimensions 6-7 evaluate E2E coherence when pre-computed explanation cards were
+shown before the interactive session.
 """
 
 import json
@@ -15,7 +19,12 @@ EVALUATION_DIMENSIONS = [
     "emotional_attunement",
     "pacing",
     "authenticity",
+    "card_to_session_coherence",
+    "transition_quality",
 ]
+
+# Which dimensions only apply when cards were shown
+CARD_PHASE_DIMENSIONS = {"card_to_session_coherence", "transition_quality"}
 
 ROOT_CAUSE_CATEGORIES = [
     "missed_student_signal",
@@ -27,6 +36,9 @@ ROOT_CAUSE_CATEGORIES = [
     "conversation_history_window",
     "prompt_quality",
     "model_capability",
+    "card_content_ignored",
+    "abrupt_transition",
+    "card_repetition",
     "other",
 ]
 
@@ -34,7 +46,7 @@ EVALUATOR_PROMPT = """You are an expert evaluator of AI tutoring conversations, 
 
 You will be given a full transcript of a tutoring session between an AI tutor and a grade school student. The student was roleplaying as a specific persona with distinct characteristics and learning tendencies.
 
-Your job is to evaluate how well the TUTOR adapted to and taught THIS specific type of student across 5 teaching-craft dimensions.
+Your job is to evaluate how well the TUTOR adapted to and taught THIS specific type of student across the evaluation dimensions below.
 
 ## EVALUATION DIMENSIONS (score each 1-10)
 
@@ -83,6 +95,8 @@ Your job is to evaluate how well the TUTOR adapted to and taught THIS specific t
 - **3-4:** Obviously a chatbot. Repetitive structure, unnatural transitions, template-like responses.
 - **1-2:** Uncanny valley. Wrong register, bizarre phrasing, or clearly copy-pasted content.
 
+{card_phase_dimensions}
+
 ## PERSONA-AWARE EVALUATION
 
 Judge the tutor's responses based on the specific student persona. The same tutor behavior might score differently with different personas:
@@ -99,38 +113,51 @@ Identify the **top 5 most significant problems** in this conversation. For each 
 - Cite specific turn numbers where the problem occurs
 - Describe what went wrong in the context of this persona
 - Rate severity: "critical", "major", or "minor"
-- Assign a root cause category from: missed_student_signal, wrong_pacing, repetitive_approach, emotional_mismatch, missed_misconception, over_scaffolding, conversation_history_window, prompt_quality, model_capability, other
+- Assign a root cause category from: {root_cause_list}
 
 ## OUTPUT FORMAT (JSON)
 
 Return a JSON object with this exact structure:
-{
-  "scores": {
-    "responsiveness": <1-10>,
-    "explanation_quality": <1-10>,
-    "emotional_attunement": <1-10>,
-    "pacing": <1-10>,
-    "authenticity": <1-10>
-  },
-  "dimension_analysis": {
-    "responsiveness": "<2-3 sentence analysis considering the student persona>",
-    "explanation_quality": "<2-3 sentence analysis considering the student persona>",
-    "emotional_attunement": "<2-3 sentence analysis considering the student persona>",
-    "pacing": "<2-3 sentence analysis considering the student persona>",
-    "authenticity": "<2-3 sentence analysis considering the student persona>"
-  },
+{{
+  "scores": {{
+{scores_schema}
+  }},
+  "dimension_analysis": {{
+{analysis_schema}
+  }},
   "problems": [
-    {
+    {{
       "title": "<short problem title>",
       "turns": [<turn numbers>],
       "description": "<what went wrong in context of this persona>",
       "quote": "<exact quote from conversation showing the problem>",
       "severity": "critical|major|minor",
       "root_cause": "<category from list above>"
-    }
+    }}
   ],
   "summary": "<3-5 sentence overall assessment of how well the tutor handled THIS specific student persona>"
-}"""
+}}"""
+
+# Additional dimensions shown only when card phase was present
+CARD_PHASE_DIMENSIONS_TEXT = """
+### 6. **Card-to-Session Coherence** (1-10)
+*Does the interactive session feel connected to the explanation cards the student just read?*
+
+- **9-10:** Tutor naturally references and builds on the specific analogies, examples, and concepts from the cards. Feels like one continuous learning experience. Uses cards as a springboard — "Remember when we talked about X? Now let's see what happens when..."
+- **7-8:** Tutor is aware of the cards and avoids repetition. Occasionally builds on card content. Mostly coherent but doesn't actively leverage what the student already read.
+- **5-6:** Tutor doesn't repeat card content (good) but also doesn't reference it. Cards and interactive session feel like two separate lessons that happen to be about the same topic.
+- **3-4:** Tutor re-explains things the cards already covered, or contradicts the card approach. Student would feel confused about which explanation to trust.
+- **1-2:** No connection at all. Tutor acts as if the student is hearing about this topic for the first time.
+
+### 7. **Transition Quality** (1-10)
+*How smooth is the bridge from reading explanation cards to interactive teaching?*
+
+- **9-10:** Transition feels natural and purposeful. Tutor checks what the student remembers from the cards, identifies gaps, and launches into interactive teaching from exactly the right point. Student feels their card-reading time was valued.
+- **7-8:** Decent transition. Tutor acknowledges the cards and moves into interaction. Might miss probing what the student actually absorbed.
+- **5-6:** Abrupt but functional. Student goes from reading cards to being asked questions without much bridging. Feels like a gear shift.
+- **3-4:** Jarring transition. Generic "now let's check your understanding" with no connection to what was just read. Student feels like they walked into a different class.
+- **1-2:** No transition at all, or the transition confuses the student about what they should know.
+"""
 
 
 class ConversationEvaluator:
@@ -140,17 +167,79 @@ class ConversationEvaluator:
         self.config = config
         self.llm = config.create_llm_service("evaluator")
 
+    def _has_card_phase(self, conversation: list[dict]) -> bool:
+        """Check if the conversation includes explanation cards."""
+        return any(msg.get("role") == "explanation_card" for msg in conversation)
+
+    def _build_prompt(self, has_cards: bool) -> str:
+        """Build the evaluator prompt, including card dimensions only when relevant."""
+        if has_cards:
+            dims = [d for d in EVALUATION_DIMENSIONS]
+            card_dims_text = CARD_PHASE_DIMENSIONS_TEXT
+        else:
+            dims = [d for d in EVALUATION_DIMENSIONS if d not in CARD_PHASE_DIMENSIONS]
+            card_dims_text = ""
+
+        scores_lines = []
+        analysis_lines = []
+        for d in dims:
+            scores_lines.append(f'    "{d}": <1-10>')
+            analysis_lines.append(f'    "{d}": "<2-3 sentence analysis considering the student persona>"')
+
+        return EVALUATOR_PROMPT.format(
+            card_phase_dimensions=card_dims_text,
+            root_cause_list=", ".join(ROOT_CAUSE_CATEGORIES),
+            scores_schema=",\n".join(scores_lines),
+            analysis_schema=",\n".join(analysis_lines),
+        )
+
     def _format_transcript(self, conversation: list[dict]) -> str:
         lines = []
         for msg in conversation:
-            role = "TUTOR" if msg["role"] == "tutor" else "STUDENT"
+            role = msg.get("role", "unknown")
             turn = msg.get("turn", "?")
-            lines.append(f"[Turn {turn}] {role}: {msg['content']}")
+            phase = msg.get("phase", "")
+
+            if role == "explanation_card":
+                lines.append(f"[EXPLANATION CARD] {msg['content']}")
+            elif role == "tutor":
+                phase_label = f" ({phase})" if phase else ""
+                lines.append(f"[Turn {turn}] TUTOR{phase_label}: {msg['content']}")
+            elif role == "student":
+                lines.append(f"[Turn {turn}] STUDENT: {msg['content']}")
+            else:
+                lines.append(f"[Turn {turn}] {role.upper()}: {msg['content']}")
+
         return "\n\n".join(lines)
 
-    def _build_user_message(self, conversation: list[dict], topic_info: dict | None = None, persona: dict | None = None) -> str:
+    def _build_user_message(
+        self,
+        conversation: list[dict],
+        topic_info: dict | None = None,
+        persona: dict | None = None,
+        card_phase_data: dict | None = None,
+    ) -> str:
+        has_cards = self._has_card_phase(conversation)
+
+        # If card phase data provided, add context header
+        card_context = ""
+        if has_cards and card_phase_data:
+            cards = card_phase_data.get("cards", [])
+            variant = card_phase_data.get("variant_key", "?")
+            total_variants = card_phase_data.get("total_variants", 1)
+            card_context = (
+                f"\n\n## CARD PHASE CONTEXT\n"
+                f"Before the interactive session, the student was shown "
+                f"{len(cards)} pre-computed explanation cards (variant {variant} "
+                f"of {total_variants} available). The student clicked 'Clear' "
+                f"(indicating they read and understood the cards), then transitioned "
+                f"to the interactive teaching session below.\n"
+                f"The card content is included in the transcript as [EXPLANATION CARD] entries."
+            )
+
         transcript = self._format_transcript(conversation)
         user_message = f"## CONVERSATION TRANSCRIPT\n\n{transcript}"
+        user_message += card_context
 
         if persona:
             user_message += f"\n\n## STUDENT PERSONA\n"
@@ -179,10 +268,25 @@ class ConversationEvaluator:
         user_message += "\n\nPlease evaluate this tutoring conversation according to the rubric, taking into account how well the tutor adapted to THIS specific student persona. Return your evaluation as JSON."
         return user_message
 
-    def evaluate(self, conversation: list[dict], topic_info: dict | None = None, persona: dict | None = None) -> dict:
-        """Evaluate a conversation transcript."""
-        user_message = self._build_user_message(conversation, topic_info, persona)
-        prompt = f"{EVALUATOR_PROMPT}\n\n{user_message}"
+    def evaluate(
+        self,
+        conversation: list[dict],
+        topic_info: dict | None = None,
+        persona: dict | None = None,
+        card_phase_data: dict | None = None,
+    ) -> dict:
+        """Evaluate a conversation transcript.
+
+        Args:
+            conversation: Full conversation including card entries if present.
+            topic_info: Topic metadata (name, objectives, misconceptions).
+            persona: Student persona definition.
+            card_phase_data: Card phase metadata from session runner (cards, variant, etc.).
+        """
+        has_cards = self._has_card_phase(conversation)
+        system_prompt = self._build_prompt(has_cards)
+        user_message = self._build_user_message(conversation, topic_info, persona, card_phase_data)
+        prompt = f"{system_prompt}\n\n{user_message}"
 
         result = self.llm.call(prompt=prompt, reasoning_effort="high", json_mode=True)
         parsed = result.get("parsed") or self.llm.parse_json_response(result["output_text"])

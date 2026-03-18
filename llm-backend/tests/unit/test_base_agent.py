@@ -56,7 +56,7 @@ def make_context(**overrides):
 def make_llm_mock(output_text='{"field": "value", "score": 0.5}'):
     """Create a mock LLM service that returns structured output."""
     llm = Mock()
-    llm.call_gpt_5_2.return_value = {"output_text": output_text}
+    llm.call.return_value = {"output_text": output_text}
     return llm
 
 
@@ -131,8 +131,8 @@ class TestExecuteHappyPath:
 
         await agent.execute(ctx)
 
-        llm.call_gpt_5_2.assert_called_once()
-        call_kwargs = llm.call_gpt_5_2.call_args
+        llm.call.assert_called_once()
+        call_kwargs = llm.call.call_args
         # prompt should contain the student message
         assert "What is 2+2?" in call_kwargs.kwargs.get("prompt", call_kwargs[1].get("prompt", ""))
 
@@ -210,7 +210,7 @@ class TestExecuteTimeout:
     @pytest.mark.asyncio
     async def test_timeout_raises_agent_timeout_error(self):
         llm = Mock()
-        llm.call_gpt_5_2.side_effect = asyncio.TimeoutError()
+        llm.call.side_effect = asyncio.TimeoutError()
         agent = TestableAgent(llm, timeout_seconds=5)
         ctx = make_context()
 
@@ -231,7 +231,7 @@ class TestExecuteGeneralException:
     @pytest.mark.asyncio
     async def test_general_exception_raises_agent_execution_error(self):
         llm = Mock()
-        llm.call_gpt_5_2.side_effect = ValueError("something broke")
+        llm.call.side_effect = ValueError("something broke")
         agent = TestableAgent(llm)
         ctx = make_context()
 

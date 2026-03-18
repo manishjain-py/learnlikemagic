@@ -164,13 +164,19 @@ def run_all_personas(args):
             run_label = f"{persona_data['name']} (run {run_num}/{runs_per_persona})" if runs_per_persona > 1 else persona_data['name']
             print(f"[{run_counter}/{total_runs}] Running persona: {run_label} ({persona_data['persona_id']})")
 
-            # Create config for this persona
-            config = EvalConfig(
-                topic_id=args.topic_id,
-                max_turns=args.max_turns,
-                student_grade=args.grade,
-                persona_file=persona_file,
-            )
+            # Create config for this persona (use DB config for model selection)
+            from database import get_db_manager
+            db = get_db_manager().session_factory()
+            try:
+                config = EvalConfig.from_db(
+                    db,
+                    topic_id=args.topic_id,
+                    max_turns=args.max_turns,
+                    student_grade=args.grade,
+                    persona_file=persona_file,
+                )
+            finally:
+                db.close()
             if args.provider:
                 config.evaluator_provider = args.provider
                 config.simulator_provider = args.provider
@@ -193,14 +199,16 @@ def run_all_personas(args):
                 conversation = runner.run_session()
                 metadata = runner.session_metadata
 
-                report.save_conversation_md(conversation)
-                report.save_conversation_json(conversation, metadata)
+                card_phase_data = runner.card_phase_data
+                report.save_conversation_md(conversation, card_phase_data=card_phase_data)
+                report.save_conversation_json(conversation, metadata, card_phase_data=card_phase_data)
 
                 evaluator = ConversationEvaluator(config)
-                evaluation = evaluator.evaluate(conversation, persona=persona)
+                evaluation = evaluator.evaluate(conversation, persona=persona, card_phase_data=card_phase_data)
 
+                has_cards = card_phase_data is not None
                 report.save_evaluation_json(evaluation)
-                report.save_review(evaluation)
+                report.save_review(evaluation, has_card_phase=has_cards)
                 report.save_problems(evaluation)
 
                 # Store results for comparison report
@@ -404,13 +412,19 @@ def main():
         run_all_personas(args)
         return
 
-    # 1. Create config and run directory
-    config = EvalConfig(
-        topic_id=topic_id,
-        max_turns=args.max_turns,
-        student_grade=args.grade,
-        persona_file=args.persona,
-    )
+    # 1. Create config and run directory (use DB config for model selection)
+    from database import get_db_manager
+    db = get_db_manager().session_factory()
+    try:
+        config = EvalConfig.from_db(
+            db,
+            topic_id=topic_id,
+            max_turns=args.max_turns,
+            student_grade=args.grade,
+            persona_file=args.persona,
+        )
+    finally:
+        db.close()
     if args.provider:
         config.evaluator_provider = args.provider
         config.simulator_provider = args.provider
@@ -461,18 +475,22 @@ def main():
 
         # 4. Save conversation artifacts
         print("[4/6] Saving conversation...")
-        report.save_conversation_md(conversation)
-        report.save_conversation_json(conversation, metadata)
+        card_phase_data = runner.card_phase_data
+        if card_phase_data:
+            print(f"  Card phase detected: {len(card_phase_data.get('cards', []))} cards")
+        report.save_conversation_md(conversation, card_phase_data=card_phase_data)
+        report.save_conversation_json(conversation, metadata, card_phase_data=card_phase_data)
 
         # 5. Evaluate conversation
         print("[5/6] Evaluating conversation (this may take a minute)...")
         evaluator = ConversationEvaluator(config)
-        evaluation = evaluator.evaluate(conversation, persona=persona)
+        evaluation = evaluator.evaluate(conversation, persona=persona, card_phase_data=card_phase_data)
 
         # 6. Generate review and problems reports
         print("[6/6] Generating reports...")
+        has_cards = card_phase_data is not None
         report.save_evaluation_json(evaluation)
-        report.save_review(evaluation)
+        report.save_review(evaluation, has_card_phase=has_cards)
         report.save_problems(evaluation)
 
         # Print summary

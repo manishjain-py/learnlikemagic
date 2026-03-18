@@ -43,11 +43,14 @@ class SessionService:
         from shared.services.llm_config_service import LLMConfigService
         from shared.services.feature_flag_service import FeatureFlagService
         settings = get_settings()
-        tutor_config = LLMConfigService(db).get_config("tutor")
+        config_service = LLMConfigService(db)
+        tutor_config = config_service.get_config("tutor")
+        fast_config = config_service.get_config("fast_model")
         self.llm_service = LLMService(
             api_key=settings.openai_api_key,
             provider=tutor_config["provider"],
             model_id=tutor_config["model_id"],
+            fast_model_id=fast_config["model_id"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )

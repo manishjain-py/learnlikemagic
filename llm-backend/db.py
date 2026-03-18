@@ -59,6 +59,18 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "gpt-5.2",
         "description": "Pre-computed explanation generation for topics",
     },
+    {
+        "component_key": "fast_model",
+        "provider": "openai",
+        "model_id": "gpt-4o-mini",
+        "description": "Lightweight model for safety checks, translation, and other fast tasks",
+    },
+    {
+        "component_key": "pixi_code_generator",
+        "provider": "openai",
+        "model_id": "gpt-5.3-codex",
+        "description": "Pixi.js visual code generation from natural language",
+    },
 ]
 
 

@@ -210,7 +210,7 @@ class TestProcessTurnCompleted:
     async def test_completed_session_returns_post_completion(self):
         orch = build_orchestrator()
         # Mock the post-completion LLM call
-        orch.llm.call_gpt_5_2 = Mock(return_value={"output_text": "Great session!"})
+        orch.llm.call = Mock(return_value={"output_text": "Great session!"})
 
         session = make_test_session()
         # Advance past all steps to mark as complete
@@ -225,7 +225,7 @@ class TestProcessTurnCompleted:
     @pytest.mark.asyncio
     async def test_completed_session_still_records_student_message(self):
         orch = build_orchestrator()
-        orch.llm.call_gpt_5_2 = Mock(return_value={"output_text": "Bye!"})
+        orch.llm.call = Mock(return_value={"output_text": "Bye!"})
 
         session = make_test_session()
         session.current_step = 4
@@ -697,18 +697,18 @@ class TestGenerateWelcomeMessage:
     @pytest.mark.asyncio
     async def test_with_topic_calls_llm(self):
         orch = build_orchestrator()
-        orch.llm.call_gpt_5_2 = Mock(return_value={"output_text": "Welcome to Fractions!"})
+        orch.llm.call = Mock(return_value={"output_text": "Welcome to Fractions!"})
 
         session = make_test_session()
         msg = await orch.generate_welcome_message(session)
         assert msg == "Welcome to Fractions!"
-        orch.llm.call_gpt_5_2.assert_called_once()
+        orch.llm.call.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_with_topic_missing_output_key_returns_fallback(self):
         orch = build_orchestrator()
         # When output_text key is missing entirely, .get() returns the default
-        orch.llm.call_gpt_5_2 = Mock(return_value={})
+        orch.llm.call = Mock(return_value={})
 
         session = make_test_session()
         msg = await orch.generate_welcome_message(session)
@@ -718,7 +718,7 @@ class TestGenerateWelcomeMessage:
     async def test_with_topic_empty_output_returns_empty_string(self):
         orch = build_orchestrator()
         # When output_text is "" the key exists so .get() returns ""
-        orch.llm.call_gpt_5_2 = Mock(return_value={"output_text": ""})
+        orch.llm.call = Mock(return_value={"output_text": ""})
 
         session = make_test_session()
         msg = await orch.generate_welcome_message(session)

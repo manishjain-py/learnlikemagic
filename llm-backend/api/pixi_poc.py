@@ -61,15 +61,26 @@ class PixiGenerateResponse(BaseModel):
 @router.post("/generate", response_model=PixiGenerateResponse)
 async def generate_pixi_code(request: PixiGenerateRequest):
     """Generate Pixi.js code from a natural language prompt."""
+    from database import get_db
+    from shared.services.llm_config_service import LLMConfigService
+
     settings = get_settings()
 
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
 
+    # Load model config from DB
+    db = next(get_db())
+    try:
+        pixi_config = LLMConfigService(db).get_config("pixi_code_generator")
+    finally:
+        db.close()
+
     llm = LLMService(
         api_key=settings.openai_api_key,
-        provider="openai",
-        model_id="gpt-5.3-codex",
+        provider=pixi_config["provider"],
+        model_id=pixi_config["model_id"],
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         timeout=120,
     )
 

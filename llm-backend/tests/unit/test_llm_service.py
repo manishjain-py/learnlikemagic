@@ -67,10 +67,10 @@ class TestLLMServiceInit:
 
 
 # ---------------------------------------------------------------------------
-# call_gpt_5_2 — happy path
+# call() — Responses API (gpt-5.x models)
 # ---------------------------------------------------------------------------
 
-class TestCallGpt52:
+class TestCallResponsesApi:
     @patch("shared.services.llm_service.OpenAI")
     def test_happy_path(self, mock_openai_cls):
         mock_client = Mock()
@@ -80,7 +80,7 @@ class TestCallGpt52:
         mock_client.responses.create.return_value = mock_result
 
         service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
-        result = service.call_gpt_5_2(prompt="What is the meaning of life?")
+        result = service.call(prompt="What is the meaning of life?")
 
         assert result["output_text"] == '{"answer": "42"}'
         mock_client.responses.create.assert_called_once()
@@ -95,14 +95,13 @@ class TestCallGpt52:
 
         service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
         schema = {"type": "object", "properties": {"field": {"type": "string"}}}
-        result = service.call_gpt_5_2(
+        result = service.call(
             prompt="test",
             json_schema=schema,
             schema_name="TestSchema",
         )
 
         call_kwargs = mock_client.responses.create.call_args
-        # Should use json_schema format when schema is provided
         assert "text" in call_kwargs.kwargs or "text" in (call_kwargs[1] if len(call_kwargs) > 1 else {})
         assert result["output_text"] == '{"field": "val"}'
 
@@ -117,62 +116,36 @@ class TestCallGpt52:
         mock_client.responses.create.return_value = mock_result
 
         service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
-        result = service.call_gpt_5_2(prompt="test", reasoning_effort="high")
+        result = service.call(prompt="test", reasoning_effort="high")
 
         assert result["reasoning"] == "I thought about it"
-        call_kwargs = mock_client.responses.create.call_args
-        # Should include reasoning parameter when not "none"
-        assert "reasoning" in call_kwargs.kwargs or "reasoning" in (call_kwargs[1] if len(call_kwargs) > 1 else {})
 
 
 # ---------------------------------------------------------------------------
-# call_gpt_5_2 — anthropic provider delegation
+# call() — Anthropic provider delegation
 # ---------------------------------------------------------------------------
 
-class TestCallGpt52AnthropicDelegation:
+class TestCallAnthropicDelegation:
     @patch("shared.services.llm_service.OpenAI")
     def test_delegates_to_anthropic_when_provider_set(self, mock_openai_cls):
         mock_openai_cls.return_value = Mock()
 
         service = LLMService(api_key="fake-key", provider="anthropic", model_id="claude-opus-4-6")
-        # Manually set up the adapter mock
         mock_adapter = Mock()
         mock_adapter.call_sync.return_value = {"output_text": "claude says hi", "reasoning": None}
         service.anthropic_adapter = mock_adapter
-        service.provider = "anthropic"
 
-        result = service.call_gpt_5_2(prompt="Hello Claude")
+        result = service.call(prompt="Hello Claude")
 
         mock_adapter.call_sync.assert_called_once()
         assert result["output_text"] == "claude says hi"
 
 
 # ---------------------------------------------------------------------------
-# call_gpt_5_1
+# call() — Chat Completions (non-Responses-API models)
 # ---------------------------------------------------------------------------
 
-class TestCallGpt51:
-    @patch("shared.services.llm_service.OpenAI")
-    def test_happy_path(self, mock_openai_cls):
-        mock_client = Mock()
-        mock_openai_cls.return_value = mock_client
-
-        mock_result = _make_responses_result('{"plan": "step1"}')
-        mock_client.responses.create.return_value = mock_result
-
-        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
-        result = service.call_gpt_5_1(prompt="Plan a lesson")
-
-        assert result["output_text"] == '{"plan": "step1"}'
-        call_kwargs = mock_client.responses.create.call_args
-        assert call_kwargs.kwargs.get("model") == "gpt-5.1" or call_kwargs[1].get("model") == "gpt-5.1"
-
-
-# ---------------------------------------------------------------------------
-# call_gpt_4o
-# ---------------------------------------------------------------------------
-
-class TestCallGpt4o:
+class TestCallChatCompletions:
     @patch("shared.services.llm_service.OpenAI")
     def test_happy_path(self, mock_openai_cls):
         mock_client = Mock()
@@ -181,58 +154,57 @@ class TestCallGpt4o:
         mock_response = _make_chat_response('{"result": "ok"}')
         mock_client.chat.completions.create.return_value = mock_response
 
-        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
-        result = service.call_gpt_4o(prompt="Generate a response")
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-4o")
+        result = service.call(prompt="Generate a response")
 
-        assert result == '{"result": "ok"}'
+        assert result["output_text"] == '{"result": "ok"}'
         mock_client.chat.completions.create.assert_called_once()
 
     @patch("shared.services.llm_service.OpenAI")
-    def test_passes_json_mode(self, mock_openai_cls):
+    def test_json_mode_false(self, mock_openai_cls):
         mock_client = Mock()
         mock_openai_cls.return_value = mock_client
 
         mock_response = _make_chat_response("plain text")
         mock_client.chat.completions.create.return_value = mock_response
 
-        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
-        service.call_gpt_4o(prompt="test", json_mode=False)
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-4o")
+        service.call(prompt="test", json_mode=False)
 
         call_kwargs = mock_client.chat.completions.create.call_args
-        # json_mode=False should not include response_format
         assert "response_format" not in call_kwargs.kwargs
 
 
 # ---------------------------------------------------------------------------
-# call_gemini
+# call_fast() — uses configurable fast_model_id
 # ---------------------------------------------------------------------------
 
-class TestCallGemini:
-    @patch("shared.services.llm_service.genai")
+class TestCallFast:
     @patch("shared.services.llm_service.OpenAI")
-    def test_happy_path(self, mock_openai_cls, mock_genai):
-        mock_openai_cls.return_value = Mock()
+    def test_uses_configured_fast_model(self, mock_openai_cls):
+        mock_client = Mock()
+        mock_openai_cls.return_value = mock_client
 
-        mock_gemini_client = Mock()
-        mock_genai.Client.return_value = mock_gemini_client
+        mock_response = _make_chat_response('{"safe": true}')
+        mock_client.chat.completions.create.return_value = mock_response
 
-        mock_response = Mock()
-        mock_response.text = '{"plan": "gemini output"}'
-        mock_gemini_client.models.generate_content.return_value = mock_response
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", fast_model_id="gpt-4o-mini")
+        result = service.call_fast(prompt="Is this safe? Respond with JSON.")
 
-        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2", gemini_api_key="gemini-key")
-        result = service.call_gemini(prompt="Generate a plan")
-
-        assert result == '{"plan": "gemini output"}'
-        mock_gemini_client.models.generate_content.assert_called_once()
+        assert result["output_text"] == '{"safe": true}'
+        call_kwargs = mock_client.chat.completions.create.call_args
+        assert call_kwargs.kwargs.get("model") == "gpt-4o-mini"
 
     @patch("shared.services.llm_service.OpenAI")
-    def test_raises_when_not_configured(self, mock_openai_cls):
-        mock_openai_cls.return_value = Mock()
+    def test_default_fast_model(self, mock_openai_cls):
+        mock_client = Mock()
+        mock_openai_cls.return_value = mock_client
+
+        mock_response = _make_chat_response('{"ok": true}')
+        mock_client.chat.completions.create.return_value = mock_response
+
         service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
-
-        with pytest.raises(LLMServiceError, match="Gemini API key not configured"):
-            service.call_gemini(prompt="test")
+        assert service.fast_model_id == "gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------

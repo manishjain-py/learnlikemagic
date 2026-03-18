@@ -117,17 +117,19 @@ def _run_evaluation_pipeline(topic_id: str, persona_file: str, max_turns: int):
         runner.start_server()
         conversation = runner.run_session()
         metadata = runner.session_metadata
+        card_phase_data = runner.card_phase_data
 
-        report.save_conversation_md(conversation)
-        report.save_conversation_json(conversation, metadata)
+        report.save_conversation_md(conversation, card_phase_data=card_phase_data)
+        report.save_conversation_json(conversation, metadata, card_phase_data=card_phase_data)
 
         _update_eval_state(status=EvalStatus.evaluating, detail="Running LLM evaluation...")
         evaluator = ConversationEvaluator(config)
-        evaluation = evaluator.evaluate(conversation, persona=persona)
+        evaluation = evaluator.evaluate(conversation, persona=persona, card_phase_data=card_phase_data)
 
         _update_eval_state(status=EvalStatus.generating_reports, detail="Generating reports...")
+        has_cards = card_phase_data is not None
         report.save_evaluation_json(evaluation)
-        report.save_review(evaluation)
+        report.save_review(evaluation, has_card_phase=has_cards)
         report.save_problems(evaluation)
 
         _update_eval_state(status=EvalStatus.complete, detail="Evaluation complete")
@@ -273,6 +275,7 @@ def _retry_evaluation(run_dir: Path):
             conv_data = json.load(f)
 
         conversation = conv_data.get("messages", [])
+        card_phase_data = conv_data.get("card_phase_data")
         topic_id = config_data.get("topic_id", "")
 
         # Read evaluator model from DB config
@@ -298,12 +301,13 @@ def _retry_evaluation(run_dir: Path):
 
         _update_eval_state(status=EvalStatus.evaluating, detail="Running LLM evaluation...")
         evaluator = ConversationEvaluator(config)
-        evaluation = evaluator.evaluate(conversation, persona=persona)
+        evaluation = evaluator.evaluate(conversation, persona=persona, card_phase_data=card_phase_data)
 
         _update_eval_state(status=EvalStatus.generating_reports, detail="Generating reports...")
+        has_cards = card_phase_data is not None
         report = ReportGenerator(run_dir, config, started_at=config_data.get("started_at"), persona=persona)
         report.save_evaluation_json(evaluation)
-        report.save_review(evaluation)
+        report.save_review(evaluation, has_card_phase=has_cards)
         report.save_problems(evaluation)
 
         _update_eval_state(status=EvalStatus.complete, detail="Evaluation complete")
