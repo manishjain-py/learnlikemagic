@@ -12,6 +12,7 @@ Manages the full lifecycle of a tutoring session for evaluation:
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -36,12 +37,14 @@ class SessionRunner:
         simulator: StudentSimulator,
         run_dir: Path,
         skip_server_management: bool = False,
+        restart_server: bool = False,
         on_turn: callable = None,
     ):
         self.config = config
         self.simulator = simulator
         self.run_dir = run_dir
         self.skip_server_management = skip_server_management
+        self.restart_server_flag = restart_server
         self.on_turn = on_turn
         self.server_process: subprocess.Popen | None = None
         self.conversation: list[dict] = []
@@ -57,9 +60,32 @@ class SessionRunner:
         self._log_file.flush()
         logger.info(message)
 
+    def _kill_existing_server(self):
+        """Kill any existing process on the server port."""
+        import signal
+        try:
+            result = subprocess.run(
+                ["lsof", "-ti", f":{self.config.server_port}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            pids = result.stdout.strip().split("\n")
+            for pid in pids:
+                if pid.strip():
+                    self._log(f"Killing existing server process {pid.strip()}")
+                    os.kill(int(pid.strip()), signal.SIGTERM)
+            if any(p.strip() for p in pids):
+                time.sleep(2)  # Wait for graceful shutdown
+        except Exception as e:
+            self._log(f"No existing server to kill: {e}")
+
     def start_server(self):
         """Start the backend server or verify health if skip_server_management."""
-        if self.skip_server_management:
+        if self.restart_server_flag:
+            # Kill existing server and start fresh (ensures code changes take effect)
+            self._log("Restarting server (fresh process to pick up code changes)...")
+            self._kill_existing_server()
+            # Fall through to start a new server
+        elif self.skip_server_management:
             self._log("Skipping server start (in-process mode), verifying health...")
             try:
                 with httpx.Client() as client:
@@ -97,7 +123,7 @@ class SessionRunner:
         raise RuntimeError(f"Server failed to start within {self.config.server_startup_timeout}s")
 
     def stop_server(self):
-        if self.skip_server_management:
+        if self.skip_server_management and not self.restart_server_flag:
             self._log("Skipping server stop (in-process mode)")
             return
         if self.server_process:

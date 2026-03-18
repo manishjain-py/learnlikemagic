@@ -109,6 +109,7 @@ def run_single_persona(
     max_turns: int,
     skip_server: bool,
     provider: str | None = None,
+    restart_server: bool = False,
 ) -> dict:
     """Run one evaluation session and return results dict."""
     from database import get_db_manager
@@ -139,7 +140,7 @@ def run_single_persona(
     report = ReportGenerator(run_dir, config, started_at=started_at.isoformat(), persona=persona)
     report.save_config()
 
-    runner = SessionRunner(config, simulator, run_dir, skip_server_management=skip_server)
+    runner = SessionRunner(config, simulator, run_dir, skip_server_management=skip_server, restart_server=restart_server)
 
     try:
         runner.start_server()
@@ -197,6 +198,7 @@ def run_experiment(
     skip_server: bool,
     provider: str | None = None,
     runs: int = 1,
+    restart_server: bool = False,
 ) -> dict:
     """Run the full experiment across all personas, optionally multiple times.
 
@@ -212,7 +214,7 @@ def run_experiment(
         for run_num in range(1, runs + 1):
             label = f"[{persona_id} run {run_num}/{runs}]" if runs > 1 else f"[{i}/{len(personas)}] {persona_id}"
             print(f"  {label} Running...")
-            result = run_single_persona(topic_id, persona_file, max_turns, skip_server, provider)
+            result = run_single_persona(topic_id, persona_file, max_turns, skip_server, provider, restart_server=restart_server)
             result["run_num"] = run_num
             all_results.append(result)
             status = "ok" if result["status"] == "ok" else "CRASH"
@@ -325,13 +327,14 @@ def main():
     parser.add_argument("--chapter", default="Fractions", help="Chapter for topic resolution")
     parser.add_argument("--personas", default=None, help="Comma-separated persona files (e.g., average_student.json,ace.json)")
     parser.add_argument("--max-turns", type=int, default=None, help="Max turns per session")
-    parser.add_argument("--skip-server", action="store_true", help="Use already-running server")
+    parser.add_argument("--skip-server", action="store_true", help="Use already-running server (WARNING: won't pick up code changes)")
+    parser.add_argument("--restart-server", action="store_true", help="Kill existing server + start fresh each run (picks up code changes)")
     parser.add_argument("--quick", action="store_true", help="Quick mode (1 persona, fewer turns)")
     parser.add_argument("--provider", default=None, help="LLM provider (openai/anthropic)")
     parser.add_argument("--email", default=None, help="Email address for iteration report")
     parser.add_argument("--description", default="", help="Description of what this experiment tries")
     parser.add_argument("--iteration", type=int, default=0, help="Iteration number (for email subject)")
-    parser.add_argument("--runs", type=int, default=1, help="Number of evaluation runs to average (reduces variance)")
+    parser.add_argument("--runs", type=int, default=2, help="Number of evaluation runs to average (default: 2 to reduce variance)")
     args = parser.parse_args()
 
     # Resolve settings
@@ -362,7 +365,7 @@ def main():
         print(f"  Runs per persona: {args.runs} (averaging to reduce variance)")
 
     # Run experiment
-    results = run_experiment(topic_id, personas, max_turns, args.skip_server, args.provider, runs=args.runs)
+    results = run_experiment(topic_id, personas, max_turns, args.skip_server, args.provider, runs=args.runs, restart_server=args.restart_server)
 
     # Print results
     commit = get_short_commit()

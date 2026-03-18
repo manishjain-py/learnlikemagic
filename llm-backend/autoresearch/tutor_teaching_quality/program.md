@@ -166,39 +166,50 @@ The evaluator identifies problems with root causes. Pay special attention to:
 
 ## Running an Experiment
 
+**IMPORTANT: Use `--restart-server` (not `--skip-server`) when modifying Tier 1 agent/service
+code.** The server caches Python modules at startup — `--skip-server` reuses the running
+server which has the OLD code. `--restart-server` kills + restarts the server each run,
+ensuring your code changes take effect.
+
 ```bash
 cd llm-backend
 ./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment \
-    --skip-server \
+    --restart-server \
     --description "what this experiment tries" \
     --iteration <N> \
     --email <email> > run.log 2>&1
 ```
 
+**Default: 2 runs per iteration** to reduce stochastic variance from the student simulator.
+The dice roll (45% correct probability) means single runs have ~0.5 point variance. With
+2 runs averaged, variance drops to ~0.3.
+
 Output:
 ```
 ---
 avg_score: 5.234567
-elapsed_min: 6.2
+elapsed_min: 12.4
 commit: a1b2c3d
 status: pending
 ```
 
 Extract the metric: `grep "^avg_score:" run.log`
 
-Each experiment takes ~5-8 minutes (1 persona × 20 turns + evaluation).
-That's ~8-10 experiments per hour, ~60-80 overnight.
+Each experiment takes ~12-16 minutes (2 runs × 20 turns + evaluation).
+That's ~4-5 experiments per hour, ~30-40 overnight.
+
+Use `--runs 1` for quick first-pass testing, `--runs 3` for high-confidence decisions.
 
 ## Quick Mode
 
-For risky/speculative ideas, run quick mode first (12 turns):
+For risky/speculative ideas, run quick mode first (12 turns, 1 run):
 
 ```bash
-./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server --quick \
+./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --restart-server --quick --runs 1 \
     --description "risky: remove all teaching rules" --iteration <N>
 ```
 
-If promising, re-run in full mode.
+If promising, re-run in full mode (20 turns, 2 runs).
 
 ## The Experiment Loop
 
@@ -227,7 +238,7 @@ LOOP FOREVER:
 
 4. **Run experiment**:
    ```bash
-   ./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --skip-server \
+   ./venv/bin/python -m autoresearch.tutor_teaching_quality.run_experiment --restart-server \
        --description "short description" --iteration <N> \
        --email <email> > run.log 2>&1
    ```
@@ -252,12 +263,28 @@ LOOP FOREVER:
 
 Think about Riya at every step. Think about the COMPLETE experience from cards to practice.
 
+### CRITICAL LESSON: Weave In, Don't Bolt On
+
+The master tutor system prompt already has detailed, well-structured teaching rules
+(explain before testing, check understanding, use everyday examples, pacing directives).
+**DO NOT add a separate "how to use cards" instruction block** that competes with these
+existing rules. This creates conflicting instructions and hurts scores.
+
+Instead, **modify the existing rules to be card-aware.** For example:
+- BAD: Adding a new "Card Phase Rules" section with 5 bullet points
+- GOOD: Modifying the existing "FIRST TURN" pacing directive to say "if pre-explained
+  content exists, start by checking what the student absorbed using one of those analogies"
+- BAD: "Your FIRST message must check card comprehension"
+- GOOD: Adjusting the explanation phase opening to reference card content naturally
+
+The tutor already knows how to teach — you're just making it aware of what came before.
+
 **Early experiments (1-10) — Fix the obvious disconnects:**
-- The transition message is generic and hardcoded → make it topic-aware or LLM-generated
-- The precomputed summary tells the tutor what NOT to do → make it constructive
-- The tutor's first interactive message should bridge from the cards
-- Read the E2E conversation transcript to see where the experience breaks
-- Focus on `card_to_session_coherence` and `transition_quality` first — these are new
+- Read the E2E conversation transcript first — understand where the experience breaks
+- Start with the precomputed summary section (agent code) — make it constructive not negative
+- Modify the transition message to be topic-aware and set expectations
+- Weave card awareness into the EXISTING pacing/teaching rules — don't add new sections
+- Focus on `card_to_session_coherence` and `transition_quality` first
 
 **Mid experiments (10-30) — Strengthen the connection:**
 - Make the precomputed summary richer (include key building blocks, not just titles)
@@ -270,7 +297,7 @@ Think about Riya at every step. Think about the COMPLETE experience from cards t
 - Creative approaches: teaching philosophy shifts, novel prompt structures
 - The first interactive question should connect to the last card's content
 - Revisit early discards with other changes in place
-- Meta-instructions about card→interactive continuity
+- Try removing card-related instructions and see if the tutor handles it naturally
 
 ## Important Constraints
 
