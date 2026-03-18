@@ -1,5 +1,8 @@
 Update all code-coupled agent context files to match the current codebase.
 
+**Writing style (non-negotiable):**
+All content must be extremely concise. Sacrifice grammar in favor of concision. Lead with facts, skip filler words and transitions. If you can say it in one sentence, don't use three. This applies to all `.agent/` files and documentation equally.
+
 **Primary success criteria (non-negotiable):**
 After this command runs, every `.agent/` file and `MEMORY.md` must accurately reflect the current codebase:
 1. File counts, line counts, and module lists match reality.

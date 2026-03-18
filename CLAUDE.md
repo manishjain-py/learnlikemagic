@@ -12,6 +12,20 @@ learnlikemagic/
 └── docs/                 # Documentation
 ```
 
+## Principles
+
+The `docs/principles/` folder captures the core vision and philosophy behind how the app works. These are the "why" behind design decisions — they should guide all implementation, even as features evolve or get rewritten. When building or changing any feature, always stay aligned with the relevant principles.
+
+| Principle | Scope |
+|-----------|-------|
+| `docs/principles/how-to-explain.md` | How the tutor explains concepts to students |
+| `docs/principles/breaking-down-chapters-into-topics.md` | How content is structured into teachable units |
+| `docs/principles/interactive-teaching.md` | How the tutor behaves during live sessions (false OK detection, scaffolding, pacing) |
+| `docs/principles/evaluation.md` | How tutor quality is measured (7 dimensions, persona-aware scoring) |
+| `docs/principles/ux-design.md` | UX principles for all interfaces (mobile-first, warm language, minimal typing) |
+| `docs/principles/scorecard.md` | How student progress is tracked (deterministic metrics only) |
+| `docs/principles/autoresearch.md` | How autonomous prompt optimization works |
+
 ## Documentation Index
 
 | Doc | Purpose | When to Reference |

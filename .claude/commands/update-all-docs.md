@@ -1,5 +1,8 @@
 Update all project documentation to match the current codebase.
 
+**Writing style (non-negotiable):**
+All documentation must be extremely concise. Sacrifice grammar in favor of concision. Lead with facts, skip filler words and transitions. If you can say it in one sentence, don't use three. Short, direct sentences over long explanations. This applies to functional docs, technical docs, and principles docs equally.
+
 **Primary success criteria (non-negotiable):**
 After this command runs, documentation must be complete for the current codebase:
 1. Every major user-facing functionality is documented in functional docs.
@@ -120,6 +123,7 @@ Primary objective:
 Documentation must be fully current for your area. If functionality exists in code and is not adequately covered, you must either update an existing doc section or create a new doc.
 
 Writing rules:
+- Extremely concise. Sacrifice grammar for concision. No filler, no transitions, no restating.
 - Functional docs: user perspective, no code, no file paths, no jargon
 - Technical docs: developer perspective, code paths, APIs, data flows, key files
 
