@@ -161,7 +161,13 @@ LOOP FOREVER:
    Removing something and getting equal results = WIN (simplification).
    Adding complexity for < 0.1 improvement = probably not worth it.
 
-8. Repeat.
+8. **Topic rotation (every ~10 experiments)**: Don't run all experiments on the same
+   topic — the prompt will overfit to one scenario. Rotate across 3-4 topics from
+   different chapters/concepts. If a change improves scores on fractions but tanks
+   geometry, it's not a real improvement — it's memorization. Resolve available
+   topic IDs and cycle through them.
+
+9. Repeat.
 
 ## Strategy Guide
 
@@ -197,6 +203,15 @@ Think about Riya at every step. Ask yourself: "Would this change help an average
   structured output fields. Don't remove these — rewrite them if needed.
 - **No new dependencies.** Use what's installed.
 - **One change at a time.** Two changes + improvement = you don't know which helped.
+
+## Crash Recovery
+
+If an experiment crashes:
+1. Read the last 50 lines of `run.log` for the traceback.
+2. If trivial (typo in prompt broke a template variable, syntax error): fix and retry.
+3. If the crash is in evaluation/runner code (not your fault): log as `crash` in
+   results.tsv, `git reset --hard HEAD~1`, and move on to the next hypothesis.
+4. Do NOT get stuck retrying the same crash. Two failed attempts → discard and move on.
 
 ## NEVER STOP
 
