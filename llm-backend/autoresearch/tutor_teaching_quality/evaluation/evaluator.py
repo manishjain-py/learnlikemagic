@@ -115,6 +115,11 @@ Identify the **top 5 most significant problems** in this conversation. For each 
 - Rate severity: "critical", "major", or "minor"
 - Assign a root cause category from: {root_cause_list}
 
+## WRITING STYLE
+
+Keep ALL text extremely concise. Sacrifice grammar for concision. Lead with facts, skip
+filler words and transitions. One sentence where possible. No restating the obvious.
+
 ## OUTPUT FORMAT (JSON)
 
 Return a JSON object with this exact structure:
@@ -127,15 +132,15 @@ Return a JSON object with this exact structure:
   }},
   "problems": [
     {{
-      "title": "<short problem title>",
+      "title": "<5-8 word problem title>",
       "turns": [<turn numbers>],
-      "description": "<what went wrong in context of this persona>",
-      "quote": "<exact quote from conversation showing the problem>",
+      "description": "<1-2 sentence description — what went wrong, why it matters for this persona>",
+      "quote": "<shortest quote that shows the problem>",
       "severity": "critical|major|minor",
       "root_cause": "<category from list above>"
     }}
   ],
-  "summary": "<3-5 sentence overall assessment of how well the tutor handled THIS specific student persona>"
+  "summary": "<2-3 sentence assessment — what worked, what failed, one key fix>"
 }}"""
 
 # Additional dimensions shown only when card phase was present
@@ -184,7 +189,7 @@ class ConversationEvaluator:
         analysis_lines = []
         for d in dims:
             scores_lines.append(f'    "{d}": <1-10>')
-            analysis_lines.append(f'    "{d}": "<2-3 sentence analysis considering the student persona>"')
+            analysis_lines.append(f'    "{d}": "<1-2 sentence analysis — cite specific turns, be concise>"')
 
         return EVALUATOR_PROMPT.format(
             card_phase_dimensions=card_dims_text,
