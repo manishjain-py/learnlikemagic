@@ -140,10 +140,12 @@ export default function ChatSession() {
   const chapter = params.chapter || '';
   const topic = params.topic || '';
 
-  // Derive unified carousel slides from explanation cards or messages
+  // Derive unified carousel slides — continuous sequence of explanation cards + messages
   const carouselSlides = useMemo(() => {
     const slides: Slide[] = [];
-    if (sessionPhase === 'card_phase') {
+
+    // 1. Explanation cards always come first (if they exist)
+    if (explanationCards.length > 0) {
       explanationCards.forEach((card, i) => {
         slides.push({
           id: `card-${i}`,
@@ -155,9 +157,16 @@ export default function ChatSession() {
           audioText: card.content,
         });
       });
-    } else {
+    }
+
+    // 2. In interactive phase, append message slides after explanation cards
+    if (sessionPhase === 'interactive') {
       for (let i = 0; i < messages.length; i++) {
         if (messages[i].role === 'teacher') {
+          // Skip the initial welcome message when explanation cards exist —
+          // the user saw explanation cards instead, so this message is redundant
+          if (explanationCards.length > 0 && i === 0) continue;
+
           const next = (i + 1 < messages.length && messages[i + 1].role === 'student')
             ? messages[i + 1] : null;
           slides.push({
@@ -170,15 +179,17 @@ export default function ChatSession() {
           });
         }
       }
+
+      // Append provisional streaming slide
+      if (streamingText) {
+        slides.push({
+          id: 'streaming',
+          type: 'message',
+          content: streamingText,
+        });
+      }
     }
-    // Append provisional streaming slide
-    if (streamingText && sessionPhase === 'interactive') {
-      slides.push({
-        id: 'streaming',
-        type: 'message',
-        content: streamingText,
-      });
-    }
+
     return slides;
   }, [sessionPhase, explanationCards, messages, streamingText]);
 
@@ -902,11 +913,16 @@ export default function ChatSession() {
 
       if (result.action === 'transition_to_interactive') {
         setSessionPhase('interactive');
-        const teacherCount = messages.filter(m => m.role === 'teacher').length;
         setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
-        setCurrentSlideIdx(teacherCount); // index of the new slide
-        prevSlidesLen.current = teacherCount + 1;
+        // Total slides = explanation cards + non-skipped teacher messages
+        // Non-skipped = (teacherCount + 1 new) - 1 skipped welcome = teacherCount
+        const teacherCount = messages.filter(m => m.role === 'teacher').length;
+        const totalSlides = explanationCards.length + teacherCount;
+        setCurrentSlideIdx(totalSlides - 1); // last slide (the transition message)
+        prevSlidesLen.current = totalSlides;
         localStorage.removeItem(`slide-pos-${sessionId}`);
+        // Auto-play TTS for the transition message
+        playTeacherAudio(result.message, `msg-${messages.length}`);
       } else if (result.action === 'switch_variant' && result.cards) {
         setExplanationCards(result.cards);
         setCurrentSlideIdx(0);
@@ -914,11 +930,13 @@ export default function ChatSession() {
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
       } else if (result.action === 'fallback_dynamic') {
         setSessionPhase('interactive');
-        const teacherCount = messages.filter(m => m.role === 'teacher').length;
         setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
-        setCurrentSlideIdx(teacherCount);
-        prevSlidesLen.current = teacherCount + 1;
+        const teacherCount = messages.filter(m => m.role === 'teacher').length;
+        const totalSlides = explanationCards.length + teacherCount;
+        setCurrentSlideIdx(totalSlides - 1);
+        prevSlidesLen.current = totalSlides;
         localStorage.removeItem(`slide-pos-${sessionId}`);
+        playTeacherAudio(result.message, `msg-${messages.length}`);
       }
     } catch (err: any) {
       console.error('Card action failed:', err);
@@ -1012,48 +1030,34 @@ export default function ChatSession() {
           </div>
         </nav>
 
-        <div className="progress-bar">
-          <div className="progress-info">
-            {sessionMode === 'teach_me' && (
-              <>
-                <span>Step {stepIdx}/10</span>
-                <span>Coverage: {coverage.toFixed(0)}%</span>
-              </>
-            )}
-            {sessionMode === 'clarify_doubts' && (
-              <span>
-                {conceptsDiscussed.length > 0
-                  ? conceptsDiscussed.map((c, i) => (
-                      <span key={i} style={{
-                        display: 'inline-block',
-                        background: '#e2e8f0',
-                        borderRadius: '12px',
-                        padding: '2px 8px',
-                        margin: '0 4px',
-                        fontSize: '0.75rem',
-                      }}>{c}</span>
-                    ))
-                  : 'Ask your questions!'}
-              </span>
-            )}
-            {sessionMode === 'exam' && examProgress && (
-              <>
-                <span>Question {examProgress.current}/{examProgress.total}</span>
-                <span>{examProgress.answered}/{examProgress.total} answered</span>
-              </>
-            )}
+        {sessionMode !== 'teach_me' && (
+          <div className="progress-bar">
+            <div className="progress-info">
+              {sessionMode === 'clarify_doubts' && (
+                <span>
+                  {conceptsDiscussed.length > 0
+                    ? conceptsDiscussed.map((c, i) => (
+                        <span key={i} style={{
+                          display: 'inline-block',
+                          background: '#e2e8f0',
+                          borderRadius: '12px',
+                          padding: '2px 8px',
+                          margin: '0 4px',
+                          fontSize: '0.75rem',
+                        }}>{c}</span>
+                      ))
+                    : 'Ask your questions!'}
+                </span>
+              )}
+              {sessionMode === 'exam' && examProgress && (
+                <>
+                  <span>Question {examProgress.current}/{examProgress.total}</span>
+                  <span>{examProgress.answered}/{examProgress.total} answered</span>
+                </>
+              )}
+            </div>
           </div>
-          {sessionMode === 'teach_me' && (
-            <>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${(stepIdx / 10) * 100}%` }} />
-              </div>
-              <div className="mastery-track">
-                <div className="mastery-fill" style={{ width: `${coverage}%` }} />
-              </div>
-            </>
-          )}
-        </div>
+        )}
 
         <div className="chat-container" data-testid="chat-container">
           {isComplete ? (
@@ -1372,7 +1376,7 @@ export default function ChatSession() {
 
               {/* Bottom action area */}
               {sessionPhase === 'card_phase' ? (
-                currentSlideIdx < carouselSlides.length - 1 ? (
+                currentSlideIdx < explanationCards.length - 1 ? (
                   <div className="explanation-nav">
                     <button
                       className="explanation-nav-btn secondary"
@@ -1388,7 +1392,7 @@ export default function ChatSession() {
                     <button
                       className="explanation-nav-btn primary"
                       onClick={() => {
-                        const next = Math.min(currentSlideIdx + 1, carouselSlides.length - 1);
+                        const next = Math.min(currentSlideIdx + 1, explanationCards.length - 1);
                         setCurrentSlideIdx(next);
                         if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
                       }}
