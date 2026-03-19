@@ -738,6 +738,13 @@ export class TutorWebSocket {
     }
   }
 
+  sendJson(data: Record<string, unknown>): void {
+    const payload = JSON.stringify(data);
+    if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(payload);
+    }
+  }
+
   disconnect(): void {
     this._connected = false;
     this.ws?.close();

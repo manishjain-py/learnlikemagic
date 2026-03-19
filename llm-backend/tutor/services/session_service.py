@@ -150,14 +150,17 @@ class SessionService:
                 available_variant_keys=[e.variant_key for e in explanations],
             )
 
-            welcome = f"Let's learn about {topic.topic_name}! I'll walk you through it, and then we can talk about any questions."
-            audio_text = welcome
+            # Master tutor generates welcome (replaces hardcoded message)
+            welcome, audio_text = asyncio.run(
+                self.orchestrator.generate_tutor_welcome(session)
+            )
 
             first_turn = {
                 "message": welcome,
                 "audio_text": audio_text,
                 "hints": [],
                 "step_idx": session.current_step,
+                "total_steps": session.topic.study_plan.total_steps if session.topic else 0,
                 # Card phase fields
                 "explanation_cards": first_variant.cards_json,
                 "session_phase": "card_phase",
@@ -851,6 +854,8 @@ class SessionService:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Session is not in card phase")
 
+        import asyncio
+
         if action == "clear":
             session.complete_card_phase()
             self._advance_past_explanation_steps(session)
@@ -859,16 +864,20 @@ class SessionService:
             precomputed_summary = self._build_precomputed_summary(session)
             session.precomputed_explanation_summary = precomputed_summary
 
-            # Persist the transition message so it survives refresh
-            transition_msg = "Great! Now let's make sure you've got it. Feel free to ask any questions!"
-            session.add_message(create_teacher_message(transition_msg))
+            # Populate card_covered_concepts for pacing directive
+            session.card_covered_concepts = self._extract_card_covered_concepts(session)
+
+            # Master tutor generates bridge (replaces hardcoded transition)
+            bridge_result = asyncio.run(
+                self.orchestrator.generate_bridge_turn(session, bridge_type="understood")
+            )
 
             self._persist_session_state(session_id, session, expected_version)
 
             return {
                 "action": "transition_to_interactive",
-                "message": "Great! Now let's make sure you've got it. Feel free to ask any questions!",
-                "precomputed_summary": precomputed_summary,
+                "message": bridge_result.response,
+                "audio_text": bridge_result.audio_text,
             }
 
         elif action == "explain_differently":
@@ -881,25 +890,24 @@ class SessionService:
             if unseen:
                 return self._switch_variant_internal(session, session_id, unseen[0], expected_version)
             else:
-                # All variants exhausted → fall back to dynamic ExplanationPhase
-                # Build summary before completing card phase (while card_phase is still available)
+                # All variants exhausted — master tutor re-explains
                 precomputed_summary = self._build_precomputed_summary(session)
                 session.precomputed_explanation_summary = precomputed_summary
+                session.card_covered_concepts = self._extract_card_covered_concepts(session)
 
                 session.complete_card_phase()
                 self._init_dynamic_fallback(session)
 
-                import asyncio
-                welcome, audio_text = asyncio.run(
-                    self.orchestrator.generate_welcome_message(session)
+                bridge_result = asyncio.run(
+                    self.orchestrator.generate_bridge_turn(session, bridge_type="confused")
                 )
-                session.add_message(create_teacher_message(welcome, audio_text=audio_text))
+
                 self._persist_session_state(session_id, session, expected_version)
 
                 return {
                     "action": "fallback_dynamic",
-                    "message": welcome,
-                    "audio_text": audio_text,
+                    "message": bridge_result.response,
+                    "audio_text": bridge_result.audio_text,
                 }
 
         from fastapi import HTTPException
@@ -944,14 +952,32 @@ class SessionService:
             )
             if explanation and explanation.summary_json:
                 s = explanation.summary_json
-                summaries.append(
-                    f"Variant '{s.get('approach_label', variant_key)}': "
-                    f"Topics covered: {', '.join(s.get('card_titles', []))}. "
-                    f"Analogies used: {', '.join(s.get('key_analogies', []))}. "
-                    f"Examples used: {', '.join(s.get('key_examples', []))}."
-                )
+                # Prefer teaching_notes (richer), fallback to structured labels
+                if s.get("teaching_notes"):
+                    summaries.append(
+                        f"Variant '{s.get('approach_label', variant_key)}':\n"
+                        f"{s['teaching_notes']}"
+                    )
+                else:
+                    summaries.append(
+                        f"Variant '{s.get('approach_label', variant_key)}': "
+                        f"Topics covered: {', '.join(s.get('card_titles', []))}. "
+                        f"Analogies used: {', '.join(s.get('key_analogies', []))}. "
+                        f"Examples used: {', '.join(s.get('key_examples', []))}."
+                    )
 
         return "\n".join(summaries)
+
+    def _extract_card_covered_concepts(self, session: SessionState) -> set[str]:
+        """Extract concepts covered by card-phase explanation steps."""
+        concepts = set()
+        if not session.topic or not session.topic.study_plan:
+            return concepts
+        for step in session.topic.study_plan.steps:
+            if step.type == "explain":
+                concepts.add(step.concept)
+        concepts.update(session.concepts_covered_set)
+        return concepts
 
     def _advance_past_explanation_steps(self, session: SessionState):
         """After successful card phase, skip consecutive leading explain steps.

@@ -1190,3 +1190,41 @@ class TeacherOrchestrator:
             lambda: self.llm.call(prompt=prompt, reasoning_effort="none", json_mode=True),
         )
         return self._parse_welcome_result(result, f"Let's test your knowledge of {topic_name}! I'll ask you {num_questions} questions. Ready?")
+
+    async def generate_tutor_welcome(self, session: SessionState) -> tuple[str, Optional[str]]:
+        try:
+            self.master_tutor.set_session(session)
+            output = await self.master_tutor.generate_welcome(session)
+            return output.response, output.audio_text
+        except Exception as e:
+            logger.warning(f"Master tutor welcome failed, using fallback: {e}")
+            topic = session.topic.topic_name if session.topic else "this topic"
+            fallback = f"Let's learn about {topic}! I'll walk you through it, and then we can talk about any questions."
+            return fallback, fallback
+
+    async def generate_bridge_turn(self, session: SessionState, bridge_type: str) -> TurnResult:
+        try:
+            self.master_tutor.set_session(session)
+            output = await self.master_tutor.generate_bridge(session, bridge_type)
+
+            state_changed = self._apply_state_updates(session, output)
+
+            session.add_message(create_teacher_message(output.response, audio_text=output.audio_text))
+            session.session_summary.turn_timeline.append(output.turn_summary)
+
+            return TurnResult(
+                response=output.response,
+                audio_text=output.audio_text,
+                intent=output.intent,
+                state_changed=state_changed,
+            )
+        except Exception as e:
+            logger.warning(f"Master tutor bridge failed, using fallback: {e}")
+            if bridge_type == "understood":
+                fallback = "Great! Now let's make sure you've got it. Can you tell me in your own words what you just learned?"
+            else:
+                fallback = "No worries — let me try explaining this a different way."
+
+            session.add_message(create_teacher_message(fallback, audio_text=fallback))
+
+            return TurnResult(response=fallback, audio_text=fallback, intent="continuation", state_changed=False)

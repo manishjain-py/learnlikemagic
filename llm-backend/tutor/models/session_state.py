@@ -185,6 +185,10 @@ class SessionState(BaseModel):
     precomputed_explanation_summary: Optional[str] = Field(
         default=None, description="Summary of pre-computed explanations shown, for tutor context injection"
     )
+    card_covered_concepts: set[str] = Field(
+        default_factory=set,
+        description="Concepts covered during card phase, for cross-phase context"
+    )
 
     # Explanation tracking
     explanation_phases: dict[str, ExplanationPhase] = Field(
@@ -199,7 +203,7 @@ class SessionState(BaseModel):
     conversation_history: list[Message] = Field(default_factory=list)
     full_conversation_log: list[Message] = Field(default_factory=list)
 
-    @field_validator("concepts_covered_set", mode="before")
+    @field_validator("concepts_covered_set", "card_covered_concepts", mode="before")
     @classmethod
     def _coerce_to_set(cls, v):
         if isinstance(v, list):

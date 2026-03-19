@@ -49,10 +49,11 @@ class ClientMessagePayload(BaseModel):
     message: Optional[str] = None
     topic_id: Optional[str] = None
     student_context: Optional[StudentContext] = None
+    card_idx: Optional[int] = None
 
 
 class ClientMessage(BaseModel):
-    type: Literal["chat", "start_session", "get_state"] = Field(description="Type of client message")
+    type: Literal["chat", "start_session", "get_state", "card_navigate"] = Field(description="Type of client message")
     payload: ClientMessagePayload = Field(default_factory=ClientMessagePayload)
 
 
