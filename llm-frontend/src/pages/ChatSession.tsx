@@ -73,8 +73,10 @@ export default function ChatSession() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
   const [mastery, setMastery] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
@@ -143,6 +145,16 @@ export default function ChatSession() {
   // Derive unified carousel slides — continuous sequence of explanation cards + messages
   const carouselSlides = useMemo(() => {
     const slides: Slide[] = [];
+
+    // 0. Welcome slide — always first if we have a teacher message during card phase
+    if (sessionPhase === 'card_phase' && messages.length > 0 && messages[0].role === 'teacher') {
+      slides.push({
+        id: 'welcome',
+        type: 'message' as const,
+        content: messages[0].content,
+        audioText: messages[0].audioText || messages[0].content,
+      });
+    }
 
     // 1. Explanation cards always come first (if they exist)
     if (explanationCards.length > 0) {
@@ -294,6 +306,7 @@ export default function ChatSession() {
         visualExplanation: locState.firstTurn.visual_explanation,
       }]);
       setStepIdx(locState.firstTurn.step_idx);
+      if ((locState.firstTurn as any).total_steps) setTotalSteps((locState.firstTurn as any).total_steps);
       setMastery(locState.firstTurn.mastery_score);
       if (locState.mode === 'exam' && locState.firstTurn.exam_progress) {
         setExamProgress({
@@ -307,13 +320,12 @@ export default function ChatSession() {
         hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
       }
 
-      // Auto-play TTS for first slide
+      // Auto-play TTS for first slide (welcome slide is now slide 0 in card_phase)
       if (locState.firstTurn.session_phase === 'card_phase') {
-        const firstCard = locState.firstTurn.explanation_cards?.[0];
-        if (firstCard) {
-          prevSlidesLen.current = locState.firstTurn.explanation_cards!.length;
-          playTeacherAudio(firstCard.content, 'card-0');
-        }
+        // +1 for welcome slide
+        prevSlidesLen.current = (locState.firstTurn.explanation_cards?.length || 0) + 1;
+        // Play welcome message audio (slide 0)
+        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 'welcome');
       } else {
         prevSlidesLen.current = 1;
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 'msg-0');
@@ -365,12 +377,17 @@ export default function ChatSession() {
 
           // Hydrate card phase if active
           if (state.card_phase?.active && state._replay_explanation_cards) {
-            const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
-            const slideIdx = savedPos ? parseInt(savedPos, 10) : 0;
+            let slideIdx = 0;
+            if (state.card_phase.current_card_idx != null) {
+              slideIdx = state.card_phase.current_card_idx + 1; // +1 for welcome slide
+            } else {
+              const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
+              if (savedPos) slideIdx = parseInt(savedPos, 10);
+            }
             setSessionPhase('card_phase');
             setExplanationCards(state._replay_explanation_cards);
             setCurrentSlideIdx(slideIdx);
-            prevSlidesLen.current = state._replay_explanation_cards.length;
+            prevSlidesLen.current = state._replay_explanation_cards.length + 1; // +1 for welcome slide
             setCardPhaseState({
               current_variant_key: state.card_phase.current_variant_key,
               current_card_idx: slideIdx,
@@ -458,6 +475,7 @@ export default function ChatSession() {
       },
       onStateUpdate: (state) => {
         if (state.current_step != null) setStepIdx(state.current_step);
+        if (state.total_steps != null) setTotalSteps(state.total_steps);
         if (state.mastery_estimates) {
           const values = Object.values(state.mastery_estimates);
           if (values.length > 0) {
@@ -894,6 +912,11 @@ export default function ChatSession() {
         // Persist position for card phase
         if (sessionPhase === 'card_phase' && sessionId) {
           localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
+          // Notify server of card position
+          if (wsRef.current) {
+            const cardIdx = Math.max(0, newIdx - 1); // -1 for welcome slide offset
+            wsRef.current.sendJson({ type: 'card_navigate', payload: { card_idx: cardIdx } });
+          }
         }
       }
     }
@@ -913,16 +936,26 @@ export default function ChatSession() {
 
       if (result.action === 'transition_to_interactive') {
         setSessionPhase('interactive');
-        setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
-        // Total slides = explanation cards + non-skipped teacher messages
-        // Non-skipped = (teacherCount + 1 new) - 1 skipped welcome = teacherCount
-        const teacherCount = messages.filter(m => m.role === 'teacher').length;
-        const totalSlides = explanationCards.length + teacherCount;
-        setCurrentSlideIdx(totalSlides - 1); // last slide (the transition message)
-        prevSlidesLen.current = totalSlides;
+        const bridgeMsg: Message = {
+          role: 'teacher' as const,
+          content: result.message,
+          audioText: result.audio_text || null,
+        };
+        setMessages(prev => [...prev, bridgeMsg]);
         localStorage.removeItem(`slide-pos-${sessionId}`);
-        // Auto-play TTS for the transition message
-        playTeacherAudio(result.message, `msg-${messages.length}`);
+        // Jump to last slide on next render tick
+        setTimeout(() => {
+          setCurrentSlideIdx(prev => {
+            // The new carousel will have all interactive slides; jump to the last one
+            return carouselSlides.length;
+          });
+        }, 50);
+        // Auto-play TTS for the transition message (prefer audio_text)
+        if (result.audio_text) {
+          playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
+        } else {
+          playTeacherAudio(result.message, `msg-${messages.length}`);
+        }
       } else if (result.action === 'switch_variant' && result.cards) {
         setExplanationCards(result.cards);
         setCurrentSlideIdx(0);
@@ -930,13 +963,24 @@ export default function ChatSession() {
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
       } else if (result.action === 'fallback_dynamic') {
         setSessionPhase('interactive');
-        setMessages(prev => [...prev, { role: 'teacher' as const, content: result.message }]);
-        const teacherCount = messages.filter(m => m.role === 'teacher').length;
-        const totalSlides = explanationCards.length + teacherCount;
-        setCurrentSlideIdx(totalSlides - 1);
-        prevSlidesLen.current = totalSlides;
+        const fallbackMsg: Message = {
+          role: 'teacher' as const,
+          content: result.message,
+          audioText: result.audio_text || null,
+        };
+        setMessages(prev => [...prev, fallbackMsg]);
         localStorage.removeItem(`slide-pos-${sessionId}`);
-        playTeacherAudio(result.message, `msg-${messages.length}`);
+        // Jump to last slide on next render tick
+        setTimeout(() => {
+          setCurrentSlideIdx(prev => {
+            return carouselSlides.length;
+          });
+        }, 50);
+        if (result.audio_text) {
+          playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
+        } else {
+          playTeacherAudio(result.message, `msg-${messages.length}`);
+        }
       }
     } catch (err: any) {
       console.error('Card action failed:', err);
@@ -1030,37 +1074,40 @@ export default function ChatSession() {
           </div>
         </nav>
 
-        {sessionMode !== 'teach_me' && (
-          <div className="progress-bar">
-            <div className="progress-info">
-              {sessionMode === 'clarify_doubts' && (
-                <span>
-                  {conceptsDiscussed.length > 0
-                    ? conceptsDiscussed.map((c, i) => (
-                        <span key={i} style={{
-                          display: 'inline-block',
-                          background: '#e2e8f0',
-                          borderRadius: '12px',
-                          padding: '2px 8px',
-                          margin: '0 4px',
-                          fontSize: '0.75rem',
-                        }}>{c}</span>
-                      ))
-                    : 'Ask your questions!'}
-                </span>
-              )}
-              {sessionMode === 'exam' && examProgress && (
-                <>
-                  <span>Question {examProgress.current}/{examProgress.total}</span>
-                  <span>{examProgress.answered}/{examProgress.total} answered</span>
-                </>
-              )}
-            </div>
+        <div className="progress-bar">
+          <div className="progress-info">
+            {sessionMode === 'teach_me' && totalSteps > 0 && (
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                Step {stepIdx} of {totalSteps}
+              </span>
+            )}
+            {sessionMode === 'clarify_doubts' && (
+              <span>
+                {conceptsDiscussed.length > 0
+                  ? conceptsDiscussed.map((c, i) => (
+                      <span key={i} style={{
+                        display: 'inline-block',
+                        background: '#e2e8f0',
+                        borderRadius: '12px',
+                        padding: '2px 8px',
+                        margin: '0 4px',
+                        fontSize: '0.75rem',
+                      }}>{c}</span>
+                    ))
+                  : 'Ask your questions!'}
+              </span>
+            )}
+            {sessionMode === 'exam' && examProgress && (
+              <>
+                <span>Question {examProgress.current}/{examProgress.total}</span>
+                <span>{examProgress.answered}/{examProgress.total} answered</span>
+              </>
+            )}
           </div>
-        )}
+        </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {isComplete ? (
+          {showSummary ? (
             <div className="summary-card" data-testid="session-summary" style={{ flex: 1, overflowY: 'auto' }}>
               {sessionMode === 'clarify_doubts' ? (
                 <>
@@ -1376,7 +1423,7 @@ export default function ChatSession() {
 
               {/* Bottom action area */}
               {sessionPhase === 'card_phase' ? (
-                currentSlideIdx < explanationCards.length - 1 ? (
+                currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
                     <button
                       className="explanation-nav-btn secondary"
@@ -1392,7 +1439,7 @@ export default function ChatSession() {
                     <button
                       className="explanation-nav-btn primary"
                       onClick={() => {
-                        const next = Math.min(currentSlideIdx + 1, explanationCards.length - 1);
+                        const next = Math.min(currentSlideIdx + 1, explanationCards.length); /* +1 welcome offset */
                         setCurrentSlideIdx(next);
                         if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
                       }}
@@ -1464,6 +1511,16 @@ export default function ChatSession() {
                   </form>
                 </div>
               ) : null}
+              {isComplete && (
+                <div style={{ textAlign: 'center', padding: '16px' }}>
+                  <button
+                    className="action-button primary"
+                    onClick={() => setShowSummary(true)}
+                  >
+                    View Session Summary
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
