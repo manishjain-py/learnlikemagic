@@ -33,10 +33,10 @@ Teach Me feels like individual pieces glued together, not a single teaching sess
 - Most important moment in the lesson is passive — tutor waits instead of leading
 - "Feel free to ask any questions!" contradicts what happens next (tutor asks THEM questions)
 
-### G3: Fallback Re-Explanation → Generic Welcome
-- When all card variants exhausted, `session_service.py:892` calls `generate_welcome_message()` — a generic prompt
-- Confused student who read 2-3 variants gets re-greeted instead of taught differently
-- Should be master tutor with context: "student saw all variants, still confused — explain freshly"
+### G3: Fallback Re-Explanation → Generic Welcome (Without Card Context)
+- When all card variants exhausted, `session_service.py:892` calls `generate_welcome_message()` — dynamic but generic (no card context, no awareness student is confused)
+- Confused student who read 2-3 variants gets a generic welcome instead of a targeted re-explanation
+- Should be master tutor with full context: teaching_notes from cards, awareness student is confused
 
 ### G4: Shallow Explanation Summary
 - `_build_precomputed_summary()` captures only: card titles, analogy names, example names
@@ -192,5 +192,5 @@ Study plan is input to the master tutor, not its boss. Master tutor uses it as a
 
 - Removing study plan — still needed for check/practice structure
 - Making cards interactive — deferred
-- Separate prompts for welcome/bridge/fallback — master tutor handles all
+- Separate system prompts — welcome/bridge use purpose-specific turn prompts but share the master tutor's system prompt (one brain, different moments)
 - Redesigning frontend carousel — cosmetic changes only
