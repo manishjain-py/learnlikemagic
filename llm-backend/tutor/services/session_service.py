@@ -160,6 +160,7 @@ class SessionService:
                 "audio_text": audio_text,
                 "hints": [],
                 "step_idx": session.current_step,
+                "total_steps": session.topic.study_plan.total_steps if session.topic else 0,
                 # Card phase fields
                 "explanation_cards": first_variant.cards_json,
                 "session_phase": "card_phase",

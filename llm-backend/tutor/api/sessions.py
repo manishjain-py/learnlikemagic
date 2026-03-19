@@ -743,7 +743,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
             if client_msg.type == "card_navigate":
                 if session.is_in_card_phase() and session.card_phase:
-                    card_idx = client_msg.payload.card_idx or 0
+                    card_idx = client_msg.payload.card_idx if client_msg.payload.card_idx is not None else 0
                     session.card_phase.current_card_idx = card_idx
                     ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
                     if reloaded:

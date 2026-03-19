@@ -912,10 +912,9 @@ export default function ChatSession() {
         // Persist position for card phase
         if (sessionPhase === 'card_phase' && sessionId) {
           localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
-          // Notify server of card position
-          if (wsRef.current) {
-            const cardIdx = Math.max(0, newIdx - 1); // -1 for welcome slide offset
-            wsRef.current.sendJson({ type: 'card_navigate', payload: { card_idx: cardIdx } });
+          // Notify server of card position (skip welcome slide)
+          if (newIdx > 0 && wsRef.current) {
+            wsRef.current.sendJson({ type: 'card_navigate', payload: { card_idx: newIdx - 1 } });
           }
         }
       }
@@ -925,6 +924,25 @@ export default function ChatSession() {
       focusTrackRef.current.style.transform = `translateX(${-(newIdx * 100)}%)`;
     }
     focusSwipeDir.current = null;
+  };
+
+  // ─── Bridge transition helper (shared by clear + fallback_dynamic) ──
+  const handleBridgeTransition = (result: any) => {
+    setSessionPhase('interactive');
+    const bridgeMsg: Message = {
+      role: 'teacher' as const,
+      content: result.message,
+      audioText: result.audio_text || null,
+    };
+    setMessages(prev => [...prev, bridgeMsg]);
+    localStorage.removeItem(`slide-pos-${sessionId}`);
+    // Cards at indices 0..N-1 (after welcome at 0), bridge lands at N
+    setCurrentSlideIdx(explanationCards.length);
+    if (result.audio_text) {
+      playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
+    } else {
+      playTeacherAudio(result.message, `msg-${messages.length}`);
+    }
   };
 
   // ─── Card phase action handler ─────────────────────────────────────
@@ -941,46 +959,14 @@ export default function ChatSession() {
           content: result.message,
           audioText: result.audio_text || null,
         };
-        setMessages(prev => [...prev, bridgeMsg]);
-        localStorage.removeItem(`slide-pos-${sessionId}`);
-        // Jump to last slide on next render tick
-        setTimeout(() => {
-          setCurrentSlideIdx(prev => {
-            // The new carousel will have all interactive slides; jump to the last one
-            return carouselSlides.length;
-          });
-        }, 50);
-        // Auto-play TTS for the transition message (prefer audio_text)
-        if (result.audio_text) {
-          playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
-        } else {
-          playTeacherAudio(result.message, `msg-${messages.length}`);
-        }
+        handleBridgeTransition(result);
       } else if (result.action === 'switch_variant' && result.cards) {
         setExplanationCards(result.cards);
         setCurrentSlideIdx(0);
         setVariantsShown(prev => prev + 1);
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
       } else if (result.action === 'fallback_dynamic') {
-        setSessionPhase('interactive');
-        const fallbackMsg: Message = {
-          role: 'teacher' as const,
-          content: result.message,
-          audioText: result.audio_text || null,
-        };
-        setMessages(prev => [...prev, fallbackMsg]);
-        localStorage.removeItem(`slide-pos-${sessionId}`);
-        // Jump to last slide on next render tick
-        setTimeout(() => {
-          setCurrentSlideIdx(prev => {
-            return carouselSlides.length;
-          });
-        }, 50);
-        if (result.audio_text) {
-          playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
-        } else {
-          playTeacherAudio(result.message, `msg-${messages.length}`);
-        }
+        handleBridgeTransition(result);
       }
     } catch (err: any) {
       console.error('Card action failed:', err);
