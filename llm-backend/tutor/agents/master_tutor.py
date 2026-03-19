@@ -6,7 +6,7 @@ and returns both the student-facing response and structured state updates in
 one LLM call.
 """
 
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Literal, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,38 @@ class VisualExplanation(BaseModel):
     )
     title: Optional[str] = Field(default=None, description="Short title like '3 + 4 = 7'")
     narration: Optional[str] = Field(default=None, description="Short narration text")
+
+
+class BlankItem(BaseModel):
+    """A single blank in a fill-in-the-blank question."""
+    blank_id: int = Field(description="0-indexed blank identifier")
+    correct_answer: str = Field(description="The correct value for this blank")
+
+
+class OptionItem(BaseModel):
+    """A single option for select questions."""
+    key: str = Field(description="Short option key: 'A', 'B', 'C', or 'D'")
+    text: str = Field(description="Option text shown to the student")
+    correct: bool = Field(default=False, description="Whether this option is correct")
+
+
+class QuestionFormat(BaseModel):
+    """Structured question format for interactive questions."""
+    type: Literal["fill_in_the_blank", "single_select", "multi_select"] = Field(
+        description="Question format type"
+    )
+    sentence_template: Optional[str] = Field(
+        default=None,
+        description="For fill_in_the_blank: sentence with ___0___, ___1___ placeholders for blanks"
+    )
+    blanks: Optional[list[BlankItem]] = Field(
+        default=None,
+        description="For fill_in_the_blank: list of blank items with correct answers"
+    )
+    options: Optional[list[OptionItem]] = Field(
+        default=None,
+        description="For single_select/multi_select: list of options"
+    )
 
 
 class MasteryUpdate(BaseModel):
@@ -97,6 +129,11 @@ class TutorTurnOutput(BaseModel):
     )
     question_concept: Optional[str] = Field(
         default=None, description="Which concept the question tests"
+    )
+    question_format: Optional[QuestionFormat] = Field(
+        default=None,
+        description="Structured question format. Set when asking fill-in-the-blank, single-select, "
+        "or multi-select questions. Leave null for open-ended questions."
     )
 
     # Explanation phase tracking (only used during explain steps)

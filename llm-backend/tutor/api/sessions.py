@@ -799,6 +799,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     # For non-streamed paths (clarify/exam), visual is on the result
                     if result.visual_explanation:
                         assistant_msg["payload"]["visual_explanation"] = result.visual_explanation
+                    if result.question_format:
+                        assistant_msg["payload"]["question_format"] = result.question_format
                     await websocket.send_json(assistant_msg)
 
                     # For streamed path: visual was generated after text —

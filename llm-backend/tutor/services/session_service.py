@@ -285,6 +285,8 @@ class SessionService:
 
         if turn_result.visual_explanation:
             next_turn["visual_explanation"] = turn_result.visual_explanation
+        if turn_result.question_format:
+            next_turn["question_format"] = turn_result.question_format
 
         if session.mode == "exam":
             next_turn["exam_progress"] = {

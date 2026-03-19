@@ -95,6 +95,24 @@ export interface CardPhaseDTO {
   available_variants: number;
 }
 
+export interface BlankItem {
+  blank_id: number;
+  correct_answer: string;
+}
+
+export interface OptionItem {
+  key: string;
+  text: string;
+  correct: boolean;
+}
+
+export interface QuestionFormat {
+  type: 'fill_in_the_blank' | 'single_select' | 'multi_select';
+  sentence_template?: string;
+  blanks?: BlankItem[];
+  options?: OptionItem[];
+}
+
 export interface Turn {
   message: string;
   audio_text?: string | null;
@@ -103,6 +121,7 @@ export interface Turn {
   mastery_score: number;
   is_complete?: boolean;
   visual_explanation?: VisualExplanation | null;
+  question_format?: QuestionFormat | null;
   concepts_discussed?: string[];
   // Card phase fields (pre-computed explanations)
   explanation_cards?: ExplanationCard[];
@@ -636,7 +655,7 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 
 export interface TutorWSCallbacks {
   onToken: (text: string) => void;
-  onAssistant: (message: string, audioText?: string | null, visualExplanation?: VisualExplanation | null) => void;
+  onAssistant: (message: string, audioText?: string | null, visualExplanation?: VisualExplanation | null, questionFormat?: QuestionFormat | null) => void;
   onVisualUpdate?: (visualExplanation: VisualExplanation) => void;
   onStateUpdate: (state: {
     session_id: string;
@@ -695,6 +714,7 @@ export class TutorWebSocket {
               msg.payload?.message || '',
               msg.payload?.audio_text,
               msg.payload?.visual_explanation,
+              msg.payload?.question_format,
             );
             break;
           case 'state_update':

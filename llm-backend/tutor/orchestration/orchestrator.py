@@ -32,6 +32,7 @@ class TurnResult(BaseModel):
     specialists_called: List[str] = Field(default_factory=list)
     state_changed: bool = Field(default=False)
     visual_explanation: Optional[Dict[str, Any]] = Field(default=None, description="Structured visual explanation for frontend rendering")
+    question_format: Optional[Dict[str, Any]] = Field(default=None, description="Structured question format for frontend")
 
 
 class TeacherOrchestrator:
@@ -342,6 +343,7 @@ class TeacherOrchestrator:
                 specialists_called=["master_tutor"],
                 state_changed=state_changed,
                 visual_explanation=await self._generate_pixi_code(tutor_output.visual_explanation) if tutor_output.visual_explanation else None,
+                question_format=tutor_output.question_format.model_dump() if tutor_output.question_format else None,
             )
 
         except Exception as e:
@@ -553,6 +555,7 @@ class TeacherOrchestrator:
                 specialists_called=["master_tutor"],
                 state_changed=state_changed,
                 visual_explanation=None,
+                question_format=tutor_output.question_format.model_dump() if tutor_output.question_format else None,
             ))
 
             # Generate Pixi code in a separate step and yield as a "visual" message
@@ -894,6 +897,7 @@ class TeacherOrchestrator:
             specialists_called=["master_tutor"],
             state_changed=True,
             visual_explanation=await self._generate_pixi_code(tutor_output.visual_explanation) if tutor_output.visual_explanation else None,
+            question_format=tutor_output.question_format.model_dump() if tutor_output.question_format else None,
         )
 
     async def _process_exam_turn(
@@ -1217,6 +1221,7 @@ class TeacherOrchestrator:
                 audio_text=output.audio_text,
                 intent=output.intent,
                 state_changed=state_changed,
+                question_format=output.question_format.model_dump() if output.question_format else None,
             )
         except Exception as e:
             logger.warning(f"Master tutor bridge failed, using fallback: {e}")

@@ -16,11 +16,13 @@ import {
   CardPhaseDTO,
   SummaryResponse,
   VisualExplanation as VisualExplanationType,
+  QuestionFormat,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import VisualExplanationComponent from '../components/VisualExplanation';
+import InteractiveQuestion from '../components/InteractiveQuestion';
 import '../App.css';
 
 interface Message {
@@ -29,6 +31,7 @@ interface Message {
   audioText?: string | null;
   hints?: string[];
   visualExplanation?: VisualExplanationType | null;
+  questionFormat?: QuestionFormat | null;
 }
 
 interface ExamQuestionDraft {
@@ -44,6 +47,7 @@ interface Slide {
   cardType?: string;
   visual?: string | null;
   visualExplanation?: VisualExplanationType | null;
+  questionFormat?: QuestionFormat | null;
   studentResponse?: string | null;
   audioText?: string | null;
 }
@@ -186,6 +190,7 @@ export default function ChatSession() {
             type: 'message',
             content: messages[i].content,
             visualExplanation: messages[i].visualExplanation,
+            questionFormat: messages[i].questionFormat,
             studentResponse: next?.content || null,
             audioText: messages[i].audioText,
           });
@@ -204,6 +209,14 @@ export default function ChatSession() {
 
     return slides;
   }, [sessionPhase, explanationCards, messages, streamingText]);
+
+  // Active structured question: the last slide's questionFormat if it hasn't been answered
+  const activeQuestionFormat = useMemo(() => {
+    if (sessionPhase !== 'interactive' || loading) return null;
+    const lastSlide = carouselSlides[carouselSlides.length - 1];
+    if (!lastSlide || lastSlide.type !== 'message' || lastSlide.studentResponse) return null;
+    return lastSlide.questionFormat || null;
+  }, [carouselSlides, sessionPhase, loading]);
 
   // Auto-advance carousel when new slides appear
   useEffect(() => {
@@ -445,7 +458,7 @@ export default function ChatSession() {
       onToken: (text) => {
         setStreamingText((prev) => prev + text);
       },
-      onAssistant: (message, audioText, visualExplanation) => {
+      onAssistant: (message, audioText, visualExplanation, questionFormat) => {
         // Finalize: replace streaming text with the complete message
         setStreamingText('');
         setMessages((prev) => [
@@ -455,6 +468,7 @@ export default function ChatSession() {
             content: message,
             audioText: audioText,
             visualExplanation: visualExplanation,
+            questionFormat: questionFormat,
           },
         ]);
         setLoading(false);
@@ -519,6 +533,76 @@ export default function ChatSession() {
     };
   }, [sessionId, sessionMode]);
 
+  // Core message-sending logic, used by both handleSubmit and structured question submit
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || !sessionId || loading) return;
+    const userMessage = text.trim();
+    setInput('');
+    setMessages((prev) => [...prev, { role: 'student', content: userMessage }]);
+    setLoading(true);
+
+    if (wsRef.current?.isConnected) {
+      wsRef.current.sendChat(userMessage);
+      await new Promise<void>((resolve) => {
+        streamResolveRef.current = resolve;
+      });
+      return;
+    }
+
+    try {
+      const response = await submitStep(sessionId, userMessage);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'teacher',
+          content: response.next_turn.message,
+          audioText: response.next_turn.audio_text,
+          hints: response.next_turn.hints,
+          visualExplanation: response.next_turn.visual_explanation,
+          questionFormat: response.next_turn.question_format,
+        },
+      ]);
+      setStepIdx(response.next_turn.step_idx);
+      setMastery(response.next_turn.mastery_score);
+      if (response.next_turn.concepts_discussed) {
+        setConceptsDiscussed(response.next_turn.concepts_discussed);
+      }
+      if (response.next_turn.exam_progress) {
+        setExamProgress({
+          current: response.next_turn.exam_progress.current_question,
+          total: response.next_turn.exam_progress.total_questions,
+          answered: response.next_turn.exam_progress.answered_questions,
+        });
+      }
+      if (response.next_turn.is_complete) {
+        setIsComplete(true);
+        if (sessionMode === 'exam') {
+          if (response.next_turn.exam_feedback) {
+            setSummary({
+              steps_completed: response.next_turn.exam_feedback.total,
+              mastery_score: response.next_turn.exam_feedback.percentage / 100,
+              misconceptions_seen: response.next_turn.exam_feedback.weak_areas || [],
+              suggestions: response.next_turn.exam_feedback.next_steps || [],
+            });
+            setExamFeedback({
+              score: response.next_turn.exam_feedback.score,
+              total: response.next_turn.exam_feedback.total,
+              percentage: response.next_turn.exam_feedback.percentage,
+            });
+          }
+          setExamResults(response.next_turn.exam_results || []);
+        } else if (sessionMode !== 'clarify_doubts') {
+          const summaryData = await getSummary(sessionId);
+          setSummary(summaryData);
+        }
+      }
+    } catch (err) {
+      console.error('REST submit failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !sessionId || loading) return;
@@ -556,80 +640,7 @@ export default function ChatSession() {
       return;
     }
 
-    const userMessage = input.trim();
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'student', content: userMessage }]);
-    setLoading(true);
-
-    // Use WebSocket for streaming when connected (non-exam modes)
-    if (wsRef.current?.isConnected) {
-      setStreamingText('');
-      wsRef.current.sendChat(userMessage);
-      // Wait for onAssistant callback to resolve before allowing next message
-      await new Promise<void>((resolve) => {
-        streamResolveRef.current = resolve;
-      });
-      return;
-    }
-
-    // Fallback: REST (exam mode, or WS not connected)
-    try {
-      const response = await submitStep(sessionId, userMessage);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'teacher',
-          content: response.next_turn.message,
-          audioText: response.next_turn.audio_text,
-          hints: response.next_turn.hints,
-          visualExplanation: response.next_turn.visual_explanation,
-        },
-      ]);
-      setStepIdx(response.next_turn.step_idx);
-      setMastery(response.next_turn.mastery_score);
-
-      // Auto-play TTS is handled by the auto-advance effect
-
-      // Update concepts discussed for clarify_doubts mode
-      if (response.next_turn.concepts_discussed) {
-        setConceptsDiscussed(response.next_turn.concepts_discussed);
-      }
-
-      if (response.next_turn.exam_progress) {
-        setExamProgress({
-          current: response.next_turn.exam_progress.current_question,
-          total: response.next_turn.exam_progress.total_questions,
-          answered: response.next_turn.exam_progress.answered_questions,
-        });
-      }
-
-      if (response.next_turn.is_complete) {
-        setIsComplete(true);
-        if (sessionMode === 'exam') {
-          if (response.next_turn.exam_feedback) {
-            setSummary({
-              steps_completed: response.next_turn.exam_feedback.total,
-              mastery_score: response.next_turn.exam_feedback.percentage / 100,
-              misconceptions_seen: response.next_turn.exam_feedback.weak_areas || [],
-              suggestions: response.next_turn.exam_feedback.next_steps || [],
-            });
-            setExamFeedback({
-              score: response.next_turn.exam_feedback.score,
-              total: response.next_turn.exam_feedback.total,
-              percentage: response.next_turn.exam_feedback.percentage,
-            });
-          }
-          setExamResults(response.next_turn.exam_results || []);
-        } else if (sessionMode !== 'clarify_doubts') {
-          const summaryData = await getSummary(sessionId);
-          setSummary(summaryData);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to submit answer:', error);
-    } finally {
-      setLoading(false);
-    }
+    await sendMessage(input);
   };
 
   const handleSubmitAllExamAnswers = async () => {
@@ -1459,6 +1470,14 @@ export default function ChatSession() {
                   </div>
                 )
               ) : !loading ? (
+                activeQuestionFormat ? (
+                  <div className="focus-input-area">
+                    <InteractiveQuestion
+                      questionFormat={activeQuestionFormat}
+                      onSubmit={(answerText) => sendMessage(answerText)}
+                    />
+                  </div>
+                ) : (
                 <div className="focus-input-area">
                   <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit}>
                     <input
@@ -1501,6 +1520,7 @@ export default function ChatSession() {
                     </button>
                   </form>
                 </div>
+                )
               ) : null}
               {isComplete && (
                 <div style={{ textAlign: 'center', padding: '16px' }}>

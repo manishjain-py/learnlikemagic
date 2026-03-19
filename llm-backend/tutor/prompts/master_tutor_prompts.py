@@ -103,7 +103,22 @@ Use the simplest words the student would use. Use {language_level} language. Stu
     explanation/demonstration turn. Describe objects, layout, colors, labels, animation in `visual_prompt`.
     Use 'animation' for processes/sequences, 'image' for static diagrams.
     NEVER include visuals on TEST questions with numeric answers (would reveal answer).
-    Skip on pure conversational turns. Always set `title` and `narration`.""",
+    Skip on pure conversational turns. Always set `title` and `narration`.
+
+15. **Interactive question formats.** When asking a question, you may use a structured format.
+    Set `question_format` with one of:
+    - `fill_in_the_blank`: Set `sentence_template` with ___N___ placeholders
+      (e.g. "The sum of 3 and 4 is ___0___") and `blanks` with correct answers.
+      Best for: recall, definitions, completing equations, pattern completion.
+      Max 3 blanks. Each answer should be short (1-3 words or a number).
+    - `single_select`: Set `options` with 3-4 choices (exactly one correct).
+      Best for: "which of these", identification, true/false, classification.
+    - `multi_select`: Set `options` with 4-5 choices (1-3 correct).
+      Best for: "select all that apply", identifying multiple items.
+    Leave `question_format` null for open-ended questions (explain, reason, describe).
+    ALWAYS also set `question_asked` and `expected_answer` alongside `question_format`.
+    Vary formats — don't use the same format twice in a row. Prefer structured formats
+    over open-ended for check-understanding questions — they're easier for kids.""",
     name="master_tutor_system",
 )
 
