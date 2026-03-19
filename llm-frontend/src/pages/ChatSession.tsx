@@ -146,8 +146,8 @@ export default function ChatSession() {
   const carouselSlides = useMemo(() => {
     const slides: Slide[] = [];
 
-    // 0. Welcome slide — always first if we have a teacher message during card phase
-    if (sessionPhase === 'card_phase' && messages.length > 0 && messages[0].role === 'teacher') {
+    // 0. Welcome slide — always first if we have explanation cards and a teacher message
+    if (explanationCards.length > 0 && messages.length > 0 && messages[0].role === 'teacher') {
       slides.push({
         id: 'welcome',
         type: 'message' as const,
@@ -375,26 +375,31 @@ export default function ChatSession() {
             }
           }
 
-          // Hydrate card phase if active
-          if (state.card_phase?.active && state._replay_explanation_cards) {
-            let slideIdx = 0;
-            if (state.card_phase.current_card_idx != null) {
-              slideIdx = state.card_phase.current_card_idx + 1; // +1 for welcome slide
-            } else {
-              const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
-              if (savedPos) slideIdx = parseInt(savedPos, 10);
-            }
-            setSessionPhase('card_phase');
+          // Hydrate card phase — active or completed
+          if (state._replay_explanation_cards) {
             setExplanationCards(state._replay_explanation_cards);
-            setCurrentSlideIdx(slideIdx);
-            prevSlidesLen.current = state._replay_explanation_cards.length + 1; // +1 for welcome slide
-            setCardPhaseState({
-              current_variant_key: state.card_phase.current_variant_key,
-              current_card_idx: slideIdx,
-              total_cards: state.card_phase.total_cards,
-              available_variants: state.card_phase.available_variant_keys?.length || 0,
-            });
-            setVariantsShown(state.card_phase.variants_shown?.length || 1);
+
+            if (state.card_phase?.active) {
+              // Card phase still in progress — restore card navigation state
+              let slideIdx = 0;
+              if (state.card_phase.current_card_idx != null) {
+                slideIdx = state.card_phase.current_card_idx + 1; // +1 for welcome slide
+              } else {
+                const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
+                if (savedPos) slideIdx = parseInt(savedPos, 10);
+              }
+              setSessionPhase('card_phase');
+              setCurrentSlideIdx(slideIdx);
+              prevSlidesLen.current = state._replay_explanation_cards.length + 1; // +1 for welcome slide
+              setCardPhaseState({
+                current_variant_key: state.card_phase.current_variant_key,
+                current_card_idx: slideIdx,
+                total_cards: state.card_phase.total_cards,
+                available_variants: state.card_phase.available_variant_keys?.length || 0,
+              });
+              setVariantsShown(state.card_phase.variants_shown?.length || 1);
+            }
+            // else: card phase completed — cards loaded for history but sessionPhase stays 'interactive'
           }
 
           // Hydrate completion for all modes

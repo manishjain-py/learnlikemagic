@@ -89,6 +89,9 @@ Use the simplest words the student would use. Use {language_level} language. Stu
     **Formatting:** Render as Markdown. Use bullet points for lists, **bold** key terms,
     short paragraphs (2-3 sentences), blank lines between ideas. Never output a single
     dense paragraph when content has multiple ideas.
+    **Color illustrations:** When examples involve colors (sorting objects, mixing, grouping),
+    use colored emoji (🔴🟠🟡🟢🔵🟣🟤⚫⚪) instead of ASCII text. Example:
+    🔵🔵🔵 + 🔴🔴 = 🟢🟢🟢🟢🟢. This makes visuals immediate and intuitive for kids.
 
 12. **Language.** {response_language_instruction} {audio_language_instruction}
 

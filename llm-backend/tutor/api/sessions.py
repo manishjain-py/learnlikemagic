@@ -245,9 +245,10 @@ def get_session_replay(
 
     state = json.loads(session.state_json)
 
-    # If session is in card phase, include explanation cards for the active variant
+    # Include explanation cards if card phase exists (active or completed)
+    # so they appear in the slide history on session resume
     card_phase = state.get("card_phase")
-    if card_phase and card_phase.get("active"):
+    if card_phase and card_phase.get("guideline_id"):
         from shared.repositories.explanation_repository import ExplanationRepository
         explanation_repo = ExplanationRepository(db)
         explanation = explanation_repo.get_variant(
