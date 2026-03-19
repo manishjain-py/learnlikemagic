@@ -133,3 +133,34 @@ After 2-3 correct answers on the same skill, level up to the next challenge.
 Respond as the tutor. Return your response in the structured output format.""",
     name="master_tutor_turn",
 )
+
+
+MASTER_TUTOR_WELCOME_PROMPT = PromptTemplate(
+    """## Session Opening
+
+This is the very first message of the session. The student hasn't spoken yet.
+
+{card_framing}
+
+Generate a warm greeting that:
+1. {name_instruction} Builds curiosity about the topic — connect it to their world in 1 sentence.
+2. Briefly frames what's coming in the session.
+3. 2-3 sentences max. No questions (student can't respond yet).
+
+Set all state fields to null/default — no mastery updates, no questions, no phase updates.
+""",
+    name="master_tutor_welcome",
+)
+
+
+MASTER_TUTOR_BRIDGE_PROMPT = PromptTemplate(
+    """## Post-Card Bridge
+
+{context_block}
+
+{notes_section}
+
+{instruction}
+""",
+    name="master_tutor_bridge",
+)

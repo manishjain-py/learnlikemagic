@@ -143,34 +143,23 @@ class BaseAgent(ABC):
     def last_prompt(self) -> Optional[str]:
         return self._last_prompt
 
-    async def execute(self, context: AgentContext) -> BaseModel:
-        """Execute the agent and return validated output."""
-        start_time = time.time()
+    async def _execute_with_prompt(self, prompt: str) -> BaseModel:
+        """Run LLM call, parse, and validate output for a pre-built prompt.
 
-        logger.info(json.dumps({
-            "agent": self.agent_name,
-            "event": "started",
-            "turn_id": context.turn_id,
-            "current_step": context.current_step,
-        }))
+        Shared by execute() and any caller that builds its own prompt.
+        """
+        start_time = time.time()
+        self._last_prompt = prompt
 
         try:
-            prompt = self.build_prompt(context)
-            self._last_prompt = prompt
-
             output_model = self.get_output_model()
             schema = get_strict_schema(output_model)
 
-            # Call LLM — use fast model (gpt-4o-mini) for lightweight agents,
-            # or the main model with strict schema for complex agents
             loop = asyncio.get_event_loop()
             if self._use_fast_model:
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.llm.call_fast(
-                        prompt=prompt,
-                        json_mode=True,
-                    ),
+                    lambda: self.llm.call_fast(prompt=prompt, json_mode=True),
                 )
             else:
                 result = await loop.run_in_executor(
@@ -183,7 +172,6 @@ class BaseAgent(ABC):
                     ),
                 )
 
-            # Parse output
             output_text = result.get("output_text", "{}")
             try:
                 parsed = json.loads(output_text)
@@ -191,44 +179,40 @@ class BaseAgent(ABC):
                 parsed = {}
 
             validated = validate_agent_output(
-                output=parsed,
-                model=output_model,
-                agent_name=self.agent_name,
+                output=parsed, model=output_model, agent_name=self.agent_name,
             )
 
             duration_ms = int((time.time() - start_time) * 1000)
             logger.info(json.dumps({
-                "agent": self.agent_name,
-                "event": "completed",
-                "turn_id": context.turn_id,
+                "agent": self.agent_name, "event": "completed",
                 "duration_ms": duration_ms,
             }))
 
             return validated
 
         except asyncio.TimeoutError:
-            duration_ms = int((time.time() - start_time) * 1000)
-            logger.warning(json.dumps({
-                "agent": self.agent_name,
-                "event": "timeout",
-                "turn_id": context.turn_id,
-                "duration_ms": duration_ms,
-            }))
             raise AgentTimeoutError(self.agent_name, self.timeout_seconds)
-
         except AgentError:
             raise
-
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(json.dumps({
-                "agent": self.agent_name,
-                "event": "failed",
-                "turn_id": context.turn_id,
-                "error": str(e),
-                "duration_ms": duration_ms,
+                "agent": self.agent_name, "event": "failed",
+                "error": str(e), "duration_ms": duration_ms,
             }))
             raise AgentExecutionError(self.agent_name, str(e)) from e
+
+    async def execute(self, context: AgentContext) -> BaseModel:
+        """Execute the agent and return validated output."""
+        logger.info(json.dumps({
+            "agent": self.agent_name,
+            "event": "started",
+            "turn_id": context.turn_id,
+            "current_step": context.current_step,
+        }))
+
+        prompt = self.build_prompt(context)
+        return await self._execute_with_prompt(prompt)
 
     async def execute_stream(
         self, context: AgentContext

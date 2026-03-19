@@ -35,6 +35,7 @@ class ExplanationSummaryOutput(BaseModel):
     """Structured summary metadata returned alongside cards."""
     key_analogies: list[str] = Field(default_factory=list, description="Main analogies used")
     key_examples: list[str] = Field(default_factory=list, description="Main examples used")
+    teaching_notes: str = Field(default="", description="2-3 sentence narrative: what was explained, how, key conceptual progression")
 
 
 class GenerationOutput(BaseModel):
@@ -238,7 +239,8 @@ class ExplanationGeneratorService:
             ],
             "summary": {
                 "key_analogies": ["analogy1", "analogy2"],
-                "key_examples": ["example1", "example2"]
+                "key_examples": ["example1", "example2"],
+                "teaching_notes": "2-3 sentence narrative of what was explained and how"
             }
         }, indent=2)
 
@@ -346,7 +348,8 @@ class ExplanationGeneratorService:
             ],
             "summary": {
                 "key_analogies": ["analogy1", "analogy2"],
-                "key_examples": ["example1", "example2"]
+                "key_examples": ["example1", "example2"],
+                "teaching_notes": "2-3 sentence narrative of what was explained and how"
             }
         }, indent=2)
 
@@ -390,6 +393,7 @@ OUTPUT FORMAT — respond with valid JSON only, no other text:
             "key_analogies": gen_output.summary.key_analogies,
             "key_examples": gen_output.summary.key_examples,
             "approach_label": variant_config["label"],
+            "teaching_notes": gen_output.summary.teaching_notes,
         }
 
     def generate_for_chapter(

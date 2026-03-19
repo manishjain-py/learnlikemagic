@@ -40,5 +40,7 @@ GUIDELINES:
 - **Language:** Write in simple English. Keep sentence structures short and direct — avoid complex or compound sentences. Write at a level a Grade {grade} student can comfortably read on their own.
 - **Tone check:** Before finishing, re-read every card and ask: "Would a struggling student feel overwhelmed or encouraged by this?" If overwhelmed, simplify further. The goal is that a student who finds this topic hard walks away feeling "I can do this."
 
+The "teaching_notes" field in the summary should be a 2-3 sentence narrative summarizing: what conceptual progression you used, how your main analogy/example was applied, and what key insight the student should walk away with. Write it as if briefing another tutor who will continue the session: "Explained X using Y analogy — started with Z, built to W. Key insight: ..."
+
 OUTPUT FORMAT — respond with valid JSON only, no other text:
 {output_schema}
