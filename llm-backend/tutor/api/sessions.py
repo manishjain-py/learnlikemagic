@@ -718,7 +718,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         await websocket.send_json(create_state_update(state_dto).model_dump())
 
         # Send welcome if first turn (skip if already in card phase from session creation)
-        if session.turn_count == 0 and not session.is_in_card_phase():
+        if not session.conversation_history and not session.is_in_card_phase():
             welcome, audio_text = await orchestrator.generate_welcome_message(session)
             from tutor.models.messages import create_teacher_message
 
@@ -739,6 +739,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await websocket.send_json(
                     create_error_response(f"Invalid message format: {e}").model_dump()
                 )
+                continue
+
+            if client_msg.type == "card_navigate":
+                if session.is_in_card_phase() and session.card_phase:
+                    card_idx = client_msg.payload.card_idx or 0
+                    session.card_phase.current_card_idx = card_idx
+                    ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
+                    if reloaded:
+                        session = reloaded
                 continue
 
             if client_msg.type == "chat":

@@ -256,8 +256,19 @@ class MasterTutorAgent(BaseAgent):
                 "question. Keep it to 2-3 sentences. Set explanation_phase_update='opening'."
             )
 
-        # Explanation-aware pacing: when current step is an explain step
+        # Card-aware: if current step is explain and cards already covered THIS concept
         current_step = session.current_step_data
+        if (current_step and current_step.type == "explain"
+                and current_step.concept in session.card_covered_concepts):
+            return (
+                "PACING: QUICK-CHECK (cards covered this) — The student already read explanation "
+                "cards covering '{concept}'. Do NOT re-explain from scratch. Ask a quick "
+                "'what do you remember about {concept}?' check. If they remember, set "
+                "explanation_phase_update='complete' and advance. If not, give a brief 2-3 sentence "
+                "refresher using a different angle than the cards, then ask again."
+            ).format(concept=current_step.concept)
+
+        # Explanation-aware pacing: when current step is an explain step
         if current_step and current_step.type == "explain":
             ep = session.get_current_explanation()
             if ep:
