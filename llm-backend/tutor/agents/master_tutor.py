@@ -15,6 +15,8 @@ from tutor.models.session_state import SessionState
 from tutor.prompts.master_tutor_prompts import (
     MASTER_TUTOR_SYSTEM_PROMPT,
     MASTER_TUTOR_TURN_PROMPT,
+    MASTER_TUTOR_WELCOME_PROMPT,
+    MASTER_TUTOR_BRIDGE_PROMPT,
 )
 from tutor.prompts.clarify_doubts_prompts import (
     CLARIFY_DOUBTS_SYSTEM_PROMPT,
@@ -152,6 +154,84 @@ class MasterTutorAgent(BaseAgent):
 
     def set_session(self, session: SessionState) -> None:
         self._session = session
+
+    async def generate_welcome(self, session: SessionState) -> TutorTurnOutput:
+        system_prompt = self._build_system_prompt(session)
+        welcome_prompt = self._build_welcome_prompt(session)
+        combined = f"{system_prompt}\n\n---\n\n{welcome_prompt}"
+        output = await self._execute_with_prompt(combined)
+        output.session_complete = False
+        output.advance_to_step = None
+        output.mastery_updates = []
+        return output
+
+    async def generate_bridge(self, session: SessionState, bridge_type: str) -> TutorTurnOutput:
+        system_prompt = self._build_system_prompt(session)
+        bridge_prompt = self._build_bridge_prompt(session, bridge_type)
+        combined = f"{system_prompt}\n\n---\n\n{bridge_prompt}"
+        output = await self._execute_with_prompt(combined)
+        output.session_complete = False
+        output.advance_to_step = None
+        output.mastery_updates = []
+        return output
+
+    def _build_welcome_prompt(self, session: SessionState) -> str:
+        has_cards = session.card_phase is not None
+        student_name = getattr(session.student_context, 'student_name', None)
+
+        if has_cards:
+            card_framing = (
+                "After your greeting, the student will read explanation cards about the topic. "
+                "Frame the session: mention you've prepared some cards, they should read through "
+                "them, and then you'll check understanding and practice together."
+            )
+        else:
+            card_framing = "After your greeting, you'll start explaining the topic interactively."
+
+        name_instruction = f"Address them by name ({student_name})." if student_name else ""
+
+        return MASTER_TUTOR_WELCOME_PROMPT.render(
+            card_framing=card_framing,
+            name_instruction=name_instruction,
+        )
+
+    def _build_bridge_prompt(self, session: SessionState, bridge_type: str) -> str:
+        teaching_notes = session.precomputed_explanation_summary or ""
+
+        if bridge_type == "understood":
+            context_block = (
+                "The student just finished reading explanation cards and indicated they understand."
+            )
+            if teaching_notes:
+                instruction = (
+                    "Reference something SPECIFIC from the cards — a particular analogy, example, "
+                    "or concept. Ask the student to explain it back in their own words. 2-3 sentences. "
+                    "Warm, conversational. Frame as 'let's see what stuck' not a test.\n"
+                    "Set question_asked and expected_answer for what you're asking."
+                )
+            else:
+                instruction = (
+                    "Ask the student what they found most interesting or what stood out from the cards. "
+                    "Then ask them to explain the main idea in their own words. 2-3 sentences.\n"
+                    "Set question_asked and expected_answer for what you're asking."
+                )
+        else:
+            context_block = (
+                "The student read all available explanation card variants but is still confused."
+            )
+            instruction = (
+                "DO NOT re-greet them. Start with empathy ('No worries, let's talk it through'). "
+                "Begin a fresh explanation using a DIFFERENT approach than the cards used.\n"
+                "Set explanation_phase_update='opening' to start fresh explanation."
+            )
+
+        notes_section = f"### What the cards covered\n{teaching_notes}" if teaching_notes else ""
+
+        return MASTER_TUTOR_BRIDGE_PROMPT.render(
+            context_block=context_block,
+            notes_section=notes_section,
+            instruction=instruction,
+        )
 
     def _compute_pacing_directive(self, session: SessionState) -> str:
         """One-line pacing instruction based on session signals."""

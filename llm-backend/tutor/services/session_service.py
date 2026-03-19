@@ -944,14 +944,32 @@ class SessionService:
             )
             if explanation and explanation.summary_json:
                 s = explanation.summary_json
-                summaries.append(
-                    f"Variant '{s.get('approach_label', variant_key)}': "
-                    f"Topics covered: {', '.join(s.get('card_titles', []))}. "
-                    f"Analogies used: {', '.join(s.get('key_analogies', []))}. "
-                    f"Examples used: {', '.join(s.get('key_examples', []))}."
-                )
+                # Prefer teaching_notes (richer), fallback to structured labels
+                if s.get("teaching_notes"):
+                    summaries.append(
+                        f"Variant '{s.get('approach_label', variant_key)}':\n"
+                        f"{s['teaching_notes']}"
+                    )
+                else:
+                    summaries.append(
+                        f"Variant '{s.get('approach_label', variant_key)}': "
+                        f"Topics covered: {', '.join(s.get('card_titles', []))}. "
+                        f"Analogies used: {', '.join(s.get('key_analogies', []))}. "
+                        f"Examples used: {', '.join(s.get('key_examples', []))}."
+                    )
 
         return "\n".join(summaries)
+
+    def _extract_card_covered_concepts(self, session: SessionState) -> set[str]:
+        """Extract concepts covered by card-phase explanation steps."""
+        concepts = set()
+        if not session.topic or not session.topic.study_plan:
+            return concepts
+        for step in session.topic.study_plan.steps:
+            if step.type == "explain":
+                concepts.add(step.concept)
+        concepts.update(session.concepts_covered_set)
+        return concepts
 
     def _advance_past_explanation_steps(self, session: SessionState):
         """After successful card phase, skip consecutive leading explain steps.
