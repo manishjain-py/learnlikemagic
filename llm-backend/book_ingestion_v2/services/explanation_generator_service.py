@@ -29,6 +29,14 @@ class ExplanationCardOutput(BaseModel):
     title: str = Field(description="Short heading for the card")
     content: str = Field(description="Explanation text — simple language, short sentences")
     visual: Optional[str] = Field(default=None, description="Optional ASCII diagram or formatted visual")
+    audio_text: str = Field(
+        description="Short spoken version of this card for TTS audio playback. "
+        "PURE SPOKEN WORDS ONLY — zero symbols, zero markdown, zero emoji. "
+        "Write math as natural speech ('five plus three is eight', never '5 + 3 = 8'). "
+        "Skip content that only works visually (diagrams, tables, ASCII art). "
+        "Shorter than content — just the key idea in a warm, conversational tone. "
+        "The student reads the full card on screen, this is a quick spoken companion."
+    )
 
 
 class ExplanationSummaryOutput(BaseModel):
@@ -234,7 +242,8 @@ class ExplanationGeneratorService:
                     "card_type": "concept | example | visual | analogy | summary",
                     "title": "short heading",
                     "content": "explanation text, simple language",
-                    "visual": "optional ASCII/formatted visual or null"
+                    "visual": "optional ASCII/formatted visual or null",
+                    "audio_text": "short spoken version for TTS — pure words, no symbols/markdown, math as speech"
                 }
             ],
             "summary": {
@@ -343,7 +352,8 @@ class ExplanationGeneratorService:
                     "card_type": "concept | example | visual | analogy | summary",
                     "title": "short heading",
                     "content": "explanation text, simple language",
-                    "visual": "optional ASCII/formatted visual or null"
+                    "visual": "optional ASCII/formatted visual or null",
+                    "audio_text": "short spoken version for TTS — pure words, no symbols/markdown, math as speech"
                 }
             ],
             "summary": {

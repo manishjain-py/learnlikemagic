@@ -170,7 +170,7 @@ export default function ChatSession() {
           title: card.title,
           cardType: card.card_type,
           visual: card.visual,
-          audioText: card.content,
+          audioText: card.audio_text || card.content,
         });
       });
     }

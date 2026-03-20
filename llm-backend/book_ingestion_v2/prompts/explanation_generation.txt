@@ -39,6 +39,12 @@ GUIDELINES:
 - The content field should use simple markdown: **bold** for key terms, line breaks for readability. Keep paragraphs to 2-3 sentences max.
 - **Language:** Write in simple English. Keep sentence structures short and direct — avoid complex or compound sentences. Write at a level a Grade {grade} student can comfortably read on their own.
 - **Tone check:** Before finishing, re-read every card and ask: "Would a struggling student feel overwhelmed or encouraged by this?" If overwhelmed, simplify further. The goal is that a student who finds this topic hard walks away feeling "I can do this."
+- **Audio text:** Every card MUST include an `audio_text` field — a short spoken version of the card for TTS audio playback. This is literally read aloud by a text-to-speech engine, so:
+  - ZERO symbols: no +, -, =, ×, ÷, /, %, (), [], *, #, →, —, ..., emoji, markdown, underscores, or any non-word character
+  - Write math as natural speech: "five plus three is eight", "three divided by four" — NEVER "5 + 3 = 8" or "3/4"
+  - Skip content that only works visually (ASCII diagrams, tables, formatted visuals) — the student sees that on screen
+  - Keep it SHORTER than the content — just the key idea in a warm, spoken tone. The student reads the full card, this is a quick audio companion.
+  - Write as if a friendly tutor is speaking aloud to the student — natural, warm, conversational.
 
 The "teaching_notes" field in the summary should be a 2-3 sentence narrative summarizing: what conceptual progression you used, how your main analogy/example was applied, and what key insight the student should walk away with. Write it as if briefing another tutor who will continue the session: "Explained X using Y analogy — started with Z, built to W. Key insight: ..."
 

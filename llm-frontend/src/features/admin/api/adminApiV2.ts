@@ -502,6 +502,7 @@ export interface ExplanationCardV2 {
   title: string;
   content: string;
   visual?: string | null;
+  audio_text?: string | null;
 }
 
 export interface ExplanationVariantV2 {

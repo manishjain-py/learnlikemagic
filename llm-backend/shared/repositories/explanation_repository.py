@@ -14,6 +14,7 @@ class ExplanationCard(BaseModel):
     title: str
     content: str
     visual: Optional[str] = None
+    audio_text: Optional[str] = None  # TTS-friendly spoken version of content
 
 
 class ExplanationRepository:
