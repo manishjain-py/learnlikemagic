@@ -1079,11 +1079,7 @@ export default function ChatSession() {
 
         <div className="progress-bar">
           <div className="progress-info">
-            {sessionMode === 'teach_me' && totalSteps > 0 && (
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                Step {stepIdx} of {totalSteps}
-              </span>
-            )}
+            {/* Step indicator hidden — internal tutor state, not shown to student */}
             {sessionMode === 'clarify_doubts' && (
               <span>
                 {conceptsDiscussed.length > 0
@@ -1190,47 +1186,38 @@ export default function ChatSession() {
                     </>
                   ) : (
                     <>
-                      <h2>Session Complete!</h2>
-                      {summary && (
+                      <h2>Well done!</h2>
+                      {summary && summary.concepts_taught && summary.concepts_taught.length > 0 && (
                         <div className="summary-content">
-                          <p>
-                            <strong>Steps Completed:</strong> {summary.steps_completed}
-                          </p>
-                          <p>
-                            <strong>Final Mastery:</strong>{' '}
-                            {(summary.mastery_score * 100).toFixed(0)}%
-                          </p>
-                          {summary.misconceptions_seen.length > 0 && (
-                            <div>
-                              <strong>Areas to Review:</strong>
-                              <ul>
-                                {summary.misconceptions_seen.map((m, i) => (
-                                  <li key={i}>{m}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          <div>
-                            <strong>Next Steps:</strong>
-                            <ul>
-                              {summary.suggestions.map((s, i) => (
-                                <li key={i}>{s}</li>
-                              ))}
-                            </ul>
+                          <p>You covered:</p>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                            {summary.concepts_taught.map((c, i) => (
+                              <span key={i} style={{
+                                display: 'inline-block',
+                                background: '#dcfce7',
+                                borderRadius: '12px',
+                                padding: '4px 12px',
+                                fontSize: '0.85rem',
+                                color: '#166534',
+                              }}>{c}</span>
+                            ))}
                           </div>
                         </div>
                       )}
                     </>
                   )}
                   <button onClick={handleBack} className="restart-button">
-                    Back to Topic
+                    Continue Practicing
                   </button>
                   <button
-                    onClick={() => navigate('/report-card')}
+                    onClick={() => navigate(subject && chapter
+                      ? `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`
+                      : '/learn'
+                    )}
                     className="restart-button"
                     style={{ marginTop: '10px', background: 'white', color: '#667eea', border: '2px solid #667eea' }}
                   >
-                    View Report Card
+                    Explore More Topics
                   </button>
                 </>
               )}
@@ -1523,7 +1510,65 @@ export default function ChatSession() {
                 </div>
                 )
               ) : null}
-              {isComplete && (
+              {isComplete && sessionMode === 'teach_me' && summary && (
+                <div className="session-complete-card" style={{
+                  margin: '16px',
+                  padding: '20px',
+                  background: '#f0fdf4',
+                  borderRadius: '16px',
+                  border: '1px solid #bbf7d0',
+                  textAlign: 'center',
+                }}>
+                  <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: '#166534' }}>
+                    Well done!
+                  </h3>
+                  {summary.concepts_taught && summary.concepts_taught.length > 0 && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <p style={{ fontSize: '0.85rem', color: '#4a5568', margin: '0 0 8px' }}>You covered:</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+                        {summary.concepts_taught.map((c, i) => (
+                          <span key={i} style={{
+                            display: 'inline-block',
+                            background: '#dcfce7',
+                            borderRadius: '12px',
+                            padding: '4px 12px',
+                            fontSize: '0.82rem',
+                            color: '#166534',
+                          }}>{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 16px' }}>
+                    What would you like to do next?
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      className="action-button primary"
+                      onClick={handleBack}
+                      style={{ width: '100%' }}
+                    >
+                      Continue Practicing
+                    </button>
+                    <button
+                      className="action-button"
+                      onClick={() => navigate(subject && chapter
+                        ? `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`
+                        : '/learn'
+                      )}
+                      style={{
+                        width: '100%',
+                        background: 'white',
+                        color: '#667eea',
+                        border: '2px solid #667eea',
+                      }}
+                    >
+                      Explore More Topics
+                    </button>
+                  </div>
+                </div>
+              )}
+              {isComplete && sessionMode !== 'teach_me' && (
                 <div style={{ textAlign: 'center', padding: '16px' }}>
                   <button
                     className="action-button primary"

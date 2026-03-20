@@ -38,6 +38,7 @@ class SummaryResponse(BaseModel):
     mastery_score: float
     misconceptions_seen: List[str]
     suggestions: List[str]
+    concepts_taught: List[str] = []
 
 
 class GuidelineResponse(BaseModel):

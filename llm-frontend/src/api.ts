@@ -178,6 +178,7 @@ export interface SummaryResponse {
   mastery_score: number;
   misconceptions_seen: string[];
   suggestions: string[];
+  concepts_taught?: string[];
 }
 
 export interface ChapterInfo {

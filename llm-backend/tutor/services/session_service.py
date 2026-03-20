@@ -349,11 +349,14 @@ class SessionService:
         misconceptions_seen = [m.description for m in session.misconceptions]
         suggestions = self._generate_suggestions(session, misconceptions_seen)
 
+        concepts_taught = session.session_summary.concepts_taught if session.session_summary else []
+
         return SummaryResponse(
             steps_completed=session.current_step - 1,
             mastery_score=round(session.overall_mastery, 2),
             misconceptions_seen=misconceptions_seen,
             suggestions=suggestions,
+            concepts_taught=concepts_taught,
         )
 
     def _persist_session(
