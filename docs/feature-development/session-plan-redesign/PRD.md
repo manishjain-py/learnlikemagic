@@ -1,7 +1,7 @@
 # PRD: Session Plan Redesign — Explanation-Aware Interactive Plans
 
 **Status:** Draft
-**Date:** 2026-03-19
+**Date:** 2026-03-20
 
 ---
 
@@ -40,27 +40,33 @@ Redesign the study plan as a **post-explanation interactive session plan**. It r
 
 | Before | After |
 |--------|-------|
-| Study plan doesn't know about explanations | Session plan receives explanation summary + card structure |
+| Study plan generated at session creation (before cards) | Session plan generated at card completion (after student reads cards) |
+| Study plan doesn't know about explanations | Session plan receives explanation summary + card structure for the actual variant(s) shown |
 | Has "explain" steps with independent building blocks | No explain steps — cards handle explanation |
 | Step types: explain, check, practice | Step types: check_understanding, guided_practice, independent_practice, extend |
 | Generates its own analogies | References card analogies explicitly |
 | Pacing directive hacks around card overlap | Plan is designed for post-card context natively |
+| Cached per (user_id, guideline_id) — variant-unaware | Per-session — always matches what the student actually read |
 
 ---
 
 ## Requirements
 
-### R1: Session Plan Generator — New Inputs
+### R1: Session Plan Generated at Card Completion
 
-The session plan generator receives explanation data alongside the guideline.
+The session plan is generated **after the student finishes reading cards** (when they say "I understand" or exhaust all variants), not at session creation. This ensures the plan is based on what the student actually read.
 
-**New inputs:**
+**Why not at session creation:** At session creation we don't know which variant(s) the student will see. They might start with variant A, then switch to B. A plan generated for A's analogies is wrong if the student ended up reading B. Generating at card completion means the plan always matches reality.
+
+**Trigger point:** `complete_card_phase()` in session service — after the student finishes cards and before the bridge message.
+
+**Inputs:**
 
 ```python
 generate_session_plan(
     guideline: TeachingGuideline,         # Curriculum scope (as before)
-    explanation_summary: dict,            # From TopicExplanation.summary_json
-    card_titles: list[str],              # Ordered list of card titles
+    explanation_summaries: list[dict],    # summary_json for each variant shown
+    card_titles: list[str],              # Card titles from the final variant shown
     student_context: Optional[StudentContext],  # Personalization (as before)
 )
 ```
@@ -76,6 +82,8 @@ generate_session_plan(
 | `card_titles` | ["What is Addition?", "Combining Groups", "The + and = Signs", "Practice Together", "Quick Recap"] | The progressive building blocks from cards |
 
 The `teaching_notes` field is the richest input — it's written as a briefing for "another tutor who will continue the session."
+
+**Multi-variant handling:** If the student saw variants A and B (switched because they didn't understand A), both summaries are passed. The plan generator knows the student needed two approaches and can design checks accordingly.
 
 ### R2: New Step Types
 
@@ -187,9 +195,13 @@ let them PRACTICE applying it, and EXTEND to harder problems.
 
 ### R5: Session Plan Storage
 
-Reuse the existing `study_plans` DB table. The `plan_json` field stores the new structure.
+The session plan is **per-session**, not cached per (user_id, guideline_id). Since it depends on which variant(s) the student actually read, it can't be reused across sessions that might show different variants.
 
-**Schema change:** None needed. `plan_json` is a Text/JSONB field that stores whatever the generator produces. The new format is:
+**Storage:** The generated plan is stored directly in `SessionState` (the session's `state_json`), not in the `study_plans` table. This is simpler — no need to change the UNIQUE constraint on `(user_id, guideline_id)`, no variant-aware cache keys.
+
+The `study_plans` table continues to hold legacy v1 plans for backward compatibility. New sessions generate v2 plans inline at card completion.
+
+**Plan format:**
 
 ```json
 {
@@ -208,7 +220,7 @@ Reuse the existing `study_plans` DB table. The `plan_json` field stores the new 
   ],
   "metadata": {
     "plan_version": 2,
-    "explanation_variant": "A",
+    "variants_shown": ["A"],
     "estimated_duration_minutes": 20,
     "is_generic": false
   }
@@ -285,27 +297,31 @@ Currently, the orchestrator maintains an `ExplanationPhase` state machine (openi
   - `extend` → "EXTEND: Apply to new contexts. Build on earlier practice."
 - `card_covered_concepts` set no longer needed — session plan is inherently post-card
 
-### R9: Session Service — Load Explanations for Plan Generation
+### R9: Session Service — Generate Plan at Card Completion
 
-**Session creation flow changes:**
+**Session flow changes:**
 
 ```
 Current:
-1. Load guideline
-2. Load study plan (or generate from guideline + student_context)
-3. Load explanations → card phase
-4. Build precomputed_explanation_summary for tutor prompt
+1. Session creation: load guideline → load/generate study plan → load explanations → card phase
+2. Card completion: build precomputed_explanation_summary → bridge → interactive phase
+3. Interactive phase: tutor uses study plan steps (with card-covered workaround)
 
 New:
-1. Load guideline
-2. Load explanations (always exist)
-3. Generate session plan from guideline + explanation summary + student_context
-4. Initialize card phase
+1. Session creation: load guideline → load explanations → card phase (NO plan generation yet)
+2. Card completion: generate session plan from guideline + explanation summary(s) → bridge → interactive phase
+3. Interactive phase: tutor uses session plan steps (natively post-card, no workaround)
 ```
 
-The key change: explanation loading moves BEFORE plan generation, so explanation data can be passed to the generator.
+**Key changes in `session_service.py`:**
 
-**Caching:** Session plans can still be cached per user+guideline. But they should be regenerated if the explanation variant changes (unlikely — variants are stable after generation).
+- `create_new_session()`: No longer generates or loads a study plan. Sets up card phase only.
+- `complete_card_phase()`: After marking card phase complete, calls `generate_session_plan()` with the actual `variants_shown` from `CardPhaseState`. The generated plan is stored in `SessionState.topic.study_plan`.
+- The session starts the interactive phase with a plan that exactly matches what the student just read.
+
+**Session resume:** If a session is paused after card completion, the plan is in `state_json` and restored on resume. No regeneration needed.
+
+**Latency consideration:** Plan generation adds an LLM call at card completion. This is acceptable — it happens once, while the bridge message is being generated. Can run in parallel with the bridge generation to hide latency.
 
 ### R10: Pre-Computed Explanation Summary — Simplified Injection
 
@@ -333,9 +349,9 @@ The summary injection (`{precomputed_explanation_summary_section}`) stays as-is.
 
 ### Modified: Study Plan Generator Service
 - New prompt template: `session_plan_generator.txt`
-- New inputs: explanation summary, card titles alongside guideline and student context
+- New method: `generate_session_plan()` takes guideline + explanation summaries + card titles + student context
 - New output schema matching the `SessionPlanStep` structure
-- Old prompt retained for backward compatibility (plan_version detection)
+- Old `generate_plan()` method and prompt retained for v1 backward compatibility
 
 ### Modified: Study Plan Model (`study_plan.py`)
 - Expand `StudyPlanStep.type` Literal to include new types
@@ -348,21 +364,29 @@ The summary injection (`{precomputed_explanation_summary_section}`) stays as-is.
 - Version 1: existing conversion logic unchanged
 
 ### Modified: Session Service (`session_service.py`)
-- Reorder session creation: load explanations before generating plan
-- Pass explanation summary to plan generator
+- `create_new_session()`: Remove study plan generation/loading. Set up card phase only.
+- `complete_card_phase()`: Generate v2 session plan using `variants_shown` from `CardPhaseState`. Load explanation summaries for shown variants. Store plan in session state. Can run in parallel with bridge generation.
 - Remove `_extract_card_covered_concepts()` (no longer needed)
-- Simplify `card_covered_concepts` usage
+- Remove `card_covered_concepts` from session state
 
 ### Modified: Master Tutor Agent (`master_tutor.py`)
 - New `_format_session_plan_steps()` for version 2 plans
 - New pacing directives for new step types
-- `_build_explanation_context()` returns empty for new-format plans
+- `_build_explanation_context()` returns empty for v2 plans (no explain steps)
 - Simplified `_compute_pacing_directive()` — no card-covered workaround
 
 ### Modified: Master Tutor Prompts (`master_tutor_prompts.py`)
 - Update study plan section header and format
 - Add step-type-specific tutor instructions
 - Remove explain-step-specific rules (building block tracking, min turns)
+
+### Implementation Order
+1. Add new fields to `StudyPlanStep` model + new step types
+2. New `session_plan_generator.txt` prompt + `generate_session_plan()` method
+3. Move plan generation to `complete_card_phase()` using actual `variants_shown`
+4. Update topic adapter for v2 format
+5. Update master tutor prompt formatting + pacing directives for new step types
+6. Remove dead explain-phase code from card-backed sessions
 
 ---
 
