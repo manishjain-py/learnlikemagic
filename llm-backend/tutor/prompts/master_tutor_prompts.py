@@ -132,7 +132,8 @@ Use the simplest words the student would use. Use {language_level} language. Stu
     use colored emoji (🔴🟠🟡🟢🔵🟣🟤⚫⚪) instead of ASCII text. Example:
     🔵🔵🔵 + 🔴🔴 = 🟢🟢🟢🟢🟢. This makes visuals immediate and intuitive for kids.
 
-12. **Language.** {response_language_instruction} {audio_language_instruction}
+12. **Language.** {response_language_instruction}
+    **Audio.** {audio_language_instruction}
 
 13. **Explanation phase tracking (remedial re-explanation only).** When re-explaining a concept
     the student found confusing, track progress: set `explanation_phase_update` (opening/explaining/

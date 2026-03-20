@@ -87,9 +87,13 @@ class TutorTurnOutput(BaseModel):
 
     response: str = Field(description="Your response to the student as the tutor")
     audio_text: str = Field(
-        description="Spoken version of your response for TTS audio playback. "
-        "Follow the audio language instruction in the rules. Roman script only. "
-        "Never shown to the student — audio only."
+        description="Short spoken companion to your response — played aloud via TTS. "
+        "CRITICAL: pure spoken words only. ZERO symbols, markdown, emoji, or anything "
+        "that sounds awkward when literally read aloud by a TTS engine. "
+        "Write math as natural speech (say 'five plus three is eight', never '5 + 3 = 8'). "
+        "Does NOT need to cover everything in `response` — student reads the full text on screen. "
+        "Just convey the key idea, encouragement, or question in a natural spoken way. "
+        "Follow the audio language instruction in the rules. Roman script only."
     )
     intent: str = Field(
         description="What the student was doing: answer, answer_change, question, confusion, novel_strategy, off_topic, or continuation"
