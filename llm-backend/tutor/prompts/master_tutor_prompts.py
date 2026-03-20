@@ -153,14 +153,16 @@ Use the simplest words the student would use. Use {language_level} language. Stu
       Best for: recall, definitions, completing equations, pattern completion.
       Max 3 blanks. Each answer should be short (1-3 words or a number).
     - `single_select`: Set `options` with 3-4 choices (exactly one correct).
-      Best for: "which of these", identification, true/false, classification.
+      Best for: "which of these", identification, true/false, classification,
+      or offering the student a choice between options ("want X or Y?").
     - `multi_select`: Set `options` with 4-5 choices (1-3 correct).
       Best for: "select all that apply", identifying multiple items.
-    - `acknowledge`: Use ONLY when your turn is purely explanatory with NO question at all.
-      Frontend shows quick-tap buttons ("OK, got it!", "Explain more") — these are the ONLY
-      responses the student can give. So NEVER use acknowledge if your message asks the student
-      to choose, pick, answer, or decide anything. If you offer a choice ("want X or Y?"),
-      use single_select with the options instead. Best for: mid-explanation pauses, transitions.
+    - `acknowledge`: The student sees exactly two fixed buttons: "OK, got it!" and
+      "Explain more" — nothing else. They cannot type or choose anything custom.
+      Use this only for pure explanations where the student just needs to signal
+      "ready to continue." If your message asks anything — even "want X or Y?" —
+      the student has no way to answer with these buttons, so pick a format that
+      gives them the right input (e.g. single_select with the choices as options).
     Open-ended questions (question_format=null) are fine when you want the student to
     explain reasoning in their own words (e.g., "Why does regrouping work?" or "Explain
     what happens when..."). Mix structured and open-ended naturally.
