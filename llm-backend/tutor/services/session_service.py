@@ -879,6 +879,7 @@ class SessionService:
                 "action": "transition_to_interactive",
                 "message": bridge_result.response,
                 "audio_text": bridge_result.audio_text,
+                "question_format": bridge_result.question_format,
             }
 
         elif action == "explain_differently":
@@ -910,6 +911,7 @@ class SessionService:
                     "action": "fallback_dynamic",
                     "message": bridge_result.response,
                     "audio_text": bridge_result.audio_text,
+                    "question_format": bridge_result.question_format,
                 }
 
         from fastapi import HTTPException

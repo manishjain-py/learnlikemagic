@@ -949,6 +949,7 @@ export default function ChatSession() {
       role: 'teacher' as const,
       content: result.message,
       audioText: result.audio_text || null,
+      questionFormat: result.question_format || null,
     };
     setMessages(prev => [...prev, bridgeMsg]);
     localStorage.removeItem(`slide-pos-${sessionId}`);

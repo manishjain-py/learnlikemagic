@@ -244,13 +244,17 @@ class MasterTutorAgent(BaseAgent):
                     "Reference something SPECIFIC from the cards — a particular analogy, example, "
                     "or concept. Ask the student to explain it back in their own words. 2-3 sentences. "
                     "Warm, conversational. Frame as 'let's see what stuck' not a test.\n"
-                    "Set question_asked and expected_answer for what you're asking."
+                    "Set question_asked and expected_answer for what you're asking.\n"
+                    "If your question has clear answer choices, set question_format "
+                    "(single_select or fill_in_the_blank) — see Rule 15."
                 )
             else:
                 instruction = (
                     "Ask the student what they found most interesting or what stood out from the cards. "
                     "Then ask them to explain the main idea in their own words. 2-3 sentences.\n"
-                    "Set question_asked and expected_answer for what you're asking."
+                    "Set question_asked and expected_answer for what you're asking.\n"
+                    "If your question has clear answer choices, set question_format "
+                    "(single_select or fill_in_the_blank) — see Rule 15."
                 )
         else:
             context_block = (
