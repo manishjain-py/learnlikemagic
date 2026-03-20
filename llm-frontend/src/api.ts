@@ -107,7 +107,7 @@ export interface OptionItem {
 }
 
 export interface QuestionFormat {
-  type: 'fill_in_the_blank' | 'single_select' | 'multi_select';
+  type: 'fill_in_the_blank' | 'single_select' | 'multi_select' | 'acknowledge';
   sentence_template?: string;
   blanks?: BlankItem[];
   options?: OptionItem[];

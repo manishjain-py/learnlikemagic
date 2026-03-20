@@ -59,7 +59,7 @@ class OptionItem(BaseModel):
 
 class QuestionFormat(BaseModel):
     """Structured question format for interactive questions."""
-    type: Literal["fill_in_the_blank", "single_select", "multi_select"] = Field(
+    type: Literal["fill_in_the_blank", "single_select", "multi_select", "acknowledge"] = Field(
         description="Question format type"
     )
     sentence_template: Optional[str] = Field(

@@ -191,10 +191,39 @@ function SelectOptions({
   );
 }
 
+// ─── Acknowledge (quick-tap continue) ─────────────
+
+function AcknowledgeButtons({ onSubmit }: { onSubmit: (text: string) => void }) {
+  return (
+    <div className="iq-select">
+      <div className="iq-options">
+        <button
+          className="iq-option-chip"
+          onClick={() => onSubmit('OK, got it!')}
+          type="button"
+        >
+          OK, got it!
+        </button>
+        <button
+          className="iq-option-chip"
+          onClick={() => onSubmit('Explain more')}
+          type="button"
+        >
+          Explain more
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────
 
 export default function InteractiveQuestion({ questionFormat, onSubmit, disabled }: InteractiveQuestionProps) {
   if (disabled) return null;
+
+  if (questionFormat.type === 'acknowledge') {
+    return <AcknowledgeButtons onSubmit={onSubmit} />;
+  }
 
   if (questionFormat.type === 'fill_in_the_blank' && questionFormat.sentence_template && questionFormat.blanks) {
     return (

@@ -124,10 +124,15 @@ Use the simplest words the student would use. Use {language_level} language. Stu
       Best for: "which of these", identification, true/false, classification.
     - `multi_select`: Set `options` with 4-5 choices (1-3 correct).
       Best for: "select all that apply", identifying multiple items.
+    - `acknowledge`: Use when your turn is purely explanatory and you just need the
+      student to acknowledge before continuing. No question_asked or expected_answer needed.
+      Frontend shows quick-tap buttons ("OK, got it!", "Explain more") so the student
+      doesn't have to type. Best for: mid-explanation pauses, transitions, setup.
     Open-ended questions (question_format=null) are fine when you want the student to
     explain reasoning in their own words (e.g., "Why does regrouping work?" or "Explain
     what happens when..."). Mix structured and open-ended naturally.
-    ALWAYS also set `question_asked` and `expected_answer` alongside `question_format`.
+    When using fill_in_the_blank, single_select, or multi_select, ALWAYS also set
+    `question_asked` and `expected_answer` alongside `question_format`.
     Vary formats — don't use the same format twice in a row.""",
     name="master_tutor_system",
 )
