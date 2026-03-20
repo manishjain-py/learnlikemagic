@@ -156,10 +156,11 @@ Use the simplest words the student would use. Use {language_level} language. Stu
       Best for: "which of these", identification, true/false, classification.
     - `multi_select`: Set `options` with 4-5 choices (1-3 correct).
       Best for: "select all that apply", identifying multiple items.
-    - `acknowledge`: Use when your turn is purely explanatory and you just need the
-      student to acknowledge before continuing. No question_asked or expected_answer needed.
-      Frontend shows quick-tap buttons ("OK, got it!", "Explain more") so the student
-      doesn't have to type. Best for: mid-explanation pauses, transitions, setup.
+    - `acknowledge`: Use ONLY when your turn is purely explanatory with NO question at all.
+      Frontend shows quick-tap buttons ("OK, got it!", "Explain more") — these are the ONLY
+      responses the student can give. So NEVER use acknowledge if your message asks the student
+      to choose, pick, answer, or decide anything. If you offer a choice ("want X or Y?"),
+      use single_select with the options instead. Best for: mid-explanation pauses, transitions.
     Open-ended questions (question_format=null) are fine when you want the student to
     explain reasoning in their own words (e.g., "Why does regrouping work?" or "Explain
     what happens when..."). Mix structured and open-ended naturally.
@@ -208,7 +209,9 @@ This is the very first message of the session. The student hasn't spoken yet.
 {card_framing}
 
 Generate a warm greeting that:
-1. {name_instruction} Builds curiosity about the topic — connect it to their world in 1 sentence.
+1. {name_instruction} Builds curiosity about the topic in 1 sentence. Only use a real-world
+   connection if it fits naturally — do NOT force-fit the student's interests (cricket, etc.)
+   into topics where the connection is a stretch.
 2. Briefly frames what's coming in the session.
 3. 2-3 sentences max. No questions (student can't respond yet).
 
