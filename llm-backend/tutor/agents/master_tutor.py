@@ -87,8 +87,8 @@ class TutorTurnOutput(BaseModel):
 
     response: str = Field(description="Your response to the student as the tutor")
     audio_text: str = Field(
-        description="Hinglish (Hindi-English mix) casual spoken version of your response for TTS. "
-        "Use Roman script throughout. Mix Hindi conversational glue with English technical terms. "
+        description="Spoken version of your response for TTS audio playback. "
+        "Follow the audio language instruction in the rules. Roman script only. "
         "Never shown to the student — audio only."
     )
     intent: str = Field(

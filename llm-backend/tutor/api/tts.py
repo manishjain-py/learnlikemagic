@@ -1,4 +1,4 @@
-"""Text-to-speech endpoint using Google Cloud TTS API (Hindi voice)."""
+"""Text-to-speech endpoint using Google Cloud TTS API (Chirp 3 HD)."""
 
 import io
 import logging
@@ -29,7 +29,7 @@ async def text_to_speech(
     request: TTSRequest,
     current_user=Depends(get_optional_user),
 ):
-    """Convert text to speech using Google Cloud TTS API with Hindi voice."""
+    """Convert text to speech using Google Cloud TTS API (Chirp 3 HD Kore)."""
     settings = get_settings()
 
     if not settings.google_cloud_tts_api_key:
@@ -43,23 +43,15 @@ async def text_to_speech(
 
         synthesis_input = texttospeech.SynthesisInput(text=request.text)
 
-        # Dynamic voice selection based on language preference
-        if request.language == "en":
-            voice_name = "en-IN-Neural2-A"
-            language_code = "en-IN"
-        else:  # hi or hinglish
-            voice_name = "hi-IN-Neural2-D"
-            language_code = "hi-IN"
-
+        # Chirp 3 HD Kore — natural human-like voice for all languages
         voice = texttospeech.VoiceSelectionParams(
-            language_code=language_code,
-            name=voice_name,
+            language_code="en-IN",
+            name="en-IN-Chirp3-HD-Kore",
         )
 
+        # Chirp 3 HD does not support pitch/rate adjustment
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=1.1,
-            pitch=3.0,
         )
 
         response = client.synthesize_speech(
