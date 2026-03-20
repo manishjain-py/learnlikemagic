@@ -314,7 +314,8 @@ class StudyPlanGeneratorService:
             ) or "  (no card titles available)"
 
             # Common misconceptions from guideline metadata
-            metadata = guideline.guideline_metadata_json or {}
+            raw_metadata = guideline.metadata_json
+            metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else (raw_metadata or {})
             misconceptions = metadata.get("common_misconceptions", [])
             common_misconceptions = "\n".join(f"- {m}" for m in misconceptions) if misconceptions else "None specified"
 
