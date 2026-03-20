@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from shared.utils.s3_client import get_s3_client
 from shared.services.ocr_service import get_ocr_service
 from shared.services.llm_config_service import LLMConfigService
-from book_ingestion_v2.constants import ChapterStatus, OCRStatus, LLM_CONFIG_KEY
+from book_ingestion_v2.constants import ChapterStatus, OCRStatus, LLM_CONFIG_KEY, V2JobType
 from book_ingestion_v2.models.database import ChapterPage, BookChapter
 from book_ingestion_v2.models.schemas import PageResponse, PageDetailResponse, ChapterPagesResponse
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
@@ -319,6 +319,89 @@ class ChapterPageService:
             uploaded_at=page.uploaded_at,
             ocr_completed_at=page.ocr_completed_at,
         )
+
+    def bulk_ocr(self, db: Session, job_id: str, chapter_id: str, book_id: str):
+        """
+        Bulk OCR background task. Called by run_in_background_v2.
+
+        Processes all pages needing OCR (pending/failed) for a chapter.
+        Updates job progress after each page.
+        """
+        from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+        # Rebind to background thread's DB session
+        self.db = db
+        self.chapter_repo = ChapterRepository(db)
+        self.page_repo = ChapterPageRepository(db)
+
+        # Re-init OCR service in this session
+        ingestion_config = LLMConfigService(db).get_config(LLM_CONFIG_KEY)
+        self.ocr_service = get_ocr_service(model=ingestion_config["model_id"])
+
+        job_service = ChapterJobService(db)
+        chapter = self.chapter_repo.get_by_id(chapter_id)
+        if not chapter:
+            raise ValueError(f"Chapter not found: {chapter_id}")
+
+        ch_num = str(chapter.chapter_number).zfill(2)
+
+        # Snapshot pages at job start
+        pages = self.page_repo.get_pages_needing_ocr(chapter_id)
+        completed = 0
+        failed = 0
+
+        for page in pages:
+            tmp_path = None
+            text_s3_key = f"books/{book_id}/chapters/{ch_num}/pages/{page.page_number}.txt"
+            try:
+                job_service.update_progress(
+                    job_id,
+                    current_item=f"OCR page {page.page_number}",
+                    completed=completed,
+                    failed=failed,
+                )
+
+                if not page.image_s3_key:
+                    raise ValueError(f"Page {page.page_number} has no image")
+
+                png_data = self.s3_client.download_bytes(page.image_s3_key)
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    tmp.write(png_data)
+                    tmp_path = tmp.name
+
+                ocr_text = self.ocr_service.extract_text_from_image(
+                    image_path=tmp_path, prompt=V2_OCR_PROMPT
+                )
+                self.s3_client.upload_bytes(ocr_text.encode("utf-8"), text_s3_key)
+
+                page.text_s3_key = text_s3_key
+                page.ocr_status = OCRStatus.COMPLETED.value
+                page.ocr_error = None
+                page.ocr_model = self.ocr_service.model
+                page.ocr_completed_at = datetime.utcnow()
+                self.page_repo.update(page)
+                completed += 1
+                logger.info(f"Bulk OCR completed for page {page.page_number}")
+            except Exception as e:
+                page.ocr_status = OCRStatus.FAILED.value
+                page.ocr_error = str(e)
+                self.page_repo.update(page)
+                failed += 1
+                logger.warning(f"Bulk OCR failed for page {page.page_number}: {e}")
+            finally:
+                if tmp_path:
+                    Path(tmp_path).unlink(missing_ok=True)
+
+        # Update chapter completeness (may transition to upload_complete)
+        chapter = self.chapter_repo.get_by_id(chapter_id)
+        self._update_chapter_completeness(chapter)
+
+        # Release job lock
+        final_status = "completed_with_errors" if failed > 0 else "completed"
+        job_service.update_progress(
+            job_id, current_item="Done", completed=completed, failed=failed,
+        )
+        job_service.release_lock(job_id, status=final_status)
 
     def _update_chapter_completeness(self, chapter: BookChapter):
         """Update chapter's uploaded_page_count and status based on current pages."""

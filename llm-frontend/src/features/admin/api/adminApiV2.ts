@@ -171,11 +171,30 @@ export async function refinalizeChapter(
   );
 }
 
-export async function getLatestJobV2(
+export async function bulkOcrRetry(
   bookId: string, chapterId: string
 ): Promise<ProcessingJobResponseV2> {
   return apiFetch<ProcessingJobResponseV2>(
-    `/admin/v2/books/${bookId}/chapters/${chapterId}/jobs/latest`
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/ocr-retry`,
+    { method: 'POST' }
+  );
+}
+
+export async function bulkOcrRerun(
+  bookId: string, chapterId: string
+): Promise<ProcessingJobResponseV2> {
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/ocr-rerun`,
+    { method: 'POST' }
+  );
+}
+
+export async function getLatestJobV2(
+  bookId: string, chapterId: string, jobType?: string
+): Promise<ProcessingJobResponseV2> {
+  const params = jobType ? `?job_type=${jobType}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/jobs/latest${params}`
   );
 }
 

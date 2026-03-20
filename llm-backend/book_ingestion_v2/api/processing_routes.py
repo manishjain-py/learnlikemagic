@@ -14,9 +14,12 @@ from book_ingestion_v2.models.schemas import (
     ChapterTopicResponse,
     ChapterTopicsResponse,
 )
+from typing import Optional
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+from book_ingestion_v2.repositories.chapter_page_repository import ChapterPageRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
 from book_ingestion_v2.services.chapter_job_service import ChapterJobService, ChapterJobLockError
+from book_ingestion_v2.services.chapter_page_service import ChapterPageService
 from book_ingestion_v2.services.topic_extraction_orchestrator import TopicExtractionOrchestrator
 
 router = APIRouter(
@@ -72,7 +75,6 @@ def start_processing(
 
         # Acquire job lock
         job_service = ChapterJobService(db)
-        from book_ingestion_v2.repositories.chapter_page_repository import ChapterPageRepository
         page_repo = ChapterPageRepository(db)
         total_chunks = _count_chunks(page_repo, chapter_id)
 
@@ -194,15 +196,130 @@ def refinalize(
         )
 
 
-@router.get("/jobs/latest", response_model=ProcessingJobResponse)
-def get_latest_job(
+@router.post("/ocr-retry", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def ocr_retry(
     book_id: str, chapter_id: str, db: Session = Depends(get_db)
 ):
-    """Get the latest job status for a chapter."""
+    """Bulk retry OCR for all pending/failed pages in a chapter."""
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chapter not found: {chapter_id}",
+            )
+
+        if chapter.status not in [
+            ChapterStatus.UPLOAD_IN_PROGRESS.value,
+            ChapterStatus.UPLOAD_COMPLETE.value,
+        ]:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Chapter status is '{chapter.status}', expected upload_in_progress or upload_complete",
+            )
+
+        page_repo = ChapterPageRepository(db)
+        pages_needing_ocr = page_repo.get_pages_needing_ocr(chapter_id)
+        if not pages_needing_ocr:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No pages need OCR (all completed)",
+            )
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            job_type=V2JobType.OCR.value,
+            total_items=len(pages_needing_ocr),
+        )
+
+        page_service = ChapterPageService(db)
+        run_in_background_v2(page_service.bulk_ocr, job_id, chapter_id, book_id)
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.post("/ocr-rerun", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def ocr_rerun(
+    book_id: str, chapter_id: str, db: Session = Depends(get_db)
+):
+    """Reset all OCR and re-run from scratch for a chapter."""
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chapter not found: {chapter_id}",
+            )
+
+        if chapter.status not in [
+            ChapterStatus.UPLOAD_IN_PROGRESS.value,
+            ChapterStatus.UPLOAD_COMPLETE.value,
+        ]:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Chapter status is '{chapter.status}', expected upload_in_progress or upload_complete",
+            )
+
+        page_repo = ChapterPageRepository(db)
+        total_pages = page_repo.count_by_chapter(chapter_id)
+        if total_pages == 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No pages to re-OCR",
+            )
+
+        # Reset all OCR and revert chapter status
+        page_repo.reset_ocr_for_chapter(chapter_id)
+        chapter.status = ChapterStatus.UPLOAD_IN_PROGRESS.value
+        chapter_repo.update(chapter)
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            job_type=V2JobType.OCR.value,
+            total_items=total_pages,
+        )
+
+        page_service = ChapterPageService(db)
+        run_in_background_v2(page_service.bulk_ocr, job_id, chapter_id, book_id)
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get("/jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_job(
+    book_id: str, chapter_id: str,
+    job_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Get the latest job status for a chapter, optionally filtered by job type."""
     try:
         _validate_chapter_ownership(book_id, chapter_id, db)
         job_service = ChapterJobService(db)
-        result = job_service.get_latest_job(chapter_id)
+        result = job_service.get_latest_job(chapter_id, job_type=job_type)
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

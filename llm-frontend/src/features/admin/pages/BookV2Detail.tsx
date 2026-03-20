@@ -6,6 +6,7 @@ import {
   getLatestJobV2, getChapterTopics, syncChapter, syncBook,
   getPageDetailV2, retryPageOcrV2, generateExplanations, getExplanationJobStatus,
   getExplanationStatus, getTopicExplanations, deleteExplanations,
+  bulkOcrRetry, bulkOcrRerun,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
   SyncResponseV2, TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
@@ -54,10 +55,12 @@ const BookV2Detail: React.FC = () => {
   const [viewingExplanations, setViewingExplanations] = useState<TopicExplanationsDetailResponseV2 | null>(null);
   const [viewingExplanationsLoading, setViewingExplanationsLoading] = useState(false);
   const [topicExplJobs, setTopicExplJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
+  const [ocrJobs, setOcrJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
   const explPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const topicExplPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const ocrPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     if (id) loadBook(true);
@@ -65,6 +68,7 @@ const BookV2Detail: React.FC = () => {
       Object.values(pollingRef.current).forEach(clearInterval);
       Object.values(explPollingRef.current).forEach(clearInterval);
       Object.values(topicExplPollingRef.current).forEach(clearInterval);
+      Object.values(ocrPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
@@ -79,6 +83,15 @@ const BookV2Detail: React.FC = () => {
       for (const ch of data.chapters) {
         if (['topic_extraction', 'chapter_finalizing'].includes(ch.status)) {
           startPolling(ch.id);
+        }
+        // Auto-detect active OCR jobs
+        if (['upload_in_progress'].includes(ch.status) && !ocrPollingRef.current[ch.id]) {
+          getLatestJobV2(id!, ch.id, 'v2_ocr').then(job => {
+            if (['pending', 'running'].includes(job.status)) {
+              setOcrJobs(prev => ({ ...prev, [ch.id]: job }));
+              startOcrPolling(ch.id);
+            }
+          }).catch(() => {});
         }
       }
     } catch (err) {
@@ -124,6 +137,28 @@ const BookV2Detail: React.FC = () => {
     };
     poll();
     explPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
+  const startOcrPolling = useCallback((chapterId: string) => {
+    if (!id || ocrPollingRef.current[chapterId]) return;
+    const poll = async () => {
+      try {
+        const job = await getLatestJobV2(id!, chapterId, 'v2_ocr');
+        setOcrJobs(prev => ({ ...prev, [chapterId]: job }));
+        if (['completed', 'completed_with_errors', 'failed'].includes(job.status)) {
+          clearInterval(ocrPollingRef.current[chapterId]);
+          delete ocrPollingRef.current[chapterId];
+          // Refresh pages and book after OCR completes
+          try {
+            const pagesResp = await getChapterPages(id!, chapterId);
+            setChapterPages(prev => ({ ...prev, [chapterId]: pagesResp.pages }));
+          } catch {}
+          loadBook();
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    ocrPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
 
   const startTopicExplPolling = useCallback((guidelineId: string, chapterId: string) => {
@@ -402,6 +437,30 @@ const BookV2Detail: React.FC = () => {
     }
   };
 
+  const handleBulkOcrRetry = async (ch: ChapterResponseV2) => {
+    if (!id) return;
+    try {
+      const job = await bulkOcrRetry(id, ch.id);
+      setOcrJobs(prev => ({ ...prev, [ch.id]: job }));
+      startOcrPolling(ch.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start OCR');
+    }
+  };
+
+  const handleBulkOcrRerun = async (ch: ChapterResponseV2) => {
+    if (!id) return;
+    if (!confirm(`Re-OCR all pages in "${ch.chapter_title}"? This will reset all existing OCR results.`)) return;
+    try {
+      const job = await bulkOcrRerun(id, ch.id);
+      setOcrJobs(prev => ({ ...prev, [ch.id]: job }));
+      startOcrPolling(ch.id);
+      loadBook();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start re-OCR');
+    }
+  };
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
   if (error && !book) return <div style={{ padding: '40px', textAlign: 'center', color: '#991B1B' }}>{error}</div>;
   if (!book) return <div style={{ padding: '40px', textAlign: 'center' }}>Book not found</div>;
@@ -482,8 +541,12 @@ const BookV2Detail: React.FC = () => {
           const badge = STATUS_BADGE[ch.status] || STATUS_BADGE.toc_defined;
           const isExpanded = expandedChapter === ch.id;
           const job = chapterJobs[ch.id];
+          const ocrJob = ocrJobs[ch.id];
           const pages = chapterPages[ch.id] || [];
           const topics = chapterTopics[ch.id] || [];
+          const pagesNeedingOcr = pages.filter(p => p.ocr_status === 'pending' || p.ocr_status === 'failed');
+          const ocrRunning = ocrJob && ['pending', 'running'].includes(ocrJob.status);
+          const ocrDone = ocrJob && ['completed', 'completed_with_errors', 'failed'].includes(ocrJob.status);
 
           return (
             <div key={ch.id} style={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '10px', overflow: 'hidden' }}>
@@ -536,6 +599,39 @@ const BookV2Detail: React.FC = () => {
                     <div style={{ height: '6px', backgroundColor: '#DDD6FE', borderRadius: '3px', overflow: 'hidden' }}>
                       <div style={{
                         height: '100%', backgroundColor: '#7C3AED', borderRadius: '3px', width: '30%',
+                        animation: 'pulse 1.5s ease-in-out infinite',
+                      }} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* OCR progress — always visible when OCR job is active */}
+              {ocrRunning && (
+                <div style={{ borderTop: '1px solid #E5E7EB', padding: '12px 20px', backgroundColor: '#F0FDFA' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#0F766E' }}>
+                      {ocrJob.current_item || 'Starting OCR...'}
+                    </div>
+                    {ocrJob.total_items ? (
+                      <span style={{ fontSize: '12px', color: '#0D9488', fontWeight: 600 }}>
+                        {ocrJob.completed_items}/{ocrJob.total_items} pages
+                        {ocrJob.failed_items > 0 && <span style={{ color: '#DC2626' }}> ({ocrJob.failed_items} failed)</span>}
+                      </span>
+                    ) : null}
+                  </div>
+                  {ocrJob.total_items ? (
+                    <div style={{ height: '6px', backgroundColor: '#CCFBF1', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#14B8A6', borderRadius: '3px',
+                        width: `${((ocrJob.completed_items + ocrJob.failed_items) / ocrJob.total_items) * 100}%`,
+                        transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                  ) : (
+                    <div style={{ height: '6px', backgroundColor: '#CCFBF1', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', backgroundColor: '#14B8A6', borderRadius: '3px', width: '30%',
                         animation: 'pulse 1.5s ease-in-out infinite',
                       }} />
                     </div>
@@ -658,9 +754,35 @@ const BookV2Detail: React.FC = () => {
                     </div>
                   )}
 
+                  {/* OCR completion banner */}
+                  {ocrDone && (
+                    <div style={{
+                      marginBottom: '12px',
+                      backgroundColor: ocrJob.status === 'failed' ? '#FEE2E2' : ocrJob.status === 'completed_with_errors' ? '#FEF3C7' : '#F0FDFA',
+                      color: ocrJob.status === 'failed' ? '#991B1B' : ocrJob.status === 'completed_with_errors' ? '#92400E' : '#0F766E',
+                      padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                    }}>
+                      <button onClick={() => setOcrJobs(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                      {ocrJob.status === 'failed'
+                        ? `OCR failed: ${ocrJob.error_message || 'Unknown error'}`
+                        : `OCR complete: ${ocrJob.completed_items} succeeded, ${ocrJob.failed_items} failed`}
+                    </div>
+                  )}
+
                   {/* Action buttons — hidden while a job is actively running */}
-                  {!(job && ['pending', 'running'].includes(job.status)) && (
+                  {!(job && ['pending', 'running'].includes(job.status)) && !ocrRunning && (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* OCR buttons for upload-phase chapters */}
+                    {['upload_in_progress', 'upload_complete'].includes(ch.status) && pagesNeedingOcr.length > 0 && (
+                      <button onClick={() => handleBulkOcrRetry(ch)} style={{ backgroundColor: '#14B8A6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                        Run OCR ({pagesNeedingOcr.length} pages)
+                      </button>
+                    )}
+                    {['upload_in_progress', 'upload_complete'].includes(ch.status) && pages.length > 0 && (
+                      <button onClick={() => handleBulkOcrRerun(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                        Re-OCR All
+                      </button>
+                    )}
                     {ch.status === 'upload_complete' && (
                       <button onClick={() => handleStartProcessing(ch)} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                         Start Processing

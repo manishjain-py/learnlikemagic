@@ -68,6 +68,26 @@ class ChapterPageRepository:
             ChapterPage.ocr_status == "failed"
         ).order_by(ChapterPage.page_number).all()
 
+    def get_pages_needing_ocr(self, chapter_id: str) -> List[ChapterPage]:
+        """Get pages with pending or failed OCR, ordered by page number."""
+        return self.db.query(ChapterPage).filter(
+            ChapterPage.chapter_id == chapter_id,
+            ChapterPage.ocr_status.in_(["pending", "failed"]),
+        ).order_by(ChapterPage.page_number).all()
+
+    def reset_ocr_for_chapter(self, chapter_id: str) -> int:
+        """Reset OCR for all pages in chapter. Returns count updated."""
+        count = self.db.query(ChapterPage).filter(
+            ChapterPage.chapter_id == chapter_id
+        ).update({
+            ChapterPage.ocr_status: "pending",
+            ChapterPage.text_s3_key: None,
+            ChapterPage.ocr_error: None,
+            ChapterPage.ocr_completed_at: None,
+        })
+        self.db.commit()
+        return count
+
     def update(self, page: ChapterPage) -> ChapterPage:
         """Update page instance."""
         self.db.commit()

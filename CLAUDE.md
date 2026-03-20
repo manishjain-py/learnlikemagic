@@ -24,6 +24,8 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/principles/evaluation.md` | How tutor quality is measured (7 dimensions, persona-aware scoring) |
 | `docs/principles/ux-design.md` | UX principles for all interfaces (mobile-first, warm language, minimal typing) |
 | `docs/principles/scorecard.md` | How student progress is tracked (deterministic metrics only) |
+| `docs/principles/content-extraction-from-books.md` | What to extract from books (full coverage, no copyrighted expression) |
+| `docs/principles/book-ingestion-pipeline.md` | Operational principles for the multi-stage ingestion pipeline |
 | `docs/principles/autoresearch.md` | How autonomous prompt optimization works |
 
 ## Documentation Index

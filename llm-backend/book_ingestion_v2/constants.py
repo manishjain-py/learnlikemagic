@@ -25,6 +25,7 @@ class ChapterStatus(str, Enum):
 
 
 class V2JobType(str, Enum):
+    OCR = "v2_ocr"
     TOPIC_EXTRACTION = "v2_topic_extraction"
     REFINALIZATION = "v2_refinalization"
     EXPLANATION_GENERATION = "v2_explanation_generation"
