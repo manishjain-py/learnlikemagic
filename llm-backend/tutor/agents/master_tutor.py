@@ -293,8 +293,40 @@ class MasterTutorAgent(BaseAgent):
                 "question. Keep it to 2-3 sentences. Set explanation_phase_update='opening'."
             )
 
-        # Card-aware: if current step is explain and cards already covered THIS concept
         current_step = session.current_step_data
+
+        # v2 session plan step types — post-card interactive steps
+        if current_step and current_step.type == "check_understanding":
+            refs = ", ".join(current_step.card_references or [])
+            misconceptions = ", ".join(current_step.misconceptions_to_probe or [])
+            return (
+                f"PACING: CHECK UNDERSTANDING — Ask recall/comprehension questions about the cards. "
+                f"Reference: {refs or 'card content'}. "
+                f"Watch for misconceptions: {misconceptions or 'any confusion'}. "
+                f"Pass when: {current_step.success_criteria or 'student demonstrates recall'}."
+            )
+        if current_step and current_step.type == "guided_practice":
+            refs = ", ".join(current_step.card_references or [])
+            return (
+                f"PACING: GUIDED PRACTICE — Work through problems together. Reference {refs or 'card examples'}. "
+                f"Start easy, increase difficulty. Provide hints and feedback. "
+                f"Pass when: {current_step.success_criteria or 'student solves with minimal help'}."
+            )
+        if current_step and current_step.type == "independent_practice":
+            return (
+                f"PACING: INDEPENDENT PRACTICE — Let the student work problems on their own. "
+                f"Only intervene on errors. "
+                f"Pass when: {current_step.success_criteria or 'student solves correctly without help'}."
+            )
+        if current_step and current_step.type == "extend":
+            hint = current_step.personalization_hint or ""
+            return (
+                f"PACING: EXTEND — Apply concepts to new contexts or harder variations. "
+                f"Build on earlier practice. {f'Personalization: {hint}. ' if hint else ''}"
+                f"Pass when: {current_step.success_criteria or 'student applies concept to new context'}."
+            )
+
+        # Card-aware: if current step is explain and cards already covered THIS concept (v1 legacy)
         if (current_step and current_step.type == "explain"
                 and current_step.concept in session.card_covered_concepts):
             return (
@@ -544,8 +576,21 @@ class MasterTutorAgent(BaseAgent):
 
         steps_lines = []
         for step in topic.study_plan.steps:
-            hint = f": {step.content_hint}" if step.content_hint else ""
-            steps_lines.append(f"  Step {step.step_id} [{step.type}] {step.concept}{hint}")
+            if step.description:
+                # v2 session plan step — richer format
+                lines = [f"  Step {step.step_id} [{step.type}] {step.concept}"]
+                lines.append(f"    {step.description}")
+                if step.card_references:
+                    lines.append(f"    Reference: {', '.join(step.card_references)}")
+                if step.misconceptions_to_probe:
+                    lines.append(f"    Watch for: {', '.join(step.misconceptions_to_probe)}")
+                if step.success_criteria:
+                    lines.append(f"    Pass when: {step.success_criteria}")
+                steps_lines.append("\n".join(lines))
+            else:
+                # v1 legacy format
+                hint = f": {step.content_hint}" if step.content_hint else ""
+                steps_lines.append(f"  Step {step.step_id} [{step.type}] {step.concept}{hint}")
         steps_formatted = "\n".join(steps_lines)
 
         misconceptions = format_list_for_prompt(topic.guidelines.common_misconceptions)

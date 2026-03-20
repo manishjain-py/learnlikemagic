@@ -860,14 +860,13 @@ class SessionService:
 
         if action == "clear":
             session.complete_card_phase()
-            self._advance_past_explanation_steps(session)
 
             # Build and persist summary for tutor prompt injection
             precomputed_summary = self._build_precomputed_summary(session)
             session.precomputed_explanation_summary = precomputed_summary
 
-            # Populate card_covered_concepts for pacing directive
-            session.card_covered_concepts = self._extract_card_covered_concepts(session)
+            # Generate v2 session plan from explanation data
+            self._generate_v2_session_plan(session)
 
             # Master tutor generates bridge (replaces hardcoded transition)
             bridge_result = asyncio.run(
@@ -895,10 +894,11 @@ class SessionService:
                 # All variants exhausted — master tutor re-explains
                 precomputed_summary = self._build_precomputed_summary(session)
                 session.precomputed_explanation_summary = precomputed_summary
-                session.card_covered_concepts = self._extract_card_covered_concepts(session)
 
                 session.complete_card_phase()
-                self._init_dynamic_fallback(session)
+
+                # Still generate v2 plan — tutor will adapt interactively
+                self._generate_v2_session_plan(session)
 
                 bridge_result = asyncio.run(
                     self.orchestrator.generate_bridge_turn(session, bridge_type="confused")
@@ -980,6 +980,75 @@ class SessionService:
                 concepts.add(step.concept)
         concepts.update(session.concepts_covered_set)
         return concepts
+
+    def _generate_v2_session_plan(self, session: SessionState) -> None:
+        """Generate a v2 session plan from explanation data and replace the study plan.
+
+        Called at card completion. Uses the actual variants the student saw.
+        """
+        if not session.card_phase or not session.topic:
+            logger.warning("Cannot generate v2 plan: missing card_phase or topic")
+            return
+
+        try:
+            explanation_repo = ExplanationRepository(self.db)
+            guideline_repo = TeachingGuidelineRepository(self.db)
+
+            guideline = guideline_repo.get_by_id(session.card_phase.guideline_id)
+            if not guideline:
+                logger.warning(f"Guideline {session.card_phase.guideline_id} not found for v2 plan")
+                return
+
+            # Collect summaries and card titles from shown variants
+            explanation_summaries = []
+            card_titles = []
+            for variant_key in session.card_phase.variants_shown:
+                explanation = explanation_repo.get_variant(
+                    session.card_phase.guideline_id, variant_key
+                )
+                if explanation:
+                    if explanation.summary_json:
+                        explanation_summaries.append(explanation.summary_json)
+                    if explanation.cards_json:
+                        # Use card titles from the last variant shown
+                        card_titles = [c.get("title", "") for c in explanation.cards_json if isinstance(c, dict)]
+
+            if not explanation_summaries:
+                logger.warning("No explanation summaries found for v2 plan generation")
+                return
+
+            # Build student context
+            student_context = session.student_context if hasattr(session, "student_context") else None
+
+            from study_plans.services.generator_service import StudyPlanGeneratorService
+            from shared.utils.prompt_loader import PromptLoader
+
+            llm_config_service = self._get_llm_config_service()
+            llm_service = llm_config_service.get_llm_service("study_plan_generator")
+            prompt_loader = PromptLoader()
+
+            generator = StudyPlanGeneratorService(llm_service, prompt_loader)
+            result = generator.generate_session_plan(
+                guideline=guideline,
+                explanation_summaries=explanation_summaries,
+                card_titles=card_titles,
+                variants_shown=list(session.card_phase.variants_shown),
+                student_context=student_context,
+            )
+
+            # Convert to StudyPlan model and replace the session's plan
+            from tutor.services.topic_adapter import convert_session_plan_to_study_plan
+            new_plan = convert_session_plan_to_study_plan(result["plan"])
+            session.topic.study_plan = new_plan
+
+            # Reset step to 1 for the new plan
+            session.current_step = 1
+
+            logger.info(f"Generated v2 session plan with {len(new_plan.steps)} steps")
+
+        except Exception as e:
+            logger.error(f"Failed to generate v2 session plan, keeping existing: {e}", exc_info=True)
+            # Non-fatal — session continues with the existing v1 plan
 
     def _advance_past_explanation_steps(self, session: SessionState):
         """After successful card phase, skip consecutive leading explain steps.

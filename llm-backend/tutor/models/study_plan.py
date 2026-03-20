@@ -26,7 +26,10 @@ class StudyPlanStep(BaseModel):
     """Individual step in a study plan."""
 
     step_id: int = Field(ge=1, description="Step number (1-indexed)")
-    type: Literal["explain", "check", "practice"] = Field(description="Type of learning activity")
+    type: Literal[
+        "explain", "check", "practice",  # v1 types (legacy)
+        "check_understanding", "guided_practice", "independent_practice", "extend",  # v2 types
+    ] = Field(description="Type of learning activity")
     concept: str = Field(description="Concept being taught or assessed")
     content_hint: Optional[str] = Field(default=None, description="Hint for content generation (explain steps)")
     question_type: Optional[Literal["conceptual", "procedural", "application"]] = Field(
@@ -34,11 +37,19 @@ class StudyPlanStep(BaseModel):
     )
     question_count: Optional[int] = Field(default=None, ge=1, description="Number of questions (practice steps)")
 
-    # Explanation sub-plan fields (only used for explain steps)
+    # v1 explanation sub-plan fields (only used for legacy explain steps)
     explanation_approach: Optional[str] = Field(default=None, description="Teaching method e.g. 'visual analogy', 'storytelling'")
     explanation_building_blocks: Optional[list[str]] = Field(default=None, description="Ordered sub-ideas to cover across turns")
     explanation_analogy: Optional[str] = Field(default=None, description="Suggested real-world connection")
     min_explanation_turns: int = Field(default=4, description="Minimum tutor turns in explanation before advancing")
+
+    # v2 session plan fields (post-explanation interactive steps)
+    description: Optional[str] = Field(default=None, description="What the tutor should do in this step")
+    card_references: Optional[list[str]] = Field(default=None, description="Card concepts/analogies to reference")
+    misconceptions_to_probe: Optional[list[str]] = Field(default=None, description="What errors to watch for")
+    success_criteria: Optional[str] = Field(default=None, description="How to know student passed this step")
+    difficulty: Optional[Literal["easy", "medium", "hard"]] = Field(default=None, description="Step difficulty level")
+    personalization_hint: Optional[str] = Field(default=None, description="How to use student interests")
 
 
 class StudyPlan(BaseModel):

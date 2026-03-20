@@ -36,6 +36,35 @@ class StudyPlanMetadata(BaseModel):
     creative_theme: str = Field(default="", description="Optional theme (e.g., 'Space Adventure')")
 
 
+# v2 session plan models
+
+class SessionPlanStep(BaseModel):
+    """A single step in a v2 session plan (post-explanation interactive)."""
+    step_id: int = Field(description="Step number (1-indexed)")
+    type: str = Field(description="Step type: check_understanding, guided_practice, independent_practice, extend")
+    concept: str = Field(description="What concept/skill this step focuses on")
+    description: str = Field(description="What the tutor should do in this step")
+    card_references: List[str] = Field(default_factory=list, description="Card concepts/analogies to reference")
+    misconceptions_to_probe: List[str] = Field(default_factory=list, description="What errors to watch for")
+    success_criteria: str = Field(default="", description="How to know the student has passed this step")
+    difficulty: str = Field(default="easy", description="easy, medium, or hard")
+    personalization_hint: str = Field(default="", description="How to use student interests")
+
+
+class SessionPlanMetadata(BaseModel):
+    """Metadata for v2 session plan."""
+    plan_version: int = Field(default=2, description="Always 2 for session plans")
+    variants_shown: List[str] = Field(default_factory=list, description="Which explanation variants the student saw")
+    estimated_duration_minutes: int = Field(default=20, description="Estimated duration")
+    is_generic: bool = Field(default=True, description="Whether personalized to student")
+
+
+class SessionPlan(BaseModel):
+    """V2 session plan structure (post-explanation interactive)."""
+    steps: List[SessionPlanStep] = Field(description="List of interactive steps (3-5)")
+    metadata: SessionPlanMetadata = Field(description="Plan metadata")
+
+
 class StudyPlan(BaseModel):
     """Complete study plan structure."""
     todo_list: List[StudyPlanStep] = Field(description="List of study plan steps (3-5 items)")
@@ -61,6 +90,9 @@ class StudyPlanGeneratorService:
         # Pre-compute the strict schema for structured output
         self._study_plan_schema = LLMService.make_schema_strict(
             StudyPlan.model_json_schema()
+        )
+        self._session_plan_schema = LLMService.make_schema_strict(
+            SessionPlan.model_json_schema()
         )
 
     def generate_plan(self, guideline: TeachingGuideline, student_context: Optional["StudentContext"] = None) -> Dict[str, Any]:
@@ -231,6 +263,124 @@ class StudyPlanGeneratorService:
 
         except Exception as e:
             logger.error(f"Failed to generate feedback plan: {str(e)}", exc_info=True)
+            raise
+
+    def generate_session_plan(
+        self,
+        guideline: TeachingGuideline,
+        explanation_summaries: List[Dict[str, Any]],
+        card_titles: List[str],
+        variants_shown: List[str],
+        student_context: Optional["StudentContext"] = None,
+    ) -> Dict[str, Any]:
+        """Generate a v2 session plan based on explanation cards the student just read.
+
+        Called at card phase completion — after the student reads cards and says "I understand".
+
+        Args:
+            guideline: Teaching guideline for the topic
+            explanation_summaries: summary_json dicts for each variant shown
+            card_titles: Ordered card titles from the final variant
+            variants_shown: Which variant keys the student saw (e.g., ["A"] or ["A", "B"])
+            student_context: Optional student profile for personalization
+        """
+        try:
+            prompt_template = self.prompt_loader.load("session_plan_generator")
+
+            chapter = guideline.chapter_title or guideline.chapter
+            topic = guideline.topic_title or guideline.topic
+            guideline_text = guideline.guideline or guideline.description or ""
+
+            # Build explanation context from summaries
+            teaching_notes_parts = []
+            all_analogies = []
+            all_examples = []
+            approach_labels = []
+            for s in explanation_summaries:
+                if s.get("teaching_notes"):
+                    teaching_notes_parts.append(s["teaching_notes"])
+                all_analogies.extend(s.get("key_analogies", []))
+                all_examples.extend(s.get("key_examples", []))
+                if s.get("approach_label"):
+                    approach_labels.append(s["approach_label"])
+
+            teaching_notes = "\n".join(teaching_notes_parts) or "No teaching notes available."
+            key_analogies = ", ".join(all_analogies) or "None"
+            key_examples = ", ".join(all_examples) or "None"
+            approach_label = ", ".join(approach_labels) or "Standard"
+
+            card_titles_formatted = "\n".join(
+                f"  {i+1}. {t}" for i, t in enumerate(card_titles)
+            ) or "  (no card titles available)"
+
+            # Common misconceptions from guideline metadata
+            metadata = guideline.guideline_metadata_json or {}
+            misconceptions = metadata.get("common_misconceptions", [])
+            common_misconceptions = "\n".join(f"- {m}" for m in misconceptions) if misconceptions else "None specified"
+
+            prompt = prompt_template.format(
+                topic=topic,
+                grade=guideline.grade,
+                approach_label=approach_label,
+                card_titles_formatted=card_titles_formatted,
+                teaching_notes=teaching_notes,
+                key_analogies=key_analogies,
+                key_examples=key_examples,
+                guideline_text=guideline_text,
+                common_misconceptions=common_misconceptions,
+                student_personality_section=self._build_personality_section(student_context),
+            )
+
+            logger.info(json.dumps({
+                "step": "SESSION_PLAN_GENERATION",
+                "status": "starting",
+                "guideline_id": guideline.id,
+                "topic": topic,
+                "variants_shown": variants_shown,
+            }))
+
+            response = self.llm_service.call(
+                prompt=prompt,
+                reasoning_effort="high",
+                json_schema=self._session_plan_schema,
+                schema_name="SessionPlan",
+            )
+
+            plan_json = self.llm_service.parse_json_response(response["output_text"])
+            validated_plan = SessionPlan.model_validate(plan_json)
+
+            # Ensure metadata has correct version and variants
+            plan_dict = validated_plan.model_dump()
+            plan_dict["metadata"]["plan_version"] = 2
+            plan_dict["metadata"]["variants_shown"] = variants_shown
+            if student_context and student_context.student_name:
+                plan_dict["metadata"]["is_generic"] = False
+
+            reasoning_obj = response.get("reasoning")
+            reasoning_str = ""
+            if reasoning_obj is not None:
+                if hasattr(reasoning_obj, "summary"):
+                    reasoning_str = str(reasoning_obj.summary) if reasoning_obj.summary else ""
+                elif hasattr(reasoning_obj, "text"):
+                    reasoning_str = str(reasoning_obj.text) if reasoning_obj.text else ""
+                else:
+                    reasoning_str = str(reasoning_obj)
+
+            logger.info(json.dumps({
+                "step": "SESSION_PLAN_GENERATION",
+                "status": "complete",
+                "guideline_id": guideline.id,
+                "steps_count": len(plan_dict.get("steps", [])),
+            }))
+
+            return {
+                "plan": plan_dict,
+                "reasoning": reasoning_str,
+                "model": self.llm_service.model_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate session plan: {str(e)}", exc_info=True)
             raise
 
     @staticmethod

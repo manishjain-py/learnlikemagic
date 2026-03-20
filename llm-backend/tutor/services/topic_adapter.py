@@ -77,13 +77,39 @@ def convert_guideline_to_topic(
     )
 
 
+def convert_session_plan_to_study_plan(plan_dict: dict) -> StudyPlan:
+    """Convert a v2 session plan dict (from generate_session_plan) to StudyPlan model.
+
+    Called at card completion when the session plan is generated inline.
+    """
+    steps_data = plan_dict.get("steps", [])
+    if not steps_data:
+        raise ValueError("Session plan has no steps")
+
+    steps = []
+    for item in steps_data:
+        step = StudyPlanStep(
+            step_id=item["step_id"],
+            type=item["type"],
+            concept=item.get("concept", f"Step {item['step_id']}"),
+            description=item.get("description"),
+            card_references=item.get("card_references"),
+            misconceptions_to_probe=item.get("misconceptions_to_probe"),
+            success_criteria=item.get("success_criteria"),
+            difficulty=item.get("difficulty"),
+            personalization_hint=item.get("personalization_hint"),
+        )
+        steps.append(step)
+
+    return StudyPlan(steps=steps)
+
+
 def _convert_study_plan(
     study_plan_record: Optional[StudyPlanRecord],
     guideline: GuidelineResponse,
 ) -> StudyPlan:
-    """Convert DB study plan to new StudyPlan model."""
+    """Convert DB study plan to new StudyPlan model (v1 legacy path)."""
     if not study_plan_record or not study_plan_record.plan_json:
-        # Generate a default study plan
         return _generate_default_plan(guideline)
 
     try:
@@ -92,19 +118,21 @@ def _convert_study_plan(
         logger.warning(f"Failed to parse plan_json for guideline {guideline.id}")
         return _generate_default_plan(guideline)
 
-    # The plan_json format has a "todo_list" with steps
+    # v2 session plans have "steps" key + plan_version: 2
+    if plan_data.get("metadata", {}).get("plan_version", 1) >= 2:
+        return convert_session_plan_to_study_plan(plan_data)
+
+    # v1: The plan_json format has a "todo_list" with steps
     todo_list = plan_data.get("todo_list", [])
     if not todo_list:
         return _generate_default_plan(guideline)
 
     steps = []
     for i, item in enumerate(todo_list, start=1):
-        # Determine step type from the item's teaching_approach or structure
         step_type = _infer_step_type(item, i, len(todo_list))
         concept = item.get("title", f"Step {i}").strip()
         content_hint = item.get("description", "").strip()
 
-        # Build explanation sub-plan fields for explain steps
         explanation_kwargs = {}
         if step_type == "explain":
             explanation_kwargs["explanation_approach"] = item.get("teaching_approach")

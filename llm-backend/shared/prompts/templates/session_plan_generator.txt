@@ -1,0 +1,44 @@
+You are designing the INTERACTIVE SESSION that follows pre-computed explanation cards. The student has already read the cards — your job is to design the follow-up activities.
+
+## What The Student Already Learned
+Topic: {topic}
+Grade Level: {grade}
+Explanation Approach: {approach_label}
+
+Card Progression (what they read, in order):
+{card_titles_formatted}
+
+Teaching Summary:
+{teaching_notes}
+
+Key Analogies Used: {key_analogies}
+Key Examples Used: {key_examples}
+
+## Curriculum Scope
+{guideline_text}
+
+## Common Misconceptions To Address
+{common_misconceptions}
+{student_personality_section}
+## Your Task
+Design 3-5 interactive steps for AFTER the student reads the explanation cards.
+The student has the conceptual foundation — your job is to CHECK understanding, let them PRACTICE applying it, and EXTEND to harder problems.
+
+## Step Types (use these exactly)
+- `check_understanding`: Quick recall/comprehension questions. Verify the student absorbed card content. Reference specific card concepts and analogies.
+- `guided_practice`: Work through problems together with tutor support. Reference card examples. Increasing difficulty.
+- `independent_practice`: Student solves problems with minimal support. Tutor only intervenes on errors.
+- `extend`: Apply concepts to new contexts or harder variations. Build on earlier practice.
+
+## Rules
+- Do NOT re-explain what the cards covered. The student already read them.
+- REFERENCE the card analogies and examples in your steps. Build on them, don't introduce competing ones.
+- Start easy (check recall), progress to harder (apply, extend).
+- Every step must probe at least one common misconception.
+- Use the student's interests for practice problems when possible.
+- 3-5 steps total. Each step should take 3-8 minutes.
+- First step should ALWAYS be `check_understanding`.
+- Last step should be `extend` or `independent_practice`.
+- Think about what a great tutor would do AFTER showing a lesson — check understanding, practice together, let the student try alone.
+
+Respond ONLY with valid JSON matching the schema.
