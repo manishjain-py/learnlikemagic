@@ -13,6 +13,7 @@ from database import get_db_manager
 from shared.api import health
 from shared.api import llm_config_routes
 from shared.api import feature_flag_routes
+from shared.api import issue_routes
 from tutor.api import curriculum, sessions, transcription, tts
 from autoresearch.tutor_teaching_quality.evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
@@ -118,6 +119,7 @@ app.include_router(v2_page_routes.router)   # Book Ingestion V2: /admin/v2/books
 app.include_router(v2_processing_routes.router)  # Book Ingestion V2: processing, topics, jobs
 app.include_router(v2_sync_routes.router)        # Book Ingestion V2: sync + results
 app.include_router(pixi_poc_router)              # Pixi.js PoC: code generation
+app.include_router(issue_routes.router)          # Issue reporting: /issues/*
 
 
 @app.on_event("startup")

@@ -652,6 +652,107 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 }
 
 // ──────────────────────────────────────────────
+// Issue reporting
+// ──────────────────────────────────────────────
+
+export interface InterpretIssueRequest {
+  user_input: string;
+  has_screenshots?: boolean;
+  previous_interpretation?: string;
+  refinement_input?: string;
+}
+
+export interface InterpretIssueResponse {
+  title: string;
+  description: string;
+}
+
+export async function interpretIssue(req: InterpretIssueRequest): Promise<InterpretIssueResponse> {
+  const res = await apiFetch('/issues/interpret', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`Interpret failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function uploadIssueScreenshot(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const headers: Record<string, string> = {};
+  if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`;
+
+  const res = await fetch(`${API_BASE_URL}/issues/upload-screenshot`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (res.status === 401) { window.location.href = '/login'; throw new Error('Auth required'); }
+  if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+  const data = await res.json();
+  return data.s3_key;
+}
+
+export interface CreateIssueRequest {
+  title: string;
+  description: string;
+  original_input: string;
+  screenshot_s3_keys?: string[];
+}
+
+export interface IssueResponse {
+  id: string;
+  user_id: string | null;
+  reporter_name: string | null;
+  title: string;
+  description: string;
+  original_input: string | null;
+  screenshot_s3_keys: string[] | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createIssue(req: CreateIssueRequest): Promise<IssueResponse> {
+  const res = await apiFetch('/issues', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`Create issue failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function listIssues(statusFilter?: string): Promise<{ issues: IssueResponse[]; total: number }> {
+  const params = statusFilter ? `?status_filter=${statusFilter}` : '';
+  const res = await apiFetch(`/issues${params}`);
+  if (!res.ok) throw new Error(`List issues failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getIssue(id: string): Promise<IssueResponse> {
+  const res = await apiFetch(`/issues/${id}`);
+  if (!res.ok) throw new Error(`Get issue failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateIssueStatus(id: string, status: string): Promise<IssueResponse> {
+  const res = await apiFetch(`/issues/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(`Update status failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getScreenshotUrl(issueId: string, s3Key: string): Promise<string> {
+  const res = await apiFetch(`/issues/${issueId}/screenshots/${s3Key}`);
+  if (!res.ok) throw new Error(`Get screenshot URL failed: ${res.statusText}`);
+  const data = await res.json();
+  return data.url;
+}
+
+// ──────────────────────────────────────────────
 // WebSocket for streaming chat
 // ──────────────────────────────────────────────
 

@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Docs', path: '/admin/docs' },
   { label: 'Pixi.js PoC', path: '/admin/pixi-js-poc' },
   { label: 'Feature Flags', path: '/admin/feature-flags' },
+  { label: 'Issues', path: '/admin/issues' },
 ];
 
 const AdminLayout: React.FC = () => {

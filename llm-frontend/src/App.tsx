@@ -39,6 +39,7 @@ import ProfilePage from './pages/ProfilePage';
 import EnrichmentPage from './pages/EnrichmentPage';
 import SessionHistoryPage from './pages/SessionHistoryPage';
 import ReportCardPage from './pages/ReportCardPage';
+import ReportIssuePage from './pages/ReportIssuePage';
 
 // Learn pages
 import SubjectSelect from './pages/SubjectSelect';
@@ -58,6 +59,7 @@ import CreateBookV2 from './features/admin/pages/CreateBookV2';
 import BookV2Detail from './features/admin/pages/BookV2Detail';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
 import FeatureFlagsPage from './features/admin/pages/FeatureFlagsPage';
+import AdminIssuesPage from './features/admin/pages/AdminIssuesPage';
 import AdminLayout from './features/admin/components/AdminLayout';
 import AdminHome from './features/admin/pages/AdminHome';
 
@@ -105,6 +107,9 @@ function App() {
             {/* History & report card */}
             <Route path="/history" element={<SessionHistoryPage />} />
             <Route path="/report-card" element={<ReportCardPage />} />
+
+            {/* Issue reporting */}
+            <Route path="/report-issue" element={<ReportIssuePage />} />
           </Route>
 
           {/* Chat session routes — OUTSIDE AppShell (own nav-bar) */}
@@ -155,6 +160,7 @@ function App() {
             <Route path="books-v2/:id" element={<BookV2Detail />} />
             <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
             <Route path="feature-flags" element={<FeatureFlagsPage />} />
+            <Route path="issues" element={<AdminIssuesPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

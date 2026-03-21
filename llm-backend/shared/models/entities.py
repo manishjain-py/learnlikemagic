@@ -338,4 +338,25 @@ class TopicExplanation(Base):
     )
 
 
+class Issue(Base):
+    """User-reported issues tracked by status."""
+    __tablename__ = "issues"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reporter_name = Column(String, nullable=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False)  # LLM-interpreted issue text
+    original_input = Column(Text, nullable=True)  # Raw user input (text/transcription)
+    screenshot_s3_keys = Column(JSONB, nullable=True)  # ["issues/{id}/screenshot-1.png", ...]
+    status = Column(String, nullable=False, default="open")  # open, in_progress, closed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_issues_status", "status"),
+        Index("idx_issues_user", "user_id"),
+    )
+
+
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model
