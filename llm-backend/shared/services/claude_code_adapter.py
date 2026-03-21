@@ -10,6 +10,7 @@ Returns the standard {output_text, reasoning, parsed} dict used by LLMService.
 
 import json
 import logging
+import os
 import re
 import subprocess
 import time
@@ -23,8 +24,18 @@ class ClaudeCodeAdapter:
 
     _cli_available: Optional[bool] = None  # class-level cache
 
-    def __init__(self, timeout: int = 300):
+    # Retryable error patterns (credit checks, rate limits)
+    _RETRYABLE_PATTERNS = [
+        "credit balance",
+        "rate limit",
+        "too many requests",
+        "overloaded",
+    ]
+
+    def __init__(self, timeout: int = 300, max_retries: int = 3, retry_base_delay: float = 10.0):
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
 
     def _ensure_cli_available(self):
         """Verify Claude Code CLI is installed (cached after first check)."""
@@ -46,6 +57,11 @@ class ClaudeCodeAdapter:
             )
         except subprocess.TimeoutExpired:
             raise ClaudeCodeError("Claude Code CLI timed out on version check.")
+
+    def _is_retryable_error(self, error_msg: str) -> bool:
+        """Check if an error message indicates a transient/retryable condition."""
+        lower = error_msg.lower()
+        return any(pat in lower for pat in self._RETRYABLE_PATTERNS)
 
     def call_sync(
         self,
@@ -70,21 +86,25 @@ class ClaudeCodeAdapter:
                 "prompt_length": len(full_prompt),
             }
         }))
-        start_time = time.time()
 
-        # Call Claude Code CLI via subprocess
-        # Automation flags:
-        #   --dangerously-skip-permissions  — no interactive permission prompts
-        #   --no-session-persistence        — don't save sessions to disk
-        #   --max-turns 1                   — single turn, no agentic loops
+        # Build command — prompt goes via stdin, NOT as a CLI argument.
+        # Stdin is more robust for large/complex prompts with special chars.
         cmd = [
             "claude",
-            "-p", full_prompt,
+            "-p",
             "--output-format", "json",
             "--dangerously-skip-permissions",
             "--no-session-persistence",
             "--max-turns", "1",
         ]
+
+        # CRITICAL: Strip ANTHROPIC_API_KEY from the subprocess environment.
+        # When load_dotenv() runs (common in import chains), it sets
+        # ANTHROPIC_API_KEY. The Claude Code CLI detects this and
+        # authenticates with Anthropic's API directly (instead of the
+        # user's Claude subscription), causing "Credit balance is too low"
+        # rejections. We want Claude Code to use its own auth.
+        clean_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
         # Map reasoning_effort to Claude CLI --effort flag
         if reasoning_effort and reasoning_effort != "none":
@@ -94,71 +114,99 @@ class ClaudeCodeAdapter:
             cli_effort = effort_map.get(reasoning_effort, reasoning_effort)
             cmd.extend(["--effort", cli_effort])
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise ClaudeCodeError(
-                f"Claude Code CLI timed out after {self.timeout}s"
-            )
+        # Retry loop — handles transient credit-balance / rate-limit errors
+        last_error = None
+        for attempt in range(self.max_retries):
+            start_time = time.time()
+            try:
+                result = subprocess.run(
+                    cmd,
+                    input=full_prompt,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                    env=clean_env,
+                )
+            except subprocess.TimeoutExpired:
+                raise ClaudeCodeError(
+                    f"Claude Code CLI timed out after {self.timeout}s"
+                )
 
-        duration_ms = int((time.time() - start_time) * 1000)
+            duration_ms = int((time.time() - start_time) * 1000)
 
-        if result.returncode != 0:
-            logger.error(
-                f"Claude Code CLI failed (exit {result.returncode}): "
-                f"{result.stderr[:500]}"
-            )
-            raise ClaudeCodeError(
-                f"Claude Code CLI exited with code {result.returncode}: "
-                f"{result.stderr[:500]}"
-            )
+            if result.returncode != 0:
+                error_msg = result.stderr[:500]
+                logger.error(
+                    f"Claude Code CLI failed (exit {result.returncode}): {error_msg}"
+                )
+                if self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
+                    wait = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"Retryable CLI error, waiting {wait}s (attempt {attempt + 1}/{self.max_retries})")
+                    time.sleep(wait)
+                    continue
+                raise ClaudeCodeError(
+                    f"Claude Code CLI exited with code {result.returncode}: {error_msg}"
+                )
 
-        # Parse the CLI JSON envelope
-        try:
-            cli_output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            raise ClaudeCodeError(
-                f"Failed to parse Claude Code output as JSON: "
-                f"{result.stdout[:500]}"
-            )
+            # Parse the CLI JSON envelope
+            try:
+                cli_output = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                raise ClaudeCodeError(
+                    f"Failed to parse Claude Code output as JSON: "
+                    f"{result.stdout[:500]}"
+                )
 
-        if cli_output.get("is_error"):
-            raise ClaudeCodeError(
-                f"Claude Code returned error: "
-                f"{cli_output.get('result', 'unknown error')}"
-            )
+            if cli_output.get("is_error"):
+                error_msg = cli_output.get("result", "unknown error")
+                if self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
+                    wait = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(json.dumps({
+                        "step": "LLM_CALL",
+                        "status": "retrying",
+                        "model": "claude-code",
+                        "attempt": attempt + 1,
+                        "max_retries": self.max_retries,
+                        "wait_seconds": wait,
+                        "error": error_msg,
+                        "duration_api_ms": cli_output.get("duration_api_ms"),
+                    }))
+                    time.sleep(wait)
+                    last_error = error_msg
+                    continue
+                raise ClaudeCodeError(f"Claude Code returned error: {error_msg}")
 
-        response_text = cli_output.get("result", "")
+            # Success — parse response
+            response_text = cli_output.get("result", "")
 
-        # Parse the LLM response as JSON if requested
-        parsed = None
-        if json_mode or json_schema:
-            parsed = self._extract_json(response_text)
+            parsed = None
+            if json_mode or json_schema:
+                parsed = self._extract_json(response_text)
 
-        # If we got parsed JSON, use its serialization as output_text
-        # so downstream consumers see clean JSON
-        output_text = json.dumps(parsed) if parsed else response_text
+            output_text = json.dumps(parsed) if parsed else response_text
 
-        logger.info(json.dumps({
-            "step": "LLM_CALL",
-            "status": "complete",
-            "model": "claude-code",
-            "output": {"response_length": len(response_text)},
-            "duration_ms": duration_ms,
-            "cost_usd": cli_output.get("total_cost_usd"),
-            "num_turns": cli_output.get("num_turns"),
-        }))
+            logger.info(json.dumps({
+                "step": "LLM_CALL",
+                "status": "complete",
+                "model": "claude-code",
+                "output": {"response_length": len(response_text)},
+                "duration_ms": duration_ms,
+                "cost_usd": cli_output.get("total_cost_usd"),
+                "num_turns": cli_output.get("num_turns"),
+                "attempt": attempt + 1,
+            }))
 
-        return {
-            "output_text": output_text,
-            "reasoning": None,
-            "parsed": parsed,
-        }
+            return {
+                "output_text": output_text,
+                "reasoning": None,
+                "parsed": parsed,
+            }
+
+        # All retries exhausted
+        raise ClaudeCodeError(
+            f"Claude Code CLI failed after {self.max_retries} attempts. "
+            f"Last error: {last_error}"
+        )
 
     def _build_prompt(
         self,
