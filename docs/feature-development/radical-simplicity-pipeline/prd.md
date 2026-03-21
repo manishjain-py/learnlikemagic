@@ -40,20 +40,37 @@ Make every explanation card and tutor message so simple that the weakest student
   - One idea per message — if you need "and" to describe what you're saying, split it
   - "If you can say it simpler, you MUST say it simpler"
   - Simplicity beats thoroughness — say less, not more
+  - Clarity beats novelty — repeating a simple phrase is better than varying into complexity
   - Self-check before every response: "Would a struggling 10-year-old get this instantly?"
   - Anti-patterns to ban: "In other words," "Essentially," "This means that" — these signal the first explanation was too complex. Say it simply the first time.
+  - Don't "upgrade" language from cards — if the cards used "part," don't switch to "fraction" in the interactive session. Reuse the same simple words.
 - **FR-2:** Explanation generation prompt MUST elevate Principle 1 to ELI5 standard: "Write as if explaining to a 5-year-old. Every sentence must be instantly clear to even a below-average student."
 - **FR-3:** Explanation generation prompt SHOULD add explicit constraints: sentences under 15 words, only daily vocabulary of a child, one concept per card.
 - **FR-4:** Master tutor Rule 1's "WHY before HOW" MUST add a simplicity caveat: "Keep WHY explanations radically simple — one short sentence, not a paragraph."
 - **FR-5:** Master tutor Rule 14 (visual explanations) SHOULD clarify that visual descriptions must not make the overall message longer or more complex.
+- **FR-5a:** Master tutor Rule 5 ("Never repeat yourself") MUST add a simplicity caveat: "Vary question types and structure, but never sacrifice simplicity for novelty. Using the same simple word twice is better than introducing a harder synonym for variety."
+
+### 4.1a Prompt Cleanup Audit (Phase 1, before baseline)
+
+Before making changes, audit both prompts for these specific anti-patterns:
+- **FR-5b:** Any instruction that rewards **novelty over clarity** — e.g., Rule 5's "best tutors are unpredictable" could push the LLM to use complex vocabulary for variety. MUST add simplicity guardrail.
+- **FR-5c:** Any instruction that encourages **multi-part responses** — multiple ideas in one message, double questions ("what is X AND why does Y?"), or compound explanations. MUST be constrained to one idea per turn.
+- **FR-5d:** Any **generic comprehension checks** instead of tiny concrete checks — "Can you explain what we learned?" is bad; "Quick — what's 5 + 3?" is good. Audit and tighten.
+- **FR-5e:** Any place where the tutor is likely to **"upgrade" language** after cards — using textbook vocabulary in the interactive session when cards used simpler words. MUST explicitly instruct: reuse the cards' vocabulary, don't level up.
 
 ### 4.2 Simplicity Evaluator
 
-- **FR-6:** A new `SimplicityEvaluator` MUST score the entire session (explanation cards + tutor messages) on one primary dimension: **Simplicity Score** (1-10).
+- **FR-6:** A new `SimplicityEvaluator` MUST score the session with **separate sub-scores** for cards and interactive tutor messages:
+  - `card_phase_simplicity` (1-10) — How simple are the explanation cards?
+  - `interactive_tutor_simplicity` (1-10) — How simple are the tutor's messages during the interactive session?
+  - `overall_simplicity_score` (1-10) — Weighted average of the above, used as the primary metric for keep/discard decisions.
+
+  This separation is critical because the auto-research loop only modifies tutor prompts — if `card_phase_simplicity` is low, that signals a problem in `explanation_generation.txt` which requires separate action. If `interactive_tutor_simplicity` is low, the loop can directly fix it.
 - **FR-7:** The evaluator MUST consider these sub-criteria when scoring:
   - **Word Choice** — Are all words from a child's daily vocabulary? Are technical terms introduced with plain-language explanation?
   - **Sentence Structure** — Are sentences short (under 15 words)? One idea per sentence? No complex or compound clauses?
   - **Concept Density** — One idea per card/message? No information overload? Student never holds multiple new concepts at once?
+  - **Concreteness** — Are examples specific and tangible (pizza slices, pocket money, cricket scores), not abstract? Even with simple words, abstract explanations fail struggling students.
   - **Accessibility** — Would even a below-average IQ student understand immediately without re-reading?
   - **The "Wow" Factor** — Does the student feel "that's so simple, I just get it!"?
 - **FR-8:** The evaluator MUST score two supporting dimensions (diagnostic, not primary optimization target):
@@ -65,7 +82,7 @@ Make every explanation card and tutor message so simple that the weakest student
   - Why it's not simple enough
   - How it could be simplified
   - Severity: critical (student would be lost), major (student would struggle), minor (student might pause)
-- **FR-10:** The evaluator MUST produce a composite score: `simplicity_score` (the primary 1-10 score) and `weighted_issue_count` (critical x 3 + major x 2 + minor x 1).
+- **FR-10:** The evaluator MUST produce: `overall_simplicity_score` (primary 1-10), `card_phase_simplicity` (1-10), `interactive_tutor_simplicity` (1-10), and `weighted_issue_count` (critical x 3 + major x 2 + minor x 1).
 - **FR-11:** The scoring rubric:
   - 9-10: Every message crystal clear. A 5-year-old could follow. Words everyday, sentences short, ideas bite-sized.
   - 7-8: Most messages simple. Occasional words/sentences could be simpler. Student pauses at 1-2 spots.
@@ -93,6 +110,12 @@ Make every explanation card and tutor message so simple that the weakest student
 - **FR-15:** Default personas MUST be `average_student.json` (Riya, 45% correct) and `struggler.json` (Priya, 30% correct) — the students who need simplicity most.
 - **FR-16:** Topics MUST rotate from the session_experience TOPIC_POOL (6 Grade 3 Math topics with pre-computed explanations), 3 per iteration by default.
 
+### 4.3a Card Regeneration (Phase 1, before baseline)
+
+- **FR-16a:** Before the first baseline run, the pipeline MUST regenerate explanation cards for all test topics using the updated `explanation_generation.txt` prompt. Existing cards in the DB were generated with the OLD prompt — measuring them against the new simplicity criteria would give a dishonest baseline.
+- **FR-16b:** Card regeneration is a one-time step for Phase 1 only. During the auto-research loop (Phase 3), cards stay fixed because the loop only modifies tutor prompts, not `explanation_generation.txt`.
+- **FR-16c:** The pipeline SHOULD provide a `--regenerate-cards` CLI flag that triggers card regeneration for the selected topics before running the session. Default: off (cards from DB).
+
 ### 4.4 Experiment Execution
 
 - **FR-17:** The pipeline MUST support the same CLI arguments as session_experience:
@@ -104,14 +127,15 @@ Make every explanation card and tutor message so simple that the weakest student
   - `--quick` (1 topic, 12 turns, 1 run)
   - `--personas` (comma-separated persona files)
 - **FR-18:** Keep/discard threshold: Keep if simplicity score improves by >= 0.2 OR weighted issue count decreases by >= 1, without the other metric getting significantly worse.
-- **FR-19:** Results MUST be logged to `results.tsv` with columns: commit, simplicity_score, weighted_issues, relatability, progressive_building, elapsed_min, status, description, scores_json.
+- **FR-19:** Results MUST be logged to `results.tsv` with columns: commit, overall_simplicity, card_simplicity, tutor_simplicity, weighted_issues, relatability, progressive_building, elapsed_min, status, description, scores_json.
 
 ### 4.5 Email Reports
 
 - **FR-20:** Email reports MUST be generated via macOS Mail.app (same mechanism as existing pipelines).
 - **FR-21:** The HTML report MUST include:
   - Iteration number, status (KEEP/DISCARD/CRASH), experiment description
-  - Simplicity score vs baseline + delta
+  - Overall simplicity score vs baseline + delta
+  - Card phase simplicity vs interactive tutor simplicity (separate sub-scores)
   - Weighted issue count vs baseline + delta
   - Supporting dimension scores (relatability, progressive building)
   - Top flagged messages (the most complex cards/messages with specific quotes and simplification suggestions)
@@ -157,6 +181,12 @@ This feature is an internal admin/research tool — no student-facing UX. The "U
 - Reuses `tutor_teaching_quality` personas directory.
 - New evaluator class (`SimplicityEvaluator`) with its own rubric, distinct from `ConversationEvaluator` and `ExperienceEvaluator`.
 - No prompt analyzer stage (unlike session_experience) — the simplicity evaluator's message-level flags with simplification suggestions serve that purpose directly.
+
+### Card Regeneration Architecture
+
+- **Critical constraint:** Explanation cards in the DB are generated by `book_ingestion_v2` using `explanation_generation.txt`. The session pipelines consume whatever cards are stored — they don't regenerate on the fly. Changing `explanation_generation.txt` has NO effect on what the pipeline sees until cards are regenerated.
+- **Baseline flow:** Before the first baseline, invoke the explanation generation service for all test topics to produce fresh cards with the updated prompt. Store them in DB as normal. Then run the session.
+- **Loop flow:** During auto-research iterations, cards stay fixed. Only tutor prompts change. This is correct because the loop's modifiable surface is tutor prompts only.
 
 ### Evaluator LLM Configuration
 
@@ -211,9 +241,8 @@ Prompt changes optimized for simplicity could lower scores on other pipelines (e
 
 ## 10. Open Questions
 
-1. **Separate card vs tutor scoring?** Should the evaluator produce separate simplicity scores for explanation cards and tutor messages, or one combined score? Current plan: one combined score with message-level flags that distinguish cards from tutor turns.
-2. **Explanation generation in the loop?** Should the auto-research agent eventually be able to modify `explanation_generation.txt` to optimize card simplicity too? Currently out of scope (card generation has its own pipeline).
-3. **Cross-pipeline regression checks?** Should the simplicity pipeline automatically run the tutor_teaching_quality evaluator as a regression check? Would add ~10 min per iteration but catch depth trade-offs.
+1. **Cross-pipeline regression checks?** Should the simplicity pipeline automatically run the tutor_teaching_quality evaluator as a regression check? Would add ~10 min per iteration but catch depth trade-offs.
+2. **Card regeneration scope:** Should the `--regenerate-cards` step regenerate all 3 variants per topic, or just the variant used in the session? Regenerating all 3 is more thorough but slower.
 
 ---
 
