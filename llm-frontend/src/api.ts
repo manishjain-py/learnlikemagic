@@ -655,27 +655,6 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 // Issue reporting
 // ──────────────────────────────────────────────
 
-export interface InterpretIssueRequest {
-  user_input: string;
-  screenshot_s3_keys?: string[];
-  previous_interpretation?: string;
-  refinement_input?: string;
-}
-
-export interface InterpretIssueResponse {
-  title: string;
-  description: string;
-}
-
-export async function interpretIssue(req: InterpretIssueRequest): Promise<InterpretIssueResponse> {
-  const res = await apiFetch('/issues/interpret', {
-    method: 'POST',
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error(`Interpret failed: ${res.statusText}`);
-  return res.json();
-}
-
 export async function uploadIssueScreenshot(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);

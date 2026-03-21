@@ -3,12 +3,12 @@ import logging
 from typing import Optional, List
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
 from database import get_db
-from auth.middleware.auth_middleware import get_current_user, get_optional_user
+from auth.middleware.auth_middleware import get_current_user
 from shared.services.issue_service import IssueService
 
 logger = logging.getLogger(__name__)
@@ -17,16 +17,6 @@ router = APIRouter()
 
 
 # ── Schemas ──────────────────────────────────────────────────
-
-class InterpretRequest(BaseModel):
-    user_input: str
-    screenshot_s3_keys: Optional[List[str]] = None
-    previous_interpretation: Optional[str] = None
-    refinement_input: Optional[str] = None
-
-class InterpretResponse(BaseModel):
-    title: str
-    description: str
 
 class CreateIssueRequest(BaseModel):
     title: str
@@ -74,23 +64,6 @@ def _issue_to_response(issue) -> IssueResponse:
 
 # ── User-facing endpoints ────────────────────────────────────
 
-@router.post("/issues/interpret", response_model=InterpretResponse)
-async def interpret_issue(
-    request: InterpretRequest,
-    current_user=Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    """Send user input to LLM to interpret the issue in app context."""
-    service = IssueService(db)
-    result = service.interpret(
-        user_input=request.user_input,
-        screenshot_s3_keys=request.screenshot_s3_keys,
-        previous_interpretation=request.previous_interpretation,
-        refinement_input=request.refinement_input,
-    )
-    return InterpretResponse(**result)
-
-
 @router.post("/issues/upload-screenshot", response_model=ScreenshotUploadResponse)
 async def upload_screenshot(
     file: UploadFile = File(...),
@@ -100,7 +73,6 @@ async def upload_screenshot(
     """Upload a screenshot for an issue report. Returns S3 key."""
     service = IssueService(db)
     file_bytes = await file.read()
-    # Use a temp ID for the upload path — will be grouped under a draft folder
     draft_id = str(uuid4())
     s3_key = service.upload_screenshot(
         issue_id=draft_id,
@@ -117,7 +89,7 @@ async def create_issue(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Create a confirmed issue after user accepts the LLM interpretation."""
+    """Create an issue."""
     service = IssueService(db)
     issue = service.create_issue(
         title=request.title,

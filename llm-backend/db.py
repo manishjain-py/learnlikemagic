@@ -66,12 +66,6 @@ _LLM_CONFIG_SEEDS = [
         "description": "Lightweight model for safety checks, translation, and other fast tasks",
     },
     {
-        "component_key": "issue_interpreter",
-        "provider": "openai",
-        "model_id": "gpt-4o-mini",
-        "description": "Interprets user-reported issues in the context of the app",
-    },
-    {
         "component_key": "pixi_code_generator",
         "provider": "openai",
         "model_id": "gpt-5.3-codex",
@@ -658,20 +652,12 @@ def _ensure_llm_config(db_manager, component_key, provider, model_id, descriptio
 
 
 def _apply_issues_table(db_manager):
-    """Verify issues table exists and seed LLM config for issue interpreter."""
+    """Verify issues table exists."""
     inspector = inspect(db_manager.engine)
     if "issues" in inspector.get_table_names():
         print("  ✓ issues table exists")
     else:
         print("  ✓ issues table created")
-
-    _ensure_llm_config(
-        db_manager,
-        component_key="issue_interpreter",
-        provider="openai",
-        model_id="gpt-4o-mini",
-        description="Interprets user-reported issues in the context of the app",
-    )
 
 
 def _seed_llm_config(db_manager):
