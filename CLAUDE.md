@@ -60,3 +60,15 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 - `orchestrator.py` - Agent orchestration
 
 **Critical:** Always build Docker images with `--platform linux/amd64` for AWS deployment.
+
+## Claude Code as LLM Provider
+
+When the admin dashboard is configured to use `claude_code` as the LLM provider, **always use Claude Code** — never silently switch to another provider (OpenAI, Anthropic API, etc.) without explicit user approval.
+
+**Adapter:** `shared/services/claude_code_adapter.py` — calls the `claude` CLI as a subprocess.
+
+Key rules for the adapter:
+- **Strip ANTHROPIC_API_KEY from subprocess env** — this is critical. `load_dotenv()` in import chains sets `ANTHROPIC_API_KEY`, and the Claude Code CLI picks it up, authenticating via the API key (with low/no balance) instead of the user's Claude subscription. The adapter passes `env=clean_env` to subprocess to prevent this.
+- **Prompt via stdin** (`input=` param in subprocess), not as a `-p` CLI argument. More robust for large/complex prompts.
+- **Retry transient errors** — "credit balance", "rate limit", "overloaded" errors get exponential backoff (3 attempts, 10s base delay).
+- **Always pass** `--dangerously-skip-permissions --no-session-persistence --max-turns 1 --output-format json`.
