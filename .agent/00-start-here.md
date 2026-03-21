@@ -1,7 +1,7 @@
 # Agent Start Here
 
-Last audited: 2026-03-15
-Code baseline: `main@3814fb5`
+Last audited: 2026-03-21
+Code baseline: `main@e0c0338`
 
 This folder is the internal operator manual for fast, reliable work in this repo.
 

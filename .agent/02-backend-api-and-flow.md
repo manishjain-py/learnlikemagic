@@ -1,7 +1,7 @@
 # Backend API And Flow
 
-Last audited: 2026-03-15
-Code baseline: `main@3814fb5`
+Last audited: 2026-03-21
+Code baseline: `main@e0c0338`
 
 ## Boot Sequence
 1. `main.py` validates required settings (`OPENAI_API_KEY`, `DATABASE_URL`)
@@ -40,6 +40,7 @@ Code baseline: `main@3814fb5`
 - `POST /sessions/{session_id}/resume`
 - `POST /sessions/{session_id}/end-clarify`
 - `POST /sessions/{session_id}/end-exam`
+- `POST /sessions/{session_id}/card-action`
 - `POST /sessions/{session_id}/feedback`
 
 ### Session WebSocket
@@ -88,15 +89,22 @@ Code baseline: `main@3814fb5`
 - `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/process`
 - `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/reprocess`
 - `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/refinalize`
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/ocr-retry`
+- `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/ocr-rerun`
 - `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/jobs/latest`
 - `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/jobs/{job_id}`
 - `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/topics`
 - `GET /admin/v2/books/{book_id}/chapters/{chapter_id}/topics/{topic_key}`
 
-### Book ingestion V2 — sync + results (`/admin/v2/books/{book_id}`)
+### Book ingestion V2 — sync, results, explanations (`/admin/v2/books/{book_id}`)
 - `POST /admin/v2/books/{book_id}/sync`
 - `POST /admin/v2/books/{book_id}/chapters/{chapter_id}/sync`
 - `GET /admin/v2/books/{book_id}/results`
+- `POST /admin/v2/books/{book_id}/generate-explanations`
+- `GET /admin/v2/books/{book_id}/explanation-jobs/latest`
+- `GET /admin/v2/books/{book_id}/explanation-status`
+- `GET /admin/v2/books/{book_id}/explanations`
+- `DELETE /admin/v2/books/{book_id}/explanations`
 
 ### Evaluation
 - `GET /api/evaluation/personas`
@@ -129,15 +137,17 @@ Code baseline: `main@3814fb5`
 
 ## Tutoring Runtime Flow
 1. Session creation (`SessionService.create_new_session`) resolves guideline + optional study plan + user context
-2. Orchestrator turn cycle:
+2. Orchestrator turn cycle (`process_turn` / `process_turn_stream`):
    - translate (Hinglish→English) + safety gate run in parallel
+   - post-completion short-circuit if session complete
    - mode routing (teach_me / clarify_doubts / exam)
-   - master tutor call
-   - optional Pixi.js visual generation
+   - master tutor call (or mode-specific handler)
    - state transition application
-3. State persisted with optimistic locking (`state_version`)
-4. Event log records turn metadata
-5. WS flow uses separate version-checked write helper
+   - optional Pixi.js visual generation (inline in TurnResult)
+3. Card-action flow: `card-action` endpoint handles pre-computed explanation card interactions (clear / explain_differently)
+4. State persisted with optimistic locking (`state_version`)
+5. Event log records turn metadata
+6. WS streaming uses `process_turn_stream` with version-checked write helper
 
 ## LLM Provider Architecture
 - Source of truth: `llm_config` table

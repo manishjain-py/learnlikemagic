@@ -1,6 +1,6 @@
 # AI Agent Context Files
 
-How the ~38 files that give AI agents project context are organized, what each one does, and when they need updating.
+How the ~36 files that give AI agents project context are organized, what each one does, and when they need updating.
 
 ---
 
@@ -74,10 +74,7 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | `unit-test-runner.md` | Run pytest with coverage, build HTML report, email | Manual — update when test infrastructure changes |
 | `unit-test-updater.md` | Generate/clean unit tests by priority tier to reach 80% coverage | Manual — update when test strategy changes |
 | `video-to-gif.md` | Convert video files to animated GIFs | Manual — update when conversion workflow changes |
-| `hara-bhara-kabab.md` | Claude Code via Telegram — poll and respond to Telegram messages | Manual — update when Telegram integration changes |
-| `kaala-paani.md` | Claude Code via Telegram — autonomous message processing variant | Manual — update when Telegram integration changes |
-| `neela-neela-ambar.md` | Claude Code via Telegram — autonomous message processing variant | Manual — update when Telegram integration changes |
-| `swachh-paani.md` | Claude Code via Telegram — autonomous message processing variant | Manual — update when Telegram integration changes |
+| `run-auto-research.md` | Autonomous prompt optimization loop for tutor quality | Manual — update when autoresearch workflow changes |
 
 ### Memory
 
@@ -92,6 +89,7 @@ These files are **code-coupled** — they contain concrete counts, file paths, e
 | File | Purpose | Update Trigger |
 |------|---------|----------------|
 | `.claude/settings.local.json` | Claude Code permission allowlist: 70+ bash commands, read paths, web access | Manual — update when new tools or paths are needed |
+| `infra/.claude/settings.local.json` | Claude Code permissions for infra/terraform workspace | Manual — update when infra tooling changes |
 
 ---
 

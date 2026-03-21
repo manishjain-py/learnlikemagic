@@ -1,7 +1,7 @@
 # Known Drift And Risks
 
-Last audited: 2026-03-15
-Code baseline: `main@3814fb5`
+Last audited: 2026-03-21
+Code baseline: `main@e0c0338`
 
 ## Verified Drift
 1. `llm-frontend/README.md` is stale.
@@ -26,8 +26,8 @@ Code baseline: `main@3814fb5`
 6. ~~Explicit TODO in ingestion cleanup path.~~ **Resolved.**
 - Old `book_ingestion/` directory no longer exists; replaced by `book_ingestion_v2/`. The `delete_prefix` TODO is not present in V2 code.
 
-7. Stale `evaluation/` directory at old location.
-- `llm-backend/evaluation/` contains only `__pycache__`; all `.py` files have moved to `llm-backend/autoresearch/tutor_teaching_quality/evaluation/`. The empty directory shell should be removed.
+7. ~~Stale `evaluation/` directory at old location.~~ **Resolved.**
+- `llm-backend/evaluation/` has been deleted; code lives in `autoresearch/tutor_teaching_quality/evaluation/`.
 
 ## Operational Risks
 1. Admin frontend routes are not protected by auth guard in route config.
@@ -40,4 +40,4 @@ Code baseline: `main@3814fb5`
 2. ~~Reconcile scorecard/report-card technical docs with actual route set.~~ Done — docs now use `report-card`.
 3. Decide whether to retire or modernize legacy `TutorState` paths in repository layer.
 4. Clarify whether teaching guideline legacy fields (`teaching_description`, `description`) can be dropped or are still needed by V2 pipeline.
-5. Delete stale `llm-backend/evaluation/` directory (only contains `__pycache__`; code now lives in `autoresearch/tutor_teaching_quality/evaluation/`).
+5. ~~Delete stale `llm-backend/evaluation/` directory.~~ Done — directory removed.

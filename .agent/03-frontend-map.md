@@ -1,7 +1,7 @@
 # Frontend Map
 
-Last audited: 2026-03-15
-Code baseline: `main@3814fb5`
+Last audited: 2026-03-21
+Code baseline: `main@e0c0338`
 
 ## Stack
 - React 18 + TypeScript + Vite

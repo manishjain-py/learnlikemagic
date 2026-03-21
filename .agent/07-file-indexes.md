@@ -1,7 +1,7 @@
 # File Indexes
 
-Last audited: 2026-03-15
-Code baseline: `main@3814fb5`
+Last audited: 2026-03-21
+Code baseline: `main@e0c0338`
 
 ## Backend High-Signal Files
 - App bootstrap: `llm-backend/main.py`
@@ -26,6 +26,11 @@ Code baseline: `main@3814fb5`
 - Tutor evaluation judge: `llm-backend/autoresearch/tutor_teaching_quality/evaluation/evaluator.py`
 - Book ingestion evaluator: `llm-backend/autoresearch/book_ingestion_quality/evaluation/evaluator.py`
 - Book ingestion pipeline runner: `llm-backend/autoresearch/book_ingestion_quality/evaluation/pipeline_runner.py`
+- Explanation quality evaluator: `llm-backend/autoresearch/explanation_quality/evaluation/evaluator.py`
+- Explanation quality experiment: `llm-backend/autoresearch/explanation_quality/run_experiment.py`
+- Session experience evaluator: `llm-backend/autoresearch/session_experience/evaluation/experience_evaluator.py`
+- Session experience runner: `llm-backend/autoresearch/session_experience/evaluation/session_runner.py`
+- Session experience experiment: `llm-backend/autoresearch/session_experience/run_experiment.py`
 - Auth routes: `llm-backend/auth/api/auth_routes.py`
 - Enrichment routes: `llm-backend/auth/api/enrichment_routes.py`
 - Profile routes: `llm-backend/auth/api/profile_routes.py`

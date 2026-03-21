@@ -1,7 +1,7 @@
 # Repo Map
 
-Last audited: 2026-03-15
-Code baseline: `main@3814fb5`
+Last audited: 2026-03-21
+Code baseline: `main@e0c0338`
 
 ## Product Summary
 LearnLikeMagic is an AI tutoring platform with:
@@ -12,13 +12,13 @@ LearnLikeMagic is an AI tutoring platform with:
 - Functional + technical documentation (`docs`)
 
 ## Source Footprint
-- Backend Python files: `210`
-- Backend Python lines: `38,211`
-- Frontend TS/TSX files: `57`
-- Frontend TS/TSX lines: `13,112`
-- Docs markdown files: `40`
-- Backend unit tests: `38`
-- Backend integration tests: `3`
+- Backend Python files: `234`
+- Backend Python lines: `46,911`
+- Frontend TS/TSX files: `58`
+- Frontend TS/TSX lines: `14,057`
+- Docs markdown files: `55`
+- Backend unit tests: `42`
+- Backend integration tests: `5`
 
 ## Top-Level Ownership
 - `llm-backend/`: tutoring runtime, auth, ingestion, evaluation, shared infra
@@ -41,16 +41,18 @@ LearnLikeMagic is an AI tutoring platform with:
 - `tutor/`: live tutoring (teach_me / clarify_doubts / exam), ws chat, report card
 - `book_ingestion_v2/`: book/chapter/page CRUD, OCR, TOC extraction, topic extraction/sync
 - `study_plans/`: study plan generation + review orchestration
-- `autoresearch/`: autonomous prompt optimization with two sub-domains:
+- `autoresearch/`: autonomous prompt optimization with four sub-domains:
   - `tutor_teaching_quality/`: session simulation + transcript judging + reports
   - `book_ingestion_quality/`: ingestion pipeline evaluation + coverage scoring
+  - `explanation_quality/`: explanation card evaluation + report generation
+  - `session_experience/`: session experience evaluation + prompt analysis
 - `auth/`: Cognito token verification, user sync, profile
 - `shared/`: entities/schemas, repositories, LLM abstraction, health/config, feature flags
 
 ## Frontend Domain Map
-- `src/pages/`: auth, onboarding, profile, history, report card, learning flow, enrichment, exam review
+- `src/pages/`: auth (email/phone/OAuth login, signup, verify, forgot-password), onboarding, profile, history, report card, learning flow (subject/chapter/topic select, chat, mode select), enrichment, exam review
 - `src/features/admin/`: books (v2), evaluation, docs, model config, feature flags, test scenarios, pixi PoC
-- `src/features/devtools/`: session state + agent logs + guidelines + study plan views
+- `src/features/devtools/`: agent logs + guidelines + study plan panels via drawer
 - `src/contexts/AuthContext.tsx`: Cognito + backend profile sync
 
 ## Infra Module Map
