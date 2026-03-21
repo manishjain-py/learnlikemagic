@@ -96,7 +96,7 @@ export default function ReportIssuePage() {
 
       const result = await interpretIssue({
         user_input: refinementText || text,
-        has_screenshots: keys.length > 0,
+        screenshot_s3_keys: keys.length > 0 ? keys : undefined,
         previous_interpretation: interpretation
           ? `Title: ${interpretation.title}\nDescription: ${interpretation.description}`
           : undefined,

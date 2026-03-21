@@ -1,16 +1,17 @@
 """Service for issue reporting — LLM interpretation + CRUD."""
+import base64
 import json
 import logging
 from uuid import uuid4
 from typing import Optional, List
 
+from openai import OpenAI
 from sqlalchemy.orm import Session as DBSession
 
 from config import get_settings
 from shared.models.entities import Issue, User
 from shared.repositories.issue_repository import IssueRepository
 from shared.services.llm_config_service import LLMConfigService
-from shared.services.llm_service import LLMService
 from shared.utils.s3_client import get_s3_client
 
 logger = logging.getLogger(__name__)
@@ -82,29 +83,26 @@ class IssueService:
     def interpret(
         self,
         user_input: str,
-        has_screenshots: bool = False,
+        screenshot_s3_keys: Optional[List[str]] = None,
         previous_interpretation: Optional[str] = None,
         refinement_input: Optional[str] = None,
     ) -> dict:
-        """Use LLM to interpret the user's issue report. Returns {title, description}."""
+        """Use LLM to interpret the user's issue report with vision support.
+
+        Screenshots are downloaded from S3 and sent as images to the LLM
+        so it can visually analyse what the user is referring to.
+        """
         settings = get_settings()
         config_service = LLMConfigService(self.db)
         config = config_service.get_config("issue_interpreter")
-        fast_config = config_service.get_config("fast_model")
 
-        llm = LLMService(
-            api_key=settings.openai_api_key,
-            provider=config["provider"],
-            model_id=config["model_id"],
-            fast_model_id=fast_config["model_id"],
-            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
-            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
-        )
-
-        screenshot_note = (
-            "The user also attached screenshots showing the issue."
-            if has_screenshots else ""
-        )
+        screenshot_note = ""
+        if screenshot_s3_keys:
+            screenshot_note = (
+                "The user attached screenshots below. CAREFULLY analyse them to understand "
+                "what the user is pointing at, highlighting, or circling. The screenshots "
+                "are critical context — the user's text may be vague without them."
+            )
 
         refinement_note = ""
         if previous_interpretation and refinement_input:
@@ -114,15 +112,47 @@ class IssueService:
                 "Revise the interpretation based on the user's feedback."
             )
 
-        prompt = _INTERPRET_PROMPT.format(
+        prompt_text = _INTERPRET_PROMPT.format(
             app_context=_APP_CONTEXT,
             user_input=user_input,
             screenshot_note=screenshot_note,
             refinement_note=refinement_note,
         )
 
-        result = llm.call(prompt, json_mode=True)
-        parsed = json.loads(result["output_text"])
+        # Build multimodal content: text + images
+        content: list = [{"type": "text", "text": prompt_text}]
+
+        if screenshot_s3_keys:
+            s3 = get_s3_client()
+            for key in screenshot_s3_keys:
+                try:
+                    img_bytes = s3.download_bytes(key)
+                    b64 = base64.b64encode(img_bytes).decode("utf-8")
+                    # Detect MIME from extension
+                    ext = key.rsplit(".", 1)[-1].lower() if "." in key else "png"
+                    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                            "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/png")
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to load screenshot {key}: {e}")
+
+        # Use OpenAI API directly for vision support
+        client = OpenAI(api_key=settings.openai_api_key)
+        model = config["model_id"]
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            response_format={"type": "json_object"},
+            max_completion_tokens=1024,
+            temperature=0.3,
+        )
+
+        result_text = response.choices[0].message.content
+        parsed = json.loads(result_text)
         return {"title": parsed["title"], "description": parsed["description"]}
 
     def upload_screenshot(self, issue_id: str, file_bytes: bytes, filename: str, content_type: str) -> str:

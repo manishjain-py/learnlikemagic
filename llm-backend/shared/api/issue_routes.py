@@ -20,7 +20,7 @@ router = APIRouter()
 
 class InterpretRequest(BaseModel):
     user_input: str
-    has_screenshots: bool = False
+    screenshot_s3_keys: Optional[List[str]] = None
     previous_interpretation: Optional[str] = None
     refinement_input: Optional[str] = None
 
@@ -84,7 +84,7 @@ async def interpret_issue(
     service = IssueService(db)
     result = service.interpret(
         user_input=request.user_input,
-        has_screenshots=request.has_screenshots,
+        screenshot_s3_keys=request.screenshot_s3_keys,
         previous_interpretation=request.previous_interpretation,
         refinement_input=request.refinement_input,
     )

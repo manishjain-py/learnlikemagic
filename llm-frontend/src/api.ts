@@ -657,7 +657,7 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
 
 export interface InterpretIssueRequest {
   user_input: string;
-  has_screenshots?: boolean;
+  screenshot_s3_keys?: string[];
   previous_interpretation?: string;
   refinement_input?: string;
 }
