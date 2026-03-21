@@ -192,6 +192,8 @@ Centralized model configuration per component. Single source of truth for which 
 | `book_ingestion_v2` | openai | gpt-5.2 | Book ingestion V2 pipeline (chunk extraction, consolidation, merge) |
 | `personality_derivation` | openai | gpt-5.2 | Kid personality derivation from enrichment profile |
 | `explanation_generator` | openai | gpt-5.2 | Pre-computed explanation generation for topics |
+| `fast_model` | openai | gpt-4o-mini | Lightweight model for safety checks, translation, and other fast tasks |
+| `pixi_code_generator` | openai | gpt-5.3-codex | Pixi.js visual code generation from natural language |
 
 ### Session Feedback
 

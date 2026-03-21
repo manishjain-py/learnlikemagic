@@ -38,9 +38,9 @@ For some subtopics, the tutor has pre-prepared explanation cards that walk you t
 1. The session starts with a set of cards instead of the usual chat — each card covers one idea (a concept, an example, a visual, an analogy, or a summary)
 2. You read through the cards at your own pace
 3. When you finish, you choose one of two options:
-   - **"I understand"** — You move straight to practice and check questions, skipping the explanation chat. The tutor already knows what was covered and will not repeat those explanations.
+   - **"I understand"** — The tutor generates a personalized interactive plan based on what you just read, then asks you a question referencing specific analogies or examples from the cards to check what stuck. The session continues with understanding checks, guided practice, independent practice, and extension activities.
    - **"Explain differently"** — The tutor shows a different set of cards that explain the same ideas using a different approach (e.g., a different analogy or real-world context). If all available approaches have been shown, the tutor switches to the normal interactive explanation instead.
-4. Once you move past the cards, the session continues as a normal Teach Me lesson — the tutor asks questions, checks your understanding, and gives practice problems
+4. Once you move past the cards, the session continues with a tailored study plan — the tutor checks understanding (referencing the cards), guides you through practice, then lets you try independently, and finally extends to harder problems
 
 The cards are a quicker way to absorb the material when you prefer reading over back-and-forth conversation. The interactive tutor is always available as a fallback.
 
@@ -94,7 +94,7 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 ### Teaching Philosophy
 
-1. **Start simple** — Every explanation begins with one core idea and a relatable example. Complexity builds only after you show understanding.
+1. **Verify, then practice, then extend** — When explanation cards are available, the tutor does not re-explain. It checks what stuck from the cards first (using the cards' own analogies and examples), then moves to guided practice, then independent practice, then extension to harder problems. If you are genuinely confused despite the cards, the tutor re-explains using a completely different approach.
 
 2. **Advance when ready** — When you demonstrate mastery, the tutor moves on. If you ask for harder material, it skips ahead. Strong students aren't held back.
 
@@ -103,16 +103,16 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
    - Second wrong answer → gives a targeted hint
    - Third wrong answer → explains directly, trying a completely different approach
    - Fourth+ wrong answer → steps back to a simpler prerequisite skill or breaks the problem into smaller pieces
-   - If the same misconception keeps recurring, the tutor names it explicitly and creates a targeted exercise
+   - If the same misconception keeps recurring after 2 corrections, the tutor abandons its current approach entirely and switches strategy
    - If repeated errors reveal you lack a foundational skill, the tutor pauses the topic, drills that skill first, then returns to the original topic
 
-4. **Never repeat** — The tutor varies how it explains things and the types of questions it asks. If something isn't working, it changes strategy.
+4. **Never repeat** — The tutor varies how it explains things and the types of questions it asks. If something isn't working, it changes strategy. When cards have been shown, the tutor uses the cards' analogies as shared vocabulary rather than introducing competing ones.
 
-5. **Checks for real understanding** — If you give a vague response like "hmm ok" or "I think I get it", the tutor does not just move on. It follows up with a quick check to make sure you actually understand, such as asking you to solve a small example or explain the idea back. The tutor only moves forward when you can show understanding through doing, not just by saying you understand.
+5. **Checks for real understanding** — If you give a vague response like "hmm ok" or "I think I get it", the tutor does not just move on. It asks a concrete question requiring you to apply the idea. The tutor never asks yes/no comprehension checks ("Does that make sense?") — every check requires you to produce an answer. If you echo back the tutor's exact phrasing, that is treated as rote repetition, not understanding.
 
-6. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it.
+6. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it. When you correct yourself, the tutor acknowledges the self-correction. When your answer is correct but informal, the tutor confirms it as correct first.
 
-7. **Be real** — Praise is calibrated to difficulty. Easy answers don't get over-the-top celebration. Genuine breakthroughs get genuine enthusiasm. No stock phrases or excessive emojis.
+7. **Be real** — Praise is calibrated to difficulty. Easy answers don't get over-the-top celebration. Genuine breakthroughs get genuine enthusiasm. After a correct answer, the tutor confirms in one sentence and moves on — no extra explanations or warnings appended.
 
 8. **End naturally** — When the lesson is done, the tutor checks if you want to continue. If you say goodbye, it wraps up warmly in a few sentences.
 
@@ -124,7 +124,18 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 ## Session Progression
 
-Each Teach Me session follows a study plan made up of steps:
+Each Teach Me session follows a study plan made up of steps. The step types depend on whether the session used explanation cards.
+
+### Sessions with explanation cards (v2 plan)
+
+After you finish the cards, the tutor generates a tailored plan with these step types:
+
+- **Check Understanding** — Recall and comprehension questions about what the cards covered, referencing the cards' specific analogies and examples
+- **Guided Practice** — Work through problems together with the tutor's help, starting easy and increasing difficulty
+- **Independent Practice** — Solve problems on your own; the tutor only intervenes on errors
+- **Extend** — Apply concepts to new contexts, harder variations, or real-world scenarios using your interests
+
+### Sessions without explanation cards (v1 plan)
 
 - **Explain** steps — The tutor introduces a concept through a structured explanation:
   1. **Hook** — A curiosity-building opening that connects to your world
@@ -236,6 +247,20 @@ During lessons, the tutor can generate interactive visual illustrations to help 
 
 ---
 
+## Interactive Question Formats
+
+The tutor uses structured question formats to make answering easier, especially on mobile:
+
+- **Fill in the blank** — A sentence with blanks to complete (e.g., "The sum of 3 and 4 is ___"). Best for recall, definitions, equations.
+- **Single select** — 3-4 options with one correct answer. Best for identification, classification, true/false, or offering choices.
+- **Multi select** — 4-5 options with one or more correct. Best for "select all that apply" questions.
+- **Acknowledge** — Two buttons: "OK, got it!" and "Explain more". Used after pure explanations where you just need to signal readiness.
+- **Open-ended** — Free text input for explaining reasoning in your own words.
+
+The tutor varies formats naturally — it won't use the same format twice in a row.
+
+---
+
 ## Key Details
 
 - Sessions are saved automatically — you can review past sessions in your history
@@ -245,3 +270,4 @@ During lessons, the tutor can generate interactive visual illustrations to help 
 - When you change your answer, the tutor asks what made you change before evaluating
 - When you use an unexpected strategy, the tutor explores your reasoning before correcting
 - The tutor formats responses for readability: bold key terms, bullet points for lists, short paragraphs, and blank lines between ideas
+- The tutor uses colored emoji to illustrate color-based examples (sorting, grouping, mixing)

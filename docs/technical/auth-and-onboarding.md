@@ -202,7 +202,7 @@ The `auth_provider` field (`email`, `phone`, or `google`) is derived server-side
 |--------|------|-------------|
 | `id` | VARCHAR | Primary key (UUID) |
 | `user_id` | VARCHAR | FK to users |
-| `personality_json` | JSONB | Derived personality fields: teaching_approach, example_themes, people_to_reference, communication_style, encouragement_strategy, pace_guidance, strength_leverage, growth_focus, things_to_avoid, fun_hooks (10 fields total; tutor_brief stored separately) |
+| `personality_json` | JSONB | Derived personality fields: teaching_approach, example_themes, people_to_reference (array of `{name, context}` objects), communication_style, encouragement_strategy, pace_guidance, strength_leverage, growth_focus, things_to_avoid, fun_hooks (10 fields total; tutor_brief stored separately) |
 | `tutor_brief` | TEXT | Concise brief for tutor prompt injection |
 | `status` | VARCHAR | `generating`, `ready`, or `failed` |
 | `inputs_hash` | VARCHAR | Hash of enrichment+profile inputs for change detection |

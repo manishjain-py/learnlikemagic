@@ -89,7 +89,6 @@ Editable fields:
 - School name (optional)
 
 Settings:
-- **Focus Mode** — Toggle on/off. Shows tutor responses in full-screen with audio, designed for younger students. On by default.
 - **Text language** — Choose English, Hindi, or Hinglish (Hindi + English)
 - **Audio language** — Choose English, Hindi, or Hinglish (Hindi + English)
 

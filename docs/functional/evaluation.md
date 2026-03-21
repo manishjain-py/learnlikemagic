@@ -43,13 +43,20 @@ Each persona has a defined probability of answering correctly, ranging from 30% 
 
 ## What Gets Measured
 
-The tutor is scored across 5 teaching dimensions, each rated 1-10:
+The tutor is scored across up to 7 teaching dimensions, each rated 1-10:
+
+**Core dimensions (always scored):**
 
 1. **Responsiveness** -- Does the tutor adapt to the student's signals? (e.g., noticing boredom, confusion, or mastery)
 2. **Explanation Quality** -- Does the tutor explain well and try different approaches when needed?
 3. **Emotional Attunement** -- Does the tutor read the room emotionally?
 4. **Pacing** -- Is the tutor moving at the right speed for this student?
 5. **Authenticity** -- Does it feel like a real teacher or a chatbot?
+
+**Card phase dimensions (only when explanation cards were shown before the session):**
+
+6. **Card-to-Session Coherence** -- Does the interactive session build on what the student read in the explanation cards?
+7. **Transition Quality** -- How smooth is the bridge from reading cards to interactive teaching?
 
 Scores are persona-aware -- the same tutor behavior is judged differently based on the student type. For example, moving quickly is good for Arjun (ace) but bad for Priya (struggler).
 
@@ -68,6 +75,8 @@ When selecting a session, you see the topic name, message count, and date for ea
 ### Run a New Simulation
 
 Create a fresh simulated session. Choose an approved guideline from the dropdown, set the maximum number of conversation turns (5-40), and start. The system creates a simulated student, runs a full conversation with the tutor, then judges the result.
+
+If the topic has pre-computed explanation cards, the simulated student automatically reads the cards first, then transitions to interactive teaching. The evaluator scores both the card phase and interactive phase as a unified experience.
 
 The start form includes a persona selector dropdown showing all available student types. Select which persona the simulated student should use for the session. To run all personas at once, use the command line.
 

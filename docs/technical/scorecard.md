@@ -244,7 +244,7 @@ The `/sessions/guideline/{guideline_id}` endpoint powers the mode selection scre
 | `is_complete` | teach_me: `current_step > total_steps`; exam: `exam_finished`; clarify_doubts: `clarify_complete` |
 | `exam_score` | Sum of fractional `score` fields across `exam_questions` (rounded to 1 decimal) |
 | `exam_answered` | Count of questions with a non-empty `student_answer` |
-| `coverage` | teach_me only: `\|concepts_covered_set & plan_concepts\| / \|plan_concepts\| * 100` |
+| `coverage` | teach_me only: `\|concepts_covered_set & plan_concepts\| / \|plan_concepts\| * 100` (plan_concepts from `study_plan.steps[].concept`, not `mastery_estimates`) |
 
 The frontend (`ModeSelection.tsx`) uses this to:
 - Detect incomplete teach_me sessions with progress (`coverage > 0`) and show "Continue Lesson"
@@ -333,7 +333,6 @@ Types are defined in `llm-frontend/src/api.ts`.
 The report card is accessible from:
 - User menu in `AppShell.tsx` ("My Report Card" button, navigates to `/report-card`)
 - Session history page (`SessionHistoryPage.tsx`, "View Report Card" link)
-- End-of-session screen in `ChatSession.tsx` (button navigates to `/report-card`)
 
 ---
 

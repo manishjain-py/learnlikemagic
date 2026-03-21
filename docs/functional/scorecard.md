@@ -87,4 +87,4 @@ When a student has no completed sessions, the report card shows an encouraging m
 
 - The report card updates automatically after each completed session
 - Coverage only counts Teach Me sessions; exams and Clarify Doubts sessions do not contribute
-- The report card is accessible from the user menu ("My Report Card"), the session history page, and the end-of-session screen
+- The report card is accessible from the user menu ("My Report Card") and the session history page

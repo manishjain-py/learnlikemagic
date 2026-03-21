@@ -47,7 +47,7 @@ Visual Update to Client
 
 Pipeline: input translation and safety check run **in parallel** (saves 2-5s), then a single master tutor call that handles all teaching. Each mode uses its own prompt templates. The orchestrator routes to mode-specific processing after the safety check. Sanitization check (leaked internal language detection) applies only to teach_me mode. All responses include an `audio_text` field for text-to-speech. When the tutor includes a `visual_explanation` and the `show_visuals_in_tutor_flow` feature flag is enabled, a secondary LLM call generates executable Pixi.js v8 code for client-side rendering.
 
-**Pre-computed explanations (card phase):** For subtopics that have pre-computed explanation variants in the `topic_explanations` table, session creation bypasses the welcome LLM call and explanation phase initialization. Instead, it initializes a `CardPhaseState` and returns the first variant's cards to the frontend. The student interacts with cards (read-only) until they either confirm understanding ("clear") or request a different approach ("explain_differently"). The card phase is handled entirely via the `POST /sessions/{id}/card-action` REST endpoint — it does not go through the orchestrator's `process_turn` pipeline. When the card phase completes, a summary of the shown explanations is injected into the master tutor's system prompt (`precomputed_explanation_summary_section`) so the tutor avoids repeating covered material.
+**Pre-computed explanations (card phase):** For subtopics that have pre-computed explanation variants in the `topic_explanations` table, session creation generates a welcome via `generate_tutor_welcome()` (master tutor agent, card-aware) and initializes a `CardPhaseState`. The student interacts with cards (read-only) until they either confirm understanding ("clear") or request a different approach ("explain_differently"). The card phase is handled entirely via the `POST /sessions/{id}/card-action` REST endpoint — it does not go through the orchestrator's `process_turn` pipeline. On "clear", the service: (1) builds `precomputed_explanation_summary` from shown variants, (2) generates a **v2 session plan** via `StudyPlanGeneratorService.generate_session_plan()` with step types `check_understanding`, `guided_practice`, `independent_practice`, `extend`, (3) generates a **bridge turn** via `generate_bridge_turn(bridge_type="understood")` that references specific card analogies and asks a recall question. When all variants are exhausted, the bridge uses `bridge_type="confused"` to start a fresh interactive explanation. The master tutor's system prompt receives the `precomputed_explanation_summary_section` so it avoids repeating covered material and uses the cards' analogies as shared vocabulary.
 
 ---
 
@@ -96,6 +96,7 @@ TutorTurnOutput {
     question_asked: str|None   # Question text
     expected_answer: str|None
     question_concept: str|None
+    question_format: QuestionFormat|None  # Structured question format for interactive UI
     # Explanation phase tracking (explain steps only)
     explanation_phase_update: str|None       # opening/explaining/informal_check/complete/skip
     explanation_building_blocks_covered: list[str]  # Building blocks covered this turn
@@ -106,6 +107,13 @@ TutorTurnOutput {
     turn_summary: str          # One-line summary (max 80 chars)
     reasoning: str             # Internal reasoning (not shown to student)
 }
+
+# QuestionFormat {
+#     type: "fill_in_the_blank" | "single_select" | "multi_select" | "acknowledge"
+#     sentence_template: str|None  # For fill_in_the_blank: "The sum of 3 and 4 is ___0___"
+#     blanks: list[BlankItem]|None # For fill_in_the_blank: [{blank_id, correct_answer}]
+#     options: list[OptionItem]|None  # For select types: [{key, text, correct}]
+# }
 
 # VisualExplanation {
 #     visual_prompt: str       # Natural language description of what to draw
@@ -130,7 +138,7 @@ TutorTurnOutput {
    - `clarify_doubts` → `_process_clarify_turn()`: runs master tutor with clarify-specific prompts (`CLARIFY_DOUBTS_SYSTEM_PROMPT` + `CLARIFY_DOUBTS_TURN_PROMPT`), tracks concepts discussed via `mastery_updates` (added to both `concepts_discussed` and `concepts_covered_set`), no step advancement. Marks `clarify_complete = True` when tutor output has `intent == "done"` or `session_complete == True` (student indicated they are done).
    - `exam` → `_process_exam_turn()`: evaluates answer against current exam question using fractional scoring (0.0-1.0). Score >= 0.8 → correct, >= 0.2 → partial, < 0.2 → incorrect. Records `marks_rationale` per question. Mid-exam responses show only the next question — correctness is not revealed. When the last question is answered, builds a full results response with per-question scores, rationales, and final score.
    - `teach_me` → continues to step 7
-7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 14 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
+7. **Master Tutor Agent** — Single LLM call with system prompt (study plan + guidelines + 15 teaching rules + personalization block) and turn prompt (current state, mastery, explanation context, pacing directive, student style, feedback notices, history)
 8. **Sanitization Check** — Regex-based detection of leaked internal language (e.g., "The student's...", "Assessment:..."). Logs a warning only — does not modify the response.
 9. **Apply State Updates**:
    - Handle explanation phase lifecycle (opening → explaining → informal_check → complete)
@@ -143,7 +151,7 @@ TutorTurnOutput {
 10. **Add response** (with `audio_text`) to conversation history
 11. **Update session summary** — Turn timeline (capped at 30 entries), progress trend, concepts taught
 12. **Visual Generation (optional)** — If `tutor_output.visual_explanation` is present and visuals are enabled, generate Pixi.js v8 code via `PixiCodeGenerator`. Visual generation is gated by the `show_visuals_in_tutor_flow` feature flag (read from `feature_flags` DB table via `FeatureFlagService` at orchestrator initialization). When disabled, `_generate_pixi_code()` returns `None` and the frontend receives no visual. Failures are logged and silently skipped (never crashes the turn).
-13. **Return TurnResult** (includes `audio_text` and optional `visual_explanation` with generated `pixi_code`)
+13. **Return TurnResult** (includes `audio_text`, optional `visual_explanation` with generated `pixi_code`, and optional `question_format`)
 
 ### Streaming Path
 
@@ -168,7 +176,7 @@ Contains:
 - Pre-computed explanation summary section (when `precomputed_explanation_summary` is set after card phase completion — tells the tutor what was already explained via cards, so it does not repeat those analogies/examples/approaches)
 - Study plan (steps with types, concepts, content hints)
 - Topic guidelines (curriculum scope, common misconceptions)
-- 14 teaching rules: explain first (structured explanation phases), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes, never repeat, detect false OKs (vague "hmm ok" / "I get it" requires diagnostic follow-up before moving on), match energy, update mastery, be real with calibrated praise, end naturally, never leak internals, response/audio language instructions, explanation phase tracking, visual explanations (strongly encouraged on explanation/demonstration turns via `visual_explanation` field)
+- 15 teaching rules: verify-practice-extend (check card knowledge first, re-explain only if confused using different approach), advance when ready (with explanation guard), track questions, guide discovery with escalating strategy changes (strategy switch rule after 2 consecutive corrections, prerequisite gap detection), never repeat (use card analogies as shared vocabulary), detect false OKs strictly (no yes/no comprehension checks allowed, rote echoes caught), match energy (correction warmth, self-correction acknowledgment, correct-but-informal handling), update mastery, calibrated praise (confirm in 1 sentence after correct, drop reinforcement after 2+ correct), end naturally, never leak internals (colored emoji for illustrations), response/audio language instructions, explanation phase tracking (remedial re-explanation only), visual explanations (strongly encouraged), interactive question formats (fill_in_the_blank, single_select, multi_select, acknowledge via `question_format` field)
 - Response and audio language instructions (from `language_utils.py`)
 
 ### Turn Prompt (teach_me — per turn)
@@ -207,14 +215,20 @@ Contains:
 
 | Signal | Condition | Directive |
 |--------|-----------|-----------|
-| TURN 1 | First turn | Curiosity-building hook, inviting question, set explanation_phase_update='opening' |
+| TURN 1 | First turn, no card summary | Curiosity-building hook, inviting question, set explanation_phase_update='opening' |
+| TURN 1 (post-cards) | First turn, precomputed_explanation_summary present | Connect to card analogies, ask student to explain back |
+| CHECK UNDERSTANDING | v2 step type `check_understanding` | Ask recall/comprehension referencing card content, watch for misconceptions |
+| GUIDED PRACTICE | v2 step type `guided_practice` | Work through problems together, reference card examples, increase difficulty |
+| INDEPENDENT PRACTICE | v2 step type `independent_practice` | Student works alone, tutor only intervenes on errors |
+| EXTEND | v2 step type `extend` | Apply concepts to new contexts, use personalization hint |
+| QUICK-CHECK (cards) | v1 explain step where concept is in `card_covered_concepts` | Skip re-explanation, ask quick recall, advance if remembered |
 | EXPLAIN (opening) | Explain step, phase=opening | Begin core explanation, one idea, everyday example, set phase='explaining' |
 | EXPLAIN (building) | Explain step, phase=explaining, blocks remaining | Cover next building block with varied representation, one per turn |
 | EXPLAIN (summarize) | Explain step, phase=explaining, all blocks covered | Summarize key idea, ask informal understanding check, set phase='informal_check' |
 | EXPLAIN (check) | Explain step, phase=informal_check | Evaluate student's response, set student_shows_understanding accordingly |
 | EXPLAIN (done) | Explain step, phase=informal_check, check passed | Acknowledge and transition, set phase='complete' |
 | ACCELERATE | avg_mastery >= 0.8 & improving (or 60%+ concepts >= 0.7 & improving) | Skip steps aggressively, minimal scaffolding |
-| EXTEND | Aced plan & is_complete | Push to harder territory |
+| EXTEND (post-plan) | Aced plan & is_complete | Push to harder territory |
 | SIMPLIFY | (avg_mastery < 0.4 with real data) or trend == struggling | Shorter sentences, 1-2 ideas per response |
 | CONSOLIDATE | avg_mastery 0.4-0.65 & steady & current question has 2+ wrong attempts | Same-level problem to build confidence |
 | STEADY | Default | One idea at a time |
@@ -273,7 +287,7 @@ Auth via `?token=<jwt>` query param. For user-linked sessions, token must belong
 ```json
 {"type": "typing", "payload": {}}
 {"type": "token", "payload": {"message": "<chunk>"}}
-{"type": "assistant", "payload": {"message": "...", "audio_text": "...", "visual_explanation": {...}}}
+{"type": "assistant", "payload": {"message": "...", "audio_text": "...", "visual_explanation": {...}, "question_format": {...}}}
 {"type": "state_update", "payload": {"state": {...}}}
 {"type": "visual_update", "payload": {"visual_explanation": {"output_type": "...", "title": "...", "narration": "...", "pixi_code": "..."}}}
 {"type": "error", "payload": {"error": "..."}}
@@ -295,6 +309,7 @@ The `state_update` payload includes (via `SessionStateDTO`):
 
 **Additional client message types:**
 - `{"type": "get_state"}` — requests the current state (server responds with a `state_update`)
+- `{"type": "card_navigate", "payload": {"card_idx": N}}` — update card position during card phase (persists to DB)
 
 ### Session Creation
 
@@ -315,7 +330,8 @@ Flow:
 - Convert via topic_adapter → Create SessionState (with mode)
 - **Card phase check** (`teach_me` only): query `ExplanationRepository.get_by_guideline_id()`. If pre-computed explanations exist:
   - Initialize `CardPhaseState` on the session (active=true, first variant selected, cards counted)
-  - Skip welcome LLM call and explanation phase initialization
+  - Generate welcome via `generate_tutor_welcome()` (master tutor agent, card-aware framing — mentions cards are prepared)
+  - Skip explanation phase initialization
   - Return explanation cards in `first_turn` with `session_phase: "card_phase"` and `card_phase_state` metadata
 - **Standard path** (no pre-computed explanations, or non-teach_me modes):
   - For `teach_me`: initialize explanation phase if first step is `explain` type
@@ -358,6 +374,7 @@ class SessionState(BaseModel):
     # Pre-computed explanations (card phase)
     card_phase: Optional[CardPhaseState]           # Card-based explanation state (None when not in card phase)
     precomputed_explanation_summary: Optional[str]  # Summary of shown cards, injected into tutor system prompt
+    card_covered_concepts: set[str]                # Concepts covered during card phase, for quick-check pacing
     # Clarify Doubts state
     concepts_discussed: list[str]        # Concepts discussed in Q&A
     clarify_complete: bool               # Whether student ended the Clarify session
@@ -492,14 +509,16 @@ class CardPhaseState(BaseModel):
     completed: bool                # True when student says "clear" or exhausts variants
 ```
 
-Card phase is initialized during session creation when `ExplanationRepository.get_by_guideline_id()` returns pre-computed explanation variants for the guideline. The `POST /sessions/{id}/card-action` endpoint handles two actions:
+Card phase is initialized during session creation when `ExplanationRepository.get_by_guideline_id()` returns pre-computed explanation variants for the guideline. Welcome is generated via `generate_tutor_welcome()` (master tutor agent, card-aware framing). The `POST /sessions/{id}/card-action` endpoint handles two actions:
 
-- **`clear`**: Student understood the cards. Calls `_advance_past_explanation_steps()` to skip consecutive leading explain steps in the study plan (landing on the first check/practice step). Builds `precomputed_explanation_summary` from the shown variants' summaries, which is injected into the master tutor system prompt so the tutor avoids repeating covered analogies/examples. Adds a transition message to conversation history.
-- **`explain_differently`**: Switches to the next unseen variant from `available_variant_keys`. If all variants are exhausted, completes the card phase and falls back to the standard dynamic explanation flow: initializes `ExplanationPhase` for step 1 and generates a welcome message via the orchestrator.
+- **`clear`**: Student understood the cards. Flow: (1) builds `precomputed_explanation_summary` from shown variants' summaries (prefers `teaching_notes` from summary_json, falls back to structured labels), (2) generates **v2 session plan** via `_generate_v2_session_plan()` → `StudyPlanGeneratorService.generate_session_plan()` → `convert_session_plan_to_study_plan()`, replacing the v1 plan with steps typed `check_understanding`/`guided_practice`/`independent_practice`/`extend`, (3) generates a **bridge turn** via `generate_bridge_turn(bridge_type="understood")` — master tutor generates a recall question referencing specific card analogies. Returns `{action: "transition_to_interactive", message, audio_text, question_format}`.
+- **`explain_differently`**: Switches to the next unseen variant from `available_variant_keys`. If all variants are exhausted, completes the card phase with the same v2 plan generation flow, but uses `bridge_type="confused"` — the master tutor starts a fresh interactive explanation with a different approach. Returns `{action: "fallback_dynamic", message, audio_text, question_format}`.
+
+Bridge turn generation uses `MASTER_TUTOR_BRIDGE_PROMPT` via `MasterTutorAgent.generate_bridge()`, which builds context from the precomputed summary and the bridge type. State updates from the bridge turn (e.g., question tracking) are applied normally.
 
 The `process_step()` REST endpoint rejects calls during an active card phase (HTTP 400), directing the client to use `/card-action` instead. The `/replay` endpoint includes explanation cards for sessions still in card phase.
 
-Pre-computed explanations are stored in the `topic_explanations` DB table, managed by `ExplanationRepository` (shared/repositories). Each variant has a `variant_key`, `variant_label`, `cards_json` (array of card objects with `card_idx`, `card_type`, `title`, `content`, optional `visual`), and `summary_json` (approach label, card titles, key analogies, key examples).
+Pre-computed explanations are stored in the `topic_explanations` DB table, managed by `ExplanationRepository` (shared/repositories). Each variant has a `variant_key`, `variant_label`, `cards_json` (array of card objects with `card_idx`, `card_type`, `title`, `content`, optional `visual`), and `summary_json` (approach label, card titles, key analogies, key examples, optional `teaching_notes` for richer summaries).
 
 ### Persistence and Concurrency
 
@@ -520,7 +539,11 @@ Study plans are loaded from the database and converted to the tutor's internal m
 DB StudyPlan.plan_json → topic_adapter.convert_guideline_to_topic() → Topic model
 ```
 
-Study plan steps have types: `explain`, `check`, `practice`. Step type is inferred from the plan item's title/description keywords or defaults to a pattern (explain, check, explain, check, ..., practice at end). Explain steps can include sub-plan fields: `explanation_approach`, `explanation_building_blocks` (ordered sub-ideas to cover across turns), `explanation_analogy`, and `min_explanation_turns`.
+### Plan Versions
+
+**v1 (legacy):** Steps have types `explain`, `check`, `practice`. Step type is inferred from the plan item's title/description keywords or defaults to a pattern (explain, check, explain, check, ..., practice at end). Explain steps can include sub-plan fields: `explanation_approach`, `explanation_building_blocks` (ordered sub-ideas to cover across turns), `explanation_analogy`, and `min_explanation_turns`.
+
+**v2 (post-card interactive):** Generated at card phase completion via `StudyPlanGeneratorService.generate_session_plan()`, converted by `convert_session_plan_to_study_plan()`. Steps have types `check_understanding`, `guided_practice`, `independent_practice`, `extend`. Each step carries: `description`, `card_references` (card concepts/analogies to reference), `misconceptions_to_probe`, `success_criteria`, `difficulty`, `personalization_hint`. The pacing system has dedicated directives for each v2 step type. Detected via `plan_version: 2` in plan metadata.
 
 The `TopicGuidelines` model also carries `prior_topics_context` (optional), which provides curriculum context about what prior topics in the same chapter cover. When present, it is rendered as a "Prior Topics in This Chapter" section in the master tutor system prompt, helping the tutor understand what the student may have already learned.
 
@@ -528,7 +551,7 @@ Plan resolution order at session creation:
 1. Personalized plan for this user + guideline (from `study_plans` table)
 2. Any existing plan for this guideline (fallback)
 3. For `teach_me` mode with an authenticated user: generate a personalized plan on-the-fly via `StudyPlanGeneratorService` using the student's personality context
-4. If no plan exists at all, a default 4-step plan is generated: explain → check → explain → practice
+4. If no plan exists at all, a default 5-step plan is generated: explain → explain → check → explain → practice
 
 ### Mid-Session Feedback
 
@@ -553,12 +576,15 @@ The `POST /sessions/{id}/feedback` endpoint allows study plan regeneration durin
 | Master Tutor (teach_me) | Configurable (DB) | Structured lesson teaching | TutorTurnOutput (strict) | `master_tutor_prompts.py` |
 | Master Tutor (clarify) | Configurable (DB) | Doubt-clearing Q&A | TutorTurnOutput (strict) | `clarify_doubts_prompts.py` |
 | Master Tutor (exam) | Configurable (DB) | Exam answer evaluation | TutorTurnOutput (strict) | `master_tutor_prompts.py` (with exam context injected) |
-| Welcome (Teach Me) | Configurable (DB) | Welcome message for structured lesson | JSON `{response, audio_text}` | `orchestrator_prompts.py` |
+| Tutor Welcome | Configurable (DB) | Welcome for card-phase sessions | TutorTurnOutput (strict) | `master_tutor_prompts.py` MASTER_TUTOR_WELCOME_PROMPT |
+| Bridge Turn | Configurable (DB) | Post-card transition (understood/confused) | TutorTurnOutput (strict) | `master_tutor_prompts.py` MASTER_TUTOR_BRIDGE_PROMPT |
+| Welcome (Teach Me) | Configurable (DB) | Welcome for non-card sessions | JSON `{response, audio_text}` | `orchestrator_prompts.py` |
 | Welcome (Clarify) | Configurable (DB) | Welcome message for Q&A mode | JSON `{response, audio_text}` | Inline in `orchestrator.py` |
 | Welcome (Exam) | Configurable (DB) | Welcome message for exam mode | JSON `{response, audio_text}` | Inline in `orchestrator.py` |
 | Post-Completion | Configurable (DB) | Context-aware reply after session ends | Plain text | Inline in `orchestrator.py` |
 | Exam Questions | Configurable (DB) | Generate exam questions at session start | Structured JSON (array of questions) | `exam_prompts.py` EXAM_QUESTION_GENERATION_PROMPT |
 | Study Plan Gen | Configurable (DB, `study_plan_generator`) | Generate/regenerate personalized study plan | Structured JSON | `StudyPlanGeneratorService` |
+| Session Plan Gen | Configurable (DB, `study_plan_generator`) | Generate v2 interactive plan at card completion | Structured JSON | `StudyPlanGeneratorService.generate_session_plan()` |
 | Pixi Code Gen | Configurable (DB) | Generate Pixi.js v8 code from visual description | Plain JavaScript | `pixi_code_generator.py` inline prompt |
 
 LLM provider/model is resolved at session creation from the `llm_config` DB table via `LLMConfigService.get_config("tutor")`. Study plan generation uses a separate config key `study_plan_generator`. The Anthropic adapter maps structured output to tool_use, and reasoning effort to thinking budgets.
@@ -588,21 +614,21 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 | File | Purpose |
 |------|---------|
 | `base_agent.py` | BaseAgent ABC: execute(), build_prompt(), LLM call with strict schema |
-| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model (with audio_text, answer_score, marks_rationale, explanation phase fields, visual_explanation), VisualExplanation model, pacing/style computation (explanation-aware + attention span), personalization block (tutor_brief or name/age fallback), mode-specific prompt routing (clarify uses dedicated prompts) |
+| `master_tutor.py` | MasterTutorAgent: single agent for all teaching, TutorTurnOutput model (with audio_text, answer_score, marks_rationale, explanation phase fields, visual_explanation, question_format), QuestionFormat/BlankItem/OptionItem models (structured interactive questions), VisualExplanation model, pacing/style computation (explanation-aware + attention span + v2 step types), personalization block (tutor_brief or name/age fallback), mode-specific prompt routing (clarify uses dedicated prompts), `generate_welcome()` (card-aware via MASTER_TUTOR_WELCOME_PROMPT), `generate_bridge()` (post-card bridge via MASTER_TUTOR_BRIDGE_PROMPT) |
 | `safety.py` | SafetyAgent: fast content moderation gate |
 
 ### Orchestration (`tutor/orchestration/`)
 
 | File | Purpose |
 |------|---------|
-| `orchestrator.py` | TeacherOrchestrator: parallel input translation + safety → mode router → master_tutor → state updates → optional visual generation. `process_turn()` (non-streaming) and `process_turn_stream()` (async generator with token streaming for teach_me). Input translation (`_translate_to_english`). Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with fractional scoring and marks_rationale). `_handle_explanation_phase()` for explanation lifecycle. `_generate_pixi_code()` for visual explanation rendering. Exam feedback builder. Separate welcome generators per mode returning `(message, audio_text)` tuples with language-aware prompts. Post-completion response generator. |
+| `orchestrator.py` | TeacherOrchestrator: parallel input translation + safety → mode router → master_tutor → state updates → optional visual generation. `process_turn()` (non-streaming) and `process_turn_stream()` (async generator with token streaming for teach_me). Input translation (`_translate_to_english`). Mode-specific methods: `_process_clarify_turn()` (with clarify_complete handling), `_process_exam_turn()` (with fractional scoring and marks_rationale). `_handle_explanation_phase()` for explanation lifecycle. `_generate_pixi_code()` for visual explanation rendering. Exam feedback builder. Separate welcome generators per mode returning `(message, audio_text)` tuples with language-aware prompts. `generate_tutor_welcome()` (delegates to master tutor for card-aware welcome). `generate_bridge_turn()` (post-card bridge with state updates). Post-completion response generator. TurnResult includes `question_format`. |
 
 ### Models (`tutor/models/`)
 
 | File | Purpose |
 |------|---------|
 | `session_state.py` | SessionState, CardPhaseState (pre-computed explanation card tracking), ExplanationPhase, Question, Misconception, SessionSummary, ExamQuestion (with score, marks_rationale), ExamFeedback (with float score), create_session() |
-| `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep (with explanation sub-plan fields: approach, building_blocks, analogy, min_turns) |
+| `study_plan.py` | Topic, TopicGuidelines, StudyPlan, StudyPlanStep (v1 explanation sub-plan fields: approach, building_blocks, analogy, min_turns; v2 session plan fields: description, card_references, misconceptions_to_probe, success_criteria, difficulty, personalization_hint). Step types: v1 `explain`/`check`/`practice`, v2 `check_understanding`/`guided_practice`/`independent_practice`/`extend` |
 | `messages.py` | Message (with audio_text), StudentContext (with text/audio language prefs, tutor_brief, personality_json, attention_span), WebSocket DTOs (ClientMessage, ServerMessage with audio_text and token type, SessionStateDTO), Card Phase DTOs (ExplanationCardDTO, CardActionRequest, CardPhaseDTO), factory functions (`create_token_message`, `create_typing_indicator`, etc.) |
 | `agent_logs.py` | AgentLogEntry, AgentLogStore (in-memory, thread-safe) |
 
@@ -610,7 +636,7 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 
 | File | Purpose |
 |------|---------|
-| `master_tutor_prompts.py` | System prompt (study plan + guidelines + 14 rules + personalization + language instructions) and turn prompt (with explanation context, feedback notices). Used for teach_me and exam modes. |
+| `master_tutor_prompts.py` | System prompt (study plan + guidelines + 15 rules + personalization + language instructions), turn prompt (with explanation context, feedback notices), welcome prompt (MASTER_TUTOR_WELCOME_PROMPT, card-aware), bridge prompt (MASTER_TUTOR_BRIDGE_PROMPT, post-card transition). Used for teach_me and exam modes. |
 | `clarify_doubts_prompts.py` | System and turn prompts for Clarify Doubts mode. **Actively wired** — clarify mode uses these via `MasterTutorAgent._build_system_prompt()` and `_build_clarify_turn_prompt()`. Direct answer rules, session closure rules, concept tracking. |
 | `exam_prompts.py` | Exam question generation prompt (actively used by ExamService, includes personalization section) and evaluation prompts (**evaluation prompts defined but not yet wired** — exam eval uses master tutor prompts with exam context injected). |
 | `orchestrator_prompts.py` | Welcome message (Teach Me) and session summary prompts |
@@ -629,10 +655,10 @@ LLM provider/model is resolved at session creation from the `llm_config` DB tabl
 
 | File | Purpose |
 |------|---------|
-| `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation, duplicate exam guard, and card phase initialization), step processing (with card phase guard), pause/resume, end clarify, end exam, card phase actions (complete_card_phase with clear/explain_differently, variant switching, precomputed summary building, explanation step advancement), mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
+| `tutor/services/session_service.py` | Session creation (all modes, with personalized plan generation, duplicate exam guard, and card phase initialization with tutor welcome), step processing (with card phase guard), pause/resume, end clarify, end exam, card phase actions (complete_card_phase with clear/explain_differently, variant switching, precomputed summary building, v2 session plan generation via `_generate_v2_session_plan()`, bridge turn generation), mid-session feedback (process_feedback with continue/restart), summary, CAS persistence |
 | `tutor/services/exam_service.py` | Exam question generation via LLM with retry and personalization. ExamGenerationError (LearnLikeMagicException subclass) |
 | `tutor/services/pixi_code_generator.py` | PixiCodeGenerator: translates natural language visual descriptions into executable Pixi.js v8 code via LLM (uses the tutor's configured model). Gated by `show_visuals_in_tutor_flow` feature flag. Used by the orchestrator for `visual_explanation` rendering. Canvas 500x350. Returns empty string on failure (never crashes the turn). |
-| `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model |
+| `tutor/services/topic_adapter.py` | DB guideline + study plan → Topic model. `convert_guideline_to_topic()` for session creation. `convert_session_plan_to_study_plan()` for v2 plan conversion at card completion. Detects v2 plans via `plan_version` metadata. |
 | `tutor/services/report_card_service.py` | Report card aggregation, topic progress |
 | `tutor/api/sessions.py` | REST + WebSocket + agent logs endpoints, session ownership checks, end-clarify endpoint, card-action endpoint, feedback endpoint, exam-review endpoint, guideline sessions endpoint |
 | `tutor/api/transcription.py` | Audio transcription endpoint (OpenAI Whisper) |

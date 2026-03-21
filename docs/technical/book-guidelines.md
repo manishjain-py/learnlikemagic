@@ -35,6 +35,9 @@ Pre-Computed Explanations (LLM generate → critique → refine per variant)
     |
     v
 Study Plan Generation (LLM generate → review → improve loop)
+    |
+    v
+Session Plan Generation (post-explanation interactive plan, triggered at runtime)
 ```
 
 All book ingestion code lives under `book_ingestion_v2/`. Study plan generation is a separate module under `study_plans/`. The ingestion quality evaluation pipeline lives under `autoresearch/book_ingestion_quality/`.
@@ -139,7 +142,11 @@ OCR model is determined by the `book_ingestion_v2` LLM config entry.
 
 **Retry OCR:** Re-downloads PNG from S3, re-runs OCR, updates DB and S3 text file.
 
-**API routes:** `book_ingestion_v2/api/page_routes.py`
+**Bulk OCR retry:** `bulk_ocr()` -- background task that re-runs OCR for all pending/failed pages in a chapter. Processes each page sequentially with job progress tracking.
+
+**Bulk OCR rerun:** Resets all OCR status for a chapter to pending, reverts chapter to `upload_in_progress`, then runs `bulk_ocr()` on all pages.
+
+**API routes:** `book_ingestion_v2/api/page_routes.py` and `processing_routes.py`
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -149,6 +156,8 @@ OCR model is determined by the `book_ingestion_v2` LLM config entry.
 | GET | `.../chapters/{chapter_id}/pages/{page_num}/detail` | Get page with presigned image URL + OCR text |
 | DELETE | `.../chapters/{chapter_id}/pages/{page_num}` | Delete page |
 | POST | `.../chapters/{chapter_id}/pages/{page_num}/retry-ocr` | Retry failed OCR |
+| POST | `.../chapters/{chapter_id}/ocr-retry` | Bulk retry OCR for all pending/failed pages (background job) |
+| POST | `.../chapters/{chapter_id}/ocr-rerun` | Reset all OCR and re-run from scratch (background job) |
 
 ---
 
@@ -270,7 +279,7 @@ State machine: `pending -> running -> completed | completed_with_errors | failed
 | POST | `.../chapters/{chapter_id}/process` | Start topic extraction + finalization (also accepts resume from `needs_review`) |
 | POST | `.../chapters/{chapter_id}/reprocess` | Wipe topics, reprocess from scratch |
 | POST | `.../chapters/{chapter_id}/refinalize` | Re-run finalization only (accepts `chapter_completed`, `needs_review`, or `failed`) |
-| GET | `.../chapters/{chapter_id}/jobs/latest` | Get latest job status |
+| GET | `.../chapters/{chapter_id}/jobs/latest` | Get latest job status (optional `job_type` query param) |
 | GET | `.../chapters/{chapter_id}/jobs/{job_id}` | Get specific job |
 | GET | `.../chapters/{chapter_id}/topics` | Get extracted topics |
 | GET | `.../chapters/{chapter_id}/topics/{topic_key}` | Get single topic |
@@ -303,7 +312,11 @@ Sync is idempotent: deletes existing guidelines for the chapter before creating 
 |--------|------|-------------|
 | POST | `/admin/v2/books/{book_id}/sync` | Sync all completed/needs_review chapters |
 | POST | `/admin/v2/books/{book_id}/chapters/{chapter_id}/sync` | Sync single chapter |
-| POST | `/admin/v2/books/{book_id}/generate-explanations` | Generate pre-computed explanations (optional `chapter_id` query param) |
+| POST | `/admin/v2/books/{book_id}/generate-explanations` | Generate pre-computed explanations (query params: `chapter_id`, `guideline_id`, `force`) |
+| GET | `/admin/v2/books/{book_id}/explanation-jobs/latest` | Latest explanation generation job (query params: `chapter_id`, `guideline_id`) |
+| GET | `/admin/v2/books/{book_id}/explanation-status` | Per-topic variant counts for a chapter (required `chapter_id` query param) |
+| GET | `/admin/v2/books/{book_id}/explanations` | Full card data for a topic (required `guideline_id` query param) |
+| DELETE | `/admin/v2/books/{book_id}/explanations` | Delete explanations (requires `guideline_id` or `chapter_id` query param) |
 | GET | `/admin/v2/books/{book_id}/results` | Book-level results overview |
 
 ---
@@ -324,17 +337,26 @@ Generates multi-variant explanation cards for synced teaching guidelines. Runs a
 
 ### Pipeline Per Variant
 
-1. **Generate**: Calls LLM with `explanation_generation.txt` prompt using `reasoning_effort="high"` and strict JSON schema (`GenerationOutput`). Produces 3-15 `ExplanationCardOutput` items (card_idx, card_type, title, content, optional visual) plus `ExplanationSummaryOutput` (key_analogies, key_examples). Includes `prior_topics_context` when available.
+1. **Generate**: Calls LLM with `explanation_generation.txt` prompt using `reasoning_effort="high"` and strict JSON schema (`GenerationOutput`). Produces 3-15 `ExplanationCardOutput` items (card_idx, card_type, title, content, optional visual, audio_text) plus `ExplanationSummaryOutput` (key_analogies, key_examples, teaching_notes). Includes `prior_topics_context` when available.
 2. **Critique**: Calls LLM with `explanation_critique.txt` prompt using `reasoning_effort="medium"`. Returns `CritiqueOutput`: list of issues (card_idx, principle_violated, description), suggestions, and `overall_quality` (good / needs_improvement / poor).
 3. **Refine** (if `needs_improvement`): Re-generates cards incorporating critique feedback. Uses same strict schema.
 4. **Discard** (if `poor`): Variant is skipped entirely.
 5. **Store**: Upserts to `topic_explanations` table via `ExplanationRepository`.
 
+### Card Fields
+
+Each `ExplanationCardOutput` contains:
+- `card_idx` (1-based index), `card_type` (concept/example/visual/analogy/summary), `title`, `content`
+- `visual` (optional ASCII diagram or formatted visual)
+- `audio_text` -- TTS-friendly spoken version. Pure words only, no symbols/markdown/emoji, math as natural speech. Shorter than content; warm conversational tone.
+
 ### Entry Points
 
 - `generate_for_guideline(guideline, variant_keys)`: single guideline, optional subset of variants
-- `generate_for_chapter(book_id, chapter_id)`: all synced guidelines in a chapter, skips topics with existing explanations
+- `generate_for_chapter(book_id, chapter_id, force=False)`: all synced guidelines in a chapter. Skips topics with existing explanations unless `force=True` (deletes and regenerates). Supports `job_service`/`job_id` for progress tracking.
 - `generate_for_book(book_id)`: all synced guidelines in a book
+
+API supports three scoping levels via query params: `guideline_id` (single topic) > `chapter_id` (chapter) > book-wide. Runs as a background job with the `v2_explanation_generation` job type.
 
 ### Storage
 
@@ -342,8 +364,8 @@ Each explanation is stored as a `TopicExplanation` row with:
 - `guideline_id` (FK to `teaching_guidelines`, cascade delete)
 - `variant_key` ("A", "B", "C")
 - `variant_label` (human-readable name)
-- `cards_json` (JSONB array of card objects)
-- `summary_json` (JSONB with card_titles, key_analogies, key_examples, approach_label)
+- `cards_json` (JSONB array of card objects, each with `audio_text`)
+- `summary_json` (JSONB with card_titles, key_analogies, key_examples, approach_label, teaching_notes)
 - `generator_model` (audit)
 - Unique constraint on (guideline_id, variant_key)
 
@@ -381,9 +403,10 @@ Automated evaluation pipeline that scores topic extraction quality using an LLM 
 
 **Config class:** `evaluation/config.py` (`IngestionEvalConfig`)
 
-- **Evaluator provider:** OpenAI (default) or Anthropic, set via `EVAL_LLM_PROVIDER` env var or `--provider` flag
+- **Evaluator provider:** OpenAI (default), Anthropic, or `claude_code`, set via `EVAL_LLM_PROVIDER` env var or `--provider` flag. Can also be read from DB via `IngestionEvalConfig.from_db()` using the `eval_evaluator` LLM config key.
 - **OpenAI evaluator:** `gpt-5.2` with `reasoning_effort="high"` and JSON output mode
 - **Anthropic evaluator:** `claude-opus-4-6` with extended thinking (budget: 20000 tokens)
+- **claude_code provider:** Delegates to Claude Code as the evaluator
 - **API keys:** Read from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` environment variables
 
 ### CLI Usage
@@ -423,9 +446,9 @@ The judge classifies problems into: `over_splitting`, `under_splitting`, `missin
 
 **Module:** `study_plans/`
 
-Study plans are generated from teaching guidelines and used by the tutor during sessions.
+Study plans are generated from teaching guidelines and used by the tutor during sessions. Two plan types exist.
 
-### Generator
+### Standard Study Plan Generator
 
 **Service:** `study_plans/services/generator_service.py` (`StudyPlanGeneratorService`)
 
@@ -437,6 +460,19 @@ Study plans are generated from teaching guidelines and used by the tutor during 
 - Validates output against both Pydantic model and legacy schema checks (`_validate_plan_schema()`)
 - Supports optional student personalization via `StudentContext` (imported from `tutor.models.messages`) with fields: student_name, student_age, preferred_examples, attention_span, tutor_brief
 - `generate_plan_with_feedback()`: generates adjusted plan mid-session based on parent/student feedback. Appends feedback context (feedback text, concepts already covered, progress) to the prompt. Skips the reviewer pass for speed.
+
+### Session Plan Generator
+
+**Service:** `study_plans/services/generator_service.py` (`StudyPlanGeneratorService.generate_session_plan()`)
+
+Generated after a student reads explanation cards and indicates understanding. Creates an interactive follow-up plan tailored to the explanation variants the student saw.
+
+- Loads `session_plan_generator` prompt template
+- Calls LLM with `reasoning_effort="high"` and strict JSON schema (`SessionPlan`)
+- Input context: explanation summaries (teaching_notes, key_analogies, key_examples), card titles, variants shown, guideline text, common misconceptions from metadata
+- Output structure (`SessionPlan` model):
+  - `steps`: 3-5 `SessionPlanStep` items, each with step_id, type (check_understanding / guided_practice / independent_practice / extend), concept, description, card_references, misconceptions_to_probe, success_criteria, difficulty, personalization_hint
+  - `metadata`: `SessionPlanMetadata` with plan_version=2, variants_shown, estimated_duration_minutes, is_generic
 
 ### Reviewer
 
@@ -521,6 +557,7 @@ books/{book_id}/
 | `prompts/explanation_generation.txt` | `ExplanationGeneratorService` | Generate explanation cards for a teaching variant |
 | `prompts/explanation_critique.txt` | `ExplanationGeneratorService` | Critique explanation cards against quality principles |
 | `shared/prompts/templates/study_plan_generator.txt` | `StudyPlanGeneratorService` | Generate 3-5 step study plan from guideline |
+| `shared/prompts/templates/session_plan_generator.txt` | `StudyPlanGeneratorService.generate_session_plan()` | Generate post-explanation interactive session plan |
 | `shared/prompts/templates/study_plan_reviewer.txt` | `StudyPlanReviewerService` | Review plan quality, approve/reject with feedback |
 | `shared/prompts/templates/study_plan_improve.txt` | `StudyPlanOrchestrator._improve_plan()` | Revise rejected plan using reviewer feedback |
 | `autoresearch/book_ingestion_quality/evaluation/prompts/judge.txt` | `IngestionEvaluator` | Evaluate topic extraction quality across granularity, coverage, copyright |
@@ -552,7 +589,7 @@ books/{book_id}/
 | BookV2Dashboard | `llm-frontend/src/features/admin/pages/BookV2Dashboard.tsx` | Lists all V2 books with card grid |
 | CreateBookV2 | `llm-frontend/src/features/admin/pages/CreateBookV2.tsx` | Two-step wizard: metadata form, then TOC editor (upload or manual) |
 | BookV2Detail | `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` | Book detail with expandable chapters, page grid, upload, processing, topics, sync, explanation generation |
-| Admin API V2 | `llm-frontend/src/features/admin/api/adminApiV2.ts` | TypeScript API client for all V2 endpoints (includes `generateExplanations()`) |
+| Admin API V2 | `llm-frontend/src/features/admin/api/adminApiV2.ts` | TypeScript API client for all V2 endpoints (includes explanation generation with `guideline_id`/`force` support, explanation status, detail, delete, bulk OCR retry/rerun) |
 
 **Routes:** `/admin/books-v2`, `/admin/books-v2/new`, `/admin/books-v2/{id}`
 
@@ -564,7 +601,7 @@ books/{book_id}/
 
 | File | Purpose |
 |------|---------|
-| `book_ingestion_v2/constants.py` | Enums (ChapterStatus, V2JobType, V2JobStatus, OCRStatus, TopicStatus), config constants, deviation thresholds |
+| `book_ingestion_v2/constants.py` | Enums (ChapterStatus, V2JobType [includes `v2_explanation_generation`], V2JobStatus, OCRStatus, TopicStatus), config constants, deviation thresholds |
 | `book_ingestion_v2/models/database.py` | ORM models: BookChapter, ChapterPage, ChapterProcessingJob (with `planned_topics_json`), ChapterChunk, ChapterTopic (with `prior_topics_context`, `topic_assignment`) |
 | `book_ingestion_v2/models/schemas.py` | Pydantic request/response schemas for all V2 APIs including `ExplanationGenerationResponse` |
 | `book_ingestion_v2/models/processing_models.py` | Internal pipeline models: ChunkWindow, TopicAccumulator, RunningState, PlannedTopic, ChapterTopicPlan, ChunkInput, ChunkExtractionOutput (TopicUpdate with `topic_assignment`, `reasoning`, `unplanned_justification`), ConsolidationOutput (with `deviations`), ConsolidationDeviation, FinalizationResult, TopicCurriculumContext, CurriculumContextOutput |
@@ -585,9 +622,10 @@ books/{book_id}/
 | `shared/repositories/explanation_repository.py` | CRUD for `topic_explanations` table (written by ingestion pipeline, read by tutor) |
 | `shared/models/entities.py` | ORM models: `StudyPlan` (study_plans table), `TopicExplanation` (topic_explanations table, JSONB cards) |
 | `study_plans/services/orchestrator.py` | Study plan generate -> review -> improve loop |
-| `study_plans/services/generator_service.py` | LLM-based study plan generation with strict schema; also defines `StudyPlan`, `StudyPlanStep`, `StudyPlanMetadata` Pydantic models |
+| `study_plans/services/generator_service.py` | LLM-based study plan generation with strict schema; defines `StudyPlan`, `StudyPlanStep`, `StudyPlanMetadata`, `SessionPlan`, `SessionPlanStep`, `SessionPlanMetadata` Pydantic models |
 | `study_plans/services/reviewer_service.py` | LLM-based study plan quality review |
 | `shared/prompts/templates/study_plan_*.txt` | Prompts for study plan generation, review, and improvement |
+| `shared/prompts/templates/session_plan_generator.txt` | Prompt for post-explanation session plan generation |
 | `autoresearch/book_ingestion_quality/run_experiment.py` | CLI entry point for ingestion evaluation (runs extraction + LLM judge) |
 | `autoresearch/book_ingestion_quality/evaluation/evaluator.py` | LLM judge that scores extraction quality across 3 dimensions |
 | `autoresearch/book_ingestion_quality/evaluation/pipeline_runner.py` | Runs or loads extraction pipeline output for evaluation |

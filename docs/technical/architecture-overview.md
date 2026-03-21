@@ -50,7 +50,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | Uvicorn | ASGI server | Lightweight, high-performance, pairs with FastAPI |
 | Pydantic | Data validation | Type hints for validation, clear errors, schema gen |
 | SQLAlchemy | ORM | Mature, flexible, database-agnostic |
-| OpenAI | LLM provider (GPT-5.4, GPT-5.3, GPT-5.2, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
+| OpenAI | LLM provider (GPT-5.4, GPT-5.3-codex, GPT-5.2, GPT-5.1, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 | Google | LLM provider (Gemini) + Cloud TTS | Additional provider option, text-to-speech |
 | Claude Code | LLM provider via CLI subprocess | Local/admin workflows, no API key needed (uses local Claude Code session) |
@@ -90,7 +90,8 @@ llm-backend/
 │   ├── services/         # session_service, exam_service, report_card_service, topic_adapter, pixi_code_generator
 │   ├── models/           # session_state, messages, study_plan, agent_logs
 │   ├── prompts/          # master_tutor, exam, clarify_doubts, orchestrator, language_utils, templates
-│   └── utils/            # schema_utils, state_utils, prompt_utils
+│   ├── utils/            # schema_utils, state_utils, prompt_utils
+│   └── exceptions.py     # Custom exception hierarchy for tutor module
 ├── book_ingestion_v2/    # Book upload, TOC extraction, chapter processing, topic sync (V2 pipeline)
 │   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
@@ -101,12 +102,13 @@ llm-backend/
 │   │                     #   processing_job_repository, topic_repository
 │   ├── models/           # schemas, database, processing_models
 │   ├── utils/            # chunk_builder
+│   ├── constants.py      # Pipeline config, status enums, job types
 │   └── prompts/
 ├── study_plans/          # Study plan generation
 │   ├── api/
 │   ├── services/         # generator_service, reviewer_service, orchestrator
 │   └── models/
-├── autoresearch/         # Autonomous experiment pipelines
+├── autoresearch/         # Autonomous experiment pipelines (4 pipelines)
 │   ├── tutor_teaching_quality/
 │   │   ├── evaluation/   # Session evaluation pipeline (flat structure)
 │   │   │   ├── api.py, evaluator.py, session_runner.py, student_simulator.py
@@ -114,6 +116,10 @@ llm-backend/
 │   │   ├── run_experiment.py, email_report.py, program.md, results.tsv
 │   ├── book_ingestion_quality/
 │   │   ├── evaluation/   # Book ingestion evaluation pipeline
+│   ├── explanation_quality/
+│   │   ├── evaluation/   # Pre-computed explanation evaluation pipeline
+│   ├── session_experience/
+│   │   ├── evaluation/   # Session UX/experience evaluation pipeline
 ├── auth/                 # Authentication, user profiles, enrichment, personality
 │   ├── api/              # auth_routes, profile_routes, enrichment_routes
 │   ├── services/         # auth_service, profile_service, enrichment_service, personality_service
@@ -151,7 +157,7 @@ Most modules follow the layered internal structure:
 └── prompts/          # LLM prompt templates
 ```
 
-**Exception:** The `autoresearch/tutor_teaching_quality/evaluation/` module uses a flat file layout (`api.py`, `evaluator.py`, `session_runner.py`, etc.) rather than subdirectories.
+**Exception:** All `autoresearch/*/evaluation/` modules use a flat file layout (`evaluator.py`, `session_runner.py`, `config.py`, etc.) rather than subdirectories.
 
 ### Routers Registered in `main.py`
 
@@ -209,8 +215,8 @@ llm-frontend/src/
 │   ├── AppShell.tsx          # Shared layout for authenticated pages (nav bar, user menu)
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
 │   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/exam/resume)
-│   ├── VisualExplanation.tsx # Renders LLM-generated Pixi.js visuals in sandboxed iframe
-│   ├── ExplanationViewer.tsx # Step-by-step card viewer for pre-computed explanation variants
+│   ├── VisualExplanation.tsx    # Renders LLM-generated Pixi.js visuals in sandboxed iframe
+│   ├── InteractiveQuestion.tsx # Rich question formats: fill-in-the-blank, MCQ, matching
 │   └── enrichment/           # Enrichment form components
 │       ├── SectionCard.tsx
 │       ├── ChipSelector.tsx
@@ -367,7 +373,7 @@ Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own ro
 - **Schema conversion**: `make_schema_strict()` converts Pydantic models to OpenAI strict schema format
 - **OpenAI API selection**: gpt-5.4/gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
 - **Streaming**: `call_stream()` yields text chunks via OpenAI Responses API or Chat Completions streaming; Anthropic streams via adapter; Gemini falls back to non-streaming
-- **Fast model**: `call_fast()` always uses gpt-4o-mini via Chat Completions for lightweight tasks (translation, safety checks) regardless of provider setting
+- **Fast model**: `call_fast()` uses the `fast_model` DB config entry (defaults to gpt-4o-mini) via Chat Completions for lightweight tasks (translation, safety checks) regardless of main provider setting
 - **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls
 - **Gemini**: Google Generative AI client with JSON mode support
 - **Claude Code**: Calls the `claude` CLI as a subprocess (`--dangerously-skip-permissions --no-session-persistence --max-turns 1`). Maps reasoning effort to CLI `--effort` flag. Extracts JSON from response text (handles markdown fences and raw JSON). Used for local/admin workflows where the Claude Code CLI is available on the machine

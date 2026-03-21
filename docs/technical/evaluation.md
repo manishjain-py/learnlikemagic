@@ -13,10 +13,13 @@ Load Persona (JSON)
 Create Session (REST: POST /sessions)
     |
     v
+[If cards exist] Handle Card Phase (read cards, POST /card-action)
+    |
+    v
 Run Simulation (WebSocket: /sessions/ws/{id})
     |  Student Simulator <-> Tutor
     v
-LLM Judge Evaluates (5 persona-aware dimensions)
+LLM Judge Evaluates (5 core + 2 conditional card-phase dimensions)
     |
     v
 Generate Reports (JSON + Markdown artifacts)
@@ -28,18 +31,15 @@ Generate Reports (JSON + Markdown artifacts)
 
 **File:** `autoresearch/tutor_teaching_quality/evaluation/student_simulator.py`
 
-`StudentSimulator` builds a system prompt from persona traits and uses an LLM to roleplay as the student.
+`StudentSimulator` builds a system prompt from persona traits and uses `LLMService` to roleplay as the student.
 
 - `correct_answer_probability` is **programmatically enforced** -- each turn, a random roll determines correct/incorrect, then injects explicit directives to the LLM (e.g., `[TURN DIRECTIVE: This turn you MUST ANSWER INCORRECTLY]`)
 - When answering incorrectly, a specific mistake is randomly selected from the persona's `common_mistakes` list and injected into the directive
 - Persona-specific behaviors fire probabilistically (e.g., `boredom_probability: 0.3`) -- these are included in the system prompt as behavioral tendencies
 - All turn decisions (correct/incorrect, probability) are tracked in `turn_decisions` for debugging
 - A "natural variation" instruction tells the LLM to vary behavior turn-by-turn rather than rigidly following the persona script
-- Retry logic: 3 attempts with exponential backoff (5s, 10s, 15s) on rate limit errors
-
-**Provider differences:**
-- OpenAI: directive injected as the last `system` message
-- Anthropic: directive appended to the last `user` message (more effective for Claude)
+- If cards were shown, card content is included in the prompt so the simulated student can reference what they read
+- Builds a single flat prompt string (system context + conversation history + turn directive) passed to `self.llm.call()` with `reasoning_effort="low"`
 
 ---
 
@@ -48,9 +48,10 @@ Generate Reports (JSON + Markdown artifacts)
 **File:** `autoresearch/tutor_teaching_quality/evaluation/session_runner.py`
 
 - Creates tutoring session via `POST /sessions` REST endpoint with an `eval-student` user
+- **Card phase handling:** if the session response includes `session_phase: "card_phase"`, the runner reads all explanation cards, adds them to the transcript as `explanation_card` entries, then calls `POST /sessions/{id}/card-action` with `action: "clear"` to transition to interactive teaching. Card phase metadata (cards, variant key, total variants) stored in `self.card_phase_data` for the evaluator.
 - Runs conversation loop over WebSocket (`/sessions/ws/{session_id}`)
 - Uses the **same protocol real students use** -- the tutor does not know it is being evaluated
-- Captures all messages with timestamps, turn numbers, and roles
+- Captures all messages with timestamps, turn numbers, roles, and phase labels (e.g., `welcome`, `card_phase_welcome`, `card_to_interactive_transition`)
 - Configurable max turns (default: 20) and per-turn timeout (default: 90s)
 - Handles `typing`, `token`, `visual_update`, `state_update`, `assistant`, and `error` WebSocket message types
 - Session ends when max turns reached, tutor marks session complete (`is_complete: true`), or no tutor response is received
@@ -61,6 +62,7 @@ Generate Reports (JSON + Markdown artifacts)
 **Server management modes:**
 - `skip_server_management=True` (API/in-process): verifies server health via `/health/db` endpoint
 - `skip_server_management=False` (CLI): starts uvicorn as subprocess, waits for health check, stops on cleanup
+- `restart_server=True`: kills existing process on the port, then starts fresh (ensures code changes take effect)
 
 ---
 
@@ -68,15 +70,24 @@ Generate Reports (JSON + Markdown artifacts)
 
 **File:** `autoresearch/tutor_teaching_quality/evaluation/evaluator.py`
 
-`ConversationEvaluator` sends full transcript plus persona context to an LLM judge and evaluates across 5 persona-aware dimensions.
+`ConversationEvaluator` sends full transcript plus persona context to an LLM judge. Uses `config.create_llm_service("evaluator")` for provider-agnostic LLM calls with `reasoning_effort="high"` and `json_mode=True`.
 
-### 5 Evaluation Dimensions (scored 1-10)
+### 7 Evaluation Dimensions (scored 1-10)
+
+**Core dimensions (always scored):**
 
 1. **Responsiveness** -- Does the tutor adapt to student signals?
 2. **Explanation Quality** -- Does the tutor explain well and try different approaches?
 3. **Emotional Attunement** -- Does the tutor read the room emotionally?
 4. **Pacing** -- Is the tutor moving at the right speed for this student?
 5. **Authenticity** -- Does it feel like a real teacher or a chatbot?
+
+**Card phase dimensions (only when `explanation_card` entries exist in conversation):**
+
+6. **Card-to-Session Coherence** -- Does the interactive session build on explanation card content?
+7. **Transition Quality** -- How smooth is the bridge from cards to interactive teaching?
+
+`_has_card_phase()` checks for `role == "explanation_card"` messages. When absent, dimensions 6-7 are excluded from the prompt schema and scoring.
 
 Each dimension has a detailed rubric with score anchors at 1-2, 3-4, 5-6, 7-8, and 9-10.
 
@@ -95,30 +106,37 @@ Each evaluation identifies **top 5 problems**:
 | `severity` | `critical` / `major` / `minor` |
 | `root_cause` | Category (see below) |
 
-**Root cause categories:** `missed_student_signal`, `wrong_pacing`, `repetitive_approach`, `emotional_mismatch`, `missed_misconception`, `over_scaffolding`, `conversation_history_window`, `prompt_quality`, `model_capability`, `other`
+**Root cause categories:** `missed_student_signal`, `wrong_pacing`, `repetitive_approach`, `emotional_mismatch`, `missed_misconception`, `over_scaffolding`, `conversation_history_window`, `prompt_quality`, `model_capability`, `card_content_ignored`, `abrupt_transition`, `card_repetition`, `other`
 
 ### Evaluator Input Construction
 
 The `_build_user_message()` method assembles the evaluator input:
-- Full transcript formatted as `[Turn N] TUTOR/STUDENT: ...`
+- Full transcript formatted as `[Turn N] TUTOR/STUDENT: ...` (explanation cards formatted as `[EXPLANATION CARD] ...`)
+- Card phase context (when cards present): number of cards, variant key, total variants, note that student clicked "Clear"
 - Persona context: name, ID, description, personality traits, correct answer probability, behavioral tendencies
 - Topic context (when available): topic name, grade level, and nested `guidelines` containing `learning_objectives` and `common_misconceptions`
 
-### Evaluator Models
+### Model Configuration
 
-| Provider | Model | Config |
-|----------|-------|--------|
-| OpenAI | GPT-5.2 | Responses API, reasoning effort: `high`, JSON output mode |
-| Anthropic | Claude Opus 4.6 | Messages API with streaming, extended thinking (20,000 token budget) |
+Both evaluator and simulator use `config.create_llm_service(component)` which routes through the unified `LLMService` abstraction. Supported providers: `openai`, `anthropic`, `claude_code`.
 
-### Simulator Models
+**Evaluator defaults:**
 
 | Provider | Default Model | Config |
 |----------|---------------|--------|
-| OpenAI | gpt-4o | Chat Completions API, temperature 0.8, max_completion_tokens 150 |
-| Anthropic | Claude Opus 4.6 | Messages API, max tokens 150 |
+| OpenAI | gpt-5.2 | reasoning effort: `high`, JSON output mode |
+| Anthropic | claude-opus-4-6 | extended thinking (20,000 token budget) |
+| claude_code | claude-code | No API key needed |
 
-The evaluator and simulator models are configured independently. When run from the API, models are read from the DB `llm_config` table (`eval_evaluator` and `eval_simulator` keys). When run from the CLI, models fall back to `EVAL_LLM_PROVIDER` env var.
+**Simulator defaults:**
+
+| Provider | Default Model | Config |
+|----------|---------------|--------|
+| OpenAI | gpt-4o | reasoning effort: `low` |
+| Anthropic | claude-opus-4-6 | reasoning effort: `low` |
+| claude_code | claude-code | No API key needed |
+
+The evaluator and simulator models are configured independently. When run from the API, models are read from the DB `llm_config` table (`eval_evaluator` and `eval_simulator` keys). When run from the CLI, models fall back to `EVAL_LLM_PROVIDER` env var. The `claude_code` provider requires no API key.
 
 ---
 
@@ -133,9 +151,9 @@ The directory name includes the persona ID when run from CLI, and a `_r{N}` suff
 | File | Format | Contents |
 |------|--------|----------|
 | `config.json` | JSON | Topic ID, tutor model, evaluator model, persona, max turns, timestamp, provider config |
-| `conversation.json` | JSON | Machine-readable transcript with messages, session metadata, config |
+| `conversation.json` | JSON | Machine-readable transcript with messages, session metadata, config, `has_card_phase`, `card_phase_data` |
 | `conversation.md` | Markdown | Human-readable transcript with persona info header |
-| `evaluation.json` | JSON | Scores (5 dimensions + avg), dimension analysis, problems with severity/root cause, summary |
+| `evaluation.json` | JSON | Scores (5-7 dimensions + avg), dimension analysis, problems with severity/root cause, summary |
 | `review.md` | Markdown | Formatted report with score bars, detailed analysis per dimension, problems |
 | `problems.md` | Markdown | Problem-focused report with overview table, root cause distribution, suggested fixes |
 | `run.log` | Text | Timestamped execution log from session runner |
@@ -154,6 +172,9 @@ The `problems.md` report includes suggested fixes for certain root causes. The s
 | `conversation_history_window` | Increase the conversation history window or improve turn summary |
 | `prompt_quality` | Review and improve relevant agent prompts |
 | `model_capability` | Consider testing with different models or adjusting temperature/sampling |
+| `card_content_ignored` | Improve the pre-computed explanation summary injection -- tutor should actively reference card content |
+| `abrupt_transition` | Replace hardcoded transition message with LLM-generated bridge that references card content |
+| `card_repetition` | Strengthen the "DO NOT repeat" instruction in the precomputed explanation summary |
 | `other` | Investigate specific turns to determine whether prompt, model, or architectural issue |
 
 Multi-persona comparison (`--persona all`): `comparison_{timestamp}/comparison.md` + `comparison.json`. When `--runs-per-persona` > 1, the comparison report includes per-run detail tables and averaged scores across runs.
@@ -198,7 +219,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display purposes, but the evaluation pipeline's model routing only checks `== "anthropic"` -- using `anthropic-haiku` as a provider would incorrectly route to the OpenAI client and fail.
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `claude_code` (no API key needed). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display purposes, but the evaluation pipeline's model routing only checks `== "anthropic"` or `== "claude_code"` -- using `anthropic-haiku` as a provider would incorrectly route to the OpenAI client and fail.
 
 ---
 
@@ -315,9 +336,10 @@ python -m autoresearch.tutor_teaching_quality.evaluation.run_evaluation \
 
 1. The CLI resolves your `--subject`/`--chapter`/`--topic` to a guideline ID from the database
 2. Creates a tutoring session via `POST /sessions` (the tutor doesn't know it's being evaluated)
-3. A simulated student persona converses with the tutor over WebSocket (up to `--max-turns` turns)
-4. An LLM judge evaluates the transcript on 5 dimensions (1-10 each) and identifies problems
-5. Reports are saved to `autoresearch/tutor_teaching_quality/evaluation/runs/run_<timestamp>/`
+3. If the topic has pre-computed explanation cards, the runner reads them, adds to transcript, and calls `/card-action` to transition to interactive teaching
+4. A simulated student persona converses with the tutor over WebSocket (up to `--max-turns` turns)
+5. An LLM judge evaluates the transcript on 5-7 dimensions (1-10 each) and identifies problems
+6. Reports are saved to `autoresearch/tutor_teaching_quality/evaluation/runs/run_<timestamp>/`
 
 ### Output files (per run)
 
@@ -385,7 +407,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
-The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching the backend: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. Note that `eval_llm_provider` is the legacy provider field (default from `EVAL_LLM_PROVIDER` env var), not the per-component `evaluator_provider` field -- when evaluator and simulator providers are set independently via DB config, the badge may show the legacy default rather than the actual evaluator provider. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The frontend `DIMENSIONS` constant hardcodes the 5 core evaluation dimensions: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Card-phase dimensions (card_to_session_coherence, transition_quality) are **not shown** in the dashboard even when present in evaluation data. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. Note that `eval_llm_provider` is the legacy provider field (default from `EVAL_LLM_PROVIDER` env var), not the per-component `evaluator_provider` field -- when evaluator and simulator providers are set independently via DB config, the badge may show the legacy default rather than the actual evaluator provider. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` or `claude_code` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 
@@ -395,9 +417,9 @@ The frontend `DIMENSIONS` constant lists the 5 evaluation dimensions matching th
 |------|---------|
 | `autoresearch/tutor_teaching_quality/evaluation/config.py` | `EvalConfig` dataclass, persona loading, paths, DB config integration |
 | `autoresearch/tutor_teaching_quality/evaluation/student_simulator.py` | LLM-powered student with persona-driven behavior and per-turn correctness enforcement |
-| `autoresearch/tutor_teaching_quality/evaluation/session_runner.py` | Session lifecycle: REST creation, WebSocket conversation, server management |
-| `autoresearch/tutor_teaching_quality/evaluation/evaluator.py` | LLM judge with 5-dimension persona-aware rubric, structured JSON output |
-| `autoresearch/tutor_teaching_quality/evaluation/report_generator.py` | Markdown + JSON report generation, comparison reports |
+| `autoresearch/tutor_teaching_quality/evaluation/session_runner.py` | Session lifecycle: REST creation, card phase handling, WebSocket conversation, server management |
+| `autoresearch/tutor_teaching_quality/evaluation/evaluator.py` | LLM judge with 7-dimension persona-aware rubric (5 core + 2 card-phase), structured JSON output |
+| `autoresearch/tutor_teaching_quality/evaluation/report_generator.py` | Markdown + JSON report generation, card-phase-aware reports, comparison reports |
 | `autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py` | CLI entry point, single-persona and multi-persona orchestration |
 | `autoresearch/tutor_teaching_quality/evaluation/api.py` | FastAPI endpoints, background thread execution, status polling, session evaluation |
 | `autoresearch/tutor_teaching_quality/evaluation/personas/*.json` | 8 student persona definitions |
