@@ -287,11 +287,16 @@ Return a single simplified explanation card as JSON:
 
 CRITICAL RULES:
 - Explain ONLY the same concept. Do NOT advance to new topics.
-- Your explanation must be SUBSTANTIALLY DIFFERENT — use a different analogy, different structure, different angle. Do NOT reword the same sentences.
-- Do NOT echo or repeat content from the original card or any previous attempts. The student already read those and didn't understand — repeating them is useless.
+- Your explanation must be SUBSTANTIALLY DIFFERENT from the original card:
+  * Use a DIFFERENT analogy or scenario (if original used a candy shop, you use a toy shelf)
+  * Use a DIFFERENT structure (if original used bullet points, you tell a story)
+  * Start with a DIFFERENT opening (do not begin the same way)
+  * Do NOT copy, rephrase, or echo any sentence from the original card.
+- If previous attempts are shown above, your explanation must also differ from ALL of them. Reusing any content from cards the student already read is the worst possible outcome.
 - Shorter sentences. One idea at a time.
 - If the card used a technical term, replace it with an everyday word.
 - NO meta-commentary. No "Let me explain this differently" or "Here's a simpler version." Just explain the concept directly.
+- Keep it under 150 words. Brevity helps struggling students.
 """,
     name="simplify_card",
 )
