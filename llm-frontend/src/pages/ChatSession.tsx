@@ -112,6 +112,10 @@ export default function ChatSession() {
   const [simplifyLoading, setSimplifyLoading] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
 
+  // Annotate cards with 0-based source_card_idx if not already present
+  const annotateCards = (cards: ExplanationCard[]): ExplanationCard[] =>
+    cards.map((c, i) => ({ ...c, source_card_idx: c.source_card_idx ?? i }));
+
   // Streaming state
   const [streamingText, setStreamingText] = useState('');
   const wsRef = useRef<TutorWebSocket | null>(null);
@@ -308,7 +312,7 @@ export default function ChatSession() {
       // Check for card phase (pre-computed explanations)
       if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
         setSessionPhase('card_phase');
-        setExplanationCards(locState.firstTurn.explanation_cards);
+        setExplanationCards(annotateCards(locState.firstTurn.explanation_cards));
         setCurrentSlideIdx(0);
         setCardPhaseState(locState.firstTurn.card_phase_state || null);
         setVariantsShown(1);
@@ -393,7 +397,7 @@ export default function ChatSession() {
 
           // Hydrate card phase — active or completed
           if (state._replay_explanation_cards) {
-            setExplanationCards(state._replay_explanation_cards);
+            setExplanationCards(annotateCards(state._replay_explanation_cards));
 
             if (state.card_phase?.active) {
               // Card phase still in progress — restore card navigation state
@@ -981,7 +985,7 @@ export default function ChatSession() {
         };
         handleBridgeTransition(result);
       } else if (result.action === 'switch_variant' && result.cards) {
-        setExplanationCards(result.cards);
+        setExplanationCards(annotateCards(result.cards));
         setCurrentSlideIdx(0);
         setVariantsShown(prev => prev + 1);
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
@@ -1002,9 +1006,9 @@ export default function ChatSession() {
     const cardArrayIdx = currentSlideIdx - 1;
     if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
 
-    // Find the base card_idx: if it's a remedial card, use source index; otherwise use position
-    const currentCard = explanationCards[cardArrayIdx] as any;
-    const baseCardIdx = currentCard?.source_card_idx ?? currentCard?.card_idx ?? cardArrayIdx;
+    // source_card_idx is always 0-based (set by annotateCards on load, or by insert for remedials)
+    const currentCard = explanationCards[cardArrayIdx];
+    const baseCardIdx = currentCard.source_card_idx ?? cardArrayIdx;
 
     setSimplifyLoading(true);
     try {
@@ -1012,10 +1016,10 @@ export default function ChatSession() {
 
       if (result.action === 'insert_card' && result.card) {
         // Insert the new card right after the current card in the array
-        const newCard = {
+        const newCard: ExplanationCard = {
           ...result.card,
           card_id: result.card_id,
-          card_idx: cardArrayIdx + 1,
+          card_idx: baseCardIdx,
           source_card_idx: baseCardIdx,
         };
         setExplanationCards(prev => {
@@ -1501,18 +1505,25 @@ export default function ChatSession() {
                   </div>
                 ) : (
                   <div className="explanation-nav">
+                    <button
+                      className="explanation-nav-btn simplify"
+                      onClick={handleSimplifyCard}
+                      disabled={simplifyLoading || cardActionLoading}
+                    >
+                      {simplifyLoading ? 'Simplifying...' : "I didn't understand"}
+                    </button>
                     <div className="explanation-actions">
                       <button
                         className="explanation-nav-btn primary"
                         onClick={() => handleCardAction('clear')}
-                        disabled={cardActionLoading}
+                        disabled={cardActionLoading || simplifyLoading}
                       >
                         Start practice
                       </button>
                       <button
                         className="explanation-nav-btn secondary"
                         onClick={() => handleCardAction('explain_differently')}
-                        disabled={cardActionLoading}
+                        disabled={cardActionLoading || simplifyLoading}
                       >
                         {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
                       </button>

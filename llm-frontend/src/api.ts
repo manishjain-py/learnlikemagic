@@ -82,12 +82,14 @@ export interface VisualExplanation {
 
 export interface ExplanationCard {
   card_idx: number;
-  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary';
+  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary' | 'simplification';
   title: string;
   content: string;
   visual?: string | null;
   audio_text?: string | null;
   visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
+  card_id?: string;
+  source_card_idx?: number;
 }
 
 export interface CardPhaseDTO {

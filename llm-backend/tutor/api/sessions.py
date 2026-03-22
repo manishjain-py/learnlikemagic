@@ -262,20 +262,20 @@ def get_session_replay(
             # Merge remedial cards into the deck for replay
             card_phase = state.get("card_phase", {})
             remedial_map = card_phase.get("remedial_cards", {})
-            if remedial_map and state.get("_replay_explanation_cards"):
-                base_cards = state["_replay_explanation_cards"]
-                merged = []
-                for i, card in enumerate(base_cards):
-                    # Add stable card_id to base card
-                    variant_key = card_phase.get("current_variant_key", "A")
-                    card["card_id"] = f"{variant_key}_{i}"
-                    merged.append(card)
-                    # Insert any remedial cards after their source
-                    for remedial in remedial_map.get(str(i), remedial_map.get(i, [])):
-                        remedial_card = remedial.get("card", {}) if isinstance(remedial, dict) else {}
-                        remedial_card["card_id"] = remedial.get("card_id", f"remedial_{variant_key}_{i}")
-                        merged.append(remedial_card)
-                state["_replay_explanation_cards"] = merged
+            variant_key = card_phase.get("current_variant_key", "A")
+            base_cards = state["_replay_explanation_cards"]
+            merged = []
+            for i, card in enumerate(base_cards):
+                card["card_id"] = f"{variant_key}_{i}"
+                card["source_card_idx"] = i
+                merged.append(card)
+                # Insert any remedial cards after their source
+                for remedial in remedial_map.get(str(i), remedial_map.get(i, [])):
+                    remedial_card = remedial.get("card", {}) if isinstance(remedial, dict) else {}
+                    remedial_card["card_id"] = remedial.get("card_id", f"remedial_{variant_key}_{i}")
+                    remedial_card["source_card_idx"] = i
+                    merged.append(remedial_card)
+            state["_replay_explanation_cards"] = merged
 
     return state
 
