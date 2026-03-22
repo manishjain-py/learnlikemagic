@@ -231,7 +231,7 @@ class AnimationEnrichmentService:
         """LLM call: decide which cards get visuals and write specs."""
         topic = guideline.topic_title or guideline.topic
         subject = guideline.subject or "Mathematics"
-        grade = guideline.grade_level or "Grade 3"
+        grade = f"Grade {guideline.grade}" if guideline.grade else "Grade 3"
 
         # Build cards summary for prompt (strip audio_text to save tokens)
         cards_for_prompt = [
@@ -239,12 +239,13 @@ class AnimationEnrichmentService:
             for c in cards
         ]
 
-        prompt = _DECISION_PROMPT.format(
-            grade_level=grade,
-            topic_title=topic,
-            subject=subject,
-            variant_approach=variant_label,
-            cards_json=json.dumps(cards_for_prompt, indent=2),
+        # Use replace instead of .format() — prompt contains JSON examples with curly braces
+        prompt = (_DECISION_PROMPT
+            .replace("{grade_level}", grade)
+            .replace("{topic_title}", topic)
+            .replace("{subject}", subject)
+            .replace("{variant_approach}", variant_label)
+            .replace("{cards_json}", json.dumps(cards_for_prompt, indent=2))
         )
 
         try:
@@ -302,14 +303,15 @@ class AnimationEnrichmentService:
     ) -> Optional[str]:
         """Single LLM call to generate PixiJS code from a visual spec."""
         topic = guideline.topic_title or guideline.topic
-        grade = guideline.grade_level or "Grade 3"
+        grade = f"Grade {guideline.grade}" if guideline.grade else "Grade 3"
 
-        prompt = _CODE_GEN_PROMPT.format(
-            grade_level=grade,
-            topic_title=topic,
-            card_content=card.get("content", ""),
-            visual_spec=decision.visual_spec or "",
-            output_type=decision.decision,
+        # Use replace instead of .format() — prompt contains PixiJS code examples with curly braces
+        prompt = (_CODE_GEN_PROMPT
+            .replace("{grade_level}", grade)
+            .replace("{topic_title}", topic)
+            .replace("{card_content}", card.get("content", ""))
+            .replace("{visual_spec}", decision.visual_spec or "")
+            .replace("{output_type}", decision.decision)
         )
 
         if error_feedback:

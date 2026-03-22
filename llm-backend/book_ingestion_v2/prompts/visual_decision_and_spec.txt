@@ -26,18 +26,11 @@ For EACH card, decide whether a visual would make the concept clearer. Return yo
 - Motion itself teaches the idea — showing the before/during/after is the point
 - A static image would miss the key insight (the change, the movement, the sequence)
 
-**Select `no_visual` when:**
-- The card is a summary or recap
-- The card is a simple text definition where a picture would just restate the words
-- The concept is too abstract for a meaningful diagram (grammar rules, vocabulary)
-- The card already makes sense without visual aid
-- You are not confident a visual would be clear and correct
-
-**Default to `no_visual`.** A missing visual is better than a confusing one. Static is preferred over animated unless motion genuinely teaches.
+**Default to `static_visual`.** Every card should get a visual — students can choose whether to tap "Visualise" or not. Static is preferred over animated unless motion genuinely teaches.
 
 ### Volume Guidance
 
-Select 1-3 cards per variant (not zero, not all). Focus on the highest-impact cards where a visual most amplifies understanding.
+Generate a visual for EVERY card. The student decides whether to view it — having one available never hurts. Even simple concepts benefit from a clean diagram.
 
 ### Visual Spec Rules
 
@@ -71,16 +64,12 @@ Every visual spec MUST ensure:
 
 ## Output Format
 
-Return a JSON array with one entry per card. For cards with no visual, include only card_idx and decision.
+Return a JSON array with one entry per card. Every card MUST have a visual.
 
 ```json
 [
   {
     "card_idx": 1,
-    "decision": "no_visual"
-  },
-  {
-    "card_idx": 2,
     "decision": "static_visual",
     "title": "3 + 4 = 7",
     "visual_summary": "3 red apples on the left and 4 blue apples on the right, with a '= 7' label showing the total",

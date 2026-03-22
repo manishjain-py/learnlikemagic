@@ -54,7 +54,7 @@ The core principle: **only generate a visual if it makes the concept clearer imm
   - **Static by default**: Use `static_visual` unless the concept is inherently about motion or transformation
   - **Animated only when motion teaches**: `animated_visual` reserved for processes where the movement itself is the lesson — carrying in addition, regrouping, jumps on a number line, objects combining
   - **If in doubt, skip** — a missing visual is better than a bad one
-- **FR-6:** For v1 rollout, the pipeline SHOULD produce typically 1-3 visuals per variant. Quality over quantity. The decision should be quality-driven, not count-driven.
+- **FR-6:** The pipeline MUST generate a visual for EVERY card. The student chooses whether to tap "Visualise" — having one available never hurts. Even simple concepts benefit from a clean diagram.
 
 ### 4.2 Learning Clarity Requirements for Generated Visuals
 
@@ -178,6 +178,7 @@ The pipeline MUST NOT jump directly from card text to PixiJS code. A two-step ap
 - Tapping "Visualise" should feel instant — the code is pre-computed, only rendering happens client-side.
 - If the visual fails to render (iframe error), show nothing — do not show error messages to kids. Silently degrade to text-only card.
 - The visual MUST NOT auto-play. Students tap when they're ready. This avoids overwhelming them during card reading.
+- When the student taps "Visualise", the view MUST auto-scroll to bring the visual canvas into view. This prevents the animation from playing off-screen below the fold.
 - On replay, the animation MUST restart from the beginning (existing behavior in `VisualExplanation.tsx`).
 - The canvas MUST be responsive — fill the card width on mobile (existing 500:350 aspect ratio, 100% width CSS).
 
