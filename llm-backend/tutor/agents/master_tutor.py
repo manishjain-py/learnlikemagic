@@ -330,7 +330,7 @@ class MasterTutorAgent(BaseAgent):
         duration_ms = int((time.time() - start_time) * 1000)
         logger.info(json.dumps({
             "agent": self.agent_name, "event": "simplify_card_completed",
-            "duration_ms": duration_ms, "card_idx": card_idx, "depth": depth,
+            "duration_ms": duration_ms, "card_title": card_title,
         }))
 
         return {

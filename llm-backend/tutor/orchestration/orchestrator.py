@@ -1259,13 +1259,5 @@ class TeacherOrchestrator:
             )
             return result
         except Exception as e:
-            logger.warning(f"Simplified card generation failed: {e}")
-            # Fallback: return a minimal simplified card
-            return {
-                "card_type": "simplification",
-                "title": f"Let's simplify: {card_title}",
-                "content": f"Let me explain this more simply. {card_content[:200]}...",
-                "audio_text": f"Let me explain this more simply.",
-                "visual": None,
-                "visual_explanation": None,
-            }
+            logger.exception(f"Simplified card generation failed: {e}")
+            raise
