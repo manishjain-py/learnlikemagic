@@ -236,23 +236,31 @@ class MasterTutorAgent(BaseAgent):
     REASON_MAP = {
         "example": (
             "I need an example",
-            "Add a concrete, relatable real-world example. Show the concept in action with "
-            "something the student can picture — food, toys, money, daily life.",
+            "Build the ENTIRE explanation around ONE concrete, relatable example from the "
+            "student's daily life (food, toys, friends, school). Walk through the example "
+            "step by step, showing how the concept works IN the example. Do NOT explain "
+            "the theory first and add an example — start with the example and let the "
+            "concept emerge from it. The example must be a single coherent scene, not a "
+            "collection of unrelated objects.",
         ),
         "simpler_words": (
             "The language is tough",
-            "Rewrite using the simplest everyday words possible. No technical terms. "
-            "Short sentences. Explain like talking to a young child.",
+            "Rewrite using only words a 5-year-old uses daily. No technical terms at all. "
+            "If you must mention a concept like 'place value', describe it instead "
+            "(e.g., 'which box the number sits in'). Maximum 10 words per sentence.",
         ),
         "elaborate": (
             "I need more detail",
-            "Break the concept into smaller pieces. Explain step by step. "
-            "Cover what the previous card assumed the student already knew.",
+            "Break the concept into smaller pieces. Explain step by step, "
+            "numbering each step. Fill in any gap the previous card left — "
+            "if it said 'do X', explain WHY we do X and WHAT happens if we don't.",
         ),
         "different_approach": (
             "Explain it differently",
             "Use a completely different angle, analogy, or mental model. "
-            "If the previous card used numbers, try a story. If it used a story, try a visual description.",
+            "If the previous card used numbers, try a story. If it used a story, "
+            "try a hands-on activity. The new approach must feel like a fresh start, "
+            "not a variation of the same explanation.",
         ),
     }
 
