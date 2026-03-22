@@ -82,6 +82,17 @@ const ADMIN_PAGES: AdminPageCard[] = [
     ),
   },
   {
+    title: 'Interactive PoC',
+    description: 'Test interactive visual templates (drag-and-drop, sliders) with editable params.',
+    path: '/admin/interactive-poc',
+    icon: (
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/>
+        <path d="M2 12a10 10 0 1 0 20 0 10 10 0 0 0-20 0"/>
+      </svg>
+    ),
+  },
+  {
     title: 'Feature Flags',
     description: 'Toggle runtime features on or off (e.g. visuals in tutor flow).',
     path: '/admin/feature-flags',
