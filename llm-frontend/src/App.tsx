@@ -58,6 +58,7 @@ import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
 import CreateBookV2 from './features/admin/pages/CreateBookV2';
 import BookV2Detail from './features/admin/pages/BookV2Detail';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
+import InteractiveVisualsPocPage from './features/admin/pages/InteractiveVisualsPocPage';
 import FeatureFlagsPage from './features/admin/pages/FeatureFlagsPage';
 import AdminIssuesPage from './features/admin/pages/AdminIssuesPage';
 import AdminLayout from './features/admin/components/AdminLayout';
@@ -159,6 +160,7 @@ function App() {
             <Route path="books-v2/new" element={<CreateBookV2 />} />
             <Route path="books-v2/:id" element={<BookV2Detail />} />
             <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
+            <Route path="interactive-poc" element={<InteractiveVisualsPocPage />} />
             <Route path="feature-flags" element={<FeatureFlagsPage />} />
             <Route path="issues" element={<AdminIssuesPage />} />
           </Route>
