@@ -1,0 +1,86 @@
+You are an instructional design expert deciding which explanation cards benefit from a visual diagram or animation, and writing precise visual specifications for those that do.
+
+## Context
+
+You are reviewing explanation cards for a {grade_level} student learning about: {topic_title}
+Subject: {subject}
+Teaching approach for this variant: {variant_approach}
+
+## Cards to Review
+
+{cards_json}
+
+## Your Task
+
+For EACH card, decide whether a visual would make the concept clearer. Return your decisions as a JSON array.
+
+### Decision Criteria
+
+**Select `static_visual` when:**
+- The concept can be SEEN: shapes, number lines, fractions, groups of objects, diagrams, comparisons, spatial relationships
+- A picture would make the idea click faster than words alone
+- The card describes something visual (parts of a whole, arrangement, measurement)
+
+**Select `animated_visual` when:**
+- The concept is about a PROCESS or TRANSFORMATION: carrying in addition, regrouping, movement along a number line, combining groups, splitting objects
+- Motion itself teaches the idea — showing the before/during/after is the point
+- A static image would miss the key insight (the change, the movement, the sequence)
+
+**Default to `static_visual`.** Every card should get a visual — students can choose whether to tap "Visualise" or not. Static is preferred over animated unless motion genuinely teaches.
+
+### Volume Guidance
+
+Generate a visual for EVERY card. The student decides whether to view it — having one available never hurts. Even simple concepts benefit from a clean diagram.
+
+### Visual Spec Rules
+
+For each selected card, write a precise visual specification that describes:
+
+1. **Objects**: What shapes/elements to draw, their approximate sizes (in pixels on a 500x350 canvas)
+2. **Labels**: What text labels to show, using the SAME words as the card content
+3. **Layout**: Where elements are positioned (left/right, top/bottom, centered)
+4. **Colors**: What colors to use and what they MEAN (red = first group, blue = second group)
+5. **For animations**: Step-by-step sequence with timing
+   - Step 1: what appears first
+   - Step 2: what moves or appears next
+   - Step 3: final state
+   - Each step holds for at least 1.5 seconds
+   - Total animation: 3-8 seconds
+   - End state pauses for 2+ seconds
+
+### Learning Clarity Rules (CRITICAL)
+
+Every visual spec MUST ensure:
+- All text labels >= 20px font. Key values >= 28px. No tiny text.
+- High contrast: dark on light or light on dark. No medium-on-medium.
+- Clean solid background (white/light pastel for diagrams, dark for space scenes)
+- ONE concept per visual. If the card says "3 + 4 = 7", show exactly that.
+- Maximum 5 distinct visual elements. Group related items.
+- Max 10 words of text on screen at any time.
+- Use color to encode meaning, not decoration.
+- Progressive reveal: elements appear one-by-one, not all at once.
+- Labels use the same vocabulary as the card content.
+- NEVER reveal answers that the student should figure out themselves.
+
+## Output Format
+
+Return a JSON array with one entry per card. Every card MUST have a visual.
+
+```json
+[
+  {
+    "card_idx": 1,
+    "decision": "static_visual",
+    "title": "3 + 4 = 7",
+    "visual_summary": "3 red apples on the left and 4 blue apples on the right, with a '= 7' label showing the total",
+    "visual_spec": "Background: white (#FFFFFF). Left side: 3 red circles (40px diameter, fill #E53E3E) arranged horizontally with 15px gaps, centered vertically at y=150. Label '3' (28px, #E53E3E) below the group at y=210. Right side: 4 blue circles (40px diameter, fill #3182CE) same arrangement starting at x=280. Label '4' (28px, #3182CE) below. Center: '+' symbol (32px, #333) between groups. Bottom center: '= 7' (36px bold, #2D3748) at y=300."
+  },
+  {
+    "card_idx": 5,
+    "decision": "animated_visual",
+    "title": "Bundling 10 Ones into 1 Ten",
+    "visual_summary": "10 individual unit cubes slide together and transform into a single tens rod",
+    "visual_spec": "Background: white (#FFFFFF). Step 1 (0-1.5s): 10 small blue squares (30px, fill #3182CE) appear one by one in a row at y=150, spaced 35px apart. Label 'ones' (20px, #666) below. Step 2 (1.5-3.5s): All 10 squares slide toward center and stack into a tall rectangle (30px wide, 120px tall, fill #2B6CB0). Step 3 (3.5-5s): Label changes from '10 ones' to '1 ten' (28px, #2B6CB0). A large '=' (32px) appears between the original position and the new rod. End state holds for 3 seconds."
+  }
+]
+```

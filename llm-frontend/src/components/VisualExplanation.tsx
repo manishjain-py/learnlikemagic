@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { VisualExplanation as VisualExplanationType } from '../api';
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
 export default function VisualExplanation({ visual }: Props) {
   const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   const pixiCode = visual.pixi_code;
   const hasLegacyFormat = !!visual.scene_type;
@@ -74,6 +75,10 @@ export default function VisualExplanation({ visual }: Props) {
   const startAnimation = useCallback(() => {
     setStarted(true);
     setError(null);
+    // Scroll the visual into view after rendering
+    requestAnimationFrame(() => {
+      canvasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }, []);
 
   const replay = useCallback(() => {
@@ -103,7 +108,7 @@ export default function VisualExplanation({ visual }: Props) {
   }
 
   return (
-    <div className="visual-explanation">
+    <div className="visual-explanation" ref={canvasRef}>
       {visual.title && <div className="visual-title">{visual.title}</div>}
       <div className="visual-canvas-pixi">
         <iframe

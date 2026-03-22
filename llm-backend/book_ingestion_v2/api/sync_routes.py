@@ -369,6 +369,80 @@ def delete_explanations(
         )
 
 
+@router.post("/generate-visuals", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_visuals(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic enrichment"),
+    force: bool = Query(False, description="Re-generate visuals even if cards already have them"),
+    db: Session = Depends(get_db),
+):
+    """Generate pre-computed PixiJS visuals for explanation cards.
+
+    Runs as a background job. Requires explanations to already exist.
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            total_items = 1
+            lock_chapter_id = guideline_id
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=lock_chapter_id,
+            job_type=V2JobType.VISUAL_ENRICHMENT.value,
+            total_items=total_items,
+        )
+
+        run_in_background_v2(
+            _run_visual_enrichment, job_id, book_id,
+            chapter_id or "", guideline_id or "", str(force),
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Visual enrichment failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
 def _run_explanation_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
     guideline_id: str = "", force_str: str = "False",
@@ -436,6 +510,85 @@ def _run_explanation_generation(
 
             for error in result.get("errors", []):
                 logger.warning(f"Explanation generation failed: {error}")
+
+            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception:
+        raise  # run_in_background_v2 handles marking the job as failed
+
+
+def _run_visual_enrichment(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False",
+):
+    """Background task for visual enrichment of explanation cards."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.animation_enrichment_service import AnimationEnrichmentService
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    force = force_str.lower() == "true"
+
+    settings = get_settings()
+
+    # Decision+spec LLM (can be lighter model)
+    config = LLMConfigService(db).get_config("animation_enrichment")
+    llm_service = LLMService(
+        api_key=settings.openai_api_key,
+        provider=config["provider"],
+        model_id=config["model_id"],
+        gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+    )
+
+    # Code generation LLM (heavier model for reliable code)
+    code_config = LLMConfigService(db).get_config("animation_code_gen")
+    code_llm = LLMService(
+        api_key=settings.openai_api_key,
+        provider=code_config["provider"],
+        model_id=code_config["model_id"],
+        gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+    )
+
+    job_service = ChapterJobService(db)
+    service = AnimationEnrichmentService(db, llm_service, code_gen_llm=code_llm)
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                raise ValueError(f"Guideline {guideline_id} not found")
+
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
+
+            result = service.enrich_guideline(guideline, force=force)
+
+            job_service.update_progress(
+                job_id, current_item=None,
+                completed=result["enriched"], failed=result["failed"],
+                detail=_json.dumps(result),
+            )
+            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+        else:
+            result = service.enrich_chapter(
+                book_id,
+                chapter_id=chapter_id or None,
+                force=force,
+                job_service=job_service,
+                job_id=job_id,
+            )
+
+            for error in result.get("errors", []):
+                logger.warning(f"Visual enrichment error: {error}")
 
             final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
 
