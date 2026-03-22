@@ -269,12 +269,14 @@ class TestSimplifyCardService:
         assert result["card_id"] == "remedial_A_2_2"
         assert result["insert_after"] == "remedial_A_2_1"
 
-        # Verify orchestrator was called with last remedial card's content
+        # Verify orchestrator was called with ORIGINAL base card + previous attempts
         service.orchestrator.generate_simplified_card.assert_awaited_once()
         call_kwargs = service.orchestrator.generate_simplified_card.call_args[1]
-        assert call_kwargs["card_title"] == "Simpler"
-        assert call_kwargs["card_content"] == "Simpler."
+        assert call_kwargs["card_title"] == "Number Line"
+        assert call_kwargs["card_content"] == "On a number line, start at 3 and jump 2 to reach 5."
         assert call_kwargs["reason"] == "simpler_words"
+        assert len(call_kwargs["previous_attempts"]) == 1
+        assert call_kwargs["previous_attempts"][0]["title"] == "Simpler"
 
         state = persisted_states[0]
         assert len(state.card_phase.remedial_cards[2]) == 2
@@ -336,10 +338,13 @@ class TestSimplifyCardService:
         assert result["insert_after"] == "remedial_A_2_2"
         assert result["card"]["card_type"] == "simplification"
 
-        # Verify orchestrator was called with last remedial card's content (depth 2)
+        # Verify orchestrator was called with ORIGINAL base card + all previous attempts
         call_kwargs = service.orchestrator.generate_simplified_card.call_args[1]
-        assert call_kwargs["card_title"] == "s2"
-        assert call_kwargs["card_content"] == "Simple v2."
+        assert call_kwargs["card_title"] == "Number Line"
+        assert call_kwargs["card_content"] == "On a number line, start at 3 and jump 2 to reach 5."
+        assert len(call_kwargs["previous_attempts"]) == 2
+        assert call_kwargs["previous_attempts"][0]["title"] == "s1"
+        assert call_kwargs["previous_attempts"][1]["title"] == "s2"
         assert call_kwargs["reason"] == "elaborate"
 
         state = persisted_states[0]
@@ -565,6 +570,7 @@ class TestSimplificationPrompt:
             all_cards_summary="1. [concept] What is Addition?\n2. [example] Adding Apples\n3. [visual] Number Line",
             reason_label="I need a simpler explanation",
             reason_directive="Use simpler words and shorter sentences.",
+            previous_attempts_section="",
         )
 
         assert "Number Line" in rendered

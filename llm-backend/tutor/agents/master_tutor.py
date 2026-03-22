@@ -263,6 +263,7 @@ class MasterTutorAgent(BaseAgent):
         card_content: str,
         all_cards: list[dict],
         reason: str,
+        previous_attempts: list[dict] | None = None,
     ) -> dict:
         """Generate a simplified version of a specific explanation card."""
         system_prompt = self._build_system_prompt(session)
@@ -276,12 +277,24 @@ class MasterTutorAgent(BaseAgent):
             reason, ("I didn't understand", "Simplify the explanation. Use simpler words and a concrete example.")
         )
 
+        # Build previous attempts section so LLM knows what to avoid
+        previous_attempts_section = ""
+        if previous_attempts:
+            attempts_text = "\n".join(
+                f"Attempt {i+1}: {a.get('content', '')}" for i, a in enumerate(previous_attempts)
+            )
+            previous_attempts_section = (
+                f"\n### Previous simplification attempts (student didn't understand these either — do NOT repeat)\n"
+                f"{attempts_text}\n"
+            )
+
         simplify_prompt = SIMPLIFY_CARD_PROMPT.render(
             card_title=card_title,
             card_content=card_content,
             all_cards_summary=all_cards_summary,
             reason_label=reason_label,
             reason_directive=reason_directive,
+            previous_attempts_section=previous_attempts_section,
         )
 
         combined = f"{system_prompt}\n\n---\n\n{simplify_prompt}"

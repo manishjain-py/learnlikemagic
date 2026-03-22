@@ -1241,6 +1241,7 @@ class TeacherOrchestrator:
         card_content: str,
         all_cards: list[dict],
         reason: str,
+        previous_attempts: list[dict] | None = None,
     ) -> dict:
         """Generate a simplified version of a specific explanation card.
 
@@ -1254,6 +1255,7 @@ class TeacherOrchestrator:
                 card_content=card_content,
                 all_cards=all_cards,
                 reason=reason,
+                previous_attempts=previous_attempts or [],
             )
             return result
         except Exception as e:

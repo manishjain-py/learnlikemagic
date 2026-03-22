@@ -874,20 +874,17 @@ class SessionService:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail=f"Invalid card_idx: {card_idx}")
 
-        # Determine what content the student actually saw (previous card)
-        # If there are already remedial cards for this base card, use the LAST one
-        # (that's what the student just read and didn't understand)
+        # Always use the ORIGINAL base card as the primary input to prevent
+        # recursive title/content stacking. Pass previous attempts as separate context.
         existing = session.card_phase.remedial_cards.get(card_idx, [])
         depth = len(existing) + 1
 
-        if existing:
-            last_remedial = existing[-1]
-            card_title = last_remedial.card.get("title", "Untitled")
-            card_content = last_remedial.card.get("content", "")
-        else:
-            target_card = all_cards[card_idx]
-            card_title = target_card.get("title", "Untitled")
-            card_content = target_card.get("content", "")
+        target_card = all_cards[card_idx]
+        card_title = target_card.get("title", "Untitled")
+        card_content = target_card.get("content", "")
+
+        # Collect previous simplification attempts so the LLM can avoid repeating them
+        previous_attempts = [r.card for r in existing] if existing else []
 
         import asyncio
 
@@ -898,6 +895,7 @@ class SessionService:
                 card_content=card_content,
                 all_cards=all_cards,
                 reason=reason,
+                previous_attempts=previous_attempts,
             )
         )
 

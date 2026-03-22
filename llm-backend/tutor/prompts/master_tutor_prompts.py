@@ -259,13 +259,13 @@ MASTER_TUTOR_BRIDGE_PROMPT = PromptTemplate(
 SIMPLIFY_CARD_PROMPT = PromptTemplate(
     """## Simplify Explanation Card
 
-The student is reading explanation cards about this topic. They tapped "I didn't understand" on the card below.
+The student is reading explanation cards about this topic. They tapped "I didn't understand" on a card.
 
-### Card the student didn't understand
+### Original card the student is struggling with
 Title: "{card_title}"
 Content:
 {card_content}
-
+{previous_attempts_section}
 ### Student's feedback
 The student said: **{reason_label}**
 
@@ -273,23 +273,25 @@ The student said: **{reason_label}**
 {all_cards_summary}
 
 ### Your task
-Re-explain the SAME concept from the card above, but address the student's feedback:
+Re-explain the SAME concept from the original card above, but address the student's feedback:
 {reason_directive}
 
 ### Output requirements
 Return a single simplified explanation card as JSON:
 - card_type: "simplification"
-- title: A short title for this re-explanation
-- content: The simplified explanation (under 500 words)
+- title: A fresh, short title for this concept (3-6 words). Do NOT reuse the original title. Do NOT prefix with "Let's simplify:" or any meta-text.
+- content: The simplified explanation (under 500 words). Jump straight into the explanation. Do NOT start with preamble like "Let me explain this more simply" or "Here's another way to think about it."
 - audio_text: TTS-friendly spoken version (pure words, no symbols/markdown, Roman script only)
 - visual: null
 - visual_explanation: null
 
 CRITICAL RULES:
 - Explain ONLY the same concept. Do NOT advance to new topics.
-- Your explanation must be DIFFERENT from the card above — don't just rephrase.
+- Your explanation must be SUBSTANTIALLY DIFFERENT — use a different analogy, different structure, different angle. Do NOT reword the same sentences.
+- Do NOT echo or repeat content from the original card or any previous attempts. The student already read those and didn't understand — repeating them is useless.
 - Shorter sentences. One idea at a time.
 - If the card used a technical term, replace it with an everyday word.
+- NO meta-commentary. No "Let me explain this differently" or "Here's a simpler version." Just explain the concept directly.
 """,
     name="simplify_card",
 )
