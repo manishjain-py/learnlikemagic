@@ -10,6 +10,7 @@ import {
   synthesizeSpeech,
   submitFeedback,
   cardAction,
+  simplifyCard,
   TutorWebSocket,
   Turn,
   ExplanationCard,
@@ -108,6 +109,7 @@ export default function ChatSession() {
   const [explanationCards, setExplanationCards] = useState<ExplanationCard[]>([]);
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
+  const [simplifyLoading, setSimplifyLoading] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
 
   // Streaming state
@@ -164,7 +166,7 @@ export default function ChatSession() {
     if (explanationCards.length > 0) {
       explanationCards.forEach((card, i) => {
         slides.push({
-          id: `card-${i}`,
+          id: (card as any).card_id || `card-${i}`,
           type: 'explanation',
           content: card.content,
           title: card.title,
@@ -993,6 +995,52 @@ export default function ChatSession() {
     }
   };
 
+  const handleSimplifyCard = async () => {
+    if (!sessionId || simplifyLoading) return;
+    // Current slide is an explanation card; compute base card_idx
+    // currentSlideIdx includes welcome slide offset (+1), so card index = currentSlideIdx - 1
+    const cardArrayIdx = currentSlideIdx - 1;
+    if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
+
+    // Find the base card_idx: if it's a remedial card, use source index; otherwise use position
+    const currentCard = explanationCards[cardArrayIdx] as any;
+    const baseCardIdx = currentCard?.source_card_idx ?? currentCard?.card_idx ?? cardArrayIdx;
+
+    setSimplifyLoading(true);
+    try {
+      const result = await simplifyCard(sessionId, baseCardIdx);
+
+      if (result.action === 'insert_card' && result.card) {
+        // Insert the new card right after the current card in the array
+        const newCard = {
+          ...result.card,
+          card_id: result.card_id,
+          card_idx: cardArrayIdx + 1,
+          source_card_idx: baseCardIdx,
+        };
+        setExplanationCards(prev => {
+          const updated = [...prev];
+          updated.splice(cardArrayIdx + 1, 0, newCard);
+          return updated;
+        });
+        // Auto-advance to the new card
+        const newIdx = currentSlideIdx + 1;
+        setCurrentSlideIdx(newIdx);
+        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
+      } else if (result.action === 'escalate_to_interactive') {
+        // Transition to interactive mode
+        setSessionPhase('interactive');
+        if (result.message) {
+          handleBridgeTransition(result);
+        }
+      }
+    } catch (err: any) {
+      console.error('Simplify card failed:', err);
+    } finally {
+      setSimplifyLoading(false);
+    }
+  };
+
   if (replayLoading) {
     return (
       <div className="app">
@@ -1369,7 +1417,8 @@ export default function ChatSession() {
                                slide.cardType === 'example' ? 'Example' :
                                slide.cardType === 'visual' ? 'Visual' :
                                slide.cardType === 'analogy' ? 'Analogy' :
-                               slide.cardType === 'summary' ? 'Summary' : slide.cardType}
+                               slide.cardType === 'summary' ? 'Summary' :
+                               slide.cardType === 'simplification' ? 'Simplified' : slide.cardType}
                             </span>
                           </div>
                           {slide.title && <h2 className="explanation-card-title">{slide.title}</h2>}
@@ -1416,27 +1465,39 @@ export default function ChatSession() {
               {sessionPhase === 'card_phase' ? (
                 currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
-                    <button
-                      className="explanation-nav-btn secondary"
-                      onClick={() => {
-                        const prev = Math.max(currentSlideIdx - 1, 0);
-                        setCurrentSlideIdx(prev);
-                        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(prev));
-                      }}
-                      disabled={currentSlideIdx === 0}
-                    >
-                      Back
-                    </button>
-                    <button
-                      className="explanation-nav-btn primary"
-                      onClick={() => {
-                        const next = Math.min(currentSlideIdx + 1, explanationCards.length); /* +1 welcome offset */
-                        setCurrentSlideIdx(next);
-                        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
-                      }}
-                    >
-                      Next
-                    </button>
+                    {currentSlideIdx > 0 && (
+                      <button
+                        className="explanation-nav-btn simplify"
+                        onClick={handleSimplifyCard}
+                        disabled={simplifyLoading || cardActionLoading}
+                      >
+                        {simplifyLoading ? 'Simplifying...' : "I didn't understand"}
+                      </button>
+                    )}
+                    <div className="explanation-nav-row">
+                      <button
+                        className="explanation-nav-btn secondary"
+                        onClick={() => {
+                          const prev = Math.max(currentSlideIdx - 1, 0);
+                          setCurrentSlideIdx(prev);
+                          if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(prev));
+                        }}
+                        disabled={currentSlideIdx === 0 || simplifyLoading}
+                      >
+                        Back
+                      </button>
+                      <button
+                        className="explanation-nav-btn primary"
+                        onClick={() => {
+                          const next = Math.min(currentSlideIdx + 1, explanationCards.length); /* +1 welcome offset */
+                          setCurrentSlideIdx(next);
+                          if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
+                        }}
+                        disabled={simplifyLoading}
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="explanation-nav">
@@ -1446,14 +1507,14 @@ export default function ChatSession() {
                         onClick={() => handleCardAction('clear')}
                         disabled={cardActionLoading}
                       >
-                        I understand!
+                        Start practice
                       </button>
                       <button
                         className="explanation-nav-btn secondary"
                         onClick={() => handleCardAction('explain_differently')}
                         disabled={cardActionLoading}
                       >
-                        {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still don't get it" : "Explain differently"}
+                        {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
                       </button>
                     </div>
                   </div>
