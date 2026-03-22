@@ -36,10 +36,12 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   max-width: 800px;
   margin: 0 auto;
   background: white;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
 }
 
 /* Slim navigation bar */
@@ -51,6 +53,8 @@ body {
   background: white;
   min-height: 44px;
   gap: 8px;
+  flex-shrink: 0;
+  z-index: 10;
 }
 
 .nav-home-btn {
@@ -164,6 +168,12 @@ body {
   padding: 1rem;
   background: #fafafa;
   border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+.progress-bar:empty,
+.progress-bar:not(:has(span)) {
+  padding: 0;
+  border: none;
 }
 
 .progress-info {
@@ -2238,8 +2248,10 @@ body {
 .focus-input-area {
   border-top: 1px solid #e2e8f0;
   padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
   background: white;
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .focus-input-area .input-form {
@@ -2624,12 +2636,15 @@ body {
 
 .explanation-nav {
   display: flex;
-  gap: 0.75rem;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
   padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
   border-top: 1px solid #e2e8f0;
   background: white;
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .explanation-actions {
