@@ -1,0 +1,364 @@
+"""Offline pipeline to enrich explanation cards with pre-computed PixiJS visuals.
+
+Pipeline per variant: decide which cards get visuals (with specs) → generate
+PixiJS code from specs → validate → store back into cards_json.
+
+Fully decoupled from explanation generation — runs after, reads/writes same
+topic_explanations table.
+"""
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+from pydantic import BaseModel, Field
+
+from shared.services.llm_service import LLMService, LLMServiceError
+from shared.models.entities import TeachingGuideline, TopicExplanation
+from shared.repositories.explanation_repository import ExplanationRepository
+
+from sqlalchemy.orm import Session as DBSession
+
+logger = logging.getLogger(__name__)
+
+# ─── Prompt templates ───────────────────────────────────────────────────────
+
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+_DECISION_PROMPT = (_PROMPTS_DIR / "visual_decision_and_spec.txt").read_text()
+_CODE_GEN_PROMPT = (_PROMPTS_DIR / "visual_code_generation.txt").read_text()
+
+# ─── Pydantic models for structured LLM output ─────────────────────────────
+
+
+class VisualDecision(BaseModel):
+    """LLM decision for a single card."""
+    card_idx: int
+    decision: str = Field(description="no_visual, static_visual, or animated_visual")
+    title: Optional[str] = None
+    visual_summary: Optional[str] = None
+    visual_spec: Optional[str] = None
+
+
+class DecisionOutput(BaseModel):
+    """Full structured output from the decision prompt."""
+    decisions: list[VisualDecision]
+
+
+# ─── Constants ──────────────────────────────────────────────────────────────
+
+MAX_CODE_LENGTH = 5000
+
+
+class AnimationEnrichmentService:
+    """Enriches explanation cards with pre-computed PixiJS visuals.
+
+    Pipeline per variant: decide → generate code from spec → validate → store.
+    """
+
+    def __init__(self, db: DBSession, llm_service: LLMService, code_gen_llm: Optional[LLMService] = None):
+        """
+        Args:
+            db: Database session
+            llm_service: LLM for decision+spec generation (can be lightweight model)
+            code_gen_llm: LLM for PixiJS code generation (heavier model). Falls back to llm_service.
+        """
+        self.db = db
+        self.llm = llm_service
+        self.code_llm = code_gen_llm or llm_service
+        self.repo = ExplanationRepository(db)
+
+        self._decision_schema = LLMService.make_schema_strict(
+            DecisionOutput.model_json_schema()
+        )
+
+    # ─── Public API ─────────────────────────────────────────────────────
+
+    def enrich_guideline(
+        self,
+        guideline: TeachingGuideline,
+        force: bool = False,
+        variant_keys: Optional[list[str]] = None,
+    ) -> dict:
+        """Enrich all variants for a guideline with visuals.
+
+        Returns: {"enriched": int, "skipped": int, "failed": int, "errors": [str]}
+        """
+        explanations = self.repo.get_by_guideline_id(guideline.id)
+        if not explanations:
+            return {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
+
+        if variant_keys:
+            explanations = [e for e in explanations if e.variant_key in variant_keys]
+
+        topic = guideline.topic_title or guideline.topic
+        result = {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
+
+        for explanation in explanations:
+            try:
+                enriched = self._enrich_variant(explanation, guideline, force=force)
+                if enriched:
+                    result["enriched"] += 1
+                else:
+                    result["skipped"] += 1
+            except Exception as e:
+                logger.error(f"Failed to enrich variant {explanation.variant_key} for {topic}: {e}")
+                result["failed"] += 1
+                result["errors"].append(f"{topic} variant {explanation.variant_key}: {e}")
+
+        return result
+
+    def enrich_chapter(
+        self,
+        book_id: str,
+        chapter_id: Optional[str] = None,
+        force: bool = False,
+        job_service=None,
+        job_id: Optional[str] = None,
+    ) -> dict:
+        """Enrich all guidelines in a chapter (or book) with visuals."""
+        query = self.db.query(TeachingGuideline).filter(
+            TeachingGuideline.book_id == book_id,
+            TeachingGuideline.review_status == "APPROVED",
+        )
+        if chapter_id:
+            from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+            chapter = ChapterRepository(self.db).get_by_id(chapter_id)
+            if chapter:
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+
+        guidelines = query.order_by(TeachingGuideline.topic_sequence).all()
+
+        totals = {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
+
+        for i, guideline in enumerate(guidelines):
+            topic = guideline.topic_title or guideline.topic
+            if job_service and job_id:
+                job_service.update_progress(
+                    job_id, current_item=topic,
+                    completed=totals["enriched"], failed=totals["failed"],
+                )
+
+            result = self.enrich_guideline(guideline, force=force)
+            totals["enriched"] += result["enriched"]
+            totals["skipped"] += result["skipped"]
+            totals["failed"] += result["failed"]
+            totals["errors"].extend(result["errors"])
+
+        return totals
+
+    # ─── Internal pipeline ──────────────────────────────────────────────
+
+    def _enrich_variant(
+        self,
+        explanation: TopicExplanation,
+        guideline: TeachingGuideline,
+        force: bool = False,
+    ) -> bool:
+        """Enrich a single variant. Returns True if any cards were enriched."""
+        cards = explanation.cards_json
+        if not cards:
+            return False
+
+        # Check if already enriched (skip unless force)
+        if not force:
+            has_visuals = any(
+                c.get("visual_explanation", {}).get("pixi_code")
+                for c in cards if isinstance(c.get("visual_explanation"), dict)
+            )
+            if has_visuals:
+                logger.info(f"Variant {explanation.variant_key} already enriched, skipping")
+                return False
+
+        topic = guideline.topic_title or guideline.topic
+        variant_label = explanation.variant_label or explanation.variant_key
+
+        # Step 1: Decision + spec
+        decisions = self._decide_and_spec(cards, guideline, variant_label)
+        selected = [d for d in decisions if d.decision != "no_visual"]
+
+        if not selected:
+            logger.info(f"No cards selected for visuals in {topic} variant {explanation.variant_key}")
+            return False
+
+        logger.info(f"Selected {len(selected)} cards for visuals in {topic} variant {explanation.variant_key}")
+
+        # Step 2: Generate code for each selected card
+        enriched_count = 0
+        for decision in selected:
+            card = next((c for c in cards if c["card_idx"] == decision.card_idx), None)
+            if not card:
+                continue
+
+            pixi_code = self._generate_and_validate_code(
+                decision, card, guideline,
+            )
+
+            if pixi_code:
+                card["visual_explanation"] = {
+                    "output_type": decision.decision,
+                    "title": decision.title,
+                    "visual_summary": decision.visual_summary,
+                    "visual_spec": decision.visual_spec,
+                    "pixi_code": pixi_code,
+                }
+                enriched_count += 1
+            else:
+                logger.warning(
+                    f"Code generation failed for card {decision.card_idx} in "
+                    f"{topic} variant {explanation.variant_key}"
+                )
+
+        if enriched_count == 0:
+            return False
+
+        # Step 3: Write updated cards back to DB
+        self.db.query(TopicExplanation).filter(
+            TopicExplanation.id == explanation.id
+        ).update({"cards_json": cards})
+        self.db.commit()
+
+        logger.info(
+            f"Enriched {enriched_count} cards in {topic} variant {explanation.variant_key}"
+        )
+        return True
+
+    def _decide_and_spec(
+        self,
+        cards: list[dict],
+        guideline: TeachingGuideline,
+        variant_label: str,
+    ) -> list[VisualDecision]:
+        """LLM call: decide which cards get visuals and write specs."""
+        topic = guideline.topic_title or guideline.topic
+        subject = guideline.subject or "Mathematics"
+        grade = guideline.grade_level or "Grade 3"
+
+        # Build cards summary for prompt (strip audio_text to save tokens)
+        cards_for_prompt = [
+            {k: v for k, v in c.items() if k in ("card_idx", "card_type", "title", "content", "visual")}
+            for c in cards
+        ]
+
+        prompt = _DECISION_PROMPT.format(
+            grade_level=grade,
+            topic_title=topic,
+            subject=subject,
+            variant_approach=variant_label,
+            cards_json=json.dumps(cards_for_prompt, indent=2),
+        )
+
+        try:
+            result = self.llm.call(
+                prompt=prompt,
+                reasoning_effort="medium",
+                json_mode=True,
+            )
+            raw = json.loads(result["output_text"])
+
+            # Handle both array and wrapped object responses
+            if isinstance(raw, list):
+                decisions_list = raw
+            elif isinstance(raw, dict) and "decisions" in raw:
+                decisions_list = raw["decisions"]
+            else:
+                logger.warning(f"Unexpected decision output format: {type(raw)}")
+                return []
+
+            return [VisualDecision(**d) for d in decisions_list]
+
+        except (LLMServiceError, json.JSONDecodeError, Exception) as e:
+            logger.error(f"Visual decision failed for {topic}: {e}")
+            return []
+
+    def _generate_and_validate_code(
+        self,
+        decision: VisualDecision,
+        card: dict,
+        guideline: TeachingGuideline,
+    ) -> Optional[str]:
+        """Generate PixiJS code from spec, validate, retry once on failure."""
+        code = self._generate_code(decision, card, guideline)
+
+        if code and self._validate_code(code):
+            return code
+
+        # Retry once with error feedback
+        error_msg = self._get_validation_error(code) if code else "Empty code generated"
+        logger.info(f"Retrying code generation for card {decision.card_idx} (error: {error_msg})")
+
+        code = self._generate_code(decision, card, guideline, error_feedback=error_msg)
+
+        if code and self._validate_code(code):
+            return code
+
+        return None
+
+    def _generate_code(
+        self,
+        decision: VisualDecision,
+        card: dict,
+        guideline: TeachingGuideline,
+        error_feedback: Optional[str] = None,
+    ) -> Optional[str]:
+        """Single LLM call to generate PixiJS code from a visual spec."""
+        topic = guideline.topic_title or guideline.topic
+        grade = guideline.grade_level or "Grade 3"
+
+        prompt = _CODE_GEN_PROMPT.format(
+            grade_level=grade,
+            topic_title=topic,
+            card_content=card.get("content", ""),
+            visual_spec=decision.visual_spec or "",
+            output_type=decision.decision,
+        )
+
+        if error_feedback:
+            prompt += (
+                f"\n\n## PREVIOUS ATTEMPT FAILED\nError: {error_feedback}\n"
+                "Fix the issue and generate correct code."
+            )
+
+        try:
+            result = self.code_llm.call(
+                prompt=prompt,
+                reasoning_effort="none",
+                json_mode=False,
+            )
+            code = result["output_text"]
+            return self._strip_markdown_fences(code)
+        except (LLMServiceError, Exception) as e:
+            logger.error(f"Code generation failed for card {decision.card_idx}: {e}")
+            return None
+
+    def _validate_code(self, code: str) -> bool:
+        """Basic validation: not empty, not too long, has addChild."""
+        if not code or not code.strip():
+            return False
+        if len(code) > MAX_CODE_LENGTH:
+            return False
+        if "app.stage.addChild" not in code and "stage.addChild" not in code:
+            return False
+        return True
+
+    def _get_validation_error(self, code: Optional[str]) -> str:
+        """Describe why validation failed, for retry feedback."""
+        if not code or not code.strip():
+            return "Generated code was empty"
+        if len(code) > MAX_CODE_LENGTH:
+            return f"Code too long ({len(code)} chars, max {MAX_CODE_LENGTH}). Simplify."
+        if "app.stage.addChild" not in code and "stage.addChild" not in code:
+            return "Code never adds display objects to app.stage. Must call app.stage.addChild()."
+        return "Unknown validation error"
+
+    @staticmethod
+    def _strip_markdown_fences(code: str) -> str:
+        """Strip markdown code fences if present."""
+        code = code.strip()
+        if code.startswith("```"):
+            newline_idx = code.find("\n")
+            if newline_idx == -1:
+                return ""
+            code = code[newline_idx + 1:]
+        if code.endswith("```"):
+            code = code[:-3].rstrip()
+        return code

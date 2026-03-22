@@ -973,6 +973,20 @@ class SessionService:
                         f"Examples used: {', '.join(s.get('key_examples', []))}."
                     )
 
+            # Append visual summaries from cards that have pre-computed visuals
+            if explanation and explanation.cards_json:
+                visual_notes = []
+                for card in explanation.cards_json:
+                    ve = card.get("visual_explanation")
+                    if isinstance(ve, dict) and ve.get("visual_summary"):
+                        visual_notes.append(
+                            f"Card {card.get('card_idx', '?')} visual: {ve['visual_summary']}"
+                        )
+                if visual_notes:
+                    summaries.append(
+                        "Visuals the student could play:\n" + "\n".join(visual_notes)
+                    )
+
         return "\n".join(summaries)
 
     def _extract_card_covered_concepts(self, session: SessionState) -> set[str]:

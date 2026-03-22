@@ -7,6 +7,15 @@ from sqlalchemy.orm import Session as DBSession
 from shared.models.entities import TeachingGuideline, TopicExplanation
 
 
+class CardVisualExplanation(BaseModel):
+    """Pre-computed PixiJS visual for an explanation card."""
+    output_type: str  # static_visual or animated_visual
+    title: Optional[str] = None
+    visual_summary: Optional[str] = None  # One-sentence description for tutor context
+    visual_spec: Optional[str] = None  # Structured spec for debugging/retry
+    pixi_code: Optional[str] = None  # Executable PixiJS v8 JavaScript code
+
+
 class ExplanationCard(BaseModel):
     """Validated schema for cards stored in cards_json."""
     card_idx: int
@@ -15,6 +24,7 @@ class ExplanationCard(BaseModel):
     content: str
     visual: Optional[str] = None
     audio_text: Optional[str] = None  # TTS-friendly spoken version of content
+    visual_explanation: Optional[CardVisualExplanation] = None  # Pre-computed PixiJS visual
 
 
 class ExplanationRepository:

@@ -87,6 +87,7 @@ export interface ExplanationCard {
   content: string;
   visual?: string | null;
   audio_text?: string | null;
+  visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
 }
 
 export interface CardPhaseDTO {

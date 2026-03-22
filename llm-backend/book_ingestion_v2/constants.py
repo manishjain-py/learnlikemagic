@@ -29,6 +29,7 @@ class V2JobType(str, Enum):
     TOPIC_EXTRACTION = "v2_topic_extraction"
     REFINALIZATION = "v2_refinalization"
     EXPLANATION_GENERATION = "v2_explanation_generation"
+    VISUAL_ENRICHMENT = "v2_visual_enrichment"
 
 
 class V2JobStatus(str, Enum):
