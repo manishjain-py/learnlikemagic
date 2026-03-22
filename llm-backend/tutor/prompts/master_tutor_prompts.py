@@ -259,35 +259,37 @@ MASTER_TUTOR_BRIDGE_PROMPT = PromptTemplate(
 SIMPLIFY_CARD_PROMPT = PromptTemplate(
     """## Simplify Explanation Card
 
-The student is reading explanation cards about this topic. They tapped "I didn't understand" on card {card_idx}: "{card_title}".
+The student is reading explanation cards about this topic. They tapped "I didn't understand" on the card below.
 
-### Original card content
+### Card the student didn't understand
+Title: "{card_title}"
+Content:
 {card_content}
+
+### Student's feedback
+The student said: **{reason_label}**
 
 ### All cards in this variant (for context)
 {all_cards_summary}
 
-{previous_attempts_section}
-
-### Simplification level: {depth_label}
-
-{simplification_directive}
+### Your task
+Re-explain the SAME concept from the card above, but address the student's feedback:
+{reason_directive}
 
 ### Output requirements
 Return a single simplified explanation card as JSON:
 - card_type: "simplification"
-- title: A simplified version of the original title
+- title: A short title for this re-explanation
 - content: The simplified explanation (under 500 words)
 - audio_text: TTS-friendly spoken version (pure words, no symbols/markdown, Roman script only)
 - visual: null
 - visual_explanation: null
 
 CRITICAL RULES:
-- Explain ONLY the same concept as the original card. Do NOT advance to new topics.
-- Use simpler vocabulary than the original card.
+- Explain ONLY the same concept. Do NOT advance to new topics.
+- Your explanation must be DIFFERENT from the card above — don't just rephrase.
 - Shorter sentences. One idea at a time.
-- If the original used a technical term, replace it with an everyday word.
-- Include a concrete, relatable example if the original didn't have one (or a different one if it did).
+- If the card used a technical term, replace it with an everyday word.
 """,
     name="simplify_card",
 )

@@ -1007,23 +1007,22 @@ export default function ChatSession() {
     }
   };
 
-  const handleSimplifyCard = async () => {
+  const [showSimplifyOptions, setShowSimplifyOptions] = useState(false);
+
+  const handleSimplifyCard = async (reason: string) => {
     if (!sessionId || simplifyLoading) return;
-    // Current slide is an explanation card; compute base card_idx
-    // currentSlideIdx includes welcome slide offset (+1), so card index = currentSlideIdx - 1
+    setShowSimplifyOptions(false);
     const cardArrayIdx = currentSlideIdx - 1;
     if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
 
-    // source_card_idx is always 0-based (set by annotateCards on load, or by insert for remedials)
     const currentCard = explanationCards[cardArrayIdx];
     const baseCardIdx = currentCard.source_card_idx ?? cardArrayIdx;
 
     setSimplifyLoading(true);
     try {
-      const result = await simplifyCard(sessionId, baseCardIdx);
+      const result = await simplifyCard(sessionId, baseCardIdx, reason);
 
       if (result.action === 'insert_card' && result.card) {
-        // Insert the new card right after the current card in the array
         const newCard: ExplanationCard = {
           ...result.card,
           card_id: result.card_id,
@@ -1035,12 +1034,9 @@ export default function ChatSession() {
           updated.splice(cardArrayIdx + 1, 0, newCard);
           return updated;
         });
-        // Auto-advance to the new card
         const newIdx = currentSlideIdx + 1;
         setCurrentSlideIdx(newIdx);
         if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
-      } else if (result.action === 'escalate_to_interactive') {
-        handleBridgeTransition(result);
       }
     } catch (err: any) {
       console.error('Simplify card failed:', err);
@@ -1473,14 +1469,30 @@ export default function ChatSession() {
               {sessionPhase === 'card_phase' ? (
                 currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
-                    {currentSlideIdx > 0 && (
+                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions && (
                       <button
                         className="explanation-nav-btn simplify"
-                        onClick={handleSimplifyCard}
-                        disabled={simplifyLoading || cardActionLoading}
+                        onClick={() => setShowSimplifyOptions(true)}
+                        disabled={cardActionLoading}
                       >
-                        {simplifyLoading ? 'Simplifying...' : "I didn't understand"}
+                        I didn't understand
                       </button>
+                    )}
+                    {simplifyLoading && (
+                      <div className="explanation-nav-btn simplify" style={{opacity: 0.6}}>Simplifying...</div>
+                    )}
+                    {showSimplifyOptions && !simplifyLoading && (
+                      <div className="simplify-options">
+                        <div className="simplify-options-label">What would help?</div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
+                        </div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('elaborate')}>Explain in more detail</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('different_approach')}>Explain differently</button>
+                        </div>
+                      </div>
                     )}
                     <div className="explanation-nav-row">
                       <button
@@ -1509,13 +1521,31 @@ export default function ChatSession() {
                   </div>
                 ) : (
                   <div className="explanation-nav">
-                    <button
-                      className="explanation-nav-btn simplify"
-                      onClick={handleSimplifyCard}
-                      disabled={simplifyLoading || cardActionLoading}
-                    >
-                      {simplifyLoading ? 'Simplifying...' : "I didn't understand"}
-                    </button>
+                    {!simplifyLoading && !showSimplifyOptions && (
+                      <button
+                        className="explanation-nav-btn simplify"
+                        onClick={() => setShowSimplifyOptions(true)}
+                        disabled={cardActionLoading}
+                      >
+                        I didn't understand
+                      </button>
+                    )}
+                    {simplifyLoading && (
+                      <div className="explanation-nav-btn simplify" style={{opacity: 0.6}}>Simplifying...</div>
+                    )}
+                    {showSimplifyOptions && !simplifyLoading && (
+                      <div className="simplify-options">
+                        <div className="simplify-options-label">What would help?</div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
+                        </div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('elaborate')}>Explain in more detail</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('different_approach')}>Explain differently</button>
+                        </div>
+                      </div>
+                    )}
                     <div className="explanation-actions">
                       <button
                         className="explanation-nav-btn primary"

@@ -2693,6 +2693,35 @@ body {
   gap: 12px;
   width: 100%;
 }
+.simplify-options {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.simplify-options-label {
+  color: #666;
+  font-size: 0.8rem;
+  text-align: center;
+  margin-bottom: 6px;
+}
+.simplify-options-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.simplify-option {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f8f8f8;
+  color: #444;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.simplify-option:hover {
+  background: #eee;
+  border-color: #bbb;
+}
 
 /* ===== Interactive Question Formats ===== */
 

@@ -477,7 +477,7 @@ def simplify_card(
 
     try:
         service = SessionService(db)
-        return service.simplify_card(session_id, request.card_idx)
+        return service.simplify_card(session_id, request.card_idx, request.reason)
     except HTTPException:
         raise
     except LearnLikeMagicException as e:

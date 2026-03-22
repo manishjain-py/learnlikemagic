@@ -1237,12 +1237,10 @@ class TeacherOrchestrator:
     async def generate_simplified_card(
         self,
         session: SessionState,
-        card_idx: int,
         card_title: str,
         card_content: str,
         all_cards: list[dict],
-        previous_attempts: list[dict],
-        depth: int,
+        reason: str,
     ) -> dict:
         """Generate a simplified version of a specific explanation card.
 
@@ -1252,12 +1250,10 @@ class TeacherOrchestrator:
             self.master_tutor.set_session(session)
             result = await self.master_tutor.generate_simplified_card(
                 session=session,
-                card_idx=card_idx,
                 card_title=card_title,
                 card_content=card_content,
                 all_cards=all_cards,
-                previous_attempts=previous_attempts,
-                depth=depth,
+                reason=reason,
             )
             return result
         except Exception as e:

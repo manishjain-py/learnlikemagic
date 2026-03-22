@@ -232,57 +232,56 @@ class MasterTutorAgent(BaseAgent):
         output.mastery_updates = []
         return output
 
+    # Reason labels and LLM directives for "I didn't understand" options
+    REASON_MAP = {
+        "example": (
+            "I need an example",
+            "Add a concrete, relatable real-world example. Show the concept in action with "
+            "something the student can picture — food, toys, money, daily life.",
+        ),
+        "simpler_words": (
+            "The language is tough",
+            "Rewrite using the simplest everyday words possible. No technical terms. "
+            "Short sentences. Explain like talking to a young child.",
+        ),
+        "elaborate": (
+            "I need more detail",
+            "Break the concept into smaller pieces. Explain step by step. "
+            "Cover what the previous card assumed the student already knew.",
+        ),
+        "different_approach": (
+            "Explain it differently",
+            "Use a completely different angle, analogy, or mental model. "
+            "If the previous card used numbers, try a story. If it used a story, try a visual description.",
+        ),
+    }
+
     async def generate_simplified_card(
         self,
         session: SessionState,
-        card_idx: int,
         card_title: str,
         card_content: str,
         all_cards: list[dict],
-        previous_attempts: list[dict],
-        depth: int,
+        reason: str,
     ) -> dict:
         """Generate a simplified version of a specific explanation card."""
         system_prompt = self._build_system_prompt(session)
 
-        # Build all_cards summary
         all_cards_summary = "\n".join(
             f"{i+1}. [{c.get('card_type', 'unknown')}] {c.get('title', 'Untitled')}"
             for i, c in enumerate(all_cards)
         )
 
-        # Build previous attempts section
-        if previous_attempts:
-            attempts_text = "\n".join(
-                f"Attempt {i+1}:\n{a.get('content', '')}" for i, a in enumerate(previous_attempts)
-            )
-            previous_attempts_section = f"### Previous simplification attempts (student still didn't understand these)\n{attempts_text}"
-        else:
-            previous_attempts_section = ""
-
-        # Progressive simplification directives
-        if depth == 1:
-            depth_label = "Depth 1"
-            simplification_directive = (
-                "Explain the same concept using simpler everyday words and a different analogy. "
-                "Shorter sentences. One idea at a time. Use a concrete real-world example."
-            )
-        else:
-            depth_label = "Depth 2"
-            simplification_directive = (
-                "Explain like the student has zero background. Use the most basic real-world "
-                "example possible. Maximum 3 sentences. No technical terms whatsoever. "
-                "Think: how would you explain this to a 5-year-old?"
-            )
+        reason_label, reason_directive = self.REASON_MAP.get(
+            reason, ("I didn't understand", "Simplify the explanation. Use simpler words and a concrete example.")
+        )
 
         simplify_prompt = SIMPLIFY_CARD_PROMPT.render(
-            card_idx=card_idx,
             card_title=card_title,
             card_content=card_content,
             all_cards_summary=all_cards_summary,
-            previous_attempts_section=previous_attempts_section,
-            depth_label=depth_label,
-            simplification_directive=simplification_directive,
+            reason_label=reason_label,
+            reason_directive=reason_directive,
         )
 
         combined = f"{system_prompt}\n\n---\n\n{simplify_prompt}"

@@ -846,8 +846,8 @@ class SessionService:
 
     # ─── Card Phase Methods ───────────────────────────────────────────────────
 
-    def simplify_card(self, session_id: str, card_idx: int) -> dict:
-        """Generate a simplified version of a specific explanation card (FR-9 to FR-22)."""
+    def simplify_card(self, session_id: str, card_idx: int, reason: str) -> dict:
+        """Generate a simplified version of a specific explanation card."""
         db_session = self.session_repo.get_by_id(session_id)
         if not db_session:
             raise SessionNotFoundException(session_id)
@@ -874,45 +874,36 @@ class SessionService:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail=f"Invalid card_idx: {card_idx}")
 
-        target_card = all_cards[card_idx]
-        card_title = target_card.get("title", "Untitled")
-        card_content = target_card.get("content", "")
-
-        # Determine depth from existing remedial cards for this card
+        # Determine what content the student actually saw (previous card)
+        # If there are already remedial cards for this base card, use the LAST one
+        # (that's what the student just read and didn't understand)
         existing = session.card_phase.remedial_cards.get(card_idx, [])
-        # Also check if this IS a remedial card (student clicked "I didn't understand" on a simplified card)
-        # In that case, find the original base card's remedials
         depth = len(existing) + 1
 
-        # Max depth check — escalate to interactive mode
-        if depth > 2:
-            return self._escalate_to_interactive(
-                session, session_id, card_idx, card_title, card_content, expected_version
-            )
-
-        # Gather previous simplification attempts
-        previous_attempts = [r.card for r in existing]
+        if existing:
+            last_remedial = existing[-1]
+            card_title = last_remedial.card.get("title", "Untitled")
+            card_content = last_remedial.card.get("content", "")
+        else:
+            target_card = all_cards[card_idx]
+            card_title = target_card.get("title", "Untitled")
+            card_content = target_card.get("content", "")
 
         import asyncio
 
-        # Generate simplified card via orchestrator
         card_dict = asyncio.run(
             self.orchestrator.generate_simplified_card(
                 session=session,
-                card_idx=card_idx,
                 card_title=card_title,
                 card_content=card_content,
                 all_cards=all_cards,
-                previous_attempts=previous_attempts,
-                depth=depth,
+                reason=reason,
             )
         )
 
-        # Build stable card_id
         variant_key = session.card_phase.current_variant_key
         card_id = f"remedial_{variant_key}_{card_idx}_{depth}"
 
-        # Store remedial card in session state
         from tutor.models.session_state import RemedialCard, ConfusionEvent
         remedial = RemedialCard(
             card_id=card_id,
@@ -925,23 +916,19 @@ class SessionService:
             session.card_phase.remedial_cards[card_idx] = []
         session.card_phase.remedial_cards[card_idx].append(remedial)
 
-        # Track confusion event (update existing or create new)
+        # Track confusion event
         existing_event = next(
             (e for e in session.card_phase.confusion_events if e.base_card_idx == card_idx),
             None,
         )
+        base_title = all_cards[card_idx].get("title", "Untitled")
         if existing_event:
             existing_event.depth_reached = depth
         else:
             session.card_phase.confusion_events.append(
-                ConfusionEvent(
-                    base_card_idx=card_idx,
-                    base_card_title=card_title,
-                    depth_reached=depth,
-                )
+                ConfusionEvent(base_card_idx=card_idx, base_card_title=base_title, depth_reached=depth)
             )
 
-        # Log analytics event
         self.event_repo.log(
             session_id=session_id,
             node="card_confusion_tap",
@@ -950,8 +937,9 @@ class SessionService:
                 "guideline_id": session.card_phase.guideline_id,
                 "variant_key": variant_key,
                 "base_card_idx": card_idx,
-                "base_card_title": card_title,
+                "base_card_title": base_title,
                 "simplification_depth": depth,
+                "reason": reason,
             },
         )
 
@@ -962,51 +950,6 @@ class SessionService:
             "card": card_dict,
             "card_id": card_id,
             "insert_after": f"{variant_key}_{card_idx}" if depth == 1 else f"remedial_{variant_key}_{card_idx}_{depth - 1}",
-        }
-
-    def _escalate_to_interactive(
-        self, session: SessionState, session_id: str, card_idx: int,
-        card_title: str, card_content: str, expected_version: int,
-    ) -> dict:
-        """Escalate from card simplification to interactive mode (FR-20 to FR-22)."""
-        import asyncio
-
-        # Mark confusion event as escalated
-        existing_event = next(
-            (e for e in session.card_phase.confusion_events if e.base_card_idx == card_idx),
-            None,
-        )
-        if existing_event:
-            existing_event.escalated = True
-
-        # Build summary and complete card phase
-        precomputed_summary = self._build_precomputed_summary(session)
-
-        # Inject stuck card context so bridge prompt targets the right concept
-        stuck_context = (
-            f"\n\nSTUCK CARD — the student could NOT understand this card even after "
-            f"2 simplified re-explanations:\n"
-            f"Card {card_idx}: \"{card_title}\"\n"
-            f"Content: {card_content}\n\n"
-            f"Your probing question MUST be about THIS specific concept, "
-            f"not about the broader topic."
-        )
-        session.precomputed_explanation_summary = precomputed_summary + stuck_context
-        session.complete_card_phase()
-        self._generate_v2_session_plan(session)
-
-        # Generate bridge with card_stuck type
-        bridge_result = asyncio.run(
-            self.orchestrator.generate_bridge_turn(session, bridge_type="card_stuck")
-        )
-
-        self._persist_session_state(session_id, session, expected_version)
-
-        return {
-            "action": "escalate_to_interactive",
-            "message": bridge_result.response,
-            "audio_text": bridge_result.audio_text,
-            "question_format": bridge_result.question_format,
         }
 
     def complete_card_phase(self, session_id: str, action: str) -> dict:

@@ -3,7 +3,7 @@
 Covers:
 1. RemedialCard / ConfusionEvent models and CardPhaseState serialization
 2. simplify_card() service method — depth tracking, card generation, state persistence
-3. Escalation to interactive mode after depth 2
+3. Unlimited depth (no escalation) — depth 3+ generates another simplified card
 4. _build_precomputed_summary() includes confusion events
 5. _switch_variant_internal() clears remedial_cards
 6. Replay endpoint merges remedial cards with stable card IDs
@@ -128,7 +128,7 @@ class TestModels:
         assert restored.card_phase.confusion_events[0].base_card_title == "Adding Apples"
 
     def test_simplify_card_request(self):
-        req = SimplifyCardRequest(card_idx=2)
+        req = SimplifyCardRequest(card_idx=2, reason='example')
         assert req.card_idx == 2
 
     def test_explanation_card_dto_simplification_type(self):
@@ -192,12 +192,18 @@ class TestSimplifyCardService:
             persisted_states = []
             service._persist_session_state = lambda sid, state, ver: persisted_states.append(state)
 
-            result = service.simplify_card("sess_test", card_idx=2)
+            result = service.simplify_card("sess_test", card_idx=2, reason='example')
 
         assert result["action"] == "insert_card"
         assert result["card"]["card_type"] == "simplification"
         assert result["card_id"] == "remedial_A_2_1"
         assert result["insert_after"] == "A_2"
+
+        # Verify orchestrator was called with new signature
+        service.orchestrator.generate_simplified_card.assert_awaited_once()
+        call_kwargs = service.orchestrator.generate_simplified_card.call_args[1]
+        assert call_kwargs["card_title"] == "Number Line"
+        assert call_kwargs["reason"] == "example"
 
         # Verify state was persisted with remedial card
         assert len(persisted_states) == 1
@@ -257,23 +263,32 @@ class TestSimplifyCardService:
             persisted_states = []
             service._persist_session_state = lambda sid, state, ver: persisted_states.append(state)
 
-            result = service.simplify_card("sess_test", card_idx=2)
+            result = service.simplify_card("sess_test", card_idx=2, reason='simpler_words')
 
         assert result["action"] == "insert_card"
         assert result["card_id"] == "remedial_A_2_2"
         assert result["insert_after"] == "remedial_A_2_1"
+
+        # Verify orchestrator was called with last remedial card's content
+        service.orchestrator.generate_simplified_card.assert_awaited_once()
+        call_kwargs = service.orchestrator.generate_simplified_card.call_args[1]
+        assert call_kwargs["card_title"] == "Simpler"
+        assert call_kwargs["card_content"] == "Simpler."
+        assert call_kwargs["reason"] == "simpler_words"
 
         state = persisted_states[0]
         assert len(state.card_phase.remedial_cards[2]) == 2
         assert state.card_phase.remedial_cards[2][1].depth == 2
         assert state.card_phase.confusion_events[0].depth_reached == 2
 
-    def test_escalation_after_depth_2(self):
-        """Third tap escalates to interactive mode instead of depth-3."""
+    def test_simplify_card_depth_3_still_works(self):
+        """Third tap generates depth-3 simplified card (no escalation)."""
         session = _make_session_with_card_phase()
         session.card_phase.remedial_cards[2] = [
-            RemedialCard(card_id="remedial_A_2_1", source_card_idx=2, depth=1, card={"title": "s1"}),
-            RemedialCard(card_id="remedial_A_2_2", source_card_idx=2, depth=2, card={"title": "s2"}),
+            RemedialCard(card_id="remedial_A_2_1", source_card_idx=2, depth=1,
+                         card={"card_type": "simplification", "title": "s1", "content": "Simple v1.", "audio_text": "Simple v1."}),
+            RemedialCard(card_id="remedial_A_2_2", source_card_idx=2, depth=2,
+                         card={"card_type": "simplification", "title": "s2", "content": "Simple v2.", "audio_text": "Simple v2."}),
         ]
         session.card_phase.confusion_events.append(
             ConfusionEvent(base_card_idx=2, base_card_title="Number Line", depth_reached=2)
@@ -281,14 +296,15 @@ class TestSimplifyCardService:
 
         mock_expl = MagicMock()
         mock_expl.cards_json = SAMPLE_CARDS
-        mock_expl.summary_json = {"teaching_notes": "Used pizza analogy"}
 
-        from tutor.orchestration.orchestrator import TurnResult
-        bridge_result = TurnResult(
-            response="No worries, let's figure this out together.",
-            audio_text="No worries, let's figure this out together.",
-            intent="continuation",
-        )
+        depth3_card = {
+            "card_type": "simplification",
+            "title": "Number Line — Simplest",
+            "content": "Just hop along!",
+            "audio_text": "Just hop along!",
+            "visual": None,
+            "visual_explanation": None,
+        }
 
         from tutor.services.session_service import SessionService
 
@@ -302,7 +318,7 @@ class TestSimplifyCardService:
             service.event_repo = MagicMock()
             service.guideline_repo = MagicMock()
             service.orchestrator = MagicMock()
-            service.orchestrator.generate_bridge_turn = AsyncMock(return_value=bridge_result)
+            service.orchestrator.generate_simplified_card = AsyncMock(return_value=depth3_card)
             service.llm_service = MagicMock()
 
             session_row = MagicMock()
@@ -312,21 +328,26 @@ class TestSimplifyCardService:
 
             persisted_states = []
             service._persist_session_state = lambda sid, state, ver: persisted_states.append(state)
-            service._build_precomputed_summary = MagicMock(return_value="summary")
-            service._generate_v2_session_plan = MagicMock()
 
-            result = service.simplify_card("sess_test", card_idx=2)
+            result = service.simplify_card("sess_test", card_idx=2, reason='elaborate')
 
-        assert result["action"] == "escalate_to_interactive"
-        assert "No worries" in result["message"]
+        assert result["action"] == "insert_card"
+        assert result["card_id"] == "remedial_A_2_3"
+        assert result["insert_after"] == "remedial_A_2_2"
+        assert result["card"]["card_type"] == "simplification"
 
-        # Verify card phase was completed
+        # Verify orchestrator was called with last remedial card's content (depth 2)
+        call_kwargs = service.orchestrator.generate_simplified_card.call_args[1]
+        assert call_kwargs["card_title"] == "s2"
+        assert call_kwargs["card_content"] == "Simple v2."
+        assert call_kwargs["reason"] == "elaborate"
+
         state = persisted_states[0]
-        assert state.card_phase.active is False
-        assert state.card_phase.completed is True
-
-        # Verify confusion event marked as escalated
-        assert state.card_phase.confusion_events[0].escalated is True
+        assert len(state.card_phase.remedial_cards[2]) == 3
+        assert state.card_phase.remedial_cards[2][2].depth == 3
+        assert state.card_phase.confusion_events[0].depth_reached == 3
+        # Card phase should still be active (no escalation)
+        assert state.card_phase.active is True
 
     def test_not_in_card_phase_raises(self):
         """simplify_card raises 400 when session is not in card phase."""
@@ -350,7 +371,7 @@ class TestSimplifyCardService:
             service.session_repo.get_by_id.return_value = session_row
 
             with pytest.raises(HTTPException) as exc_info:
-                service.simplify_card("sess_test", card_idx=0)
+                service.simplify_card("sess_test", card_idx=0, reason='example')
             assert exc_info.value.status_code == 400
 
 
@@ -539,16 +560,14 @@ class TestSimplificationPrompt:
         from tutor.prompts.master_tutor_prompts import SIMPLIFY_CARD_PROMPT
 
         rendered = SIMPLIFY_CARD_PROMPT.render(
-            card_idx=2,
             card_title="Number Line",
             card_content="On a number line, start at 3...",
             all_cards_summary="1. [concept] What is Addition?\n2. [example] Adding Apples\n3. [visual] Number Line",
-            previous_attempts_section="",
-            depth_label="Depth 1",
-            simplification_directive="Explain simpler.",
+            reason_label="I need a simpler explanation",
+            reason_directive="Use simpler words and shorter sentences.",
         )
 
         assert "Number Line" in rendered
-        assert "Depth 1" in rendered
+        assert "I need a simpler explanation" in rendered
         assert "card_type" in rendered  # output requirements mention this
         assert "CRITICAL RULES" in rendered
