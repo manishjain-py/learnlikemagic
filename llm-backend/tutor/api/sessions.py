@@ -30,6 +30,7 @@ from tutor.models.messages import (
     ClientMessage,
     SessionStateDTO,
     CardActionRequest,
+    SimplifyCardRequest,
     create_assistant_response,
     create_error_response,
     create_state_update,
@@ -258,6 +259,24 @@ def get_session_replay(
         if explanation:
             state["_replay_explanation_cards"] = explanation.cards_json
 
+            # Merge remedial cards into the deck for replay
+            card_phase = state.get("card_phase", {})
+            remedial_map = card_phase.get("remedial_cards", {})
+            variant_key = card_phase.get("current_variant_key", "A")
+            base_cards = state["_replay_explanation_cards"]
+            merged = []
+            for i, card in enumerate(base_cards):
+                card["card_id"] = f"{variant_key}_{i}"
+                card["source_card_idx"] = i
+                merged.append(card)
+                # Insert any remedial cards after their source
+                for remedial in remedial_map.get(str(i), remedial_map.get(i, [])):
+                    remedial_card = remedial.get("card", {}) if isinstance(remedial, dict) else {}
+                    remedial_card["card_id"] = remedial.get("card_id", f"remedial_{variant_key}_{i}")
+                    remedial_card["source_card_idx"] = i
+                    merged.append(remedial_card)
+            state["_replay_explanation_cards"] = merged
+
     return state
 
 
@@ -440,6 +459,33 @@ def card_action(
         import traceback
         logger.error(f"Error processing card action: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing card action: {e}")
+
+
+@router.post("/{session_id}/simplify-card")
+def simplify_card(
+    session_id: str,
+    request: SimplifyCardRequest,
+    current_user=Depends(get_optional_user),
+    db: DBSession = Depends(get_db),
+):
+    """Generate a simplified version of a specific explanation card."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    try:
+        service = SessionService(db)
+        return service.simplify_card(session_id, request.card_idx, request.reason)
+    except HTTPException:
+        raise
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+    except Exception as e:
+        import traceback
+        logger.error(f"Error simplifying card: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error simplifying card: {e}")
 
 
 class FeedbackRequest(BaseModel):

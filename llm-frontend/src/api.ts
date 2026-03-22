@@ -82,12 +82,14 @@ export interface VisualExplanation {
 
 export interface ExplanationCard {
   card_idx: number;
-  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary';
+  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary' | 'simplification';
   title: string;
   content: string;
   visual?: string | null;
   audio_text?: string | null;
   visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
+  card_id?: string;
+  source_card_idx?: number;
 }
 
 export interface CardPhaseDTO {
@@ -574,6 +576,22 @@ export async function cardAction(
   const response = await apiFetch(`/sessions/${sessionId}/card-action`, {
     method: 'POST',
     body: JSON.stringify({ action }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail || response.statusText);
+  }
+  return response.json();
+}
+
+export async function simplifyCard(
+  sessionId: string,
+  cardIdx: number,
+  reason: string,
+): Promise<any> {
+  const response = await apiFetch(`/sessions/${sessionId}/simplify-card`, {
+    method: 'POST',
+    body: JSON.stringify({ card_idx: cardIdx, reason }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);

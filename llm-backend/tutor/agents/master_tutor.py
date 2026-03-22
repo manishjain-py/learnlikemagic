@@ -6,17 +6,23 @@ and returns both the student-facing response and structured state updates in
 one LLM call.
 """
 
+import asyncio
+import json
+import logging
+import time
 from typing import Any, Dict, Literal, Optional, Type
 
 from pydantic import BaseModel, Field
 
 from tutor.agents.base_agent import BaseAgent, AgentContext
 from tutor.models.session_state import SessionState
+from tutor.utils.schema_utils import get_strict_schema, validate_agent_output
 from tutor.prompts.master_tutor_prompts import (
     MASTER_TUTOR_SYSTEM_PROMPT,
     MASTER_TUTOR_TURN_PROMPT,
     MASTER_TUTOR_WELCOME_PROMPT,
     MASTER_TUTOR_BRIDGE_PROMPT,
+    SIMPLIFY_CARD_PROMPT,
 )
 from tutor.prompts.clarify_doubts_prompts import (
     CLARIFY_DOUBTS_SYSTEM_PROMPT,
@@ -24,6 +30,8 @@ from tutor.prompts.clarify_doubts_prompts import (
 )
 from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
+
+logger = logging.getLogger("tutor.agents")
 
 
 class VisualExplanation(BaseModel):
@@ -179,6 +187,14 @@ class TutorTurnOutput(BaseModel):
     reasoning: str = Field(default="", description="Your internal reasoning (not shown to student)")
 
 
+class SimplifiedCardOutput(BaseModel):
+    """Structured output from the LLM for card simplification."""
+    card_type: str = Field(default="simplification")
+    title: str = Field(description="Simplified title")
+    content: str = Field(description="Simplified explanation")
+    audio_text: str = Field(description="TTS-friendly spoken version")
+
+
 class MasterTutorAgent(BaseAgent):
     """Single master tutor handling all teaching responsibilities."""
 
@@ -215,6 +231,103 @@ class MasterTutorAgent(BaseAgent):
         output.advance_to_step = None
         output.mastery_updates = []
         return output
+
+    # Reason labels and LLM directives for "I didn't understand" options
+    REASON_MAP = {
+        "example": (
+            "I need an example",
+            "Add a concrete, relatable real-world example. Show the concept in action with "
+            "something the student can picture — food, toys, money, daily life.",
+        ),
+        "simpler_words": (
+            "The language is tough",
+            "Rewrite using the simplest everyday words possible. No technical terms. "
+            "Short sentences. Explain like talking to a young child.",
+        ),
+        "elaborate": (
+            "I need more detail",
+            "Break the concept into smaller pieces. Explain step by step. "
+            "Cover what the previous card assumed the student already knew.",
+        ),
+        "different_approach": (
+            "Explain it differently",
+            "Use a completely different angle, analogy, or mental model. "
+            "If the previous card used numbers, try a story. If it used a story, try a visual description.",
+        ),
+    }
+
+    async def generate_simplified_card(
+        self,
+        session: SessionState,
+        card_title: str,
+        card_content: str,
+        all_cards: list[dict],
+        reason: str,
+    ) -> dict:
+        """Generate a simplified version of a specific explanation card."""
+        system_prompt = self._build_system_prompt(session)
+
+        all_cards_summary = "\n".join(
+            f"{i+1}. [{c.get('card_type', 'unknown')}] {c.get('title', 'Untitled')}"
+            for i, c in enumerate(all_cards)
+        )
+
+        reason_label, reason_directive = self.REASON_MAP.get(
+            reason, ("I didn't understand", "Simplify the explanation. Use simpler words and a concrete example.")
+        )
+
+        simplify_prompt = SIMPLIFY_CARD_PROMPT.render(
+            card_title=card_title,
+            card_content=card_content,
+            all_cards_summary=all_cards_summary,
+            reason_label=reason_label,
+            reason_directive=reason_directive,
+        )
+
+        combined = f"{system_prompt}\n\n---\n\n{simplify_prompt}"
+
+        # Use structured output with SimplifiedCardOutput schema
+        start_time = time.time()
+        self._last_prompt = combined
+
+        output_model = SimplifiedCardOutput
+        schema = get_strict_schema(output_model)
+
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(
+            None,
+            lambda: self.llm.call(
+                prompt=combined,
+                reasoning_effort=self._reasoning_effort,
+                json_schema=schema,
+                schema_name=output_model.__name__,
+            ),
+        )
+
+        output_text = raw.get("output_text", "{}")
+        try:
+            parsed = json.loads(output_text)
+        except (json.JSONDecodeError, TypeError):
+            parsed = {}
+
+        result = validate_agent_output(
+            output=parsed, model=output_model, agent_name=self.agent_name,
+        )
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(json.dumps({
+            "agent": self.agent_name, "event": "simplify_card_completed",
+            "duration_ms": duration_ms, "card_idx": card_idx, "depth": depth,
+        }))
+
+        return {
+            "card_type": "simplification",
+            "title": result.title,
+            "content": result.content,
+            "audio_text": result.audio_text,
+            "visual": None,
+            "visual_explanation": None,
+        }
 
     def _build_welcome_prompt(self, session: SessionState) -> str:
         has_cards = session.card_phase is not None
@@ -260,6 +373,19 @@ class MasterTutorAgent(BaseAgent):
                     "If your question has clear answer choices, set question_format "
                     "(single_select or fill_in_the_blank) — see Rule 15."
                 )
+        elif bridge_type == "card_stuck":
+            context_block = (
+                "The student got stuck on a specific explanation card and couldn't understand it "
+                "even after simplified re-explanations. See 'STUCK CARD' in the notes below "
+                "for the exact card and content they struggled with."
+            )
+            instruction = (
+                "DO NOT re-greet them. Start with empathy ('No worries, let's figure this out together'). "
+                "Ask a probing question about the STUCK CARD's specific concept to find their exact "
+                "point of confusion — don't re-explain yet, don't ask about other topics. "
+                "Do NOT use question_format — just ask a simple open-ended question in your response. "
+                "Set explanation_phase_update='opening' to start fresh exploration."
+            )
         else:
             context_block = (
                 "The student read all available explanation card variants but is still confused."

@@ -846,6 +846,112 @@ class SessionService:
 
     # ─── Card Phase Methods ───────────────────────────────────────────────────
 
+    def simplify_card(self, session_id: str, card_idx: int, reason: str) -> dict:
+        """Generate a simplified version of a specific explanation card."""
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+
+        if not session.is_in_card_phase():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Session is not in card phase")
+
+        # Load current variant cards
+        explanation_repo = ExplanationRepository(self.db)
+        explanation = explanation_repo.get_variant(
+            session.card_phase.guideline_id,
+            session.card_phase.current_variant_key,
+        )
+        if not explanation or not explanation.cards_json:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Current variant cards not found")
+
+        all_cards = explanation.cards_json
+        if card_idx < 0 or card_idx >= len(all_cards):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail=f"Invalid card_idx: {card_idx}")
+
+        # Determine what content the student actually saw (previous card)
+        # If there are already remedial cards for this base card, use the LAST one
+        # (that's what the student just read and didn't understand)
+        existing = session.card_phase.remedial_cards.get(card_idx, [])
+        depth = len(existing) + 1
+
+        if existing:
+            last_remedial = existing[-1]
+            card_title = last_remedial.card.get("title", "Untitled")
+            card_content = last_remedial.card.get("content", "")
+        else:
+            target_card = all_cards[card_idx]
+            card_title = target_card.get("title", "Untitled")
+            card_content = target_card.get("content", "")
+
+        import asyncio
+
+        card_dict = asyncio.run(
+            self.orchestrator.generate_simplified_card(
+                session=session,
+                card_title=card_title,
+                card_content=card_content,
+                all_cards=all_cards,
+                reason=reason,
+            )
+        )
+
+        variant_key = session.card_phase.current_variant_key
+        card_id = f"remedial_{variant_key}_{card_idx}_{depth}"
+
+        from tutor.models.session_state import RemedialCard, ConfusionEvent
+        remedial = RemedialCard(
+            card_id=card_id,
+            source_card_idx=card_idx,
+            depth=depth,
+            card=card_dict,
+        )
+
+        if card_idx not in session.card_phase.remedial_cards:
+            session.card_phase.remedial_cards[card_idx] = []
+        session.card_phase.remedial_cards[card_idx].append(remedial)
+
+        # Track confusion event
+        existing_event = next(
+            (e for e in session.card_phase.confusion_events if e.base_card_idx == card_idx),
+            None,
+        )
+        base_title = all_cards[card_idx].get("title", "Untitled")
+        if existing_event:
+            existing_event.depth_reached = depth
+        else:
+            session.card_phase.confusion_events.append(
+                ConfusionEvent(base_card_idx=card_idx, base_card_title=base_title, depth_reached=depth)
+            )
+
+        self.event_repo.log(
+            session_id=session_id,
+            node="card_confusion_tap",
+            step_idx=session.current_step,
+            payload={
+                "guideline_id": session.card_phase.guideline_id,
+                "variant_key": variant_key,
+                "base_card_idx": card_idx,
+                "base_card_title": base_title,
+                "simplification_depth": depth,
+                "reason": reason,
+            },
+        )
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        return {
+            "action": "insert_card",
+            "card": card_dict,
+            "card_id": card_id,
+            "insert_after": f"{variant_key}_{card_idx}" if depth == 1 else f"remedial_{variant_key}_{card_idx}_{depth - 1}",
+        }
+
     def complete_card_phase(self, session_id: str, action: str) -> dict:
         """Handle card phase completion. action: 'clear' or 'explain_differently'."""
         db_session = self.session_repo.get_by_id(session_id)
@@ -937,6 +1043,9 @@ class SessionService:
         session.card_phase.total_cards = len(explanation.cards_json)
         session.card_phase.variants_shown.append(variant_key)
 
+        # Clear remedial cards from previous variant (clean slate for new variant)
+        session.card_phase.remedial_cards = {}
+
         self._persist_session_state(session_id, session, expected_version)
 
         return {
@@ -986,6 +1095,19 @@ class SessionService:
                     summaries.append(
                         "Visuals the student could play:\n" + "\n".join(visual_notes)
                     )
+
+        # Append per-card confusion summary if any confusion events exist
+        if session.card_phase and session.card_phase.confusion_events:
+            confusion_lines = []
+            for evt in session.card_phase.confusion_events:
+                status = "escalated to interactive" if evt.escalated else f"resolved after depth-{evt.depth_reached}"
+                confusion_lines.append(
+                    f"- Card {evt.base_card_idx} \"{evt.base_card_title}\": "
+                    f"{evt.depth_reached} simplification(s), {status}"
+                )
+            summaries.append(
+                "Cards that needed simplification:\n" + "\n".join(confusion_lines)
+            )
 
         return "\n".join(summaries)
 

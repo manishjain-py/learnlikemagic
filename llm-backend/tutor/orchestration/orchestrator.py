@@ -1233,3 +1233,37 @@ class TeacherOrchestrator:
             session.add_message(create_teacher_message(fallback, audio_text=fallback))
 
             return TurnResult(response=fallback, audio_text=fallback, intent="continuation", state_changed=False)
+
+    async def generate_simplified_card(
+        self,
+        session: SessionState,
+        card_title: str,
+        card_content: str,
+        all_cards: list[dict],
+        reason: str,
+    ) -> dict:
+        """Generate a simplified version of a specific explanation card.
+
+        Returns a dict with card content (title, content, audio_text, card_type).
+        """
+        try:
+            self.master_tutor.set_session(session)
+            result = await self.master_tutor.generate_simplified_card(
+                session=session,
+                card_title=card_title,
+                card_content=card_content,
+                all_cards=all_cards,
+                reason=reason,
+            )
+            return result
+        except Exception as e:
+            logger.warning(f"Simplified card generation failed: {e}")
+            # Fallback: return a minimal simplified card
+            return {
+                "card_type": "simplification",
+                "title": f"Let's simplify: {card_title}",
+                "content": f"Let me explain this more simply. {card_content[:200]}...",
+                "audio_text": f"Let me explain this more simply.",
+                "visual": None,
+                "visual_explanation": None,
+            }

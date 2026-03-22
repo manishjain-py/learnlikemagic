@@ -10,6 +10,7 @@ import {
   synthesizeSpeech,
   submitFeedback,
   cardAction,
+  simplifyCard,
   TutorWebSocket,
   Turn,
   ExplanationCard,
@@ -108,7 +109,12 @@ export default function ChatSession() {
   const [explanationCards, setExplanationCards] = useState<ExplanationCard[]>([]);
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
+  const [simplifyLoading, setSimplifyLoading] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
+
+  // Annotate cards with 0-based source_card_idx if not already present
+  const annotateCards = (cards: ExplanationCard[]): ExplanationCard[] =>
+    cards.map((c, i) => ({ ...c, source_card_idx: c.source_card_idx ?? i }));
 
   // Streaming state
   const [streamingText, setStreamingText] = useState('');
@@ -164,7 +170,7 @@ export default function ChatSession() {
     if (explanationCards.length > 0) {
       explanationCards.forEach((card, i) => {
         slides.push({
-          id: `card-${i}`,
+          id: (card as any).card_id || `card-${i}`,
           type: 'explanation',
           content: card.content,
           title: card.title,
@@ -238,6 +244,12 @@ export default function ChatSession() {
     }
   }, [carouselSlides.length]);
 
+  // Clamp slide index to valid range — prevents blank screen on out-of-bounds
+  useEffect(() => {
+    if (carouselSlides.length > 0 && currentSlideIdx >= carouselSlides.length) {
+      setCurrentSlideIdx(carouselSlides.length - 1);
+    }
+  }, [currentSlideIdx, carouselSlides.length]);
 
   const hydrateExamState = (state: any) => {
     if (!state?.exam_questions) return;
@@ -306,7 +318,7 @@ export default function ChatSession() {
       // Check for card phase (pre-computed explanations)
       if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
         setSessionPhase('card_phase');
-        setExplanationCards(locState.firstTurn.explanation_cards);
+        setExplanationCards(annotateCards(locState.firstTurn.explanation_cards));
         setCurrentSlideIdx(0);
         setCardPhaseState(locState.firstTurn.card_phase_state || null);
         setVariantsShown(1);
@@ -391,7 +403,7 @@ export default function ChatSession() {
 
           // Hydrate card phase — active or completed
           if (state._replay_explanation_cards) {
-            setExplanationCards(state._replay_explanation_cards);
+            setExplanationCards(annotateCards(state._replay_explanation_cards));
 
             if (state.card_phase?.active) {
               // Card phase still in progress — restore card navigation state
@@ -954,7 +966,9 @@ export default function ChatSession() {
     };
     setMessages(prev => [...prev, bridgeMsg]);
     localStorage.removeItem(`slide-pos-${sessionId}`);
-    // Cards at indices 0..N-1 (after welcome at 0), bridge lands at N
+    // Welcome(0) + explanationCards(1..N) → bridge at N+1
+    // Use a callback so the auto-advance useEffect places us correctly
+    // Set to last card for now; auto-advance will bump to bridge slide
     setCurrentSlideIdx(explanationCards.length);
     if (result.audio_text) {
       playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
@@ -979,7 +993,7 @@ export default function ChatSession() {
         };
         handleBridgeTransition(result);
       } else if (result.action === 'switch_variant' && result.cards) {
-        setExplanationCards(result.cards);
+        setExplanationCards(annotateCards(result.cards));
         setCurrentSlideIdx(0);
         setVariantsShown(prev => prev + 1);
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
@@ -990,6 +1004,44 @@ export default function ChatSession() {
       console.error('Card action failed:', err);
     } finally {
       setCardActionLoading(false);
+    }
+  };
+
+  const [showSimplifyOptions, setShowSimplifyOptions] = useState(false);
+
+  const handleSimplifyCard = async (reason: string) => {
+    if (!sessionId || simplifyLoading) return;
+    setShowSimplifyOptions(false);
+    const cardArrayIdx = currentSlideIdx - 1;
+    if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
+
+    const currentCard = explanationCards[cardArrayIdx];
+    const baseCardIdx = currentCard.source_card_idx ?? cardArrayIdx;
+
+    setSimplifyLoading(true);
+    try {
+      const result = await simplifyCard(sessionId, baseCardIdx, reason);
+
+      if (result.action === 'insert_card' && result.card) {
+        const newCard: ExplanationCard = {
+          ...result.card,
+          card_id: result.card_id,
+          card_idx: baseCardIdx,
+          source_card_idx: baseCardIdx,
+        };
+        setExplanationCards(prev => {
+          const updated = [...prev];
+          updated.splice(cardArrayIdx + 1, 0, newCard);
+          return updated;
+        });
+        const newIdx = currentSlideIdx + 1;
+        setCurrentSlideIdx(newIdx);
+        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
+      }
+    } catch (err: any) {
+      console.error('Simplify card failed:', err);
+    } finally {
+      setSimplifyLoading(false);
     }
   };
 
@@ -1369,7 +1421,8 @@ export default function ChatSession() {
                                slide.cardType === 'example' ? 'Example' :
                                slide.cardType === 'visual' ? 'Visual' :
                                slide.cardType === 'analogy' ? 'Analogy' :
-                               slide.cardType === 'summary' ? 'Summary' : slide.cardType}
+                               slide.cardType === 'summary' ? 'Summary' :
+                               slide.cardType === 'simplification' ? 'Simplified' : slide.cardType}
                             </span>
                           </div>
                           {slide.title && <h2 className="explanation-card-title">{slide.title}</h2>}
@@ -1416,44 +1469,97 @@ export default function ChatSession() {
               {sessionPhase === 'card_phase' ? (
                 currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
-                    <button
-                      className="explanation-nav-btn secondary"
-                      onClick={() => {
-                        const prev = Math.max(currentSlideIdx - 1, 0);
-                        setCurrentSlideIdx(prev);
-                        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(prev));
-                      }}
-                      disabled={currentSlideIdx === 0}
-                    >
-                      Back
-                    </button>
-                    <button
-                      className="explanation-nav-btn primary"
-                      onClick={() => {
-                        const next = Math.min(currentSlideIdx + 1, explanationCards.length); /* +1 welcome offset */
-                        setCurrentSlideIdx(next);
-                        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
-                      }}
-                    >
-                      Next
-                    </button>
+                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions && (
+                      <button
+                        className="explanation-nav-btn simplify"
+                        onClick={() => setShowSimplifyOptions(true)}
+                        disabled={cardActionLoading}
+                      >
+                        I didn't understand
+                      </button>
+                    )}
+                    {simplifyLoading && (
+                      <div className="explanation-nav-btn simplify" style={{opacity: 0.6}}>Simplifying...</div>
+                    )}
+                    {showSimplifyOptions && !simplifyLoading && (
+                      <div className="simplify-options">
+                        <div className="simplify-options-label">What would help?</div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
+                        </div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('elaborate')}>Explain in more detail</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('different_approach')}>Explain differently</button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="explanation-nav-row">
+                      <button
+                        className="explanation-nav-btn secondary"
+                        onClick={() => {
+                          const prev = Math.max(currentSlideIdx - 1, 0);
+                          setCurrentSlideIdx(prev);
+                          if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(prev));
+                        }}
+                        disabled={currentSlideIdx === 0 || simplifyLoading}
+                      >
+                        Back
+                      </button>
+                      <button
+                        className="explanation-nav-btn primary"
+                        onClick={() => {
+                          const next = Math.min(currentSlideIdx + 1, explanationCards.length); /* +1 welcome offset */
+                          setCurrentSlideIdx(next);
+                          if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
+                        }}
+                        disabled={simplifyLoading}
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="explanation-nav">
+                    {!simplifyLoading && !showSimplifyOptions && (
+                      <button
+                        className="explanation-nav-btn simplify"
+                        onClick={() => setShowSimplifyOptions(true)}
+                        disabled={cardActionLoading}
+                      >
+                        I didn't understand
+                      </button>
+                    )}
+                    {simplifyLoading && (
+                      <div className="explanation-nav-btn simplify" style={{opacity: 0.6}}>Simplifying...</div>
+                    )}
+                    {showSimplifyOptions && !simplifyLoading && (
+                      <div className="simplify-options">
+                        <div className="simplify-options-label">What would help?</div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
+                        </div>
+                        <div className="simplify-options-row">
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('elaborate')}>Explain in more detail</button>
+                          <button className="simplify-option" onClick={() => handleSimplifyCard('different_approach')}>Explain differently</button>
+                        </div>
+                      </div>
+                    )}
                     <div className="explanation-actions">
                       <button
                         className="explanation-nav-btn primary"
                         onClick={() => handleCardAction('clear')}
-                        disabled={cardActionLoading}
+                        disabled={cardActionLoading || simplifyLoading}
                       >
-                        I understand!
+                        Start practice
                       </button>
                       <button
                         className="explanation-nav-btn secondary"
                         onClick={() => handleCardAction('explain_differently')}
-                        disabled={cardActionLoading}
+                        disabled={cardActionLoading || simplifyLoading}
                       >
-                        {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still don't get it" : "Explain differently"}
+                        {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
                       </button>
                     </div>
                   </div>
