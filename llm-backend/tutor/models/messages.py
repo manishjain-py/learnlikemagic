@@ -189,7 +189,7 @@ class DetailedSessionStateDTO(BaseModel):
 class ExplanationCardDTO(BaseModel):
     """Explanation card for frontend rendering."""
     card_idx: int
-    card_type: Literal["concept", "example", "visual", "analogy", "summary"]
+    card_type: Literal["concept", "example", "visual", "analogy", "summary", "simplification"]
     title: str
     content: str
     visual: Optional[str] = None
@@ -198,6 +198,11 @@ class ExplanationCardDTO(BaseModel):
 class CardActionRequest(BaseModel):
     """Request body for card phase actions."""
     action: Literal["clear", "explain_differently"]
+
+
+class SimplifyCardRequest(BaseModel):
+    """Request body for per-card simplification."""
+    card_idx: int = Field(description="Index of the card to simplify (0-based)")
 
 
 class CardPhaseDTO(BaseModel):

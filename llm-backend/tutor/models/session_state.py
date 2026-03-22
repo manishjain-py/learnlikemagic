@@ -20,6 +20,22 @@ SessionMode = Literal["teach_me", "clarify_doubts", "exam"]
 ExplanationPhaseName = Literal["not_started", "opening", "explaining", "informal_check", "complete"]
 
 
+class RemedialCard(BaseModel):
+    """A dynamically generated simplified explanation card."""
+    card_id: str = Field(description="Stable ID, e.g. 'remedial_A_3_1'")
+    source_card_idx: int = Field(description="Base card index this simplifies")
+    depth: int = Field(description="Simplification depth (1 or 2)")
+    card: dict = Field(description="ExplanationCard content dict (title, content, audio_text, card_type)")
+
+
+class ConfusionEvent(BaseModel):
+    """Tracks a student's confusion on a specific card."""
+    base_card_idx: int = Field(description="Which card confused the student")
+    base_card_title: str = Field(description="Title for human readability")
+    depth_reached: int = Field(default=0, description="How many simplifications were tried")
+    escalated: bool = Field(default=False, description="Whether it escalated to interactive mode")
+
+
 class CardPhaseState(BaseModel):
     """Tracks card-based explanation phase for pre-computed explanations."""
     guideline_id: str = Field(description="FK for explanation lookups (NOT topic_id)")
@@ -30,6 +46,14 @@ class CardPhaseState(BaseModel):
     variants_shown: list[str] = Field(default_factory=list, description="Variant keys already shown")
     available_variant_keys: list[str] = Field(default_factory=list, description="All available variant keys")
     completed: bool = Field(default=False, description="True when student says 'clear' or exhausts variants")
+    remedial_cards: dict[int, list[RemedialCard]] = Field(
+        default_factory=dict,
+        description="Maps base card_idx to ordered list of generated remedial cards"
+    )
+    confusion_events: list[ConfusionEvent] = Field(
+        default_factory=list,
+        description="Per-card confusion tracking for tutor context"
+    )
 
 
 class ExplanationPhase(BaseModel):

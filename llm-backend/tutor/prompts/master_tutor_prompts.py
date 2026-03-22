@@ -254,3 +254,40 @@ MASTER_TUTOR_BRIDGE_PROMPT = PromptTemplate(
 """,
     name="master_tutor_bridge",
 )
+
+
+SIMPLIFY_CARD_PROMPT = PromptTemplate(
+    """## Simplify Explanation Card
+
+The student is reading explanation cards about this topic. They tapped "I didn't understand" on card {card_idx}: "{card_title}".
+
+### Original card content
+{card_content}
+
+### All cards in this variant (for context)
+{all_cards_summary}
+
+{previous_attempts_section}
+
+### Simplification level: {depth_label}
+
+{simplification_directive}
+
+### Output requirements
+Return a single simplified explanation card as JSON:
+- card_type: "simplification"
+- title: A simplified version of the original title
+- content: The simplified explanation (under 500 words)
+- audio_text: TTS-friendly spoken version (pure words, no symbols/markdown, Roman script only)
+- visual: null
+- visual_explanation: null
+
+CRITICAL RULES:
+- Explain ONLY the same concept as the original card. Do NOT advance to new topics.
+- Use simpler vocabulary than the original card.
+- Shorter sentences. One idea at a time.
+- If the original used a technical term, replace it with an everyday word.
+- Include a concrete, relatable example if the original didn't have one (or a different one if it did).
+""",
+    name="simplify_card",
+)
