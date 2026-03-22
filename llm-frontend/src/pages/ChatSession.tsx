@@ -244,6 +244,12 @@ export default function ChatSession() {
     }
   }, [carouselSlides.length]);
 
+  // Clamp slide index to valid range — prevents blank screen on out-of-bounds
+  useEffect(() => {
+    if (carouselSlides.length > 0 && currentSlideIdx >= carouselSlides.length) {
+      setCurrentSlideIdx(carouselSlides.length - 1);
+    }
+  }, [currentSlideIdx, carouselSlides.length]);
 
   const hydrateExamState = (state: any) => {
     if (!state?.exam_questions) return;
@@ -960,7 +966,9 @@ export default function ChatSession() {
     };
     setMessages(prev => [...prev, bridgeMsg]);
     localStorage.removeItem(`slide-pos-${sessionId}`);
-    // Cards at indices 0..N-1 (after welcome at 0), bridge lands at N
+    // Welcome(0) + explanationCards(1..N) → bridge at N+1
+    // Use a callback so the auto-advance useEffect places us correctly
+    // Set to last card for now; auto-advance will bump to bridge slide
     setCurrentSlideIdx(explanationCards.length);
     if (result.audio_text) {
       playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
@@ -1032,11 +1040,7 @@ export default function ChatSession() {
         setCurrentSlideIdx(newIdx);
         if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
       } else if (result.action === 'escalate_to_interactive') {
-        // Transition to interactive mode
-        setSessionPhase('interactive');
-        if (result.message) {
-          handleBridgeTransition(result);
-        }
+        handleBridgeTransition(result);
       }
     } catch (err: any) {
       console.error('Simplify card failed:', err);

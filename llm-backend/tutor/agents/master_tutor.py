@@ -377,11 +377,14 @@ class MasterTutorAgent(BaseAgent):
         elif bridge_type == "card_stuck":
             context_block = (
                 "The student got stuck on a specific explanation card and couldn't understand it "
-                "even after simplified re-explanations."
+                "even after simplified re-explanations. See 'STUCK CARD' in the notes below "
+                "for the exact card and content they struggled with."
             )
             instruction = (
                 "DO NOT re-greet them. Start with empathy ('No worries, let's figure this out together'). "
-                "Ask a probing question to find their SPECIFIC point of confusion — don't re-explain yet. "
+                "Ask a probing question about the STUCK CARD's specific concept to find their exact "
+                "point of confusion — don't re-explain yet, don't ask about other topics. "
+                "Do NOT use question_format — just ask a simple open-ended question in your response. "
                 "Set explanation_phase_update='opening' to start fresh exploration."
             )
         else:

@@ -886,7 +886,9 @@ class SessionService:
 
         # Max depth check — escalate to interactive mode
         if depth > 2:
-            return self._escalate_to_interactive(session, session_id, card_idx, card_title, expected_version)
+            return self._escalate_to_interactive(
+                session, session_id, card_idx, card_title, card_content, expected_version
+            )
 
         # Gather previous simplification attempts
         previous_attempts = [r.card for r in existing]
@@ -963,7 +965,8 @@ class SessionService:
         }
 
     def _escalate_to_interactive(
-        self, session: SessionState, session_id: str, card_idx: int, card_title: str, expected_version: int
+        self, session: SessionState, session_id: str, card_idx: int,
+        card_title: str, card_content: str, expected_version: int,
     ) -> dict:
         """Escalate from card simplification to interactive mode (FR-20 to FR-22)."""
         import asyncio
@@ -978,7 +981,17 @@ class SessionService:
 
         # Build summary and complete card phase
         precomputed_summary = self._build_precomputed_summary(session)
-        session.precomputed_explanation_summary = precomputed_summary
+
+        # Inject stuck card context so bridge prompt targets the right concept
+        stuck_context = (
+            f"\n\nSTUCK CARD — the student could NOT understand this card even after "
+            f"2 simplified re-explanations:\n"
+            f"Card {card_idx}: \"{card_title}\"\n"
+            f"Content: {card_content}\n\n"
+            f"Your probing question MUST be about THIS specific concept, "
+            f"not about the broader topic."
+        )
+        session.precomputed_explanation_summary = precomputed_summary + stuck_context
         session.complete_card_phase()
         self._generate_v2_session_plan(session)
 
