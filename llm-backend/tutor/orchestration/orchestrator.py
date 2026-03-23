@@ -8,6 +8,7 @@ The master tutor handles all teaching responsibilities in a single LLM call.
 import re
 import time
 import logging
+from pathlib import Path
 from typing import AsyncGenerator, Dict, Any, Optional, List, Tuple, Union
 from pydantic import BaseModel, Field
 
@@ -125,13 +126,8 @@ class TeacherOrchestrator:
         if not stripped or all(c.isdigit() or c in ' +-*/=.,()%^' for c in stripped):
             return text
 
-        prompt = (
-            "You are a translator. The student may write in Hinglish (Hindi-English mix, Roman script) "
-            "or Hindi. Translate the following student message to clean English. "
-            "If the message is already in English, return it unchanged.\n\n"
-            "Return JSON: {\"english\": \"<translated text>\"}\n\n"
-            f"Student message: {text}"
-        )
+        _translation_prompt = (Path(__file__).parent.parent / "prompts" / "translation.txt").read_text()
+        prompt = _translation_prompt.format(text=text)
 
         import asyncio
         loop = asyncio.get_event_loop()

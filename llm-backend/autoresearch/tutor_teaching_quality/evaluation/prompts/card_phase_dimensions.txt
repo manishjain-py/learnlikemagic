@@ -1,0 +1,18 @@
+
+### 6. **Card-to-Session Coherence** (1-10)
+*Does the interactive session feel connected to the explanation cards the student just read?*
+
+- **9-10:** Tutor naturally references and builds on the specific analogies, examples, and concepts from the cards. Feels like one continuous learning experience. Uses cards as a springboard — "Remember when we talked about X? Now let's see what happens when..."
+- **7-8:** Tutor is aware of the cards and avoids repetition. Occasionally builds on card content. Mostly coherent but doesn't actively leverage what the student already read.
+- **5-6:** Tutor doesn't repeat card content (good) but also doesn't reference it. Cards and interactive session feel like two separate lessons that happen to be about the same topic.
+- **3-4:** Tutor re-explains things the cards already covered, or contradicts the card approach. Student would feel confused about which explanation to trust.
+- **1-2:** No connection at all. Tutor acts as if the student is hearing about this topic for the first time.
+
+### 7. **Transition Quality** (1-10)
+*How smooth is the bridge from reading explanation cards to interactive teaching?*
+
+- **9-10:** Transition feels natural and purposeful. Tutor checks what the student remembers from the cards, identifies gaps, and launches into interactive teaching from exactly the right point. Student feels their card-reading time was valued.
+- **7-8:** Decent transition. Tutor acknowledges the cards and moves into interaction. Might miss probing what the student actually absorbed.
+- **5-6:** Abrupt but functional. Student goes from reading cards to being asked questions without much bridging. Feels like a gear shift.
+- **3-4:** Jarring transition. Generic "now let's check your understanding" with no connection to what was just read. Student feels like they walked into a different class.
+- **1-2:** No transition at all, or the transition confuses the student about what they should know.

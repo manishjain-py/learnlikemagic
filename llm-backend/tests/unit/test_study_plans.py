@@ -1,4 +1,4 @@
-"""Unit tests for study_plans/services — GeneratorService, ReviewerService, Orchestrator."""
+"""Unit tests for study_plans/services — GeneratorService, ReviewerService."""
 
 import json
 import pytest
@@ -7,7 +7,6 @@ from datetime import datetime
 
 from study_plans.services.generator_service import StudyPlanGeneratorService, StudyPlan, StudyPlanStep, StudyPlanMetadata
 from study_plans.services.reviewer_service import StudyPlanReviewerService
-from study_plans.services.orchestrator import StudyPlanOrchestrator
 
 
 # ---------------------------------------------------------------------------
@@ -225,113 +224,3 @@ class TestStudyPlanReviewerService:
             svc.review_plan(_valid_plan_dict(), _make_guideline())
 
 
-# ---------------------------------------------------------------------------
-# Tests — StudyPlanOrchestrator
-# ---------------------------------------------------------------------------
-
-class TestStudyPlanOrchestrator:
-    def _make_orchestrator(self):
-        db = MagicMock()
-        llm = MagicMock()
-        llm.make_schema_strict = MagicMock(return_value={})
-
-        with patch("study_plans.services.orchestrator.PromptLoader"):
-            orch = StudyPlanOrchestrator(db, llm, llm)
-        orch.generator = MagicMock()
-        orch.reviewer = MagicMock()
-        return orch
-
-    def test_get_study_plan_exists(self):
-        orch = self._make_orchestrator()
-        plan_dict = _valid_plan_dict()
-        mock_record = MagicMock()
-        mock_record.plan_json = json.dumps(plan_dict)
-        orch.db.query.return_value.filter.return_value.first.return_value = mock_record
-
-        result = orch.get_study_plan("g-123")
-        assert result == plan_dict
-
-    def test_get_study_plan_not_found(self):
-        orch = self._make_orchestrator()
-        orch.db.query.return_value.filter.return_value.first.return_value = None
-
-        result = orch.get_study_plan("g-123")
-        assert result is None
-
-    def test_generate_returns_existing_if_not_force(self):
-        orch = self._make_orchestrator()
-        plan_dict = _valid_plan_dict()
-        mock_record = MagicMock()
-        mock_record.plan_json = json.dumps(plan_dict)
-        orch.db.query.return_value.filter.return_value.first.return_value = mock_record
-
-        result = orch.generate_study_plan("g-123", force_regenerate=False)
-        assert result == plan_dict
-        orch.generator.generate_plan.assert_not_called()
-
-    def test_generate_plan_with_approval(self):
-        orch = self._make_orchestrator()
-
-        # No existing plan
-        orch.db.query.return_value.filter.return_value.first.side_effect = [
-            None,  # check existing plan
-            _make_guideline(),  # load guideline
-        ]
-
-        gen_result = {
-            "plan": _valid_plan_dict(),
-            "reasoning": "good reasoning",
-            "model": "gpt-5.2",
-        }
-        orch.generator.generate_plan.return_value = gen_result
-
-        orch.reviewer.review_plan.return_value = {
-            "approved": True,
-            "feedback": "Looks good",
-            "suggested_improvements": [],
-            "model": "gpt-4o",
-        }
-
-        result = orch.generate_study_plan("g-123")
-        assert result == _valid_plan_dict()
-        orch.db.add.assert_called_once()
-        orch.db.commit.assert_called_once()
-
-    def test_generate_plan_guideline_not_found(self):
-        orch = self._make_orchestrator()
-        orch.db.query.return_value.filter.return_value.first.side_effect = [
-            None,  # no existing plan
-            None,  # guideline not found
-        ]
-
-        with pytest.raises(ValueError, match="not found"):
-            orch.generate_study_plan("g-missing")
-
-    def test_generate_plan_with_revision(self):
-        orch = self._make_orchestrator()
-
-        orch.db.query.return_value.filter.return_value.first.side_effect = [
-            None,  # no existing plan
-            _make_guideline(),  # guideline
-        ]
-
-        gen_result = {
-            "plan": _valid_plan_dict(),
-            "reasoning": "",
-            "model": "gpt-5.2",
-        }
-        orch.generator.generate_plan.return_value = gen_result
-
-        orch.reviewer.review_plan.return_value = {
-            "approved": False,
-            "feedback": "Needs more practice steps",
-            "suggested_improvements": ["Add practice"],
-            "model": "gpt-4o",
-        }
-
-        # _improve_plan is called for revision
-        with patch.object(orch, "_improve_plan", return_value=_valid_plan_dict()):
-            result = orch.generate_study_plan("g-123")
-
-        assert result is not None
-        orch.db.add.assert_called_once()

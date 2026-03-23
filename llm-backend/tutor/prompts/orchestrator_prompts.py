@@ -1,7 +1,7 @@
 """
 Orchestrator Prompts
 
-Prompts used by the orchestrator for welcome messages and session summaries.
+Prompts used by the orchestrator for welcome messages.
 """
 
 from tutor.prompts.templates import PromptTemplate
@@ -36,24 +36,4 @@ Return JSON with two fields:
 - "response": The welcome message. {response_language_instruction}
 - "audio_text": The spoken version for TTS. {audio_language_instruction}""",
     name="welcome_message",
-)
-
-
-SESSION_SUMMARY_PROMPT = PromptTemplate(
-    """Summarize this tutoring session for context continuity.
-
-Concepts Covered: {concepts_covered}
-Examples Used: {examples_used}
-Stuck Points: {stuck_points}
-Correct Responses: {correct_count}
-Incorrect Responses: {incorrect_count}
-Misconceptions Detected: {misconceptions}
-
-Provide a brief (2-3 sentence) summary of:
-1. What was taught and understood
-2. Any challenges encountered
-3. Current progress status
-
-Keep it factual and concise.""",
-    name="session_summary",
 )

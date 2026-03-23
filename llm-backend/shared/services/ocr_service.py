@@ -119,22 +119,7 @@ class OCRService:
             if prompt:
                 prompt_text = prompt
             else:
-                # Detailed interpretation prompt (default)
-                prompt_text = """I have a book page image that I need you to interpret completely.
-
-Please read this image and give me each and everything that's present in this book page image.
-Give the complete interpretation in form of text - even the drawings and any images in this book page.
-
-Please provide:
-- All titles and headings
-- All body text and paragraphs
-- Descriptions of all images, diagrams, and illustrations
-- Labels and captions
-- Any equations, formulas, or special formatting
-- Page numbers and footers
-- Any other visual elements
-
-Format the output clearly with appropriate structure and formatting."""
+                prompt_text = (Path(__file__).parent.parent / "prompts" / "ocr_default.txt").read_text()
 
             # Create the API request
             response = self.client.chat.completions.create(

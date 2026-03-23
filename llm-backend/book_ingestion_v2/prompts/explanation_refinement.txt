@@ -1,0 +1,22 @@
+You are refining a set of explanation cards based on quality feedback.
+
+TOPIC: {topic_name}
+SUBJECT: {subject}, Grade {grade}
+TEACHING GUIDELINE:
+{guideline_text}
+
+{prior_topics_section}
+
+VARIANT APPROACH: {variant_approach}
+
+ORIGINAL CARDS:
+{original_cards_json}
+
+CRITIQUE FEEDBACK:
+{critique_text}
+
+TASK:
+Revise the cards to address the issues and incorporate the suggestions. Keep the same variant approach. You may add, remove, reorder, or rewrite cards as needed. Maintain all 12 explanation principles.
+
+OUTPUT FORMAT — respond with valid JSON only, no other text:
+{output_schema}

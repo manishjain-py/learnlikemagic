@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _GENERATION_PROMPT = (_PROMPTS_DIR / "explanation_generation.txt").read_text()
 _CRITIQUE_PROMPT = (_PROMPTS_DIR / "explanation_critique.txt").read_text()
+_REFINEMENT_PROMPT = (_PROMPTS_DIR / "explanation_refinement.txt").read_text()
 
 # ─── Pydantic models for structured LLM output ─────────────────────────────
 
@@ -363,28 +364,17 @@ class ExplanationGeneratorService:
             }
         }, indent=2)
 
-        refinement_prompt = f"""You are refining a set of explanation cards based on quality feedback.
-
-TOPIC: {topic}
-SUBJECT: {guideline.subject}, Grade {guideline.grade}
-TEACHING GUIDELINE:
-{guideline_text}
-
-{prior_topics_section}
-
-VARIANT APPROACH: {variant_config["approach"]}
-
-ORIGINAL CARDS:
-{json.dumps(cards_dicts, indent=2)}
-
-CRITIQUE FEEDBACK:
-{critique_text}
-
-TASK:
-Revise the cards to address the issues and incorporate the suggestions. Keep the same variant approach. You may add, remove, reorder, or rewrite cards as needed. Maintain all 12 explanation principles.
-
-OUTPUT FORMAT — respond with valid JSON only, no other text:
-{output_schema}"""
+        refinement_prompt = _REFINEMENT_PROMPT.format(
+            topic_name=topic,
+            subject=guideline.subject,
+            grade=guideline.grade,
+            guideline_text=guideline_text,
+            prior_topics_section=prior_topics_section,
+            variant_approach=variant_config["approach"],
+            original_cards_json=json.dumps(cards_dicts, indent=2),
+            critique_text=critique_text,
+            output_schema=output_schema,
+        )
 
         response = self.llm.call(
             prompt=refinement_prompt,

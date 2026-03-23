@@ -10,6 +10,7 @@ shown before the interactive session.
 """
 
 import json
+from pathlib import Path
 
 from autoresearch.tutor_teaching_quality.evaluation.config import EvalConfig
 
@@ -42,127 +43,11 @@ ROOT_CAUSE_CATEGORIES = [
     "other",
 ]
 
-EVALUATOR_PROMPT = """You are an expert evaluator of AI tutoring conversations, focused on teaching craft and persona-aware evaluation.
-
-You will be given a full transcript of a tutoring session between an AI tutor and a grade school student. The student was roleplaying as a specific persona with distinct characteristics and learning tendencies.
-
-Your job is to evaluate how well the TUTOR adapted to and taught THIS specific type of student across the evaluation dimensions below.
-
-## EVALUATION DIMENSIONS (score each 1-10)
-
-### 1. **Responsiveness** (1-10)
-*Does the tutor adapt to student signals?*
-
-- **9-10:** Tutor picks up on subtle cues (boredom, confusion, confidence), adjusts approach immediately. Asks follow-up questions that show it understood the student's state.
-- **7-8:** Tutor generally responds to what the student says. Adjusts pace/difficulty when student is clearly struggling or breezing through.
-- **5-6:** Tutor acknowledges student input but follows its own script. Some adaptation but mostly pre-planned.
-- **3-4:** Tutor largely ignores student signals. Same pace/approach regardless of student responses.
-- **1-2:** Tutor is a monologue. Student could be replaced by a "next" button.
-
-### 2. **Explanation Quality** (1-10)
-*Does the tutor explain well, and try different approaches when needed?*
-
-- **9-10:** Explanations are clear, varied, use concrete examples. When one approach fails, tries another (visual → story → analogy). Checks if the new approach worked.
-- **7-8:** Good explanations that mostly land. Occasionally tries a different approach. Uses age-appropriate language.
-- **5-6:** Explanations are correct but formulaic. One approach per concept. If student doesn't get it, repeats similar explanation.
-- **3-4:** Explanations are unclear, too abstract, or too wordy for the grade level.
-- **1-2:** Explanations are wrong, confusing, or absent.
-
-### 3. **Emotional Attunement** (1-10)
-*Does the tutor read the room?*
-
-- **9-10:** Tutor matches the student's emotional state perfectly. Celebrates breakthroughs, shows patience with struggle, doesn't over-praise easy wins. Feels like talking to a human who cares.
-- **7-8:** Generally warm and encouraging. Appropriate emotional responses most of the time.
-- **5-6:** Polite but flat. Stock phrases ("Great job!", "Not quite"). Doesn't differentiate between big and small moments.
-- **3-4:** Emotionally mismatched. Over-praises trivial things, dismisses confusion, or is monotone.
-- **1-2:** Cold, robotic, or condescending.
-
-### 4. **Pacing** (1-10)
-*Is the tutor moving at the right speed for this student?*
-
-- **9-10:** Perfect calibration. Speeds up with quick learners, slows down with strugglers. Skips what's mastered, lingers on what's hard. Natural transitions.
-- **7-8:** Generally good pacing with occasional mismatches (one too-easy question for an advanced student, or moving on before a struggling student is ready).
-- **5-6:** Fixed pace regardless of student. Follows the plan without much adaptation.
-- **3-4:** Consistently too fast or too slow. Doesn't read student's readiness.
-- **1-2:** Wildly mismatched. Teaching calculus to a confused student, or drilling basics with one who's bored.
-
-### 5. **Authenticity** (1-10)
-*Does this feel like a real teacher, or a chatbot?*
-
-- **9-10:** Completely natural. Varied language, appropriate informality, natural transitions. You'd believe this was a human tutor.
-- **7-8:** Mostly natural with occasional chatbot-isms (formulaic praise, over-structured responses).
-- **5-6:** Competent but clearly an AI. Structured responses, predictable patterns, stock phrases.
-- **3-4:** Obviously a chatbot. Repetitive structure, unnatural transitions, template-like responses.
-- **1-2:** Uncanny valley. Wrong register, bizarre phrasing, or clearly copy-pasted content.
-
-{card_phase_dimensions}
-
-## PERSONA-AWARE EVALUATION
-
-Judge the tutor's responses based on the specific student persona. The same tutor behavior might score differently with different personas:
-
-- **Ace students:** Did the tutor avoid patronizing? Speed up appropriately? Offer challenges?
-- **Struggling students:** Did the tutor try different approaches? Show patience? Address specific misconceptions?
-- **Quiet students:** Did the tutor draw them out with open questions? Check understanding despite minimal responses?
-- **Distracted students:** Did the tutor handle tangents gracefully? Redirect without shutting down interests?
-- **Confused-but-confident students:** Did the tutor probe confident wrong answers? Correct without crushing?
-
-## PROBLEM IDENTIFICATION
-
-Identify the **top 5 most significant problems** in this conversation. For each problem:
-- Cite specific turn numbers where the problem occurs
-- Describe what went wrong in the context of this persona
-- Rate severity: "critical", "major", or "minor"
-- Assign a root cause category from: {root_cause_list}
-
-## WRITING STYLE
-
-Keep ALL text extremely concise. Sacrifice grammar for concision. Lead with facts, skip
-filler words and transitions. One sentence where possible. No restating the obvious.
-
-## OUTPUT FORMAT (JSON)
-
-Return a JSON object with this exact structure:
-{{
-  "scores": {{
-{scores_schema}
-  }},
-  "dimension_analysis": {{
-{analysis_schema}
-  }},
-  "problems": [
-    {{
-      "title": "<5-8 word problem title>",
-      "turns": [<turn numbers>],
-      "description": "<1-2 sentence description — what went wrong, why it matters for this persona>",
-      "quote": "<shortest quote that shows the problem>",
-      "severity": "critical|major|minor",
-      "root_cause": "<category from list above>"
-    }}
-  ],
-  "summary": "<2-3 sentence assessment — what worked, what failed, one key fix>"
-}}"""
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+EVALUATOR_PROMPT = (_PROMPTS_DIR / "evaluator.txt").read_text()
 
 # Additional dimensions shown only when card phase was present
-CARD_PHASE_DIMENSIONS_TEXT = """
-### 6. **Card-to-Session Coherence** (1-10)
-*Does the interactive session feel connected to the explanation cards the student just read?*
-
-- **9-10:** Tutor naturally references and builds on the specific analogies, examples, and concepts from the cards. Feels like one continuous learning experience. Uses cards as a springboard — "Remember when we talked about X? Now let's see what happens when..."
-- **7-8:** Tutor is aware of the cards and avoids repetition. Occasionally builds on card content. Mostly coherent but doesn't actively leverage what the student already read.
-- **5-6:** Tutor doesn't repeat card content (good) but also doesn't reference it. Cards and interactive session feel like two separate lessons that happen to be about the same topic.
-- **3-4:** Tutor re-explains things the cards already covered, or contradicts the card approach. Student would feel confused about which explanation to trust.
-- **1-2:** No connection at all. Tutor acts as if the student is hearing about this topic for the first time.
-
-### 7. **Transition Quality** (1-10)
-*How smooth is the bridge from reading explanation cards to interactive teaching?*
-
-- **9-10:** Transition feels natural and purposeful. Tutor checks what the student remembers from the cards, identifies gaps, and launches into interactive teaching from exactly the right point. Student feels their card-reading time was valued.
-- **7-8:** Decent transition. Tutor acknowledges the cards and moves into interaction. Might miss probing what the student actually absorbed.
-- **5-6:** Abrupt but functional. Student goes from reading cards to being asked questions without much bridging. Feels like a gear shift.
-- **3-4:** Jarring transition. Generic "now let's check your understanding" with no connection to what was just read. Student feels like they walked into a different class.
-- **1-2:** No transition at all, or the transition confuses the student about what they should know.
-"""
+CARD_PHASE_DIMENSIONS_TEXT = (_PROMPTS_DIR / "card_phase_dimensions.txt").read_text()
 
 
 class ConversationEvaluator:

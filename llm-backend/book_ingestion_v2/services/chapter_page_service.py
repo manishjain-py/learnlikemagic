@@ -30,27 +30,7 @@ logger = logging.getLogger(__name__)
 SUPPORTED_FORMATS = {".png", ".jpg", ".jpeg", ".tiff", ".webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
-V2_OCR_PROMPT = """Extract the educational content from this textbook page image.
-
-Focus ONLY on content relevant for teaching and learning:
-- All titles, headings, and subheadings
-- All body text, paragraphs, and explanations
-- Math problems, equations, formulas, and worked examples
-- Questions, exercises, and activities
-- Data from tables, charts, and graphs (the actual values/labels)
-- Text in diagrams that conveys educational meaning
-- Captions that explain concepts
-- Key terms, definitions, and vocabulary
-
-IGNORE and DO NOT describe:
-- Decorative illustrations, background art, borders, and ornaments
-- Cartoon characters, mascots, or decorative images
-- Background colors, shapes, or visual design elements
-- Page layout descriptions (columns, margins, etc.)
-- Publisher logos, watermarks, or branding
-
-Output the content in a clean, structured format with headings preserved.
-Use plain text — no markdown image descriptions or visual element callouts."""
+V2_OCR_PROMPT = (Path(__file__).parent.parent / "prompts" / "ocr_page_extraction.txt").read_text()
 
 
 class ChapterPageService:

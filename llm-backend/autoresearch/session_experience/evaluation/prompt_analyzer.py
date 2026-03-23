@@ -10,67 +10,12 @@ symptoms (bad messages) to causes (prompt instructions).
 """
 
 import json
+from pathlib import Path
 
 from autoresearch.session_experience.evaluation.config import SessionExperienceConfig
 
 
-PROMPT_ANALYZER_PROMPT = """You are an expert prompt engineer analyzing why an AI tutor produced unnatural messages during a teaching session.
-
-You will receive:
-1. A list of FLAGGED MESSAGES — specific tutor messages identified as unnatural
-2. The MASTER TUTOR PROMPT — the exact system prompt + turn prompt that was used to generate those messages
-
-Your job: trace each flagged message back to the specific prompt instruction(s) that caused it. The goal is to identify what to CHANGE in the prompt to fix these issues.
-
-## HOW TO ANALYZE
-
-For each flagged message:
-1. Read the flagged message and its description
-2. Read the master tutor prompt carefully
-3. Find the specific rule, instruction, or section that CAUSED the issue:
-   - Maybe a rule is too aggressive (e.g., "always ask a question" → forces questions even when natural response would be a statement)
-   - Maybe rules conflict (e.g., "ACCELERATE" directive + "check understanding" → tutor rushes through checks)
-   - Maybe a rule is missing (e.g., no instruction on how to handle vague "ok" responses)
-   - Maybe the tone/language in the prompt bleeds into the response
-   - Maybe the pacing directive is inappropriate for the student's current state
-   - Maybe the card summary section doesn't give enough context to build on
-
-## OUTPUT FORMAT (JSON)
-
-Return a JSON object:
-{{
-  "analyses": [
-    {{
-      "turn": <turn number of flagged message>,
-      "issue_category": "<from the flagged message>",
-      "root_instructions": [
-        {{
-          "instruction": "<quote or paraphrase the specific prompt instruction causing this>",
-          "location": "<where in the prompt: e.g. 'Rule 9: Calibrate praise', 'pacing directive: ACCELERATE', 'precomputed_explanation_summary_section'>",
-          "mechanism": "<1 sentence: HOW this instruction caused the problem>"
-        }}
-      ],
-      "suggested_fix": "<1-2 sentences: what to change in the prompt to fix this>",
-      "target_file": "<which file to modify: master_tutor_prompts.py, master_tutor.py, or session_service.py>",
-      "fix_type": "modify_rule|add_rule|remove_rule|reword|restructure"
-    }}
-  ],
-  "cross_cutting_patterns": [
-    {{
-      "pattern": "<a pattern that appears across multiple flagged messages>",
-      "root_cause": "<the underlying prompt issue driving this pattern>",
-      "fix_priority": "high|medium|low"
-    }}
-  ],
-  "top_recommendation": "<THE single most impactful change to make, in 2-3 sentences>"
-}}
-
-RULES:
-- Be SPECIFIC about which instruction/rule causes the issue — don't just say "prompt quality"
-- Quote or closely paraphrase the actual prompt text when citing root instructions
-- Focus on actionable fixes, not vague suggestions
-- If multiple instructions interact to cause a problem, list all of them
-- The suggested_fix should be concrete enough that someone can implement it directly"""
+PROMPT_ANALYZER_PROMPT = (Path(__file__).parent / "prompts" / "prompt_analyzer.txt").read_text()
 
 
 class PromptAnalyzer:

@@ -8,6 +8,7 @@ content differentiation, simplicity, concept accuracy, presentation quality.
 
 import json
 import logging
+from pathlib import Path
 
 logger = logging.getLogger("autoresearch.simplification_quality")
 
@@ -18,79 +19,7 @@ REASON_LABELS = {
     "different_approach": "Explain it differently",
 }
 
-EVALUATOR_PROMPT = """You are an expert evaluator for an AI tutoring app's "I didn't understand" simplification feature. A student read an explanation card and said they didn't understand. The system generated a simplified version. Your job is to judge how well the simplified card addresses the student's feedback.
-
-## SCORING DIMENSIONS (each 1-10)
-
-### 1. reason_adherence
-Does the simplified card actually address what the student asked for?
-
-Reason-specific expectations:
-- **"example"** (student said "I need an example"):
-  Score 1 = No example at all, just rephrased the theory
-  Score 5 = Has an example but it's abstract or not relatable for this grade
-  Score 10 = Has a concrete, relatable, age-appropriate example that directly illustrates the concept
-
-- **"simpler_words"** (student said "The language is tough"):
-  Score 1 = Same vocabulary level or even harder
-  Score 5 = Some words simplified but key terms still complex
-  Score 10 = Everyday language throughout, technical terms explained in simple words
-
-- **"elaborate"** (student said "I need more detail"):
-  Score 1 = Same level of detail or less
-  Score 5 = Adds some detail but misses the parts that needed elaboration
-  Score 10 = Breaks down the concept into finer steps, fills in the gaps the original left
-
-- **"different_approach"** (student said "Explain it differently"):
-  Score 1 = Same structure and approach, just reworded
-  Score 5 = Somewhat different angle but still recognizably the same explanation
-  Score 10 = Completely fresh approach — different analogy, different structure, different entry point
-
-### 2. content_differentiation
-Is the content genuinely different from the original card (and from previous attempts if any)?
-Not just rephrased — a different angle, analogy, or structure.
-Score 1 = Copy-paste with minor word swaps
-Score 5 = Same structure but different wording and some new elements
-Score 10 = Entirely fresh explanation that covers the same concept from a new angle
-
-### 3. simplicity
-Is the language simple enough for the target grade?
-Score 1 = University-level language, long complex sentences
-Score 5 = Mix of simple and complex, some sentences too long
-Score 10 = Short sentences, everyday words, one idea at a time, perfect for the grade
-
-### 4. concept_accuracy
-Does it still explain the same concept correctly?
-Score 1 = Wrong information or drifted to a different topic entirely
-Score 5 = Mostly correct but has a subtle inaccuracy or misleading simplification
-Score 10 = Perfectly accurate, simplifies without distorting
-
-### 5. presentation_quality
-Clean formatting, no meta-commentary, good structure.
-Score 1 = Starts with "Let me explain this differently...", has "Let's simplify:" in the title, is a wall of text
-Score 5 = Mostly clean but has minor issues (slightly verbose, one meta-comment)
-Score 10 = Clean title (no prefixes), no preamble, well-structured, appropriate length
-
-## OUTPUT FORMAT (JSON)
-
-Return a JSON object:
-{{
-  "reason_adherence": {{"score": <1-10>, "rationale": "<1-2 sentences>"}},
-  "content_differentiation": {{"score": <1-10>, "rationale": "<1-2 sentences>"}},
-  "simplicity": {{"score": <1-10>, "rationale": "<1-2 sentences>"}},
-  "concept_accuracy": {{"score": <1-10>, "rationale": "<1-2 sentences>"}},
-  "presentation_quality": {{"score": <1-10>, "rationale": "<1-2 sentences>"}},
-  "overall_assessment": "<2-3 sentences: overall quality of this simplification>",
-  "specific_issues": ["<issue 1>", "<issue 2>"],
-  "suggestions": ["<suggestion 1>"]
-}}
-
-CRITICAL RULES:
-- Be strict. A score of 7+ means genuinely good, not just "okay".
-- Judge from the perspective of a grade {grade} student.
-- If the student asked for an example and there's no example, reason_adherence MUST be ≤ 3.
-- If the simplified card is essentially the same text reworded, content_differentiation MUST be ≤ 3.
-- If there are previous attempts shown, differentiation must also be from those attempts, not just the original."""
+EVALUATOR_PROMPT = (Path(__file__).parent / "prompts" / "evaluator.txt").read_text()
 
 
 class SimplificationEvaluator:
