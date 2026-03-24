@@ -12,7 +12,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  S3 + CloudFront                                                │
 │  Routes: /learn/*, /learn/.../teach/:id, /learn/.../exam/:id,   │
 │          /learn/.../clarify/:id, /login/*, /profile,            │
-│          /report-card, /history, /admin/*                       │
+│          /report-card, /report-issue, /history, /admin/*        │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST API + WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -23,8 +23,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │           auth (+ enrichment, personality)                      │
 │  Root API: api/ (docs, test_scenarios, pixi_poc)                 │
 │  Shared: llm_service, llm_config_service, feature_flag_service, │
-│          anthropic_adapter, claude_code_adapter, ocr_service,   │
-│          s3_client, api, models, utils, repositories, prompts   │
+│          issue_service, anthropic_adapter, claude_code_adapter,  │
+│          ocr_service, s3_client, api, models, utils, repos       │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -34,7 +34,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │          feature_flags, session_feedback, kid_enrichment_profiles,│
 │          kid_personalities, book_chapters, chapter_pages,        │
 │          chapter_processing_jobs, chapter_chunks, chapter_topics,│
-│          topic_explanations                                      │
+│          topic_explanations, issues                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -108,7 +108,7 @@ llm-backend/
 │   ├── api/
 │   ├── services/         # generator_service, reviewer_service, orchestrator
 │   └── models/
-├── autoresearch/         # Autonomous experiment pipelines (4 pipelines)
+├── autoresearch/         # Autonomous experiment pipelines (6 pipelines)
 │   ├── tutor_teaching_quality/
 │   │   ├── evaluation/   # Session evaluation pipeline (flat structure)
 │   │   │   ├── api.py, evaluator.py, session_runner.py, student_simulator.py
@@ -120,6 +120,10 @@ llm-backend/
 │   │   ├── evaluation/   # Pre-computed explanation evaluation pipeline
 │   ├── session_experience/
 │   │   ├── evaluation/   # Session UX/experience evaluation pipeline
+│   ├── simplicity_quality/
+│   │   ├── evaluation/   # Response simplicity evaluation pipeline
+│   ├── simplification_quality/
+│   │   ├── evaluation/   # Simplification quality evaluation pipeline
 ├── auth/                 # Authentication, user profiles, enrichment, personality
 │   ├── api/              # auth_routes, profile_routes, enrichment_routes
 │   ├── services/         # auth_service, profile_service, enrichment_service, personality_service
@@ -128,9 +132,9 @@ llm-backend/
 │   ├── middleware/        # auth_middleware
 │   └── prompts/          # personality_prompts
 ├── shared/               # Cross-module utilities
-│   ├── api/              # Health checks, LLM config admin, feature flag admin endpoints
-│   ├── services/         # LLM service, Anthropic adapter, Claude Code adapter, LLM config service, feature flag service, OCR service
-│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag, explanation repos
+│   ├── api/              # Health checks, LLM config admin, feature flag admin, issue reporting endpoints
+│   ├── services/         # LLM service, Anthropic adapter, Claude Code adapter, LLM config service, feature flag service, issue service, OCR service
+│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag, explanation, issue repos
 │   ├── models/           # Domain models, ORM entities, Pydantic schemas
 │   ├── prompts/          # Shared prompt loader
 │   └── utils/            # Constants, exceptions, formatting helpers, S3 client
@@ -182,6 +186,7 @@ Most modules follow the layered internal structure:
 | v2 processing routes | `/admin/v2/books/{id}/chapters/{id}` | Chapter processing, topic extraction, jobs (V2) |
 | v2 sync routes | `/admin/v2/books/{id}` | Sync processed topics to curriculum + results (V2) |
 | pixi poc | `/api/admin/pixi-poc` | Pixi.js code generation from text prompts (PoC) |
+| issues | `/issues` | Issue reporting (create, list, update status, screenshot upload/retrieval) |
 
 ---
 
@@ -206,7 +211,8 @@ llm-frontend/src/
 │   ├── ProfilePage.tsx
 │   ├── EnrichmentPage.tsx    # Parent enrichment profile form + personality card
 │   ├── SessionHistoryPage.tsx
-│   └── ReportCardPage.tsx    # Student report card (coverage %, exam scores)
+│   ├── ReportCardPage.tsx    # Student report card (coverage %, exam scores)
+│   └── ReportIssuePage.tsx   # Issue reporting form (text, voice, screenshots)
 ├── hooks/
 │   └── useStudentProfile.ts  # Student profile hook (board, grade, country)
 ├── contexts/
@@ -238,7 +244,9 @@ llm-frontend/src/
 │   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
 │   │   │   ├── FeatureFlagsPage.tsx  # Feature flag toggle admin
 │   │   │   ├── TestScenariosPage.tsx # E2E test results viewer
-│   │   │   └── PixiJsPocPage.tsx    # Pixi.js visual generation PoC
+│   │   │   ├── PixiJsPocPage.tsx    # Pixi.js visual generation PoC
+│   │   │   ├── InteractiveVisualsPocPage.tsx # Interactive template testing PoC
+│   │   │   └── AdminIssuesPage.tsx  # Issue management (list, status update, screenshots)
 │   │   └── types/
 │   │       └── index.ts             # TypeScript types for admin features (eval, LLM config, feature flags)
 │   └── devtools/         # Debug tools (shown in chat session)
@@ -279,6 +287,7 @@ llm-frontend/src/
 | `/profile/enrichment` | AppShell > EnrichmentPage | Protected + Onboarding | Parent enrichment profile + personality |
 | `/history` | AppShell > SessionHistoryPage | Protected + Onboarding | Past sessions |
 | `/report-card` | AppShell > ReportCardPage | Protected + Onboarding | Student report card |
+| `/report-issue` | AppShell > ReportIssuePage | Protected + Onboarding | Report an issue (text, voice, screenshots) |
 | `/onboarding` | OnboardingFlow | Protected | First-time setup |
 | `/admin` | AdminLayout > AdminHome | Unprotected | Admin dashboard landing page with links to all admin sections |
 | `/admin/books` | (redirect) | Unprotected | Redirects to `/admin/books-v2` |
@@ -291,6 +300,8 @@ llm-frontend/src/
 | `/admin/feature-flags` | AdminLayout > FeatureFlagsPage | Unprotected | Toggle runtime feature flags on/off |
 | `/admin/test-scenarios` | AdminLayout > TestScenariosPage | Unprotected | E2E test results and screenshots |
 | `/admin/pixi-js-poc` | AdminLayout > PixiJsPocPage | Unprotected | Pixi.js visual generation PoC |
+| `/admin/interactive-poc` | AdminLayout > InteractiveVisualsPocPage | Unprotected | Interactive visual template testing PoC |
+| `/admin/issues` | AdminLayout > AdminIssuesPage | Unprotected | Issue management (list, status, screenshots) |
 
 ---
 
@@ -398,6 +409,26 @@ Runtime feature toggles stored in the `feature_flags` DB table. Flags are seeded
 | `shared/api/feature_flag_routes.py` | Admin API endpoints (list, toggle) |
 | `shared/models/entities.py` (`FeatureFlag`) | ORM entity for `feature_flags` table |
 | `db.py` (`_FEATURE_FLAG_SEEDS`) | Default flag seeds applied during migration |
+
+---
+
+## Issue Reporting
+
+Students report issues via text, voice (transcribed via Whisper), or screenshot attachments. Issues are stored in the `issues` DB table and managed by admins.
+
+- **Student UI**: `/report-issue` page — text input, voice recording with transcription, screenshot upload
+- **Admin UI**: `/admin/issues` page — list/filter by status, view details + screenshots, update status (open / in_progress / closed)
+- **API**: `POST /issues` (create), `GET /issues` (list), `PATCH /issues/{id}/status` (update), `POST /issues/upload-screenshot`, `GET /issues/{id}/screenshots/{s3_key}` (presigned URL)
+- **Screenshots**: Uploaded to S3 under `issues/{id}/` prefix; retrieved via presigned URLs
+
+### Key Issue Reporting Files
+
+| File | Purpose |
+|------|---------|
+| `shared/api/issue_routes.py` | Issue API endpoints (CRUD, screenshot upload/retrieval) |
+| `shared/services/issue_service.py` | Issue business logic, S3 screenshot upload |
+| `shared/repositories/issue_repository.py` | CRUD for `issues` table |
+| `shared/models/entities.py` (`Issue`) | ORM entity for `issues` table |
 
 ---
 

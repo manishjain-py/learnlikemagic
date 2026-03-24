@@ -100,6 +100,19 @@ Explanation generation can be triggered per-book, per-chapter, or per-topic from
 
 The admin can view explanation status per chapter (which topics have explanations and how many variants each has), view full explanation card details per topic, and delete explanations per topic or per chapter.
 
+### Step 8: Enrich with Interactive Visuals
+
+After explanations exist, the admin can enrich explanation cards with pre-computed interactive visuals (PixiJS-based). This is a separate pipeline that runs after explanation generation.
+
+For each explanation variant, the system:
+
+1. **Decides** which cards benefit from a visual and produces a specification (title, summary, detailed spec). Cards can be tagged as needing a static visual or an animated visual, or no visual.
+2. **Generates PixiJS code** from each spec -- code that renders the visual in the browser.
+3. **Validates** the generated code (non-empty, within size limits, correctly uses the rendering API). Failed code is retried once with error feedback.
+4. **Stores** the visual data (output type, title, summary, spec, PixiJS code) back into the explanation card's `visual_explanation` field.
+
+Visual enrichment can be triggered per-book, per-chapter, or per-topic. By default it skips cards that already have visuals; a force option re-generates them. Runs as a background job.
+
 ---
 
 ## Recovery and Reprocessing

@@ -34,6 +34,9 @@ Sync to teaching_guidelines table
 Pre-Computed Explanations (LLM generate → critique → refine per variant)
     |
     v
+Visual Enrichment (LLM decide+spec → generate PixiJS code → validate → store)
+    |
+    v
 Study Plan Generation (LLM generate → review → improve loop)
     |
     v
@@ -317,6 +320,7 @@ Sync is idempotent: deletes existing guidelines for the chapter before creating 
 | GET | `/admin/v2/books/{book_id}/explanation-status` | Per-topic variant counts for a chapter (required `chapter_id` query param) |
 | GET | `/admin/v2/books/{book_id}/explanations` | Full card data for a topic (required `guideline_id` query param) |
 | DELETE | `/admin/v2/books/{book_id}/explanations` | Delete explanations (requires `guideline_id` or `chapter_id` query param) |
+| POST | `/admin/v2/books/{book_id}/generate-visuals` | Generate PixiJS visuals for explanation cards (query params: `chapter_id`, `guideline_id`, `force`) |
 | GET | `/admin/v2/books/{book_id}/results` | Book-level results overview |
 
 ---
@@ -370,6 +374,55 @@ Each explanation is stored as a `TopicExplanation` row with:
 - Unique constraint on (guideline_id, variant_key)
 
 **LLM config key:** `explanation_generator` (separate from `book_ingestion_v2` key)
+
+---
+
+## Visual Enrichment (PixiJS)
+
+**Service:** `book_ingestion_v2/services/animation_enrichment_service.py` (`AnimationEnrichmentService`)
+
+Enriches existing explanation cards with pre-computed PixiJS interactive visuals. Fully decoupled from explanation generation -- runs after, reads/writes the same `topic_explanations` table.
+
+### Pipeline Per Variant
+
+1. **Decision + Spec**: Calls LLM with `visual_decision_and_spec.txt` prompt and `reasoning_effort="medium"`. For each card, returns a `VisualDecision`: `decision` (no_visual / static_visual / animated_visual), `title`, `visual_summary`, `visual_spec`. Strips `audio_text` from cards to save tokens.
+2. **Code Generation**: For each card selected for visuals, calls LLM with `visual_code_generation.txt` prompt and `reasoning_effort="none"`. Returns raw PixiJS code (markdown fences are stripped).
+3. **Validation**: Checks code is non-empty, under `MAX_CODE_LENGTH` (5000 chars), and contains `app.stage.addChild` or `stage.addChild`. On failure, retries once with error feedback appended to the prompt.
+4. **Storage**: Writes `visual_explanation` object into the card's `cards_json` entry:
+   ```json
+   {
+     "output_type": "static_visual | animated_visual",
+     "title": "...",
+     "visual_summary": "...",
+     "visual_spec": "...",
+     "pixi_code": "..."
+   }
+   ```
+
+### Dual LLM Architecture
+
+Uses two separate LLM instances:
+- `llm_service` (config key: `animation_enrichment`): Lighter model for decision + spec generation
+- `code_gen_llm` (config key: `animation_code_gen`): Heavier model for reliable PixiJS code generation
+
+### Entry Points
+
+- `enrich_guideline(guideline, force=False, variant_keys=None)`: single guideline
+- `enrich_chapter(book_id, chapter_id=None, force=False)`: chapter or book-wide. Supports `job_service`/`job_id` for progress tracking.
+
+### Skip Logic
+
+Checks if cards already have `visual_explanation.pixi_code`. Skips unless `force=True`.
+
+### API Routes
+
+Defined in `sync_routes.py`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/v2/books/{book_id}/generate-visuals` | Generate PixiJS visuals (query params: `chapter_id`, `guideline_id`, `force`) |
+
+Runs as background job with `v2_visual_enrichment` job type.
 
 ---
 
@@ -556,6 +609,8 @@ books/{book_id}/
 | `prompts/curriculum_context_generation.txt` | `ChapterFinalizationService` | Generate prior-topics context for curriculum continuity |
 | `prompts/explanation_generation.txt` | `ExplanationGeneratorService` | Generate explanation cards for a teaching variant |
 | `prompts/explanation_critique.txt` | `ExplanationGeneratorService` | Critique explanation cards against quality principles |
+| `prompts/visual_decision_and_spec.txt` | `AnimationEnrichmentService` | Decide which cards get visuals and write specs |
+| `prompts/visual_code_generation.txt` | `AnimationEnrichmentService` | Generate PixiJS code from a visual spec |
 | `shared/prompts/templates/study_plan_generator.txt` | `StudyPlanGeneratorService` | Generate 3-5 step study plan from guideline |
 | `shared/prompts/templates/session_plan_generator.txt` | `StudyPlanGeneratorService.generate_session_plan()` | Generate post-explanation interactive session plan |
 | `shared/prompts/templates/study_plan_reviewer.txt` | `StudyPlanReviewerService` | Review plan quality, approve/reject with feedback |
@@ -568,6 +623,8 @@ books/{book_id}/
 
 - **LLM config key (extraction):** `book_ingestion_v2` -- stored in the `llm_configs` table, specifies provider and model_id for OCR, planning, chunk extraction, and finalization
 - **LLM config key (explanations):** `explanation_generator` -- separate config for explanation generation
+- **LLM config key (visual decision):** `animation_enrichment` -- lighter model for deciding which cards get visuals and writing specs
+- **LLM config key (visual code gen):** `animation_code_gen` -- heavier model for generating PixiJS code
 - **Chunk size:** 3 pages (`CHUNK_SIZE` in `constants.py`)
 - **Chunk retries:** 3 attempts with exponential backoff (`CHUNK_MAX_RETRIES`)
 - **Heartbeat stale threshold:** 600 seconds / 10 minutes (`HEARTBEAT_STALE_THRESHOLD`)
@@ -575,6 +632,7 @@ books/{book_id}/
 - **Planning deviation threshold:** 30% (`PLANNING_DEVIATION_THRESHOLD` in `constants.py`)
 - **Planning deviation min count:** 3 (`PLANNING_DEVIATION_MIN_COUNT` in `constants.py`)
 - **Explanation card limits:** 3 minimum, 15 maximum (`MIN_CARDS`, `MAX_CARDS` in `explanation_generator_service.py`)
+- **Visual code max length:** 5000 chars (`MAX_CODE_LENGTH` in `animation_enrichment_service.py`)
 - **Max TOC images:** 5
 - **Max TOC image size:** 10 MB
 - **Max page image size:** 20 MB
@@ -601,7 +659,7 @@ books/{book_id}/
 
 | File | Purpose |
 |------|---------|
-| `book_ingestion_v2/constants.py` | Enums (ChapterStatus, V2JobType [includes `v2_explanation_generation`], V2JobStatus, OCRStatus, TopicStatus), config constants, deviation thresholds |
+| `book_ingestion_v2/constants.py` | Enums (ChapterStatus, V2JobType [includes `v2_explanation_generation`, `v2_visual_enrichment`], V2JobStatus, OCRStatus, TopicStatus), config constants, deviation thresholds |
 | `book_ingestion_v2/models/database.py` | ORM models: BookChapter, ChapterPage, ChapterProcessingJob (with `planned_topics_json`), ChapterChunk, ChapterTopic (with `prior_topics_context`, `topic_assignment`) |
 | `book_ingestion_v2/models/schemas.py` | Pydantic request/response schemas for all V2 APIs including `ExplanationGenerationResponse` |
 | `book_ingestion_v2/models/processing_models.py` | Internal pipeline models: ChunkWindow, TopicAccumulator, RunningState, PlannedTopic, ChapterTopicPlan, ChunkInput, ChunkExtractionOutput (TopicUpdate with `topic_assignment`, `reasoning`, `unplanned_justification`), ConsolidationOutput (with `deviations`), ConsolidationDeviation, FinalizationResult, TopicCurriculumContext, CurriculumContextOutput |
@@ -615,6 +673,7 @@ books/{book_id}/
 | `book_ingestion_v2/services/chapter_finalization_service.py` | Topic merge, consolidation, sequencing, deviation tracking, curriculum context generation |
 | `book_ingestion_v2/services/topic_sync_service.py` | Sync to teaching_guidelines table (includes `prior_topics_context`) |
 | `book_ingestion_v2/services/explanation_generator_service.py` | Multi-variant pre-computed explanation generation (generate -> critique -> refine per variant) |
+| `book_ingestion_v2/services/animation_enrichment_service.py` | PixiJS visual enrichment for explanation cards (decide -> generate code -> validate -> store) |
 | `book_ingestion_v2/services/chapter_job_service.py` | Job lock, progress tracking, stale detection |
 | `book_ingestion_v2/utils/chunk_builder.py` | Build 3-page processing windows |
 | `book_ingestion_v2/repositories/` | Data access: chapter_repository, chapter_page_repository, chunk_repository, topic_repository, processing_job_repository |
@@ -626,6 +685,7 @@ books/{book_id}/
 | `study_plans/services/reviewer_service.py` | LLM-based study plan quality review |
 | `shared/prompts/templates/study_plan_*.txt` | Prompts for study plan generation, review, and improvement |
 | `shared/prompts/templates/session_plan_generator.txt` | Prompt for post-explanation session plan generation |
+| `scripts/reprocess_chapter_pipeline.py` | CLI script for full chapter reprocessing: OCR → Topics → Sync → Explanations (each step retryable independently) |
 | `autoresearch/book_ingestion_quality/run_experiment.py` | CLI entry point for ingestion evaluation (runs extraction + LLM judge) |
 | `autoresearch/book_ingestion_quality/evaluation/evaluator.py` | LLM judge that scores extraction quality across 3 dimensions |
 | `autoresearch/book_ingestion_quality/evaluation/pipeline_runner.py` | Runs or loads extraction pipeline output for evaluation |

@@ -36,7 +36,13 @@ The denominator (total concepts in the plan) comes from the most recent session'
 
 ## Progress Badges
 
-When browsing chapters and topics to start a new session, each chapter and topic shows a progress badge based on the student's past Teach Me sessions. These badges give a quick at-a-glance sense of what has been started and how far along each topic is, without needing to open the report card.
+When browsing chapters and topics to start a new session, each chapter and topic shows a progress badge based on the student's past Teach Me sessions. Three statuses:
+
+- **Completed** (checkmark) — topic coverage >= 80%; for chapters, average coverage across all topics >= 80%
+- **In Progress** (highlighted) — coverage > 0% but below 80%
+- **Not Started** (default) — no Teach Me sessions yet
+
+Topics also show a coverage percentage ("42% covered") when progress exists.
 
 ---
 
@@ -65,7 +71,7 @@ Tapping a past exam opens a detailed **Exam Review** page showing:
 On the mode selection screen, if the student has an incomplete Teach Me lesson or an in-progress exam for that topic, the app shows a resume option:
 
 - **Continue Lesson** — Shows the coverage so far and lets the student pick up where they left off. A "Start Fresh" button is also available to begin a new lesson instead.
-- **Resume Exam** — Shows how many questions have been answered and lets the student continue the exam.
+- **Resume Exam** — Shows how many questions have been answered and lets the student continue the exam. While an incomplete exam exists, the "Take Exam" button is hidden to prevent duplicate exams.
 
 ---
 

@@ -104,7 +104,7 @@ app.include_router(health.router)
 app.include_router(curriculum.router)
 app.include_router(sessions.router)
 app.include_router(transcription.router)  # Audio-to-text via Whisper
-app.include_router(tts.router)              # Text-to-speech via OpenAI TTS
+app.include_router(tts.router)              # Text-to-speech via Google Cloud TTS
 app.include_router(evaluation_router)  # Evaluation pipeline endpoints
 app.include_router(auth_router)              # Auth: POST /auth/sync
 app.include_router(profile_router)           # Profile: GET/PUT /profile

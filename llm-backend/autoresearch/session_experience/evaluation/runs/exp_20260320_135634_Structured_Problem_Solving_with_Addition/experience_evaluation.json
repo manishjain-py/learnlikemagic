@@ -1,0 +1,70 @@
+{
+  "evaluated_at": "2026-03-20T14:01:13.314187",
+  "topic_name": "Structured Problem Solving with Addition",
+  "naturalness_score": 5,
+  "issue_count_by_severity": {
+    "critical": 0,
+    "major": 5,
+    "minor": 2
+  },
+  "flagged_messages": [
+    {
+      "turn": 0,
+      "message_snippet": "Hi! Today we'll use **addition** to solve little story problems, like counting",
+      "issue_category": "unnatural_language",
+      "description": "Describes 14 content-heavy cards as 'some short cards' \u2014 a mismatch that sets a false expectation. A student told to expect 'some short cards' and then faced with 14 cards covering 5 steps, 3 check methods, two-part problems, and error-checking may feel misled or overwhelmed from the start.",
+      "severity": "minor",
+      "surrounding_context": "This is the only framing the student gets before 14 dense cards. Getting this wrong means the student enters the card sequence without an accurate sense of what's coming."
+    },
+    {
+      "turn": 0,
+      "message_snippet": "[Card 7] Now let's solve and check. Step 4 \u2014 Solve: 156 + 238. Remember regrouping",
+      "issue_category": "information_dump",
+      "description": "This card is teaching step 4 of the problem-solving process but buries a full regrouping walkthrough (three separate digit operations with carries) mid-explanation, doing two cognitive jobs at once. For a student who needs 2-3 passes per concept, combining these makes both harder to absorb.",
+      "severity": "major",
+      "surrounding_context": "Card 6 cleanly set up the balloon problem and ended on a clear setup. Card 7 then recaps regrouping arithmetic mid-explanation of problem-solving steps. A student who is still processing the 5-step framework now also has to track digit-by-digit arithmetic inside the same message."
+    },
+    {
+      "turn": 0,
+      "message_snippet": "[Card 9] Some problems ask you two things. And here's the tricky part \u2014 you need t",
+      "issue_category": "complexity_mismatch",
+      "description": "Cards 1-8 built up to a clean checklist, and Card 9 immediately opens with 'here's the tricky part,' signaling a difficulty jump before the student has practiced anything. For a student who needs multiple explanations before a concept clicks, layering in a new problem type here \u2014 before any independent practice \u2014 is too early.",
+      "severity": "major",
+      "surrounding_context": "The student has just absorbed 8 cards covering the core framework. Instead of letting that settle, Card 9 introduces a new category of problem. This student profile would likely tune out or feel newly overwhelmed at exactly the moment they were starting to feel like they understood."
+    },
+    {
+      "turn": 0,
+      "message_snippet": "[Card 10] Part 2 uses subtraction \u2014 taking away \u2014 which you already know. Take the",
+      "issue_category": "abrupt_shift",
+      "description": "The topic is 'Structured Problem Solving with Addition,' but this card introduces subtraction without warning. The phrase 'which you already know' assumes mastery of a separate skill, and for a student already struggling with addition word problems, this reframes the scope of the lesson mid-stream.",
+      "severity": "major",
+      "surrounding_context": "The welcome message said 'we'll use addition.' Card 10 introduces 373 - 100 = 273 without any transition or re-scoping. A student already managing the 5-step checklist now has to track a second operation type in a lesson they thought was only about addition."
+    },
+    {
+      "turn": 0,
+      "message_snippet": "[Card 13] 'A library has 245 English books and 368 Hindi books. How many books in a",
+      "issue_category": "premature_advance",
+      "description": "This card asks the student to evaluate another student's error \u2014 a meta-level skill that requires solid mastery of the base process first. For a student with 45% correct-answer probability who has not yet tried a single problem independently, diagnosing someone else's mistake (a missed carry) inverts the learning order.",
+      "severity": "major",
+      "surrounding_context": "The student has read 12 cards but done zero practice problems. Asking them to spot and explain Rohan's regrouping error before they've successfully done regrouping themselves is a significant leap. It could leave this student feeling confused about whether they understood anything at all."
+    },
+    {
+      "turn": 0,
+      "message_snippet": "[Card 14] Word problems can look scary, but you now have a plan \u2014 like a checklist ",
+      "issue_category": "information_dump",
+      "description": "The summary card recaps 5 steps, 3 check methods, extra numbers, and two-part problems all at once \u2014 it's one of the densest cards in the set. For a student who just read 13 cards, this feels like a second full lesson arriving at the exact moment they most need relief.",
+      "severity": "major",
+      "surrounding_context": "A student who is overwhelmed by long explanations will not benefit from a summary that essentially re-explains everything. A 2-3 line recap of the single most important idea (read first, skip extras, check your answer) would serve this student far better than a comprehensive review."
+    },
+    {
+      "turn": 0,
+      "message_snippet": "Remember the **packing-a-bag** idea from the cards? Let's see what stuck. In your o",
+      "issue_category": "false_ok_missed",
+      "description": "After 14 dense cards, 'in your own words' as the very first interactive question invites a parroted surface answer from a student who is known to repeat the tutor's language without truly understanding. There's no way to distinguish genuine recall from mimicry when the question is this open-ended.",
+      "severity": "minor",
+      "surrounding_context": "This student 'goes quiet or says hmm ok without really getting it' and 'sometimes repeats the tutor's words back without truly understanding.' She will likely say something like 'find the question first' \u2014 which sounds correct but may mask no real understanding. A simple recognition question ('Was it about finding the numbers, or finding the question first?') would give the same diagnostic information more reliably."
+    }
+  ],
+  "flow_assessment": "The session is structurally top-heavy \u2014 14 cards covering five steps, three check methods, two-part problems, and error-checking all before the student has tried a single problem. Cards 1-8 have solid logic and a consistent analogy, but Cards 9-14 pile on new complexity (subtraction, meta-level error checking, a dense summary) at the exact point where a struggling student most needs things to slow down. The card-to-interactive transition is warm and anchored well to the analogy, but it arrives after too much accumulated cognitive load for this student profile.",
+  "strongest_moments": "The packing-a-bag analogy is the session's clearest strength \u2014 it is introduced early, visually mapped to the steps, and reused consistently across multiple cards and into the transition question, giving the student a reliable mental anchor. The Indian names and contexts (Riya, Aman, mangoes, cricket) feel genuinely tailored rather than generic, and using 'Riya' as the character in Card 3 is a particularly warm touch for a student of that name."
+}

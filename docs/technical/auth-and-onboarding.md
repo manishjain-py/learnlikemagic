@@ -235,7 +235,7 @@ Global auth state provider. Exposes:
 
 **Post-login navigation**: All auth flows (`loginWithEmail`, `verifyOTP`, `confirmSignUp`+auto-login, `completeOAuthLogin`) navigate to `/` after success. The root route redirects to `/learn`, where `OnboardingGuard` sends new users to `/onboarding` if they haven't completed it. After onboarding, `handleFinish` also navigates to `/`, completing the cycle.
 
-**App layout**: Most authenticated routes are wrapped in `AppShell`, which provides a top navigation bar with a home button, logo, and user menu (profile, sessions, report card, logout). `AppShell` uses `<Outlet />` to render child routes.
+**App layout**: Most authenticated routes are wrapped in `AppShell`, which provides a top navigation bar with a home button, logo, and user menu (profile, sessions, report card, report an issue, logout). `AppShell` uses `<Outlet />` to render child routes.
 
 **Guard usage per route:**
 
@@ -250,6 +250,7 @@ Global auth state provider. Exposes:
 | `/profile/enrichment` | Yes | Yes | Inside AppShell — enrichment profile form |
 | `/history` | Yes | Yes | Inside AppShell — session history |
 | `/report-card` | Yes | Yes | Inside AppShell — progress reports |
+| `/report-issue` | Yes | Yes | Inside AppShell — issue reporting |
 | `/onboarding` | Yes | No | Must be authenticated but onboarding is in progress |
 | `/login/*`, `/signup/*`, `/forgot-password`, `/auth/callback` | No | No | Public auth routes |
 | `/admin/*` | No | No | Admin routes (no auth required currently) |
@@ -328,7 +329,7 @@ Profile updates to personality-triggering fields (name, preferred_name, age, gra
 | `llm-frontend/src/contexts/AuthContext.tsx` | Global auth state, all auth flows, syncUser |
 | `llm-frontend/src/components/ProtectedRoute.tsx` | Auth route guard |
 | `llm-frontend/src/components/OnboardingGuard.tsx` | Onboarding route guard |
-| `llm-frontend/src/components/AppShell.tsx` | App layout with nav bar and user menu (profile, sessions, report card, logout) |
+| `llm-frontend/src/components/AppShell.tsx` | App layout with nav bar and user menu (profile, sessions, report card, report an issue, logout) |
 | `llm-frontend/src/pages/LoginPage.tsx` | Auth method selection (email + Google active, phone disabled) |
 | `llm-frontend/src/pages/EmailLoginPage.tsx` | Email/password login form |
 | `llm-frontend/src/pages/PhoneLoginPage.tsx` | Phone number entry with country code selector |
@@ -339,6 +340,7 @@ Profile updates to personality-triggering fields (name, preferred_name, age, gra
 | `llm-frontend/src/pages/OAuthCallbackPage.tsx` | Google OAuth redirect handler, token exchange, error display with retry |
 | `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard (6 steps: name, preferred name, age, grade, board, about + done screen) |
 | `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with language prefs, focus mode, enrichment CTA |
+| `llm-frontend/src/pages/ReportIssuePage.tsx` | Issue reporting form (text/voice input + screenshot upload) |
 | `llm-frontend/src/pages/EnrichmentPage.tsx` | Enrichment profile form (interests, learning styles, motivations, challenges, notes, session prefs) + personality card |
 | `llm-frontend/src/components/enrichment/SectionCard.tsx` | Collapsible section card for enrichment form |
 | `llm-frontend/src/components/enrichment/ChipSelector.tsx` | Multi-select chip selector with custom entry support |

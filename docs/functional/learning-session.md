@@ -37,10 +37,16 @@ For some subtopics, the tutor has pre-prepared explanation cards that walk you t
 
 1. The session starts with a set of cards instead of the usual chat — each card covers one idea (a concept, an example, a visual, an analogy, or a summary)
 2. You read through the cards at your own pace
-3. When you finish, you choose one of two options:
+3. If a card is unclear, you can tap **"I didn't understand"** and tell the tutor what would help:
+   - **"Show an example"** — get the same concept explained through a concrete, relatable example
+   - **"Use simpler words"** — get a version using only everyday vocabulary
+   - **"Explain in more detail"** — get a step-by-step breakdown filling in gaps
+   - **"Explain differently"** — get a completely different angle or analogy
+   The tutor generates a simplified version of that specific card. You can ask again on the same card for further simplification. If you're still stuck after multiple attempts, the tutor switches to interactive conversation to probe your specific confusion.
+4. When you finish, you choose one of two options:
    - **"I understand"** — The tutor generates a personalized interactive plan based on what you just read, then asks you a question referencing specific analogies or examples from the cards to check what stuck. The session continues with understanding checks, guided practice, independent practice, and extension activities.
    - **"Explain differently"** — The tutor shows a different set of cards that explain the same ideas using a different approach (e.g., a different analogy or real-world context). If all available approaches have been shown, the tutor switches to the normal interactive explanation instead.
-4. Once you move past the cards, the session continues with a tailored study plan — the tutor checks understanding (referencing the cards), guides you through practice, then lets you try independently, and finally extends to harder problems
+5. Once you move past the cards, the session continues with a tailored study plan — the tutor checks understanding (referencing the cards), guides you through practice, then lets you try independently, and finally extends to harder problems
 
 The cards are a quicker way to absorb the material when you prefer reading over back-and-forth conversation. The interactive tutor is always available as a fallback.
 
@@ -94,6 +100,8 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 ### Teaching Philosophy
 
+0. **Radical simplicity** — Every sentence under 15 words. One idea per sentence. Only words a child uses in daily life. Simplicity beats thoroughness — the tutor says less, not more. If the cards used a simple word, the tutor reuses that same word rather than upgrading to a harder synonym.
+
 1. **Verify, then practice, then extend** — When explanation cards are available, the tutor does not re-explain. It checks what stuck from the cards first (using the cards' own analogies and examples), then moves to guided practice, then independent practice, then extension to harder problems. If you are genuinely confused despite the cards, the tutor re-explains using a completely different approach.
 
 2. **Advance when ready** — When you demonstrate mastery, the tutor moves on. If you ask for harder material, it skips ahead. Strong students aren't held back.
@@ -110,7 +118,7 @@ The tutor is designed to feel like a real, caring teacher — not a chatbot. The
 
 5. **Checks for real understanding** — If you give a vague response like "hmm ok" or "I think I get it", the tutor does not just move on. It asks a concrete question requiring you to apply the idea. The tutor never asks yes/no comprehension checks ("Does that make sense?") — every check requires you to produce an answer. If you echo back the tutor's exact phrasing, that is treated as rote repetition, not understanding.
 
-6. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it. When you correct yourself, the tutor acknowledges the self-correction. When your answer is correct but informal, the tutor confirms it as correct first.
+6. **Match your energy** — If you use examples or metaphors, the tutor builds on them. If you're curious, it feeds that curiosity. If you go off-topic, it gently redirects. If you raise an unexpected idea (even a wrong one), the tutor explores why you think that before dismissing it. When you correct yourself, the tutor acknowledges the self-correction. When your answer is correct but informal, the tutor confirms it as correct first. If your first answer was right but you talked yourself out of it, the tutor immediately validates the first instinct.
 
 7. **Be real** — Praise is calibrated to difficulty. Easy answers don't get over-the-top celebration. Genuine breakthroughs get genuine enthusiasm. After a correct answer, the tutor confirms in one sentence and moves on — no extra explanations or warnings appended.
 

@@ -1,0 +1,5 @@
+commit	avg_score	avg_reason_adherence	avg_differentiation	avg_simplicity	avg_accuracy	avg_presentation	status	description	elapsed_min	topics	details_json
+19b00d1	2.55	1.00	1.00	4.00	5.75	1.00	discard	baseline — initial measurement (fallback bug)	2.4	Comparing and Ordering Numbers	{"per_topic": [{"name": "Comparing and Ordering Numbers", "avg": 2.55, "d1": 2.5, "d2": 2.5999999999999996, "cards": 2}]}
+db265a8	8.15	7.75	7.75	8.25	8.50	8.50	baseline	baseline — with LLM actually called (NameError fixed)	2.8	Forming Numbers	{"per_topic": [{"name": "Forming Numbers", "avg": 8.15, "d1": 8.2, "d2": 8.1, "cards": 2}]}
+d549a8e	8.35	8.50	7.75	8.75	8.25	8.50	keep	stronger reason directives in REASON_MAP	2.7	Forming Numbers	{"per_topic": [{"name": "Forming Numbers", "avg": 8.35, "d1": 8.8, "d2": 7.9, "cards": 2}]}
+ff26b35	6.45	6.25	5.00	6.50	8.50	6.00	discard	stronger differentiation rules + 150-word limit	3.2	Comparing and Ordering Numbers	{"per_topic": [{"name": "Comparing and Ordering Numbers", "avg": 6.45, "d1": 8.100000000000001, "d2": 4.8, "cards": 2}]}

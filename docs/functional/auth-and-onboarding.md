@@ -131,6 +131,7 @@ The top navigation bar (visible on all learning screens) includes a user menu wi
 - **Profile** — Go to profile and settings
 - **My Sessions** — View session history
 - **My Report Card** — View progress reports
+- **Report an Issue** — Submit a bug report or feedback
 - **Log Out** — Sign out of your account
 
 ---

@@ -12,10 +12,11 @@ The report card is **deterministic only** — it shows coverage completion perce
 |--------|------|------|----------------|-------------|
 | `GET` | `/sessions/report-card` | Required | `ReportCardResponse` | Full student report card with coverage and exam data |
 | `GET` | `/sessions/topic-progress` | Required | `TopicProgressResponse` | Lightweight progress map for curriculum picker badges |
+| `GET` | `/sessions/resumable?guideline_id=` | Required | `ResumableSessionResponse` | Find paused Teach Me session for a topic (404 if none) |
 | `GET` | `/sessions/guideline/{guideline_id}` | Required | `GuidelineSessionsResponse` | List sessions for a topic (mode selection, past exams, resume detection) |
 | `GET` | `/sessions/{session_id}/exam-review` | Required | `ExamReviewResponse` | Detailed question-by-question review of a completed exam |
 
-All endpoints are in `tutor/api/sessions.py`. The first two delegate to `ReportCardService`; the guideline sessions endpoint delegates to `SessionRepository.list_by_guideline()`; the exam-review endpoint parses `SessionState` directly.
+All endpoints are in `tutor/api/sessions.py`. The first two delegate to `ReportCardService`; the resumable endpoint queries `SessionModel` directly for paused teach_me sessions; the guideline sessions endpoint delegates to `SessionRepository.list_by_guideline()`; the exam-review endpoint parses `SessionState` directly.
 
 ---
 
@@ -125,10 +126,18 @@ The `_group_sessions` method accumulates data across all sessions for the same t
 
 Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.tsx` and `TopicSelect.tsx` call `getTopicProgress()` on mount and use the returned map to render progress badges alongside each chapter or topic.
 
+**Backend** (`ReportCardService.get_topic_progress`):
 - Only counts **Teach Me** sessions (clarify_doubts and exam sessions are excluded entirely)
 - `status = "studied"` if `session_count > 0`
 - `status = "not_started"` otherwise
 - Returns `{user_progress: {guideline_id: {coverage, session_count, status}}}`
+
+**Frontend badge mapping** — Both components define a local `ProgressStatus` type (`completed | in_progress | not_started`) derived from backend coverage values:
+
+- `TopicSelect.tsx`: `coverage >= 80` = completed, `coverage > 0` = in_progress, else not_started. Shows "X% covered" text when coverage > 0.
+- `ChapterSelect.tsx`: averages coverage across all `guideline_ids` in the chapter. `avg >= 80` = completed, `avg > 0` = in_progress, else not_started.
+
+Completed items show a checkmark; in_progress and not_started show the sequence number with different styling.
 
 ---
 
@@ -176,6 +185,18 @@ Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.t
             "status": str            # "studied" | "not_started"
         }
     }
+}
+```
+
+### ResumableSessionResponse (`/sessions/resumable`)
+
+```python
+{
+    "session_id": str,
+    "coverage": float,           # 0-100%
+    "current_step": int,
+    "total_steps": int,
+    "concepts_covered": [str]
 }
 ```
 
@@ -249,6 +270,7 @@ The `/sessions/guideline/{guideline_id}` endpoint powers the mode selection scre
 The frontend (`ModeSelection.tsx`) uses this to:
 - Detect incomplete teach_me sessions with progress (`coverage > 0`) and show "Continue Lesson"
 - Detect incomplete exams with progress (`exam_answered > 0`) and show "Resume Exam"
+- Hide the "Take Exam" button while an incomplete exam exists (prevents duplicate exams)
 - List completed exams in an expandable "Past Exams" section with date and score
 
 ---
@@ -263,6 +285,8 @@ Each question includes:
 - `feedback`, `concept`, `difficulty`
 
 The response also includes `exam_feedback` (when available) with `score`, `total`, `percentage`, `strengths`, `weak_areas`, `patterns`, and `next_steps`.
+
+**Frontend rendering note:** `ExamReviewPage.tsx` currently only renders `next_steps` from `exam_feedback`. The `strengths`, `weak_areas`, and `patterns` fields are returned by the API but not displayed. Per-question score color-coding: green (>= 0.8), orange (>= 0.2), red (< 0.2). Overall score color: green (>= 70%), orange (>= 40%), red (< 40%).
 
 ---
 
@@ -323,6 +347,7 @@ All routes are protected (require authentication).
 |----------|----------|-------------|
 | `getReportCard()` | `GET /sessions/report-card` | `ReportCardResponse` |
 | `getTopicProgress()` | `GET /sessions/topic-progress` | `Record<string, TopicProgress>` |
+| `getResumableSession(guidelineId)` | `GET /sessions/resumable?guideline_id=` | `ResumableSession \| null` |
 | `getGuidelineSessions(guidelineId, mode?, finishedOnly?)` | `GET /sessions/guideline/{id}` | `GuidelineSessionEntry[]` |
 | `getExamReview(sessionId)` | `GET /sessions/{id}/exam-review` | `ExamReviewResponse` |
 
@@ -341,8 +366,8 @@ The report card is accessible from:
 | File | Purpose |
 |------|---------|
 | `tutor/services/report_card_service.py` | Aggregation logic: coverage computation, exam score tracking, hierarchy grouping |
-| `tutor/api/sessions.py` | `/report-card`, `/topic-progress`, `/guideline/{id}`, and `/exam-review` endpoints |
-| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`, `GuidelineSessionsResponse`, `GuidelineSessionEntry`, `ExamReviewResponse`, `ExamReviewQuestion`) |
+| `tutor/api/sessions.py` | `/report-card`, `/topic-progress`, `/resumable`, `/guideline/{id}`, and `/exam-review` endpoints |
+| `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`, `ResumableSessionResponse`, `GuidelineSessionsResponse`, `GuidelineSessionEntry`, `ExamReviewResponse`, `ExamReviewQuestion`) |
 | `shared/repositories/session_repository.py` | `list_by_guideline()` — computes per-session completion, exam score, and coverage from `state_json` |
 | `llm-frontend/src/pages/ReportCardPage.tsx` | Report card UI (overview + subject detail) |
 | `llm-frontend/src/pages/ExamReviewPage.tsx` | Question-by-question exam review page |

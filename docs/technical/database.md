@@ -319,6 +319,27 @@ Pre-computed explanation variants for teaching guidelines. Each guideline can ha
 
 **Unique constraint:** `uq_explanation_guideline_variant` (guideline_id, variant_key) -- at most one variant per key per guideline.
 
+### Issues
+
+**Table:** `issues` | **Model:** `Issue` (`shared/models/entities.py`)
+
+User-reported issues tracked by status. Supports screenshot attachments stored in S3.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key (auto-generated UUID) |
+| `user_id` | VARCHAR | FK --> users (SET NULL on delete, nullable) |
+| `reporter_name` | VARCHAR | Reporter's display name (nullable) |
+| `title` | VARCHAR | Issue title |
+| `description` | TEXT | LLM-interpreted issue text |
+| `original_input` | TEXT | Raw user input (text/transcription, nullable) |
+| `screenshot_s3_keys` | JSONB | Array of S3 keys for screenshots (nullable) |
+| `status` | VARCHAR | `open`, `in_progress`, or `closed` (default `open`) |
+| `created_at` | DATETIME | Timestamp |
+| `updated_at` | DATETIME | Timestamp |
+
+**Indexes:** `idx_issues_status` (status), `idx_issues_user` (user_id)
+
 ### V2 Pipeline Tables
 
 See `book_ingestion_v2/models/database.py` for the full V2 pipeline tables:
@@ -338,6 +359,7 @@ users ──1:N──> study_plans
 users ──1:1──> kid_enrichment_profiles
 users ──1:N──> kid_personalities
 users ──1:N──> session_feedback
+users ──1:N──> issues
 teaching_guidelines ──1:N──> study_plans (per-user plans)
 teaching_guidelines ──1:N──> topic_explanations (pre-computed explanation variants)
 books ──1:N──> book_chapters ──1:N──> chapter_pages
@@ -356,6 +378,7 @@ feature_flags (standalone, no FKs)
 - `KidEnrichmentProfile.user_id` --> `User.id` (unique, 1:1)
 - `KidPersonality.user_id` --> `User.id`
 - `TopicExplanation.guideline_id` --> `TeachingGuideline.id` (CASCADE delete; unique on guideline_id + variant_key)
+- `Issue.user_id` --> `User.id` (SET NULL on delete, nullable)
 
 ---
 
@@ -383,8 +406,9 @@ Custom imperative migration (not Alembic):
 16. `_apply_session_feedback_table()` -- Verifies session_feedback table exists (created by `create_all`)
 17. `_apply_topic_planning_columns()` -- Adds `planned_topics_json` to chapter_processing_jobs, `prior_topics_context` and `topic_assignment` to chapter_topics, and `prior_topics_context` to teaching_guidelines (topic-quality planning support)
 18. `_apply_topic_explanations_table()` -- Verifies topic_explanations table exists (created by `create_all`); ensures `explanation_generator` LLM config entry exists via `_ensure_llm_config()`
-19. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
-20. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
+19. `_apply_issues_table()` -- Verifies issues table exists (created by `create_all`)
+20. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+21. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
 
 ```bash
 # Run migrations
@@ -435,7 +459,7 @@ python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guide
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation) |
+| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation, Issue) |
 | `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob) |
 | `db.py` | Migration CLI and migration functions |
 | `database.py` | DatabaseManager, connection pooling, `get_db()` dependency |

@@ -1,0 +1,613 @@
+{
+  "config": {
+    "server_host": "localhost",
+    "server_port": 8000,
+    "server_startup_timeout": 30,
+    "health_check_interval": 1.0,
+    "topic_id": "206482af-8a3d-4872-a091-2436899b5125",
+    "student_grade": 5,
+    "student_board": "CBSE",
+    "language_level": "simple",
+    "persona_file": "average_student.json",
+    "max_turns": 12,
+    "turn_timeout": 90,
+    "simulator_model": "gpt-4o",
+    "simulator_temperature": 0.8,
+    "simulator_max_tokens": 150,
+    "evaluator_model": "gpt-5.2",
+    "evaluator_reasoning_effort": "high",
+    "analyzer_model": "gpt-5.2",
+    "analyzer_reasoning_effort": "high",
+    "eval_llm_provider": "openai",
+    "evaluator_provider": "claude_code",
+    "simulator_provider": "claude_code",
+    "analyzer_provider": "claude_code",
+    "anthropic_evaluator_model": "claude-opus-4-6",
+    "anthropic_simulator_model": "claude-opus-4-6",
+    "anthropic_analyzer_model": "claude-opus-4-6",
+    "anthropic_evaluator_thinking_budget": 20000,
+    "tutor_llm_provider": "glm5",
+    "topics_per_iteration": 3
+  },
+  "topic_name": "Structured Problem Solving with Addition",
+  "generated_at": "2026-03-20T13:58:32.893804",
+  "message_count": 16,
+  "has_card_phase": true,
+  "card_phase_data": {
+    "cards": [
+      {
+        "title": "Solving Problems is Like Packing a Bag",
+        "visual": "Packing for a Picnic:\n\n  1. Read the list       --> Read the problem\n  2. Pick the right items --> Find the important numbers\n  3. Pack the bag         --> Do the math\n  4. Check before leaving --> Check your answer",
+        "content": "Imagine you're packing a bag for a picnic. You wouldn't just throw everything in, right?\n\nFirst, you'd read the list of what to bring. Then you'd pick only the right things. Then you'd check your bag before you leave.\n\nSolving word problems works the same way. There are steps, and if you follow them in order, you won't miss anything.\n\nAnd just like packing a bag, once you learn the steps, it gets easy!",
+        "card_idx": 1,
+        "card_type": "analogy"
+      },
+      {
+        "title": "Step 1 \u2014 Read and Find the Question",
+        "visual": null,
+        "content": "Before you do any adding, stop and ask yourself: \"What is this problem asking me to find?\"\n\nThat's the answer you need to find. It's like reading your picnic list before you touch anything in the kitchen.\n\nIf you don't know what the question is asking, you can't pick the right numbers to use.",
+        "card_idx": 2,
+        "card_type": "concept"
+      },
+      {
+        "title": "Finding the Question",
+        "visual": "Riya's Stickers:\n  [24 stickers] + [13 more] = [? total]\n\n  The question asks: How many NOW?\n  ---> We need to find the TOTAL",
+        "content": "Let's try one.\n\n\"Riya has 24 stickers. Her friend gives her 13 more. How many stickers does Riya have now?\"\n\nBefore we add anything, let's ask: what does the problem want to know?\n\nIt wants the total number of stickers Riya has. That's the answer we need to find. Now we know where we're headed.",
+        "card_idx": 3,
+        "card_type": "example"
+      },
+      {
+        "title": "Watch Out for Extra Numbers",
+        "visual": null,
+        "content": "Sometimes a word problem gives you numbers you don't actually need. That's okay \u2014 you just need to spot them and skip them.\n\nThink of it this way \u2014 if someone puts sandwiches, juice boxes, AND a clock on the table, you wouldn't pack the clock for your picnic! It was just sitting there.\n\nSome numbers in a problem are like that clock. They're just sitting there. They don't go in your math.",
+        "card_idx": 4,
+        "card_type": "analogy"
+      },
+      {
+        "title": "Spotting Extra Numbers",
+        "visual": "  45    (marbles he has)\n+ 32    (marbles he gets)\n----\n  77    marbles in all\n\n  The '7 years old' --> NOT marbles!\n  Don't put it in your math.",
+        "content": "\"Aman has 45 marbles. He is 7 years old. His sister gives him 32 more marbles. How many marbles does he have now?\"\n\nThe question asks about marbles. Does Aman's age (7) help us count marbles? No! That's extra \u2014 like the clock on the table.\n\nWe only need: 45 marbles + 32 more marbles = 77 marbles.\n\nWatch out! If you added ALL the numbers \u2014 45 + 32 + 7 = 84 \u2014 that would be wrong. Aman's age has nothing to do with his marbles!",
+        "card_idx": 5,
+        "card_type": "example"
+      },
+      {
+        "title": "Let's Try a Problem Together \u2014 Part 1",
+        "visual": "What we need:     What we skip:\n  156 red            4 workers\n  238 blue           (not balloons!)\n\n  Operation: ADD",
+        "content": "\"A shop has 156 red balloons and 238 blue balloons. There are 4 workers in the shop. How many balloons are there in all?\"\n\nLet's work through this step by step.\n\nStep 1 \u2014 Read: The question asks for the total number of balloons.\n\nStep 2 \u2014 Find: 156 red, 238 blue. The 4 workers? That's extra \u2014 workers aren't balloons!\n\nStep 3 \u2014 Pick: We need the total, so we add.",
+        "card_idx": 6,
+        "card_type": "example"
+      },
+      {
+        "title": "Let's Try a Problem Together \u2014 Part 2",
+        "visual": "   156\n + 238\n -----\n   394   balloons\n\n (6+8=14, write 4 carry 1)\n (1+5+3=9)\n (1+2=3)",
+        "content": "Now let's solve and check.\n\nStep 4 \u2014 Solve: 156 + 238.\nRemember regrouping from our earlier lessons? 6 + 8 = 14, write 4, carry 1. Then 1 + 5 + 3 = 9. Then 1 + 2 = 3. Answer: 394.\n\nStep 5 \u2014 Check: Is 394 right? We had over 100 and over 200, so close to 400 sounds right. Did we answer the question? Yes \u2014 total balloons. Our math checks out!",
+        "card_idx": 7,
+        "card_type": "example"
+      },
+      {
+        "title": "Your Problem-Solving Checklist",
+        "visual": "MY PROBLEM-SOLVING CHECKLIST\n-------------------------------\nStep 1: READ the problem.\n         What is the question?\nStep 2: FIND the numbers that matter.\n         (Skip any extra numbers!)\nStep 3: PICK the operation.\n         Add? Subtract?\nStep 4: SOLVE \u2014 do the math carefully.\nStep 5: CHECK your answer.\n         (We'll learn 3 ways to check!)",
+        "content": "You just used these steps to solve the balloon problem! Here they are written out so you can follow them every time.\n\nYou already know how to add big numbers with regrouping. This checklist helps you figure out what to add and why.\n\nKeep this order. Don't skip ahead to the math!",
+        "card_idx": 8,
+        "card_type": "visual"
+      },
+      {
+        "title": "Two-Part Problems \u2014 Build on What You Found",
+        "visual": null,
+        "content": "Some problems ask you two things. And here's the tricky part \u2014 you need the answer from the first part to solve the second part.\n\nIt's like building with blocks. You build the first stack, and then that stack becomes the bottom of the next one. You don't start over \u2014 you build on top.\n\nYour first answer works the same way. It becomes the starting number for the next part.",
+        "card_idx": 9,
+        "card_type": "analogy"
+      },
+      {
+        "title": "A Two-Part Problem",
+        "visual": "Part 1:          Part 2:\n  125             373  <-- use this!\n+ 248           - 100\n-----           -----\n  373             273\n\n  Don't use 125 or 248 in Part 2.\n  Use the answer you just found: 373.",
+        "content": "\"Priya picked 125 mangoes on Monday and 248 mangoes on Tuesday. How many did she pick in all? If she gives 100 mangoes to her neighbour, how many does she have left?\"\n\nPart 1: Total mangoes = 125 + 248 = 373.\n\nPart 2 uses subtraction \u2014 taking away \u2014 which you already know. Take the answer from Part 1: 373 - 100 = 273 left.\n\nSee how 373 from Part 1 became the starting number for Part 2? That's building on what you found.",
+        "card_idx": 10,
+        "card_type": "example"
+      },
+      {
+        "title": "Check 1 \u2014 Is My Math Right?",
+        "visual": "  125 + 248 = 373\n  248 + 125 = 373   Same!\n\n  Swap the order.\n  Same answer = math is right.",
+        "content": "After you solve, try adding the numbers in the other order. If you get the same answer, your math is right!\n\nYou learned this before \u2014 swapping the order doesn't change the answer.\n\nSo if you did 125 + 248 = 373, try 248 + 125. Did you get 373 again? Great \u2014 your adding is correct!",
+        "card_idx": 11,
+        "card_type": "concept"
+      },
+      {
+        "title": "Checks 2 and 3 \u2014 Complete and Makes Sense?",
+        "visual": "Three Checks:\n  1. MATH right?     --> swap and add again\n  2. ALL parts done? --> re-read the question\n  3. MAKES SENSE?    --> think about the story",
+        "content": "Check 2 \u2014 Did I answer everything? Read the question again. If it asked two things, did you give two answers? Don't stop halfway.\n\nCheck 3 \u2014 Does my answer make sense? If someone had 50 apples and got 30 more, and you got 800 \u2014 that can't be right! The answer should feel right for the story.",
+        "card_idx": 12,
+        "card_type": "concept"
+      },
+      {
+        "title": "Checking Someone Else's Work",
+        "visual": "  245          Rohan wrote: 503\n+ 368          Your answer: 613\n-----\n  613          Rohan made a mistake!\n\n  Always do the math yourself.\n  Don't just trust how it looks.",
+        "content": "\"A library has 245 English books and 368 Hindi books. How many books in all?\" Rohan wrote: 503. Is he right?\n\nDon't just look at Rohan's answer and think \"that looks okay.\" Do the math yourself.\n\n245 + 368: 5 + 8 = 13 (write 3, carry 1). 1 + 4 + 6 = 11 (write 1, carry 1). 1 + 2 + 3 = 6. That gives us 613.\n\nRohan wrote 503. That's wrong \u2014 the correct answer is 613. He missed a carry. Always work it out yourself!",
+        "card_idx": 13,
+        "card_type": "example"
+      },
+      {
+        "title": "You've Got This",
+        "visual": "READ --> FIND --> PICK --> SOLVE --> CHECK\n\n  Extra numbers? Skip them.\n  Two parts?  Build on your answer.\n  Done?       Check three ways.\n\n  Not every number goes in your math!",
+        "content": "Word problems can look scary, but you now have a plan \u2014 like a checklist before a trip.\n\nRead the problem. Find what matters \u2014 and skip extra numbers. Pick add or subtract. Solve carefully \u2014 you already know how to add big numbers with regrouping. Then check three ways \u2014 is the math right, did I answer everything, and does it make sense.\n\nFor two-part problems, build on what you found \u2014 use your first answer in the next step.\n\nRemember \u2014 not every number in the problem goes into your math. Read the question first!\n\nYou don't have to do it all in your head. Just follow the steps, one at a time.",
+        "card_idx": 14,
+        "card_type": "summary"
+      }
+    ],
+    "variant_key": "A",
+    "total_variants": 3
+  },
+  "messages": [
+    {
+      "role": "tutor",
+      "content": "Hi! Today we\u2019ll use **addition** to solve little story problems, like counting total runs in two cricket overs or adding scores in a game. I\u2019ve got some short cards ready for you\u2014read them first, then we\u2019ll check what stuck and practise together step by step.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935273",
+      "phase": "card_phase_welcome"
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 1** (analogy): Solving Problems is Like Packing a Bag\nImagine you're packing a bag for a picnic. You wouldn't just throw everything in, right?\n\nFirst, you'd read the list of what to bring. Then you'd pick only the right things. Then you'd check your bag before you leave.\n\nSolving word problems works the same way. There are steps, and if you follow them in order, you won't miss anything.\n\nAnd just like packing a bag, once you learn the steps, it gets easy!\n\nPacking for a Picnic:\n\n  1. Read the list       --> Read the problem\n  2. Pick the right items --> Find the important numbers\n  3. Pack the bag         --> Do the math\n  4. Check before leaving --> Check your answer",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935283",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Solving Problems is Like Packing a Bag",
+        "visual": "Packing for a Picnic:\n\n  1. Read the list       --> Read the problem\n  2. Pick the right items --> Find the important numbers\n  3. Pack the bag         --> Do the math\n  4. Check before leaving --> Check your answer",
+        "content": "Imagine you're packing a bag for a picnic. You wouldn't just throw everything in, right?\n\nFirst, you'd read the list of what to bring. Then you'd pick only the right things. Then you'd check your bag before you leave.\n\nSolving word problems works the same way. There are steps, and if you follow them in order, you won't miss anything.\n\nAnd just like packing a bag, once you learn the steps, it gets easy!",
+        "card_idx": 1,
+        "card_type": "analogy"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 2** (concept): Step 1 \u2014 Read and Find the Question\nBefore you do any adding, stop and ask yourself: \"What is this problem asking me to find?\"\n\nThat's the answer you need to find. It's like reading your picnic list before you touch anything in the kitchen.\n\nIf you don't know what the question is asking, you can't pick the right numbers to use.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935293",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Step 1 \u2014 Read and Find the Question",
+        "visual": null,
+        "content": "Before you do any adding, stop and ask yourself: \"What is this problem asking me to find?\"\n\nThat's the answer you need to find. It's like reading your picnic list before you touch anything in the kitchen.\n\nIf you don't know what the question is asking, you can't pick the right numbers to use.",
+        "card_idx": 2,
+        "card_type": "concept"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 3** (example): Finding the Question\nLet's try one.\n\n\"Riya has 24 stickers. Her friend gives her 13 more. How many stickers does Riya have now?\"\n\nBefore we add anything, let's ask: what does the problem want to know?\n\nIt wants the total number of stickers Riya has. That's the answer we need to find. Now we know where we're headed.\n\nRiya's Stickers:\n  [24 stickers] + [13 more] = [? total]\n\n  The question asks: How many NOW?\n  ---> We need to find the TOTAL",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935298",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Finding the Question",
+        "visual": "Riya's Stickers:\n  [24 stickers] + [13 more] = [? total]\n\n  The question asks: How many NOW?\n  ---> We need to find the TOTAL",
+        "content": "Let's try one.\n\n\"Riya has 24 stickers. Her friend gives her 13 more. How many stickers does Riya have now?\"\n\nBefore we add anything, let's ask: what does the problem want to know?\n\nIt wants the total number of stickers Riya has. That's the answer we need to find. Now we know where we're headed.",
+        "card_idx": 3,
+        "card_type": "example"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 4** (analogy): Watch Out for Extra Numbers\nSometimes a word problem gives you numbers you don't actually need. That's okay \u2014 you just need to spot them and skip them.\n\nThink of it this way \u2014 if someone puts sandwiches, juice boxes, AND a clock on the table, you wouldn't pack the clock for your picnic! It was just sitting there.\n\nSome numbers in a problem are like that clock. They're just sitting there. They don't go in your math.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935301",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Watch Out for Extra Numbers",
+        "visual": null,
+        "content": "Sometimes a word problem gives you numbers you don't actually need. That's okay \u2014 you just need to spot them and skip them.\n\nThink of it this way \u2014 if someone puts sandwiches, juice boxes, AND a clock on the table, you wouldn't pack the clock for your picnic! It was just sitting there.\n\nSome numbers in a problem are like that clock. They're just sitting there. They don't go in your math.",
+        "card_idx": 4,
+        "card_type": "analogy"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 5** (example): Spotting Extra Numbers\n\"Aman has 45 marbles. He is 7 years old. His sister gives him 32 more marbles. How many marbles does he have now?\"\n\nThe question asks about marbles. Does Aman's age (7) help us count marbles? No! That's extra \u2014 like the clock on the table.\n\nWe only need: 45 marbles + 32 more marbles = 77 marbles.\n\nWatch out! If you added ALL the numbers \u2014 45 + 32 + 7 = 84 \u2014 that would be wrong. Aman's age has nothing to do with his marbles!\n\n  45    (marbles he has)\n+ 32    (marbles he gets)\n----\n  77    marbles in all\n\n  The '7 years old' --> NOT marbles!\n  Don't put it in your math.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935305",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Spotting Extra Numbers",
+        "visual": "  45    (marbles he has)\n+ 32    (marbles he gets)\n----\n  77    marbles in all\n\n  The '7 years old' --> NOT marbles!\n  Don't put it in your math.",
+        "content": "\"Aman has 45 marbles. He is 7 years old. His sister gives him 32 more marbles. How many marbles does he have now?\"\n\nThe question asks about marbles. Does Aman's age (7) help us count marbles? No! That's extra \u2014 like the clock on the table.\n\nWe only need: 45 marbles + 32 more marbles = 77 marbles.\n\nWatch out! If you added ALL the numbers \u2014 45 + 32 + 7 = 84 \u2014 that would be wrong. Aman's age has nothing to do with his marbles!",
+        "card_idx": 5,
+        "card_type": "example"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 6** (example): Let's Try a Problem Together \u2014 Part 1\n\"A shop has 156 red balloons and 238 blue balloons. There are 4 workers in the shop. How many balloons are there in all?\"\n\nLet's work through this step by step.\n\nStep 1 \u2014 Read: The question asks for the total number of balloons.\n\nStep 2 \u2014 Find: 156 red, 238 blue. The 4 workers? That's extra \u2014 workers aren't balloons!\n\nStep 3 \u2014 Pick: We need the total, so we add.\n\nWhat we need:     What we skip:\n  156 red            4 workers\n  238 blue           (not balloons!)\n\n  Operation: ADD",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935310",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Let's Try a Problem Together \u2014 Part 1",
+        "visual": "What we need:     What we skip:\n  156 red            4 workers\n  238 blue           (not balloons!)\n\n  Operation: ADD",
+        "content": "\"A shop has 156 red balloons and 238 blue balloons. There are 4 workers in the shop. How many balloons are there in all?\"\n\nLet's work through this step by step.\n\nStep 1 \u2014 Read: The question asks for the total number of balloons.\n\nStep 2 \u2014 Find: 156 red, 238 blue. The 4 workers? That's extra \u2014 workers aren't balloons!\n\nStep 3 \u2014 Pick: We need the total, so we add.",
+        "card_idx": 6,
+        "card_type": "example"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 7** (example): Let's Try a Problem Together \u2014 Part 2\nNow let's solve and check.\n\nStep 4 \u2014 Solve: 156 + 238.\nRemember regrouping from our earlier lessons? 6 + 8 = 14, write 4, carry 1. Then 1 + 5 + 3 = 9. Then 1 + 2 = 3. Answer: 394.\n\nStep 5 \u2014 Check: Is 394 right? We had over 100 and over 200, so close to 400 sounds right. Did we answer the question? Yes \u2014 total balloons. Our math checks out!\n\n   156\n + 238\n -----\n   394   balloons\n\n (6+8=14, write 4 carry 1)\n (1+5+3=9)\n (1+2=3)",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935313",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Let's Try a Problem Together \u2014 Part 2",
+        "visual": "   156\n + 238\n -----\n   394   balloons\n\n (6+8=14, write 4 carry 1)\n (1+5+3=9)\n (1+2=3)",
+        "content": "Now let's solve and check.\n\nStep 4 \u2014 Solve: 156 + 238.\nRemember regrouping from our earlier lessons? 6 + 8 = 14, write 4, carry 1. Then 1 + 5 + 3 = 9. Then 1 + 2 = 3. Answer: 394.\n\nStep 5 \u2014 Check: Is 394 right? We had over 100 and over 200, so close to 400 sounds right. Did we answer the question? Yes \u2014 total balloons. Our math checks out!",
+        "card_idx": 7,
+        "card_type": "example"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 8** (visual): Your Problem-Solving Checklist\nYou just used these steps to solve the balloon problem! Here they are written out so you can follow them every time.\n\nYou already know how to add big numbers with regrouping. This checklist helps you figure out what to add and why.\n\nKeep this order. Don't skip ahead to the math!\n\nMY PROBLEM-SOLVING CHECKLIST\n-------------------------------\nStep 1: READ the problem.\n         What is the question?\nStep 2: FIND the numbers that matter.\n         (Skip any extra numbers!)\nStep 3: PICK the operation.\n         Add? Subtract?\nStep 4: SOLVE \u2014 do the math carefully.\nStep 5: CHECK your answer.\n         (We'll learn 3 ways to check!)",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935316",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Your Problem-Solving Checklist",
+        "visual": "MY PROBLEM-SOLVING CHECKLIST\n-------------------------------\nStep 1: READ the problem.\n         What is the question?\nStep 2: FIND the numbers that matter.\n         (Skip any extra numbers!)\nStep 3: PICK the operation.\n         Add? Subtract?\nStep 4: SOLVE \u2014 do the math carefully.\nStep 5: CHECK your answer.\n         (We'll learn 3 ways to check!)",
+        "content": "You just used these steps to solve the balloon problem! Here they are written out so you can follow them every time.\n\nYou already know how to add big numbers with regrouping. This checklist helps you figure out what to add and why.\n\nKeep this order. Don't skip ahead to the math!",
+        "card_idx": 8,
+        "card_type": "visual"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 9** (analogy): Two-Part Problems \u2014 Build on What You Found\nSome problems ask you two things. And here's the tricky part \u2014 you need the answer from the first part to solve the second part.\n\nIt's like building with blocks. You build the first stack, and then that stack becomes the bottom of the next one. You don't start over \u2014 you build on top.\n\nYour first answer works the same way. It becomes the starting number for the next part.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935319",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Two-Part Problems \u2014 Build on What You Found",
+        "visual": null,
+        "content": "Some problems ask you two things. And here's the tricky part \u2014 you need the answer from the first part to solve the second part.\n\nIt's like building with blocks. You build the first stack, and then that stack becomes the bottom of the next one. You don't start over \u2014 you build on top.\n\nYour first answer works the same way. It becomes the starting number for the next part.",
+        "card_idx": 9,
+        "card_type": "analogy"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 10** (example): A Two-Part Problem\n\"Priya picked 125 mangoes on Monday and 248 mangoes on Tuesday. How many did she pick in all? If she gives 100 mangoes to her neighbour, how many does she have left?\"\n\nPart 1: Total mangoes = 125 + 248 = 373.\n\nPart 2 uses subtraction \u2014 taking away \u2014 which you already know. Take the answer from Part 1: 373 - 100 = 273 left.\n\nSee how 373 from Part 1 became the starting number for Part 2? That's building on what you found.\n\nPart 1:          Part 2:\n  125             373  <-- use this!\n+ 248           - 100\n-----           -----\n  373             273\n\n  Don't use 125 or 248 in Part 2.\n  Use the answer you just found: 373.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935322",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "A Two-Part Problem",
+        "visual": "Part 1:          Part 2:\n  125             373  <-- use this!\n+ 248           - 100\n-----           -----\n  373             273\n\n  Don't use 125 or 248 in Part 2.\n  Use the answer you just found: 373.",
+        "content": "\"Priya picked 125 mangoes on Monday and 248 mangoes on Tuesday. How many did she pick in all? If she gives 100 mangoes to her neighbour, how many does she have left?\"\n\nPart 1: Total mangoes = 125 + 248 = 373.\n\nPart 2 uses subtraction \u2014 taking away \u2014 which you already know. Take the answer from Part 1: 373 - 100 = 273 left.\n\nSee how 373 from Part 1 became the starting number for Part 2? That's building on what you found.",
+        "card_idx": 10,
+        "card_type": "example"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 11** (concept): Check 1 \u2014 Is My Math Right?\nAfter you solve, try adding the numbers in the other order. If you get the same answer, your math is right!\n\nYou learned this before \u2014 swapping the order doesn't change the answer.\n\nSo if you did 125 + 248 = 373, try 248 + 125. Did you get 373 again? Great \u2014 your adding is correct!\n\n  125 + 248 = 373\n  248 + 125 = 373   Same!\n\n  Swap the order.\n  Same answer = math is right.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935324",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Check 1 \u2014 Is My Math Right?",
+        "visual": "  125 + 248 = 373\n  248 + 125 = 373   Same!\n\n  Swap the order.\n  Same answer = math is right.",
+        "content": "After you solve, try adding the numbers in the other order. If you get the same answer, your math is right!\n\nYou learned this before \u2014 swapping the order doesn't change the answer.\n\nSo if you did 125 + 248 = 373, try 248 + 125. Did you get 373 again? Great \u2014 your adding is correct!",
+        "card_idx": 11,
+        "card_type": "concept"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 12** (concept): Checks 2 and 3 \u2014 Complete and Makes Sense?\nCheck 2 \u2014 Did I answer everything? Read the question again. If it asked two things, did you give two answers? Don't stop halfway.\n\nCheck 3 \u2014 Does my answer make sense? If someone had 50 apples and got 30 more, and you got 800 \u2014 that can't be right! The answer should feel right for the story.\n\nThree Checks:\n  1. MATH right?     --> swap and add again\n  2. ALL parts done? --> re-read the question\n  3. MAKES SENSE?    --> think about the story",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935327",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Checks 2 and 3 \u2014 Complete and Makes Sense?",
+        "visual": "Three Checks:\n  1. MATH right?     --> swap and add again\n  2. ALL parts done? --> re-read the question\n  3. MAKES SENSE?    --> think about the story",
+        "content": "Check 2 \u2014 Did I answer everything? Read the question again. If it asked two things, did you give two answers? Don't stop halfway.\n\nCheck 3 \u2014 Does my answer make sense? If someone had 50 apples and got 30 more, and you got 800 \u2014 that can't be right! The answer should feel right for the story.",
+        "card_idx": 12,
+        "card_type": "concept"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 13** (example): Checking Someone Else's Work\n\"A library has 245 English books and 368 Hindi books. How many books in all?\" Rohan wrote: 503. Is he right?\n\nDon't just look at Rohan's answer and think \"that looks okay.\" Do the math yourself.\n\n245 + 368: 5 + 8 = 13 (write 3, carry 1). 1 + 4 + 6 = 11 (write 1, carry 1). 1 + 2 + 3 = 6. That gives us 613.\n\nRohan wrote 503. That's wrong \u2014 the correct answer is 613. He missed a carry. Always work it out yourself!\n\n  245          Rohan wrote: 503\n+ 368          Your answer: 613\n-----\n  613          Rohan made a mistake!\n\n  Always do the math yourself.\n  Don't just trust how it looks.",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935329",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "Checking Someone Else's Work",
+        "visual": "  245          Rohan wrote: 503\n+ 368          Your answer: 613\n-----\n  613          Rohan made a mistake!\n\n  Always do the math yourself.\n  Don't just trust how it looks.",
+        "content": "\"A library has 245 English books and 368 Hindi books. How many books in all?\" Rohan wrote: 503. Is he right?\n\nDon't just look at Rohan's answer and think \"that looks okay.\" Do the math yourself.\n\n245 + 368: 5 + 8 = 13 (write 3, carry 1). 1 + 4 + 6 = 11 (write 1, carry 1). 1 + 2 + 3 = 6. That gives us 613.\n\nRohan wrote 503. That's wrong \u2014 the correct answer is 613. He missed a carry. Always work it out yourself!",
+        "card_idx": 13,
+        "card_type": "example"
+      }
+    },
+    {
+      "role": "explanation_card",
+      "content": "**Card 14** (summary): You've Got This\nWord problems can look scary, but you now have a plan \u2014 like a checklist before a trip.\n\nRead the problem. Find what matters \u2014 and skip extra numbers. Pick add or subtract. Solve carefully \u2014 you already know how to add big numbers with regrouping. Then check three ways \u2014 is the math right, did I answer everything, and does it make sense.\n\nFor two-part problems, build on what you found \u2014 use your first answer in the next step.\n\nRemember \u2014 not every number in the problem goes into your math. Read the question first!\n\nYou don't have to do it all in your head. Just follow the steps, one at a time.\n\nREAD --> FIND --> PICK --> SOLVE --> CHECK\n\n  Extra numbers? Skip them.\n  Two parts?  Build on your answer.\n  Done?       Check three ways.\n\n  Not every number goes in your math!",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:47.935333",
+      "phase": "card_phase",
+      "card_data": {
+        "title": "You've Got This",
+        "visual": "READ --> FIND --> PICK --> SOLVE --> CHECK\n\n  Extra numbers? Skip them.\n  Two parts?  Build on your answer.\n  Done?       Check three ways.\n\n  Not every number goes in your math!",
+        "content": "Word problems can look scary, but you now have a plan \u2014 like a checklist before a trip.\n\nRead the problem. Find what matters \u2014 and skip extra numbers. Pick add or subtract. Solve carefully \u2014 you already know how to add big numbers with regrouping. Then check three ways \u2014 is the math right, did I answer everything, and does it make sense.\n\nFor two-part problems, build on what you found \u2014 use your first answer in the next step.\n\nRemember \u2014 not every number in the problem goes into your math. Read the question first!\n\nYou don't have to do it all in your head. Just follow the steps, one at a time.",
+        "card_idx": 14,
+        "card_type": "summary"
+      }
+    },
+    {
+      "role": "tutor",
+      "content": "Remember the **packing-a-bag** idea from the cards? Let\u2019s see what stuck.\n\nIn your own words, when you read an addition word problem, **what should you find first before doing any adding?**",
+      "turn": 0,
+      "timestamp": "2026-03-20T13:56:57.765830",
+      "phase": "card_to_interactive_transition"
+    }
+  ],
+  "master_tutor_prompts": [],
+  "session_metadata": {
+    "session_id": "3a00b2c7-2c22-41aa-9ac8-24e5d404bc11",
+    "created_at": "2026-03-20T08:26:38.202117",
+    "updated_at": "2026-03-20T08:26:57.222906",
+    "turn_count": 0,
+    "topic": {
+      "topic_id": "206482af-8a3d-4872-a091-2436899b5125",
+      "topic_name": "Addition: From 2-Digit to 4-Digit Numbers - Structured Problem Solving with Addition",
+      "subject": "Mathematics",
+      "grade_level": 1,
+      "guidelines": {
+        "learning_objectives": [
+          "Learn about Structured Problem Solving with Addition"
+        ],
+        "required_depth": "intermediate",
+        "prerequisite_concepts": [],
+        "common_misconceptions": [],
+        "scope_boundary": "## Learning Objectives\n- Identify the known quantities, unknown quantity, and the specific question being asked in a word problem before attempting computation.\n- Apply a structured, multi-step problem-solving framework to addition word problems, moving deliberately through stages of comprehension, information extraction, operation selection, computation, and answer verification.\n- Distinguish between information in a word problem that is necessary to find the answer and information that is pres",
+        "prior_topics_context": "Prior topics in this chapter have developed the full column addition algorithm from 2-digit through 4-digit numbers, including all regrouping scenarios. Students have been introduced to core vocabulary (addend, sum, regrouping, expanded form), the commutative property, fact families, and part-part-whole relationships. They have practised the expanded place-value decomposition method and the standard column algorithm across ones, tens, hundreds, and thousands places. The commutative property has also been framed as a self-checking strategy: performing the same addition in reverse order to verify the answer.\n\nKey concepts the chapter has introduced by this point:\n- Vocabulary: addend, sum, regrouping, carrying, expanded form, place value (ones, tens, hundreds, thousands)\n- Commutative property of addition (used both conceptually and as a self-check tool)\n- Fact families and part-part-whole relationships\n- Expanded break-up method for multi-digit addition\n- Standard column algorithm with regrouping across all place values up to 4 digits\n- Self-checking a computation by reversing the order of addends\n\nThis topic builds on the concepts above. Check whether the student is comfortable with them before building on them \u2014 don't assume mastery just because they appear earlier in the chapter."
+      },
+      "study_plan": {
+        "steps": [
+          {
+            "step_id": 1,
+            "type": "explain",
+            "concept": "Structured Problem Solving with Addition",
+            "content_hint": "Introduce Structured Problem Solving with Addition with a concrete example",
+            "question_type": null,
+            "question_count": null,
+            "explanation_approach": "real-world analogy",
+            "explanation_building_blocks": [
+              "What is Structured Problem Solving with Addition",
+              "Why Structured Problem Solving with Addition matters in everyday life",
+              "Simple example of Structured Problem Solving with Addition",
+              "Key vocabulary and notation for Structured Problem Solving with Addition"
+            ],
+            "explanation_analogy": "Everyday example that connects Structured Problem Solving with Addition to the student's life",
+            "min_explanation_turns": 4,
+            "description": null,
+            "card_references": null,
+            "misconceptions_to_probe": null,
+            "success_criteria": null,
+            "difficulty": null,
+            "personalization_hint": null
+          },
+          {
+            "step_id": 2,
+            "type": "explain",
+            "concept": "Structured Problem Solving with Addition",
+            "content_hint": "Deepen understanding of Structured Problem Solving with Addition with a different angle",
+            "question_type": null,
+            "question_count": null,
+            "explanation_approach": "progressive building",
+            "explanation_building_blocks": [
+              "How Structured Problem Solving with Addition works step by step",
+              "A worked example with Structured Problem Solving with Addition",
+              "What can go wrong \u2014 common mistakes with Structured Problem Solving with Addition"
+            ],
+            "explanation_analogy": "A different angle on Structured Problem Solving with Addition using something the student already knows",
+            "min_explanation_turns": 4,
+            "description": null,
+            "card_references": null,
+            "misconceptions_to_probe": null,
+            "success_criteria": null,
+            "difficulty": null,
+            "personalization_hint": null
+          },
+          {
+            "step_id": 3,
+            "type": "check",
+            "concept": "Structured Problem Solving with Addition",
+            "content_hint": null,
+            "question_type": "conceptual",
+            "question_count": null,
+            "explanation_approach": null,
+            "explanation_building_blocks": null,
+            "explanation_analogy": null,
+            "min_explanation_turns": 4,
+            "description": null,
+            "card_references": null,
+            "misconceptions_to_probe": null,
+            "success_criteria": null,
+            "difficulty": null,
+            "personalization_hint": null
+          },
+          {
+            "step_id": 4,
+            "type": "explain",
+            "concept": "Structured Problem Solving with Addition",
+            "content_hint": "Extend Structured Problem Solving with Addition to more complex scenarios",
+            "question_type": null,
+            "question_count": null,
+            "explanation_approach": "worked examples",
+            "explanation_building_blocks": [
+              "Applying Structured Problem Solving with Addition to new situations",
+              "Connecting Structured Problem Solving with Addition to other concepts",
+              "Common pitfalls and edge cases with Structured Problem Solving with Addition"
+            ],
+            "explanation_analogy": null,
+            "min_explanation_turns": 4,
+            "description": null,
+            "card_references": null,
+            "misconceptions_to_probe": null,
+            "success_criteria": null,
+            "difficulty": null,
+            "personalization_hint": null
+          },
+          {
+            "step_id": 5,
+            "type": "practice",
+            "concept": "Structured Problem Solving with Addition",
+            "content_hint": null,
+            "question_type": null,
+            "question_count": 2,
+            "explanation_approach": null,
+            "explanation_building_blocks": null,
+            "explanation_analogy": null,
+            "min_explanation_turns": 4,
+            "description": null,
+            "card_references": null,
+            "misconceptions_to_probe": null,
+            "success_criteria": null,
+            "difficulty": null,
+            "personalization_hint": null
+          }
+        ]
+      }
+    },
+    "current_step": 1,
+    "last_concept_taught": null,
+    "last_question": {
+      "question_text": "When you read an addition word problem, what should you find first before doing any adding?",
+      "expected_answer": "The question being asked / what we need to find out.",
+      "concept": "Identify the unknown and the question in an addition word problem",
+      "rubric": "",
+      "hints": [],
+      "hints_used": 0,
+      "wrong_attempts": 0,
+      "previous_student_answers": [],
+      "phase": "asked"
+    },
+    "awaiting_response": true,
+    "allow_extension": true,
+    "mastery_estimates": {
+      "Structured Problem Solving with Addition": 0.0
+    },
+    "misconceptions": [],
+    "weak_areas": [],
+    "student_context": {
+      "grade": 5,
+      "board": "CBSE",
+      "language_level": "simple",
+      "preferred_examples": [
+        "food",
+        "sports",
+        "games"
+      ],
+      "student_name": null,
+      "student_age": null,
+      "about_me": null,
+      "text_language_preference": "en",
+      "audio_language_preference": "en",
+      "tutor_brief": null,
+      "personality_json": null,
+      "attention_span": null
+    },
+    "pace_preference": "normal",
+    "off_topic_count": 0,
+    "warning_count": 0,
+    "safety_flags": [],
+    "mode": "teach_me",
+    "is_paused": false,
+    "concepts_covered_set": [],
+    "exam_questions": [],
+    "exam_current_question_idx": 0,
+    "exam_total_correct": 0,
+    "exam_total_partial": 0,
+    "exam_total_incorrect": 0,
+    "exam_finished": false,
+    "exam_feedback": null,
+    "concepts_discussed": [],
+    "clarify_complete": false,
+    "card_phase": {
+      "guideline_id": "206482af-8a3d-4872-a091-2436899b5125",
+      "active": false,
+      "current_variant_key": "A",
+      "current_card_idx": 0,
+      "total_cards": 14,
+      "variants_shown": [
+        "A"
+      ],
+      "available_variant_keys": [
+        "A",
+        "B",
+        "C"
+      ],
+      "completed": true
+    },
+    "precomputed_explanation_summary": "Variant 'Everyday Analogies':\nThe cards introduce structured problem solving through a packing-a-bag analogy, then build skills progressively: first reading for the question, then spotting extra numbers with an explicit misconception callout showing the wrong total if all numbers are blindly added. A full worked example is split across two cards (Steps 1-3 then Steps 4-5) before presenting the formal checklist, following an examples-before-rules approach. Two-part problems use a building-blocks analogy with a bridge sentence preparing the student for subtraction. The three checking strategies are taught across two dedicated cards with mini-examples, avoiding the term 'commutative property' in favour of plain language. The evaluation skill uses a 3-digit problem to keep arithmetic manageable while the new skill is the focus.",
+    "card_covered_concepts": [],
+    "explanation_phases": {
+      "Structured Problem Solving with Addition": {
+        "concept": "Structured Problem Solving with Addition",
+        "step_id": 1,
+        "phase": "opening",
+        "tutor_turns_in_phase": 1,
+        "building_blocks_covered": [],
+        "student_engaged": false,
+        "informal_check_passed": false,
+        "skip_reason": null
+      }
+    },
+    "current_explanation_concept": "Structured Problem Solving with Addition",
+    "session_summary": {
+      "turn_timeline": [
+        "Checks what the student remembers from the cards"
+      ],
+      "concepts_taught": [],
+      "depth_reached": {},
+      "examples_used": [],
+      "analogies_used": [],
+      "student_responses_summary": [],
+      "progress_trend": "steady",
+      "stuck_points": [],
+      "what_helped": [],
+      "next_focus": null
+    },
+    "conversation_history": [
+      {
+        "role": "teacher",
+        "content": "Hi! Today we\u2019ll use **addition** to solve little story problems, like counting total runs in two cricket overs or adding scores in a game. I\u2019ve got some short cards ready for you\u2014read them first, then we\u2019ll check what stuck and practise together step by step.",
+        "audio_text": "Hi! Today we\u2019ll use addition to solve little story problems, like counting total runs in two cricket overs or adding scores in a game. I\u2019ve got some short cards ready for you\u2014read them first, then we\u2019ll check what stuck and practise together step by step.",
+        "timestamp": "2026-03-20T08:26:44.942060",
+        "message_id": null
+      },
+      {
+        "role": "teacher",
+        "content": "Remember the **packing-a-bag** idea from the cards? Let\u2019s see what stuck.\n\nIn your own words, when you read an addition word problem, **what should you find first before doing any adding?**",
+        "audio_text": "Remember the packing-a-bag idea from the cards? Let's see what stuck. In your own words, when you read an addition word problem, what should you find first before doing any adding?",
+        "timestamp": "2026-03-20T08:26:57.222926",
+        "message_id": null
+      }
+    ],
+    "full_conversation_log": [
+      {
+        "role": "teacher",
+        "content": "Hi! Today we\u2019ll use **addition** to solve little story problems, like counting total runs in two cricket overs or adding scores in a game. I\u2019ve got some short cards ready for you\u2014read them first, then we\u2019ll check what stuck and practise together step by step.",
+        "audio_text": "Hi! Today we\u2019ll use addition to solve little story problems, like counting total runs in two cricket overs or adding scores in a game. I\u2019ve got some short cards ready for you\u2014read them first, then we\u2019ll check what stuck and practise together step by step.",
+        "timestamp": "2026-03-20T08:26:44.942060",
+        "message_id": null
+      },
+      {
+        "role": "teacher",
+        "content": "Remember the **packing-a-bag** idea from the cards? Let\u2019s see what stuck.\n\nIn your own words, when you read an addition word problem, **what should you find first before doing any adding?**",
+        "audio_text": "Remember the packing-a-bag idea from the cards? Let's see what stuck. In your own words, when you read an addition word problem, what should you find first before doing any adding?",
+        "timestamp": "2026-03-20T08:26:57.222926",
+        "message_id": null
+      }
+    ]
+  }
+}

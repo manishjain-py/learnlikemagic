@@ -36,7 +36,10 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Feature Flags** | Admin tool to toggle runtime features on or off (e.g., visuals in tutor flow). Changes take effect immediately for new sessions |
 | **Pre-Computed Explanations** | During book ingestion, the system pre-generates multiple explanation variants for each topic (e.g., everyday analogies, visual/hands-on, story-based). During a Teach Me session, the tutor can present these as step-by-step explanation cards. If the student wants a different approach, they can request an alternative variant |
 | **Interactive Questions** | During exams and teaching, the tutor presents questions in rich interactive formats — fill-in-the-blank with tappable blanks, multiple-choice with option buttons, and matching exercises — instead of plain text. Students tap or type answers directly in the structured format |
+| **Report Issue** | Students can report problems via text, voice recording, or screenshot attachments. Reports are tracked by status (open, in progress, closed) |
 | **Visual Explanations (PoC)** | Admin tool to generate interactive diagrams and animations from text prompts using AI + Pixi.js |
+| **Interactive Visuals (PoC)** | Admin tool to test interactive visual templates (drag-and-drop, sliders) with editable JSON parameters |
+| **Issue Management** | Admin tool to view, triage, and update status of user-reported issues with screenshot viewing |
 | **Test Scenarios** | Admin tool to view end-to-end test results and screenshots |
 | **Docs Viewer** | Admin tool to browse project documentation inside the app |
 
@@ -71,7 +74,8 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 9. **Check report card** — View coverage and exam scores across subjects, chapters, and topics
 10. **View session history** — Browse past sessions with mastery scores and learning stats
 11. **Manage profile** — Update your name, grade, board, school, and other details
-12. **Practice again** — Jump back into topics that need more work
+12. **Report an issue** — Describe a problem via text, voice, or screenshots; the team tracks it
+13. **Practice again** — Jump back into topics that need more work
 
 ### Parents
 
@@ -89,8 +93,10 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 6. **Configure AI models** — Choose which AI provider and model powers each component
 7. **Manage feature flags** — Toggle runtime features on or off from the admin dashboard
 8. **Generate visual explanations** — Create interactive diagrams and animations from text descriptions (proof of concept)
-9. **View test scenarios** — Review end-to-end test results and screenshots for each feature
-10. **Browse documentation** — View project docs directly in the admin interface
+9. **Test interactive visuals** — Try drag-and-drop and other interactive templates with editable parameters (proof of concept)
+10. **Manage reported issues** — View user-reported issues, update status (open / in progress / closed), view attached screenshots
+11. **View test scenarios** — Review end-to-end test results and screenshots for each feature
+12. **Browse documentation** — View project docs directly in the admin interface
 
 ---
 

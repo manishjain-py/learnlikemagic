@@ -116,6 +116,8 @@ The `_build_user_message()` method assembles the evaluator input:
 - Persona context: name, ID, description, personality traits, correct answer probability, behavioral tendencies
 - Topic context (when available): topic name, grade level, and nested `guidelines` containing `learning_objectives` and `common_misconceptions`
 
+**Note:** Topic context is only provided in the session evaluation path (`_run_session_evaluation`), where it is extracted from the session state. Simulated evaluation (both API and CLI) does not pass `topic_info` to the evaluator -- the judge evaluates based on the transcript and persona alone.
+
 ### Model Configuration
 
 Both evaluator and simulator use `config.create_llm_service(component)` which routes through the unified `LLMService` abstraction. Supported providers: `openai`, `anthropic`, `claude_code`.
