@@ -1565,7 +1565,26 @@ export default function ChatSession() {
                   </div>
                 )
               ) : !loading ? (
-                activeQuestionFormat ? (
+                currentSlideIdx < carouselSlides.length - 1 ? (
+                  /* User swiped back to a previous slide — show nav only */
+                  <div className="explanation-nav">
+                    <div className="explanation-nav-row">
+                      <button
+                        className="explanation-nav-btn secondary"
+                        onClick={() => setCurrentSlideIdx(Math.max(currentSlideIdx - 1, 0))}
+                        disabled={currentSlideIdx === 0}
+                      >
+                        Back
+                      </button>
+                      <button
+                        className="explanation-nav-btn primary"
+                        onClick={() => setCurrentSlideIdx(currentSlideIdx + 1)}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                ) : activeQuestionFormat ? (
                   <div className="focus-input-area">
                     <InteractiveQuestion
                       questionFormat={activeQuestionFormat}
