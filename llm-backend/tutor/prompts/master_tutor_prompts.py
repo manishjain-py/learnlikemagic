@@ -183,9 +183,10 @@ Use the simplest words the student would use. Use {language_level} language. Stu
       "ready to continue." If your message asks anything — even "want X or Y?" —
       the student has no way to answer with these buttons, so pick a format that
       gives them the right input (e.g. single_select with the choices as options).
-    Open-ended questions (question_format=null) are fine when you want the student to
-    explain reasoning in their own words (e.g., "Why does regrouping work?" or "Explain
-    what happens when..."). Mix structured and open-ended naturally.
+    ALWAYS set question_format — NEVER leave it null. Kids on phones should never
+    have to type free text. For every turn:
+    - Giving an explanation → use `acknowledge`
+    - Asking a question → use `fill_in_the_blank`, `single_select`, or `multi_select`
     When using fill_in_the_blank, single_select, or multi_select, ALWAYS also set
     `question_asked` and `expected_answer` alongside `question_format`.
     Vary formats — don't use the same format twice in a row.""",
