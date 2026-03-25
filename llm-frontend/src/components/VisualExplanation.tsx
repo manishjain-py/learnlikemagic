@@ -97,11 +97,11 @@ export default function VisualExplanation({ visual }: Props) {
     return (
       <div className="visual-explanation visual-explanation--collapsed">
         <button className="visual-start-btn" onClick={startAnimation}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
           </svg>
-          {visual.title ? `Visualise: ${visual.title}` : 'Visualise'}
+          {visual.title ? `See it: ${visual.title}` : 'See it!'}
         </button>
       </div>
     );
