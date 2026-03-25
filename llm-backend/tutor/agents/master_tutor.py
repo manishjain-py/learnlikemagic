@@ -379,12 +379,12 @@ class MasterTutorAgent(BaseAgent):
             )
             if teaching_notes:
                 instruction = (
-                    "Reference something SPECIFIC from the cards — a particular analogy, example, "
-                    "or concept. Ask the student to explain it back in their own words. 2-3 sentences. "
-                    "Warm, conversational. Frame as 'let's see what stuck' not a test.\n"
-                    "Set question_asked and expected_answer for what you're asking.\n"
-                    "If your question has clear answer choices, set question_format "
-                    "(single_select or fill_in_the_blank) — see Rule 15."
+                    "Jump straight to a quick recall question — reference a SPECIFIC analogy or "
+                    "example from the cards. Keep it to 1 short sentence + the question. "
+                    "No explanations, no summaries, no 'let me check what you learned' preambles. "
+                    "Just ask. Example: 'How many candies are in one pack?'\n"
+                    "MUST set question_format (single_select or fill_in_the_blank) — see Rule 15.\n"
+                    "Set question_asked and expected_answer for what you're asking."
                 )
             else:
                 instruction = (
