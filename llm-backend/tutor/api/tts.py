@@ -43,10 +43,17 @@ async def text_to_speech(
 
         synthesis_input = texttospeech.SynthesisInput(text=request.text)
 
-        # Chirp 3 HD Kore — natural human-like voice for all languages
+        # Select voice based on language preference
+        voice_map = {
+            "en": ("en-US", "en-US-Chirp3-HD-Kore"),
+            "hi": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
+            "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
+        }
+        lang_code, voice_name = voice_map.get(request.language, ("en-US", "en-US-Chirp3-HD-Kore"))
+
         voice = texttospeech.VoiceSelectionParams(
-            language_code="en-IN",
-            name="en-IN-Chirp3-HD-Kore",
+            language_code=lang_code,
+            name=voice_name,
         )
 
         # Chirp 3 HD does not support pitch/rate adjustment

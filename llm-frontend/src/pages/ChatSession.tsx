@@ -251,6 +251,18 @@ export default function ChatSession() {
     }
   }, [currentSlideIdx, carouselSlides.length]);
 
+  // Auto-play audio when navigating explanation cards (Back/Next or swipe)
+  const prevSlideIdx = useRef(0);
+  useEffect(() => {
+    if (prevSlideIdx.current === currentSlideIdx) return;
+    prevSlideIdx.current = currentSlideIdx;
+    if (sessionPhase !== 'card_phase') return;
+    const slide = carouselSlides[currentSlideIdx];
+    if (slide && slide.type === 'explanation') {
+      playTeacherAudio(slide.audioText || slide.content, slide.id);
+    }
+  }, [currentSlideIdx, sessionPhase, carouselSlides]);
+
   const hydrateExamState = (state: any) => {
     if (!state?.exam_questions) return;
 
