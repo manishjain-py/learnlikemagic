@@ -108,13 +108,16 @@ def generate_explanations(
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
     guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
     force: bool = Query(False, description="Delete existing explanations before regenerating"),
+    mode: str = Query("generate", description="'generate' or 'refine_only'"),
+    review_rounds: int = Query(1, ge=0, le=5, description="Number of review-refine rounds"),
     db: Session = Depends(get_db),
 ):
     """Generate/regenerate pre-computed explanations for synced guidelines.
 
     Launches a background job and returns 202 immediately.
     Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
-    By default skips topics that already have explanations; set force=true to regenerate.
+    mode=generate: full generation pipeline (skips existing unless force=true).
+    mode=refine_only: takes existing cards and runs review-refine rounds.
     """
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
     from shared.models.entities import TeachingGuideline
@@ -164,6 +167,7 @@ def generate_explanations(
         run_in_background_v2(
             _run_explanation_generation, job_id, book_id,
             chapter_id or "", guideline_id or "", str(force),
+            mode, str(review_rounds),
         )
 
         return job_service.get_job(job_id)
@@ -206,6 +210,19 @@ def get_latest_explanation_job(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+
+@router.get("/explanation-jobs/{job_id}/stages")
+def get_job_stage_snapshots(
+    book_id: str,
+    job_id: str,
+    guideline_id: Optional[str] = Query(None, description="Filter stages by guideline_id"),
+    db: Session = Depends(get_db),
+):
+    """Get stage-by-stage snapshots for an explanation generation job."""
+    job_service = ChapterJobService(db)
+    snapshots = job_service.get_stage_snapshots(job_id, guideline_id=guideline_id)
+    return {"job_id": job_id, "snapshots": snapshots}
 
 
 @router.get("/explanation-status", response_model=ChapterExplanationStatusResponse)
@@ -446,8 +463,9 @@ def generate_visuals(
 def _run_explanation_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
     guideline_id: str = "", force_str: str = "False",
+    mode: str = "generate", review_rounds_str: str = "1",
 ):
-    """Background task for explanation generation."""
+    """Background task for explanation generation or refine-only."""
     import json as _json
     from config import get_settings
     from shared.models.entities import TeachingGuideline
@@ -457,6 +475,7 @@ def _run_explanation_generation(
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
 
     force = force_str.lower() == "true"
+    review_rounds = int(review_rounds_str)
 
     settings = get_settings()
     config = LLMConfigService(db).get_config("explanation_generator")
@@ -473,7 +492,7 @@ def _run_explanation_generation(
 
     try:
         if guideline_id:
-            # Single-topic generation
+            # Single-topic
             guideline = db.query(TeachingGuideline).filter(
                 TeachingGuideline.id == guideline_id,
             ).first()
@@ -483,13 +502,25 @@ def _run_explanation_generation(
             topic = guideline.topic_title or guideline.topic
             job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
 
-            if force:
-                service.repo.delete_by_guideline_id(guideline_id)
+            stage_collector = []
 
-            results = service.generate_for_guideline(guideline)
+            if mode == "refine_only":
+                results = service.refine_only_for_guideline(
+                    guideline, review_rounds=review_rounds, stage_collector=stage_collector,
+                )
+            else:
+                if force:
+                    service.repo.delete_by_guideline_id(guideline_id)
+                results = service.generate_for_guideline(
+                    guideline, review_rounds=review_rounds, stage_collector=stage_collector,
+                )
+
+            if stage_collector:
+                job_service.append_stage_snapshots(job_id, stage_collector)
+
             generated = 1 if results else 0
             failed = 0 if results else 1
-            errors = [] if results else [f"{topic}: no variants passed validation"]
+            errors = [] if results else [f"{topic}: no output"]
 
             job_service.update_progress(
                 job_id, current_item=None, completed=generated, failed=failed,
@@ -499,14 +530,24 @@ def _run_explanation_generation(
             )
             final_status = "completed" if failed == 0 else "completed_with_errors"
         else:
-            # Chapter or book-wide generation
-            result = service.generate_for_chapter(
-                book_id,
-                chapter_id=chapter_id or None,
-                job_service=job_service,
-                job_id=job_id,
-                force=force,
-            )
+            # Chapter or book-wide
+            if mode == "refine_only":
+                result = service.refine_only_for_chapter(
+                    book_id,
+                    chapter_id=chapter_id or None,
+                    review_rounds=review_rounds,
+                    job_service=job_service,
+                    job_id=job_id,
+                )
+            else:
+                result = service.generate_for_chapter(
+                    book_id,
+                    chapter_id=chapter_id or None,
+                    job_service=job_service,
+                    job_id=job_id,
+                    force=force,
+                    review_rounds=review_rounds,
+                )
 
             for error in result.get("errors", []):
                 logger.warning(f"Explanation generation failed: {error}")

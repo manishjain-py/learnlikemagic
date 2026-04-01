@@ -1,6 +1,7 @@
 """Multi-pass LLM generation of pre-computed explanation variants for teaching guidelines."""
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -90,6 +91,7 @@ class ExplanationGeneratorService:
         variant_keys: Optional[list[str]] = None,
         variant_count: int = DEFAULT_VARIANT_COUNT,
         review_rounds: int = DEFAULT_REVIEW_ROUNDS,
+        stage_collector: list | None = None,
     ) -> list[TopicExplanation]:
         """Generate explanation variants for a guideline.
 
@@ -98,6 +100,7 @@ class ExplanationGeneratorService:
             variant_keys: Explicit variant keys to generate (overrides variant_count)
             variant_count: Number of variants to generate (default: DEFAULT_VARIANT_COUNT)
             review_rounds: Number of review-and-refine passes (default: DEFAULT_REVIEW_ROUNDS)
+            stage_collector: Optional list to collect intermediate stage snapshots
 
         Returns:
             List of successfully stored TopicExplanation records
@@ -122,7 +125,9 @@ class ExplanationGeneratorService:
                 }))
 
                 cards, summary_json = self._generate_variant(
-                    guideline, config, review_rounds=review_rounds,
+                    guideline, config,
+                    review_rounds=review_rounds,
+                    stage_collector=stage_collector,
                 )
 
                 if cards is None:
@@ -158,12 +163,25 @@ class ExplanationGeneratorService:
         guideline: TeachingGuideline,
         variant_config: dict,
         review_rounds: int = DEFAULT_REVIEW_ROUNDS,
+        stage_collector: list | None = None,
     ) -> tuple[Optional[list[ExplanationCardOutput]], Optional[dict]]:
         """Generate → review-and-refine N rounds. Returns (cards, summary_json) or (None, None)."""
+        topic = guideline.topic_title or guideline.topic
 
         # Step 1: Generate cards
         gen_output = self._generate_cards(guideline, variant_config)
         cards = gen_output.cards
+
+        # Capture initial stage
+        if stage_collector is not None:
+            stage_collector.append({
+                "guideline_id": guideline.id,
+                "topic_title": topic,
+                "variant_key": variant_config["key"],
+                "stage": "initial",
+                "cards": [c.model_dump() for c in cards],
+                "timestamp": datetime.utcnow().isoformat(),
+            })
 
         # Validate card count
         if len(cards) < MIN_CARDS:
@@ -178,6 +196,17 @@ class ExplanationGeneratorService:
             refined_output = self._review_and_refine(cards, guideline)
             cards = refined_output.cards
             gen_output = refined_output
+
+            # Capture refine stage
+            if stage_collector is not None:
+                stage_collector.append({
+                    "guideline_id": guideline.id,
+                    "topic_title": topic,
+                    "variant_key": variant_config["key"],
+                    "stage": f"refine_{round_num}",
+                    "cards": [c.model_dump() for c in cards],
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
 
             # Re-validate after each round
             if len(cards) < MIN_CARDS:
@@ -315,6 +344,146 @@ class ExplanationGeneratorService:
             "teaching_notes": gen_output.summary.teaching_notes,
         }
 
+    def refine_only_for_guideline(
+        self,
+        guideline: TeachingGuideline,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
+        stage_collector: list | None = None,
+    ) -> list[TopicExplanation]:
+        """Load existing explanation cards from DB, run review-refine only, save back."""
+        existing = self.repo.get_by_guideline_id(guideline.id)
+        if not existing:
+            logger.warning(f"No existing explanations for {guideline.id}, skipping refine-only")
+            return []
+
+        topic = guideline.topic_title or guideline.topic
+        results = []
+
+        for explanation in existing:
+            try:
+                cards = [ExplanationCardOutput(**c) for c in explanation.cards_json]
+                variant_config = {"key": explanation.variant_key, "label": explanation.variant_label}
+
+                # Snapshot the existing state
+                if stage_collector is not None:
+                    stage_collector.append({
+                        "guideline_id": guideline.id,
+                        "topic_title": topic,
+                        "variant_key": explanation.variant_key,
+                        "stage": "existing",
+                        "cards": explanation.cards_json,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+
+                # Run N rounds of review-refine
+                gen_output = None
+                for round_num in range(1, review_rounds + 1):
+                    logger.info(f"Refine-only round {round_num}/{review_rounds} for {topic}")
+                    gen_output = self._review_and_refine(cards, guideline)
+                    cards = gen_output.cards
+
+                    if stage_collector is not None:
+                        stage_collector.append({
+                            "guideline_id": guideline.id,
+                            "topic_title": topic,
+                            "variant_key": explanation.variant_key,
+                            "stage": f"refine_{round_num}",
+                            "cards": [c.model_dump() for c in cards],
+                            "timestamp": datetime.utcnow().isoformat(),
+                        })
+
+                    if len(cards) < MIN_CARDS:
+                        logger.warning(f"Refine round {round_num}: only {len(cards)} cards, skipping")
+                        break
+                    if len(cards) > MAX_CARDS:
+                        cards = cards[:MAX_CARDS]
+
+                if gen_output is None or len(cards) < MIN_CARDS:
+                    continue
+
+                # Save refined cards back
+                summary_json = self._build_summary(gen_output, variant_config)
+                updated = self.repo.upsert(
+                    guideline_id=guideline.id,
+                    variant_key=explanation.variant_key,
+                    variant_label=explanation.variant_label,
+                    cards_json=[c.model_dump() for c in cards],
+                    summary_json=summary_json,
+                    generator_model=self.llm.model_id,
+                )
+                results.append(updated)
+
+            except Exception as e:
+                logger.error(f"Refine-only failed for {topic} variant {explanation.variant_key}: {e}")
+                continue
+
+        return results
+
+    def refine_only_for_chapter(
+        self,
+        book_id: str,
+        chapter_id: str | None = None,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
+        job_service=None,
+        job_id: str | None = None,
+    ) -> dict:
+        """Run refine-only for all topics in a chapter."""
+        query = self.db.query(TeachingGuideline).filter(
+            TeachingGuideline.book_id == book_id,
+            TeachingGuideline.review_status == "APPROVED",
+        )
+        if chapter_id:
+            from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+            chapter = ChapterRepository(self.db).get_by_id(chapter_id)
+            if chapter:
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            else:
+                return {"generated": 0, "skipped": 0, "failed": 0, "errors": [f"Chapter {chapter_id} not found"]}
+
+        guidelines = query.order_by(TeachingGuideline.topic_sequence).all()
+        refined = 0
+        skipped = 0
+        failed = 0
+        errors = []
+
+        for guideline in guidelines:
+            topic = guideline.topic_title or guideline.topic
+            try:
+                if job_service and job_id:
+                    job_service.update_progress(job_id, current_item=topic, completed=refined, failed=failed)
+
+                if not self.repo.has_explanations(guideline.id):
+                    skipped += 1
+                    continue
+
+                stage_collector = []
+                results = self.refine_only_for_guideline(
+                    guideline, review_rounds=review_rounds, stage_collector=stage_collector,
+                )
+
+                if job_service and job_id and stage_collector:
+                    job_service.append_stage_snapshots(job_id, stage_collector)
+
+                if results:
+                    refined += 1
+                else:
+                    failed += 1
+                    errors.append(f"{topic}: refine-only produced no valid output")
+
+            except Exception as e:
+                failed += 1
+                errors.append(f"{topic}: {str(e)}")
+                logger.error(f"Refine-only failed for {topic}: {e}")
+
+        if job_service and job_id:
+            job_service.update_progress(
+                job_id, current_item=None, completed=refined, failed=failed,
+                detail=json.dumps({"refined": refined, "skipped": skipped, "failed": failed, "errors": errors}),
+            )
+
+        return {"generated": refined, "skipped": skipped, "failed": failed, "errors": errors}
+
     def generate_for_chapter(
         self,
         book_id: str,
@@ -322,6 +491,7 @@ class ExplanationGeneratorService:
         job_service=None,
         job_id: Optional[str] = None,
         force: bool = False,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
     ) -> dict:
         """Generate explanations for all synced guidelines in a chapter (or book).
 
@@ -331,6 +501,7 @@ class ExplanationGeneratorService:
             job_service: Optional ChapterJobService for progress tracking.
             job_id: Optional job ID for progress tracking.
             force: If True, delete existing explanations and regenerate instead of skipping.
+            review_rounds: Number of review-and-refine passes per topic.
 
         Returns:
             Dict with generated, skipped, failed counts and error messages.
@@ -340,9 +511,6 @@ class ExplanationGeneratorService:
             TeachingGuideline.review_status == "APPROVED",
         )
         if chapter_id:
-            # chapter_id is a UUID from book_chapters. Sync service sets
-            # chapter_key = f"chapter-{chapter_number}" on guidelines.
-            # Look up the chapter to get its number, then filter by chapter_key.
             from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
             chapter = ChapterRepository(self.db).get_by_id(chapter_id)
             if chapter:
@@ -362,13 +530,9 @@ class ExplanationGeneratorService:
         for guideline in guidelines:
             topic = guideline.topic_title or guideline.topic
             try:
-                # Report progress if job tracking is available
                 if job_service and job_id:
                     job_service.update_progress(
-                        job_id,
-                        current_item=topic,
-                        completed=generated,
-                        failed=failed,
+                        job_id, current_item=topic, completed=generated, failed=failed,
                     )
 
                 # Check if explanations already exist
@@ -381,7 +545,14 @@ class ExplanationGeneratorService:
                         skipped += 1
                         continue
 
-                results = self.generate_for_guideline(guideline)
+                stage_collector = []
+                results = self.generate_for_guideline(
+                    guideline, review_rounds=review_rounds, stage_collector=stage_collector,
+                )
+
+                # Flush stage snapshots to job
+                if job_service and job_id and stage_collector:
+                    job_service.append_stage_snapshots(job_id, stage_collector)
                 if results:
                     generated += 1
                 else:

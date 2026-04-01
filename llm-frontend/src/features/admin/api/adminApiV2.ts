@@ -243,17 +243,37 @@ export async function syncChapter(
 
 export async function generateExplanations(
   bookId: string,
-  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean; mode?: string; reviewRounds?: number },
 ): Promise<ProcessingJobResponseV2> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.force) params.set('force', 'true');
+  if (opts?.mode) params.set('mode', opts.mode);
+  if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/generate-explanations${qs}`,
     { method: 'POST' }
   );
+}
+
+export interface StageSnapshotV2 {
+  guideline_id: string;
+  topic_title: string;
+  variant_key: string;
+  stage: string;
+  cards: ExplanationCardV2[];
+  timestamp?: string;
+}
+
+export async function getJobStageSnapshots(
+  bookId: string,
+  jobId: string,
+  guidelineId?: string,
+): Promise<{ job_id: string; snapshots: StageSnapshotV2[] }> {
+  const params = guidelineId ? `?guideline_id=${guidelineId}` : '';
+  return apiFetch(`/admin/v2/books/${bookId}/explanation-jobs/${jobId}/stages${params}`);
 }
 
 export async function getExplanationJobStatus(

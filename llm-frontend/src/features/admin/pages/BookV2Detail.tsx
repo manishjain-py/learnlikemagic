@@ -809,6 +809,9 @@ const BookV2Detail: React.FC = () => {
                         <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                           Reprocess
                         </button>
+                        <button onClick={() => navigate(`/admin/books-v2/${id}/explanations/${ch.id}`)} style={{ backgroundColor: '#0891B2', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                          Manage Explanations
+                        </button>
                         {(() => {
                           const isRunning = explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status);
                           return <>

@@ -116,6 +116,9 @@ class ChapterProcessingJob(Base):
     model_provider = Column(String, nullable=True)
     model_id = Column(String, nullable=True)
 
+    # Pipeline stage snapshots (JSON list — intermediate card sets per topic)
+    stage_snapshots_json = Column(Text, nullable=True)
+
     # Timestamps
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)

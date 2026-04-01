@@ -226,6 +226,33 @@ class ChapterJobService:
         self.db.commit()
         logger.warning(f"Job {job.id} marked abandoned → failed")
 
+    def append_stage_snapshots(self, job_id: str, snapshots: list[dict]):
+        """Append stage snapshots to job's stage_snapshots_json."""
+        import json
+        job = self.db.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id,
+        ).first()
+        if not job:
+            return
+        existing = json.loads(job.stage_snapshots_json) if job.stage_snapshots_json else []
+        existing.extend(snapshots)
+        job.stage_snapshots_json = json.dumps(existing, default=str)
+        job.heartbeat_at = datetime.utcnow()
+        self.db.commit()
+
+    def get_stage_snapshots(self, job_id: str, guideline_id: str | None = None) -> list[dict]:
+        """Get stage snapshots for a job, optionally filtered by guideline_id."""
+        import json
+        job = self.db.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id,
+        ).first()
+        if not job or not job.stage_snapshots_json:
+            return []
+        snapshots = json.loads(job.stage_snapshots_json)
+        if guideline_id:
+            snapshots = [s for s in snapshots if s.get("guideline_id") == guideline_id]
+        return snapshots
+
     def _to_response(self, job: ChapterProcessingJob) -> ProcessingJobResponse:
         import json
         progress = None
