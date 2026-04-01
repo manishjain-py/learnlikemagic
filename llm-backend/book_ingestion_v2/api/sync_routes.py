@@ -617,7 +617,10 @@ def _run_visual_enrichment(
             topic = guideline.topic_title or guideline.topic
             job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
 
-            result = service.enrich_guideline(guideline, force=force)
+            heartbeat_fn = lambda: job_service.update_progress(
+                job_id, current_item=topic, completed=0, failed=0,
+            )
+            result = service.enrich_guideline(guideline, force=force, heartbeat_fn=heartbeat_fn)
 
             job_service.update_progress(
                 job_id, current_item=None,

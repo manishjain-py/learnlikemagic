@@ -77,6 +77,7 @@ class AnimationEnrichmentService:
         guideline: TeachingGuideline,
         force: bool = False,
         variant_keys: Optional[list[str]] = None,
+        heartbeat_fn: Optional[callable] = None,
     ) -> dict:
         """Enrich all variants for a guideline with visuals.
 
@@ -94,7 +95,7 @@ class AnimationEnrichmentService:
 
         for explanation in explanations:
             try:
-                enriched = self._enrich_variant(explanation, guideline, force=force)
+                enriched = self._enrich_variant(explanation, guideline, force=force, heartbeat_fn=heartbeat_fn)
                 if enriched:
                     result["enriched"] += 1
                 else:
@@ -138,7 +139,13 @@ class AnimationEnrichmentService:
                     completed=totals["enriched"], failed=totals["failed"],
                 )
 
-            result = self.enrich_guideline(guideline, force=force)
+            hb = None
+            if job_service and job_id:
+                hb = lambda: job_service.update_progress(
+                    job_id, current_item=topic,
+                    completed=totals["enriched"], failed=totals["failed"],
+                )
+            result = self.enrich_guideline(guideline, force=force, heartbeat_fn=hb)
             totals["enriched"] += result["enriched"]
             totals["skipped"] += result["skipped"]
             totals["failed"] += result["failed"]
@@ -153,6 +160,7 @@ class AnimationEnrichmentService:
         explanation: TopicExplanation,
         guideline: TeachingGuideline,
         force: bool = False,
+        heartbeat_fn: Optional[callable] = None,
     ) -> bool:
         """Enrich a single variant. Returns True if any cards were enriched."""
         cards = explanation.cards_json
@@ -173,6 +181,8 @@ class AnimationEnrichmentService:
         variant_label = explanation.variant_label or explanation.variant_key
 
         # Step 1: Decision + spec
+        if heartbeat_fn:
+            heartbeat_fn()
         decisions = self._decide_and_spec(cards, guideline, variant_label)
         selected = [d for d in decisions if d.decision != "no_visual"]
 
@@ -185,6 +195,9 @@ class AnimationEnrichmentService:
         # Step 2: Generate code for each selected card
         enriched_count = 0
         for decision in selected:
+            if heartbeat_fn:
+                heartbeat_fn()
+
             card = next((c for c in cards if c["card_idx"] == decision.card_idx), None)
             if not card:
                 continue

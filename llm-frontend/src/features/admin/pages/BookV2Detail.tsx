@@ -769,85 +769,91 @@ const BookV2Detail: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Action buttons — hidden while a job is actively running */}
-                  {!(job && ['pending', 'running'].includes(job.status)) && !ocrRunning && (
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {/* OCR buttons for upload-phase chapters */}
-                    {['upload_in_progress', 'upload_complete'].includes(ch.status) && pagesNeedingOcr.length > 0 && (
-                      <button onClick={() => handleBulkOcrRetry(ch)} style={{ backgroundColor: '#14B8A6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                        Run OCR ({pagesNeedingOcr.length} pages)
-                      </button>
-                    )}
-                    {['upload_in_progress', 'upload_complete'].includes(ch.status) && pages.length > 0 && (
-                      <button onClick={() => handleBulkOcrRerun(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
-                        Re-OCR All
-                      </button>
-                    )}
-                    {ch.status === 'upload_complete' && (
-                      <button onClick={() => handleStartProcessing(ch)} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                        Extract Topics
-                      </button>
-                    )}
-                    {ch.status === 'failed' && (
-                      <>
-                        <button onClick={() => handleStartProcessing(ch)} style={{ backgroundColor: '#F59E0B', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Resume
-                        </button>
-                        <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Reprocess
-                        </button>
-                      </>
-                    )}
-                    {/* Pipeline admin links — show based on available data */}
-                    {ch.uploaded_page_count > 0 && (
-                      <>
-                        <button onClick={() => navigate(`/admin/books-v2/${id}/ocr/${ch.id}`)} style={{ backgroundColor: '#6366F1', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Manage OCR
-                        </button>
-                        <button onClick={() => navigate(`/admin/books-v2/${id}/topics/${ch.id}`)} style={{ backgroundColor: '#F59E0B', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Manage Topics
-                        </button>
-                      </>
-                    )}
-                    {['chapter_completed', 'needs_review'].includes(ch.status) && (
-                      <>
-                        <button onClick={() => navigate(`/admin/books-v2/${id}/guidelines/${ch.id}`)} style={{ backgroundColor: '#0D9488', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Manage Guidelines
-                        </button>
-                        <button onClick={() => navigate(`/admin/books-v2/${id}/explanations/${ch.id}`)} style={{ backgroundColor: '#0891B2', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Manage Explanations
-                        </button>
-                        <button onClick={() => navigate(`/admin/books-v2/${id}/visuals/${ch.id}`)} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                          Manage Visuals
-                        </button>
-                      </>
-                    )}
-                    {ch.status === 'chapter_completed' && (
-                      <>
-                        <button onClick={() => handleSyncChapter(ch)} disabled={syncingChapterId === ch.id} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: syncingChapterId === ch.id ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: syncingChapterId === ch.id ? 0.6 : 1 }}>
-                          {syncingChapterId === ch.id ? 'Syncing...' : 'Sync to DB'}
-                        </button>
-                        <button onClick={() => handleRefinalize(ch)} style={{ backgroundColor: '#6366F1', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
-                          Re-finalize
-                        </button>
-                        <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
-                          Reprocess
-                        </button>
-                        {(() => {
-                          const isRunning = explanationJobs[ch.id] && ['pending', 'running'].includes(explanationJobs[ch.id].status);
-                          return <>
-                            <button onClick={() => handleGenerateExplanations(ch)} disabled={isRunning} style={{ backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: isRunning ? 0.6 : 1 }}>
-                              {isRunning ? 'Generating...' : 'Generate Explanations'}
+                  {/* ── Pipeline Steps + Actions ── */}
+                  {!(job && ['pending', 'running'].includes(job.status)) && !ocrRunning && (() => {
+                    const hasPages = ch.uploaded_page_count > 0;
+                    const ocrDone = hasPages && pages.length > 0 && pages.every(p => p.ocr_status === 'completed');
+                    const topicsReady = ['chapter_completed', 'needs_review', 'chapter_finalizing'].includes(ch.status);
+                    const completed = ch.status === 'chapter_completed';
+                    const isFailed = ch.status === 'failed';
+
+                    // Pipeline step indicators
+                    const steps = [
+                      { label: 'OCR', done: ocrDone, active: hasPages && !ocrDone },
+                      { label: 'Topics', done: topicsReady, active: ocrDone && !topicsReady && !isFailed },
+                      { label: 'Sync', done: !!(syncResult[ch.id]), active: completed },
+                      { label: 'Explanations', done: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0), active: completed },
+                      { label: 'Visuals', done: false, active: completed },
+                    ];
+
+                    return (
+                      <div style={{ marginTop: '8px' }}>
+                        {/* Step indicators */}
+                        {hasPages && (
+                          <div style={{ display: 'flex', gap: '4px', marginBottom: '10px', alignItems: 'center' }}>
+                            {steps.map((s, i) => (
+                              <React.Fragment key={s.label}>
+                                {i > 0 && <span style={{ color: '#D1D5DB', fontSize: '10px' }}>&rarr;</span>}
+                                <span style={{
+                                  fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '10px',
+                                  backgroundColor: s.done ? '#D1FAE5' : s.active ? '#EDE9FE' : '#F3F4F6',
+                                  color: s.done ? '#065F46' : s.active ? '#5B21B6' : '#9CA3AF',
+                                }}>{s.done ? '\u2713 ' : ''}{s.label}</span>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Next action + manage links */}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          {/* Primary next action */}
+                          {hasPages && !ocrDone && pagesNeedingOcr.length > 0 && (
+                            <button onClick={() => handleBulkOcrRetry(ch)} style={{ backgroundColor: '#14B8A6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                              Run OCR ({pagesNeedingOcr.length} pages)
                             </button>
-                            <button onClick={() => handleGenerateExplanations(ch, true)} disabled={isRunning} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: isRunning ? 0.6 : 1 }}>
-                              Force Regenerate All
+                          )}
+                          {ch.status === 'upload_complete' && ocrDone && (
+                            <button onClick={() => handleStartProcessing(ch)} style={{ backgroundColor: '#7C3AED', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                              Extract Topics
                             </button>
-                          </>;
-                        })()}
-                      </>
-                    )}
-                  </div>
-                  )}
+                          )}
+                          {isFailed && (
+                            <>
+                              <button onClick={() => handleStartProcessing(ch)} style={{ backgroundColor: '#F59E0B', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                                Resume
+                              </button>
+                              <button onClick={() => handleReprocess(ch)} style={{ backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                                Reprocess
+                              </button>
+                            </>
+                          )}
+                          {completed && (
+                            <button onClick={() => handleSyncChapter(ch)} disabled={syncingChapterId === ch.id} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: syncingChapterId === ch.id ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: syncingChapterId === ch.id ? 0.6 : 1 }}>
+                              {syncingChapterId === ch.id ? 'Syncing...' : 'Sync to DB'}
+                            </button>
+                          )}
+
+                          {/* Separator before manage links */}
+                          {hasPages && <span style={{ color: '#D1D5DB', margin: '0 4px' }}>|</span>}
+
+                          {/* Manage links — only show for completed steps */}
+                          {hasPages && (
+                            <button onClick={() => navigate(`/admin/books-v2/${id}/ocr/${ch.id}`)} style={manageLinkStyle}>OCR</button>
+                          )}
+                          {hasPages && (
+                            <button onClick={() => navigate(`/admin/books-v2/${id}/topics/${ch.id}`)} style={manageLinkStyle}>Topics</button>
+                          )}
+                          {completed && (
+                            <>
+                              <button onClick={() => navigate(`/admin/books-v2/${id}/guidelines/${ch.id}`)} style={manageLinkStyle}>Guidelines</button>
+                              <button onClick={() => navigate(`/admin/books-v2/${id}/explanations/${ch.id}`)} style={manageLinkStyle}>Explanations</button>
+                              <button onClick={() => navigate(`/admin/books-v2/${id}/visuals/${ch.id}`)} style={manageLinkStyle}>Visuals</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Explanation generation progress/result banner */}
                   {explanationJobs[ch.id] && (() => {
@@ -1384,6 +1390,12 @@ const VariantSection: React.FC<{ variant: ExplanationVariantV2 }> = ({ variant }
       )}
     </div>
   );
+};
+
+const manageLinkStyle: React.CSSProperties = {
+  background: 'none', border: '1px solid #D1D5DB', color: '#374151',
+  padding: '4px 10px', borderRadius: '4px', cursor: 'pointer',
+  fontSize: '11px', fontWeight: 500,
 };
 
 export default BookV2Detail;
