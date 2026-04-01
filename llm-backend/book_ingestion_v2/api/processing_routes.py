@@ -431,6 +431,30 @@ def get_topic(
         )
 
 
+@router.delete("/topics/{topic_id}")
+def delete_topic(
+    book_id: str, chapter_id: str, topic_id: str, db: Session = Depends(get_db)
+):
+    """Delete a single extracted topic."""
+    try:
+        _validate_chapter_ownership(book_id, chapter_id, db)
+        topic_repo = TopicRepository(db)
+        from book_ingestion_v2.models.database import ChapterTopic
+        topic = db.query(ChapterTopic).filter(
+            ChapterTopic.id == topic_id,
+            ChapterTopic.chapter_id == chapter_id,
+        ).first()
+        if not topic:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+        db.delete(topic)
+        db.commit()
+        return {"deleted": topic_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 # ───── Helpers ─────
 
 def _count_chunks(page_repo, chapter_id: str) -> int:

@@ -16,6 +16,12 @@ from book_ingestion_v2.models.schemas import (
     TopicExplanationsDetailResponse,
     ExplanationVariantResponse,
     DeleteExplanationsResponse,
+    ChapterGuidelineStatusResponse,
+    GuidelineStatusItem,
+    GuidelineDetailResponse,
+    UpdateGuidelineRequest,
+    ChapterVisualStatusResponse,
+    TopicVisualStatus,
 )
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
@@ -636,4 +642,281 @@ def _run_visual_enrichment(
         job_service.release_lock(job_id, status=final_status)
 
     except Exception:
-        raise  # run_in_background_v2 handles marking the job as failed
+        raise
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Guidelines Admin Endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/guideline-status", response_model=ChapterGuidelineStatusResponse)
+def get_guideline_status(
+    book_id: str,
+    chapter_id: str = Query(..., description="Chapter ID"),
+    db: Session = Depends(get_db),
+):
+    """Per-topic guideline status for a chapter."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        guidelines = (
+            db.query(TeachingGuideline)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+            )
+            .order_by(TeachingGuideline.topic_sequence)
+            .all()
+        )
+
+        repo = ExplanationRepository(db)
+        expl_counts = repo.get_variant_counts_for_chapter(book_id, chapter_key)
+
+        items = [
+            GuidelineStatusItem(
+                guideline_id=g.id,
+                topic_title=g.topic_title or g.topic,
+                topic_key=g.topic_key,
+                review_status=g.review_status or "TO_BE_REVIEWED",
+                guideline_preview=(g.guideline[:200] + "...") if g.guideline and len(g.guideline) > 200 else g.guideline,
+                has_explanations=expl_counts.get(g.id, 0) > 0,
+                source_page_start=g.source_page_start,
+                source_page_end=g.source_page_end,
+            )
+            for g in guidelines
+        ]
+
+        return ChapterGuidelineStatusResponse(
+            chapter_id=chapter_id, chapter_key=chapter_key, guidelines=items,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/guidelines/{guideline_id}", response_model=GuidelineDetailResponse)
+def get_guideline_detail(
+    book_id: str,
+    guideline_id: str,
+    db: Session = Depends(get_db),
+):
+    """Full guideline detail for a single topic."""
+    from shared.models.entities import TeachingGuideline
+    import json as _json
+
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id,
+        TeachingGuideline.book_id == book_id,
+    ).first()
+    if not guideline:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guideline not found")
+
+    meta = None
+    if guideline.metadata_json:
+        try:
+            meta = _json.loads(guideline.metadata_json) if isinstance(guideline.metadata_json, str) else guideline.metadata_json
+        except Exception:
+            meta = None
+
+    return GuidelineDetailResponse(
+        id=guideline.id,
+        topic_title=guideline.topic_title or guideline.topic,
+        topic_key=guideline.topic_key,
+        chapter_key=guideline.chapter_key,
+        guideline=guideline.guideline,
+        review_status=guideline.review_status or "TO_BE_REVIEWED",
+        source_page_start=guideline.source_page_start,
+        source_page_end=guideline.source_page_end,
+        metadata_json=meta,
+        topic_summary=guideline.topic_summary,
+        updated_at=guideline.updated_at,
+    )
+
+
+@router.put("/guidelines/{guideline_id}", response_model=GuidelineDetailResponse)
+def update_guideline(
+    book_id: str,
+    guideline_id: str,
+    body: UpdateGuidelineRequest,
+    db: Session = Depends(get_db),
+):
+    """Update a guideline's text or review status."""
+    from shared.models.entities import TeachingGuideline
+    from datetime import datetime
+
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id,
+        TeachingGuideline.book_id == book_id,
+    ).first()
+    if not guideline:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guideline not found")
+
+    if body.guideline is not None:
+        guideline.guideline = body.guideline
+    if body.review_status is not None:
+        guideline.review_status = body.review_status
+        if body.review_status == "APPROVED":
+            guideline.reviewed_at = datetime.utcnow()
+
+    guideline.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(guideline)
+
+    return get_guideline_detail(book_id, guideline_id, db)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Visual Enrichment Admin Endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/visual-status", response_model=ChapterVisualStatusResponse)
+def get_visual_status(
+    book_id: str,
+    chapter_id: str = Query(..., description="Chapter ID"),
+    db: Session = Depends(get_db),
+):
+    """Per-topic visual enrichment counts for a chapter."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        guidelines = (
+            db.query(TeachingGuideline)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            .order_by(TeachingGuideline.topic_sequence)
+            .all()
+        )
+
+        repo = ExplanationRepository(db)
+        topics = []
+        for g in guidelines:
+            explanations = repo.get_by_guideline_id(g.id)
+            total_cards = 0
+            cards_with_visuals = 0
+            for expl in explanations:
+                cards = expl.cards_json or []
+                total_cards += len(cards)
+                cards_with_visuals += sum(
+                    1 for c in cards
+                    if isinstance(c.get("visual_explanation"), dict)
+                    and c["visual_explanation"].get("pixi_code")
+                )
+            topics.append(TopicVisualStatus(
+                guideline_id=g.id,
+                topic_title=g.topic_title or g.topic,
+                topic_key=g.topic_key,
+                total_cards=total_cards,
+                cards_with_visuals=cards_with_visuals,
+                has_explanations=len(explanations) > 0,
+            ))
+
+        return ChapterVisualStatusResponse(
+            chapter_id=chapter_id, chapter_key=chapter_key, topics=topics,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.delete("/guidelines/{guideline_id}")
+def delete_guideline(
+    book_id: str,
+    guideline_id: str,
+    db: Session = Depends(get_db),
+):
+    """Delete a single teaching guideline and its explanations."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id,
+        TeachingGuideline.book_id == book_id,
+    ).first()
+    if not guideline:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guideline not found")
+
+    # Delete associated explanations first
+    expl_count = ExplanationRepository(db).delete_by_guideline_id(guideline_id)
+    db.delete(guideline)
+    db.commit()
+
+    return {"deleted_guideline": guideline_id, "deleted_explanations": expl_count}
+
+
+@router.delete("/visuals")
+def delete_visuals(
+    book_id: str,
+    guideline_id: str = Query(..., description="Guideline ID to strip visuals from"),
+    db: Session = Depends(get_db),
+):
+    """Strip visual_explanation from all cards for a topic's explanations."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id,
+        TeachingGuideline.book_id == book_id,
+    ).first()
+    if not guideline:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guideline not found")
+
+    repo = ExplanationRepository(db)
+    explanations = repo.get_by_guideline_id(guideline_id)
+    stripped = 0
+    for expl in explanations:
+        cards = expl.cards_json or []
+        changed = False
+        for card in cards:
+            if "visual_explanation" in card:
+                del card["visual_explanation"]
+                changed = True
+                stripped += 1
+        if changed:
+            from sqlalchemy.orm.attributes import flag_modified
+            expl.cards_json = cards
+            flag_modified(expl, "cards_json")
+    db.commit()
+
+    return {"guideline_id": guideline_id, "visuals_stripped": stripped}
+
+
+@router.get("/visual-jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_visual_job(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None),
+    guideline_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Latest visual enrichment job for a topic, chapter, or book."""
+    try:
+        lock_chapter_id = guideline_id or chapter_id or book_id
+        job_service = ChapterJobService(db)
+        result = job_service.get_latest_job(
+            lock_chapter_id, job_type=V2JobType.VISUAL_ENRICHMENT.value,
+        )
+        if not result:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No visual enrichment jobs found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

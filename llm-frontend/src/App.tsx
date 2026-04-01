@@ -58,6 +58,10 @@ import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
 import CreateBookV2 from './features/admin/pages/CreateBookV2';
 import BookV2Detail from './features/admin/pages/BookV2Detail';
 import ExplanationAdmin from './features/admin/pages/ExplanationAdmin';
+import TopicsAdmin from './features/admin/pages/TopicsAdmin';
+import GuidelinesAdmin from './features/admin/pages/GuidelinesAdmin';
+import OCRAdmin from './features/admin/pages/OCRAdmin';
+import VisualsAdmin from './features/admin/pages/VisualsAdmin';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
 import InteractiveVisualsPocPage from './features/admin/pages/InteractiveVisualsPocPage';
 import FeatureFlagsPage from './features/admin/pages/FeatureFlagsPage';
@@ -161,6 +165,10 @@ function App() {
             <Route path="books-v2/new" element={<CreateBookV2 />} />
             <Route path="books-v2/:id" element={<BookV2Detail />} />
             <Route path="books-v2/:bookId/explanations/:chapterId" element={<ExplanationAdmin />} />
+            <Route path="books-v2/:bookId/topics/:chapterId" element={<TopicsAdmin />} />
+            <Route path="books-v2/:bookId/guidelines/:chapterId" element={<GuidelinesAdmin />} />
+            <Route path="books-v2/:bookId/ocr/:chapterId" element={<OCRAdmin />} />
+            <Route path="books-v2/:bookId/visuals/:chapterId" element={<VisualsAdmin />} />
             <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
             <Route path="interactive-poc" element={<InteractiveVisualsPocPage />} />
             <Route path="feature-flags" element={<FeatureFlagsPage />} />

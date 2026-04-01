@@ -224,6 +224,12 @@ export async function getTopicDetail(
   );
 }
 
+export async function deleteTopic(
+  bookId: string, chapterId: string, topicId: string
+): Promise<{ deleted: string }> {
+  return apiFetch(`/admin/v2/books/${bookId}/chapters/${chapterId}/topics/${topicId}`, { method: 'DELETE' });
+}
+
 // ===== Sync =====
 
 export async function syncBook(bookId: string): Promise<SyncResponseV2> {
@@ -544,4 +550,127 @@ export interface TopicExplanationsDetailResponseV2 {
 
 export interface DeleteExplanationsResponseV2 {
   deleted_count: number;
+}
+
+// ===== Guideline Admin Types & API =====
+
+export interface GuidelineStatusItemV2 {
+  guideline_id: string;
+  topic_title: string;
+  topic_key?: string;
+  review_status: string;
+  guideline_preview?: string;
+  has_explanations: boolean;
+  source_page_start?: number;
+  source_page_end?: number;
+}
+
+export interface ChapterGuidelineStatusResponseV2 {
+  chapter_id: string;
+  chapter_key: string;
+  guidelines: GuidelineStatusItemV2[];
+}
+
+export interface GuidelineDetailResponseV2 {
+  id: string;
+  topic_title: string;
+  topic_key?: string;
+  chapter_key?: string;
+  guideline: string;
+  review_status: string;
+  source_page_start?: number;
+  source_page_end?: number;
+  metadata_json?: Record<string, unknown> | null;
+  topic_summary?: string;
+  updated_at?: string;
+}
+
+export async function getGuidelineStatus(
+  bookId: string, chapterId: string
+): Promise<ChapterGuidelineStatusResponseV2> {
+  return apiFetch<ChapterGuidelineStatusResponseV2>(
+    `/admin/v2/books/${bookId}/guideline-status?chapter_id=${chapterId}`
+  );
+}
+
+export async function getGuidelineDetail(
+  bookId: string, guidelineId: string
+): Promise<GuidelineDetailResponseV2> {
+  return apiFetch<GuidelineDetailResponseV2>(
+    `/admin/v2/books/${bookId}/guidelines/${guidelineId}`
+  );
+}
+
+export async function updateGuideline(
+  bookId: string, guidelineId: string, data: { guideline?: string; review_status?: string }
+): Promise<GuidelineDetailResponseV2> {
+  return apiFetch<GuidelineDetailResponseV2>(
+    `/admin/v2/books/${bookId}/guidelines/${guidelineId}`,
+    { method: 'PUT', body: JSON.stringify(data) }
+  );
+}
+
+export async function deleteGuideline(
+  bookId: string, guidelineId: string
+): Promise<{ deleted_guideline: string; deleted_explanations: number }> {
+  return apiFetch(`/admin/v2/books/${bookId}/guidelines/${guidelineId}`, { method: 'DELETE' });
+}
+
+// ===== Visual Enrichment Admin Types & API =====
+
+export interface TopicVisualStatusV2 {
+  guideline_id: string;
+  topic_title: string;
+  topic_key?: string;
+  total_cards: number;
+  cards_with_visuals: number;
+  has_explanations: boolean;
+}
+
+export interface ChapterVisualStatusResponseV2 {
+  chapter_id: string;
+  chapter_key: string;
+  topics: TopicVisualStatusV2[];
+}
+
+export async function getVisualStatus(
+  bookId: string, chapterId: string
+): Promise<ChapterVisualStatusResponseV2> {
+  return apiFetch<ChapterVisualStatusResponseV2>(
+    `/admin/v2/books/${bookId}/visual-status?chapter_id=${chapterId}`
+  );
+}
+
+export async function generateVisuals(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.force) params.set('force', 'true');
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/generate-visuals${qs}`,
+    { method: 'POST' }
+  );
+}
+
+export async function deleteVisuals(
+  bookId: string, guidelineId: string
+): Promise<{ guideline_id: string; visuals_stripped: number }> {
+  return apiFetch(`/admin/v2/books/${bookId}/visuals?guideline_id=${guidelineId}`, { method: 'DELETE' });
+}
+
+export async function getVisualJobStatus(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/visual-jobs/latest${qs}`
+  );
 }

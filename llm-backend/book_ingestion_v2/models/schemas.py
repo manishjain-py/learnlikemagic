@@ -247,6 +247,57 @@ class DeleteExplanationsResponse(BaseModel):
     deleted_count: int
 
 
+# ───── Guideline Status & Detail ─────
+
+class GuidelineStatusItem(BaseModel):
+    guideline_id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    review_status: str
+    guideline_preview: Optional[str] = None  # first 200 chars
+    has_explanations: bool = False
+    source_page_start: Optional[int] = None
+    source_page_end: Optional[int] = None
+
+class ChapterGuidelineStatusResponse(BaseModel):
+    chapter_id: str
+    chapter_key: str
+    guidelines: List[GuidelineStatusItem]
+
+class GuidelineDetailResponse(BaseModel):
+    id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    chapter_key: Optional[str] = None
+    guideline: str
+    review_status: str
+    source_page_start: Optional[int] = None
+    source_page_end: Optional[int] = None
+    metadata_json: Optional[Dict[str, Any]] = None
+    topic_summary: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+class UpdateGuidelineRequest(BaseModel):
+    guideline: Optional[str] = None
+    review_status: Optional[str] = None
+
+
+# ───── Visual Enrichment Status ─────
+
+class TopicVisualStatus(BaseModel):
+    guideline_id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    total_cards: int
+    cards_with_visuals: int
+    has_explanations: bool = False
+
+class ChapterVisualStatusResponse(BaseModel):
+    chapter_id: str
+    chapter_key: str
+    topics: List[TopicVisualStatus]
+
+
 # ───── Results ─────
 
 class ChapterResultSummary(BaseModel):
