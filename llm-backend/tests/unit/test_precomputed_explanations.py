@@ -410,6 +410,7 @@ class TestExplanationGeneratorService:
                     "title": f"Card {i + 1}",
                     "content": f"Content {i + 1}",
                     "visual": None,
+                    "audio_text": f"Audio for card {i + 1}",
                 }
                 for i in range(num_cards)
             ],
@@ -419,87 +420,46 @@ class TestExplanationGeneratorService:
             },
         }
 
-    def _critique_output(self, quality="good"):
-        """Return a dict matching CritiqueOutput schema."""
-        return {
-            "issues": [],
-            "suggestions": [],
-            "overall_quality": quality,
-        }
-
-    def test_generate_variant_skip_refine_on_good(self):
-        """When critique returns 'good', refine is NOT called and cards are stored."""
+    def test_generate_variant_with_review_refine(self):
+        """Generate + review-refine: 2 LLM calls, summary from refined output."""
         svc, llm = self._make_service()
         guideline = _make_guideline_mock()
         variant_config = {"key": "A", "label": "Everyday Analogies", "approach": "analogy-driven"}
 
         gen_output = self._good_generation_output(5)
-        critique_output = self._critique_output("good")
+        refined_output = self._good_generation_output(6)
 
-        # llm.call is invoked twice: generate + critique (no refine)
+        # llm.call: generate + review-refine (2 calls)
         llm.call.side_effect = [
             {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
+            {"output_text": json.dumps(refined_output)},
         ]
-        llm.parse_json_response = MagicMock(side_effect=[gen_output, critique_output])
+        llm.parse_json_response = MagicMock(side_effect=[gen_output, refined_output])
 
         cards, summary = svc._generate_variant(guideline, variant_config)
+
+        assert cards is not None
+        assert len(cards) == 6  # review-refine output
+        assert summary is not None
+        assert summary["approach_label"] == "Everyday Analogies"
+        assert llm.call.call_count == 2  # generate + review-refine
+        assert len(summary["card_titles"]) == 6
+
+    def test_generate_variant_no_review_rounds(self):
+        """When review_rounds=0, only generation is called (1 LLM call)."""
+        svc, llm = self._make_service()
+        guideline = _make_guideline_mock()
+        variant_config = {"key": "A", "label": "Analogies", "approach": "analogy-driven"}
+
+        gen_output = self._good_generation_output(5)
+        llm.call.side_effect = [{"output_text": json.dumps(gen_output)}]
+        llm.parse_json_response = MagicMock(side_effect=[gen_output])
+
+        cards, summary = svc._generate_variant(guideline, variant_config, review_rounds=0)
 
         assert cards is not None
         assert len(cards) == 5
-        assert summary is not None
-        assert summary["approach_label"] == "Everyday Analogies"
-        assert llm.call.call_count == 2  # generate + critique, no refine
-
-    def test_generate_variant_refine_on_needs_improvement(self):
-        """When critique returns 'needs_improvement', refine IS called and summary uses refined output."""
-        svc, llm = self._make_service()
-        guideline = _make_guideline_mock()
-        variant_config = {"key": "B", "label": "Visual Walkthrough", "approach": "diagram-heavy"}
-
-        gen_output = self._good_generation_output(4)
-        critique_output = self._critique_output("needs_improvement")
-        refined_output = self._good_generation_output(6)
-
-        # llm.call: generate, critique, refine (3 calls)
-        llm.call.side_effect = [
-            {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
-            {"output_text": json.dumps(refined_output)},
-        ]
-        llm.parse_json_response = MagicMock(
-            side_effect=[gen_output, critique_output, refined_output]
-        )
-
-        cards, summary = svc._generate_variant(guideline, variant_config)
-
-        assert cards is not None
-        assert len(cards) == 6  # refined output has 6 cards
-        assert summary is not None
-        assert llm.call.call_count == 3  # generate + critique + refine
-        # Summary should be built from refined output, so it has 6 card titles
-        assert len(summary["card_titles"]) == 6
-
-    def test_generate_variant_skip_on_poor(self):
-        """When critique returns 'poor', variant is NOT stored (returns None, None)."""
-        svc, llm = self._make_service()
-        guideline = _make_guideline_mock()
-        variant_config = {"key": "C", "label": "Step-by-Step", "approach": "procedural"}
-
-        gen_output = self._good_generation_output(4)
-        critique_output = self._critique_output("poor")
-
-        llm.call.side_effect = [
-            {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
-        ]
-        llm.parse_json_response = MagicMock(side_effect=[gen_output, critique_output])
-
-        cards, summary = svc._generate_variant(guideline, variant_config)
-
-        assert cards is None
-        assert summary is None
-        assert llm.call.call_count == 2  # generate + critique, no refine
+        assert llm.call.call_count == 1  # generate only
 
     def test_generate_variant_min_cards_validation(self):
         """When generation returns < MIN_CARDS, variant is skipped."""
@@ -529,66 +489,89 @@ class TestExplanationGeneratorService:
         variant_config = {"key": "A", "label": "Analogies", "approach": "analogy-driven"}
 
         gen_output = self._good_generation_output(20)  # Exceeds MAX_CARDS=15
-        critique_output = self._critique_output("good")
+        refined_output = self._good_generation_output(10)  # Review-refine returns 10
 
         llm.call.side_effect = [
             {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
+            {"output_text": json.dumps(refined_output)},
         ]
-        llm.parse_json_response = MagicMock(side_effect=[gen_output, critique_output])
+        llm.parse_json_response = MagicMock(side_effect=[gen_output, refined_output])
 
         cards, summary = svc._generate_variant(guideline, variant_config)
 
         assert cards is not None
-        assert len(cards) == 15  # Trimmed to MAX_CARDS
+        assert len(cards) == 10  # From review-refine output
 
-    def test_generate_variant_min_cards_after_refine_skips(self):
-        """When refined output has < MIN_CARDS, variant is skipped."""
+    def test_generate_variant_min_cards_after_review_skips(self):
+        """When review-refine output has < MIN_CARDS, variant is skipped."""
         svc, llm = self._make_service()
         guideline = _make_guideline_mock()
         variant_config = {"key": "A", "label": "Analogies", "approach": "analogy-driven"}
 
         gen_output = self._good_generation_output(4)
-        critique_output = self._critique_output("needs_improvement")
-        # Refined output has only 2 cards — below MIN_CARDS
+        # Review-refine output has only 2 cards — below MIN_CARDS
         refined_output = self._good_generation_output(2)
 
         llm.call.side_effect = [
             {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
             {"output_text": json.dumps(refined_output)},
         ]
         llm.parse_json_response = MagicMock(
-            side_effect=[gen_output, critique_output, refined_output]
+            side_effect=[gen_output, refined_output]
         )
 
         cards, summary = svc._generate_variant(guideline, variant_config)
 
         assert cards is None
         assert summary is None
-        assert llm.call.call_count == 3  # All three calls made, but result skipped
+        assert llm.call.call_count == 2  # generate + review-refine, but result skipped
 
-    def test_generate_for_guideline_stores_successful_variants(self):
-        """generate_for_guideline upserts variants that pass validation."""
+    def test_generate_for_guideline_stores_single_variant_by_default(self):
+        """generate_for_guideline generates 1 variant by default (DEFAULT_VARIANT_COUNT=1)."""
         svc, llm = self._make_service()
         guideline = _make_guideline_mock()
 
         gen_output = self._good_generation_output(5)
-        critique_output = self._critique_output("good")
+        refined_output = self._good_generation_output(5)
 
-        # Each of the 3 variants needs 2 LLM calls (generate + critique)
+        # 1 variant × 2 LLM calls (generate + review-refine)
         llm.call.side_effect = [
             {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
-        ] * 3
+            {"output_text": json.dumps(refined_output)},
+        ]
         llm.parse_json_response = MagicMock(
-            side_effect=[gen_output, critique_output] * 3
+            side_effect=[gen_output, refined_output]
         )
 
         mock_stored = MagicMock(spec=TopicExplanation)
         svc.repo.upsert.return_value = mock_stored
 
         results = svc.generate_for_guideline(guideline)
+
+        assert len(results) == 1
+        assert svc.repo.upsert.call_count == 1
+
+    def test_generate_for_guideline_multiple_variants(self):
+        """generate_for_guideline generates N variants when variant_count is set."""
+        svc, llm = self._make_service()
+        guideline = _make_guideline_mock()
+
+        gen_output = self._good_generation_output(5)
+        refined_output = self._good_generation_output(5)
+
+        # 3 variants × 2 LLM calls each
+        llm.call.side_effect = [
+            {"output_text": json.dumps(gen_output)},
+            {"output_text": json.dumps(refined_output)},
+        ] * 3
+        llm.parse_json_response = MagicMock(
+            side_effect=[gen_output, refined_output] * 3
+        )
+
+        mock_stored = MagicMock(spec=TopicExplanation)
+        svc.repo.upsert.return_value = mock_stored
+
+        results = svc.generate_for_guideline(guideline, variant_count=3)
 
         assert len(results) == 3
         assert svc.repo.upsert.call_count == 3
@@ -599,14 +582,14 @@ class TestExplanationGeneratorService:
         guideline = _make_guideline_mock()
 
         gen_output = self._good_generation_output(5)
-        critique_output = self._critique_output("good")
+        refined_output = self._good_generation_output(5)
 
         llm.call.side_effect = [
             {"output_text": json.dumps(gen_output)},
-            {"output_text": json.dumps(critique_output)},
+            {"output_text": json.dumps(refined_output)},
         ]
         llm.parse_json_response = MagicMock(
-            side_effect=[gen_output, critique_output]
+            side_effect=[gen_output, refined_output]
         )
 
         mock_stored = MagicMock(spec=TopicExplanation)

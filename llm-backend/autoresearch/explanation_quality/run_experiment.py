@@ -62,7 +62,8 @@ VARIANT_CONFIGS = [
     {"key": "C", "label": "Step-by-Step Procedure", "approach": "procedural walkthrough"},
 ]
 
-QUICK_VARIANTS = [VARIANT_CONFIGS[0]]  # Just variant A for quick mode
+QUICK_VARIANTS = [VARIANT_CONFIGS[0]]
+DEFAULT_VARIANT = VARIANT_CONFIGS[0]  # Single variant for default runs
 
 
 def get_prompt_diff() -> str:

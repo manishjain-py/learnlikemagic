@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _GENERATION_PROMPT = (_PROMPTS_DIR / "explanation_generation.txt").read_text()
-_CRITIQUE_PROMPT = (_PROMPTS_DIR / "explanation_critique.txt").read_text()
-_REFINEMENT_PROMPT = (_PROMPTS_DIR / "explanation_refinement.txt").read_text()
+_REVIEW_REFINE_PROMPT = (_PROMPTS_DIR / "explanation_review_refine.txt").read_text()
 
 # ─── Pydantic models for structured LLM output ─────────────────────────────
 
@@ -53,26 +52,6 @@ class GenerationOutput(BaseModel):
     summary: ExplanationSummaryOutput = Field(description="Key analogies and examples used")
 
 
-class CritiqueIssue(BaseModel):
-    """A single issue found during critique."""
-    card_idx: int = Field(description="Which card has the issue (1-based)")
-    principle_violated: str = Field(description="Which explanation principle is violated")
-    description: str = Field(description="What the issue is")
-
-
-class CritiqueSuggestion(BaseModel):
-    """A suggestion for improving a card."""
-    card_idx: int = Field(description="Which card to improve (1-based)")
-    suggestion: str = Field(description="What to change")
-
-
-class CritiqueOutput(BaseModel):
-    """Structured output from the critique prompt."""
-    issues: list[CritiqueIssue] = Field(default_factory=list, description="Issues found")
-    suggestions: list[CritiqueSuggestion] = Field(default_factory=list, description="Improvement suggestions")
-    overall_quality: str = Field(description="good, needs_improvement, or poor")
-
-
 # ─── Variant configurations ────────────────────────────────────────────────
 
 VARIANT_CONFIGS = [
@@ -85,12 +64,14 @@ VARIANT_CONFIGS = [
 
 MIN_CARDS = 3
 MAX_CARDS = 15
+DEFAULT_VARIANT_COUNT = 1     # How many variants to generate per topic (1-3)
+DEFAULT_REVIEW_ROUNDS = 1     # How many review-and-refine passes per variant
 
 
 class ExplanationGeneratorService:
-    """Generates multi-variant pre-computed explanations for a teaching guideline.
+    """Generates pre-computed explanations for a teaching guideline.
 
-    Pipeline per variant: generate → critique → refine (if needed) → validate → store.
+    Pipeline: generate → review-and-refine (N rounds) → validate → store.
     """
 
     def __init__(self, db: DBSession, llm_service: LLMService):
@@ -98,31 +79,33 @@ class ExplanationGeneratorService:
         self.llm = llm_service
         self.repo = ExplanationRepository(db)
 
-        # Pre-compute strict schemas for structured output
+        # Pre-compute strict schema for structured output (shared by generation and review-refine)
         self._generation_schema = LLMService.make_schema_strict(
             GenerationOutput.model_json_schema()
-        )
-        self._critique_schema = LLMService.make_schema_strict(
-            CritiqueOutput.model_json_schema()
         )
 
     def generate_for_guideline(
         self,
         guideline: TeachingGuideline,
         variant_keys: Optional[list[str]] = None,
+        variant_count: int = DEFAULT_VARIANT_COUNT,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
     ) -> list[TopicExplanation]:
-        """Generate explanation variants for a guideline. Multi-pass per variant.
+        """Generate explanation variants for a guideline.
 
         Args:
             guideline: The teaching guideline to generate explanations for
-            variant_keys: Optional list of variant keys to generate (default: all)
+            variant_keys: Explicit variant keys to generate (overrides variant_count)
+            variant_count: Number of variants to generate (default: DEFAULT_VARIANT_COUNT)
+            review_rounds: Number of review-and-refine passes (default: DEFAULT_REVIEW_ROUNDS)
 
         Returns:
             List of successfully stored TopicExplanation records
         """
-        configs = VARIANT_CONFIGS
         if variant_keys:
             configs = [c for c in VARIANT_CONFIGS if c["key"] in variant_keys]
+        else:
+            configs = VARIANT_CONFIGS[:variant_count]
 
         topic = guideline.topic_title or guideline.topic
         results = []
@@ -138,7 +121,9 @@ class ExplanationGeneratorService:
                     "model": self.llm.model_id,
                 }))
 
-                cards, summary_json = self._generate_variant(guideline, config)
+                cards, summary_json = self._generate_variant(
+                    guideline, config, review_rounds=review_rounds,
+                )
 
                 if cards is None:
                     logger.warning(f"Variant {config['key']} skipped for {topic}: failed validation")
@@ -172,47 +157,36 @@ class ExplanationGeneratorService:
         self,
         guideline: TeachingGuideline,
         variant_config: dict,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
     ) -> tuple[Optional[list[ExplanationCardOutput]], Optional[dict]]:
-        """Single variant: generate → critique → refine. Returns (cards, summary_json) or (None, None)."""
+        """Generate → review-and-refine N rounds. Returns (cards, summary_json) or (None, None)."""
 
         # Step 1: Generate cards
         gen_output = self._generate_cards(guideline, variant_config)
         cards = gen_output.cards
 
-        # Step 2: Validate card count
+        # Validate card count
         if len(cards) < MIN_CARDS:
             logger.warning(f"Generated only {len(cards)} cards (min {MIN_CARDS}), skipping variant")
             return None, None
-
-        # Trim if too many
         if len(cards) > MAX_CARDS:
-            logger.info(f"Trimming {len(cards)} cards to {MAX_CARDS}")
             cards = cards[:MAX_CARDS]
 
-        # Step 3: Critique
-        critique = self._critique_cards(cards, guideline, variant_config)
-
-        # Step 4: Refine if needed
-        if critique.overall_quality == "needs_improvement":
-            cards_dicts = [c.model_dump() for c in cards]
-            refined_output = self._refine_cards(cards_dicts, critique, guideline, variant_config)
+        # Step 2: Review-and-refine for N rounds
+        for round_num in range(1, review_rounds + 1):
+            logger.info(f"Review-refine round {round_num}/{review_rounds}")
+            refined_output = self._review_and_refine(cards, guideline)
             cards = refined_output.cards
+            gen_output = refined_output
 
-            # Re-validate after refinement
+            # Re-validate after each round
             if len(cards) < MIN_CARDS:
-                logger.warning(f"Refined cards only {len(cards)} (min {MIN_CARDS}), skipping variant")
+                logger.warning(f"Round {round_num}: only {len(cards)} cards (min {MIN_CARDS}), skipping")
                 return None, None
             if len(cards) > MAX_CARDS:
                 cards = cards[:MAX_CARDS]
 
-            # Rebuild summary from refined output (not the original gen_output)
-            gen_output = refined_output
-
-        elif critique.overall_quality == "poor":
-            logger.warning(f"Critique rated quality as 'poor', skipping variant")
-            return None, None
-
-        # Step 5: Build summary_json
+        # Step 3: Build summary_json
         summary_json = self._build_summary(gen_output, variant_config)
 
         return cards, summary_json
@@ -274,70 +248,17 @@ class ExplanationGeneratorService:
         parsed = self.llm.parse_json_response(response["output_text"])
         return GenerationOutput.model_validate(parsed)
 
-    def _critique_cards(
+    def _review_and_refine(
         self,
         cards: list[ExplanationCardOutput],
         guideline: TeachingGuideline,
-        variant_config: dict,
-    ) -> CritiqueOutput:
-        """LLM call: critique cards against how-to-explain principles."""
+    ) -> GenerationOutput:
+        """LLM call: review cards from a student's perspective and fix directly."""
         topic = guideline.topic_title or guideline.topic
         guideline_text = guideline.guideline or guideline.description or ""
 
         cards_json = json.dumps([c.model_dump() for c in cards], indent=2)
 
-        output_schema = json.dumps({
-            "issues": [
-                {"card_idx": 2, "principle_violated": "One Idea Per Card", "description": "..."}
-            ],
-            "suggestions": [
-                {"card_idx": 3, "suggestion": "Add a concrete example before the rule"}
-            ],
-            "overall_quality": "good | needs_improvement | poor"
-        }, indent=2)
-
-        prompt = _CRITIQUE_PROMPT.format(
-            topic_name=topic,
-            subject=guideline.subject,
-            grade=guideline.grade,
-            guideline_text=guideline_text,
-            cards_json=cards_json,
-            output_schema=output_schema,
-        )
-
-        response = self.llm.call(
-            prompt=prompt,
-            reasoning_effort="medium",
-            json_schema=self._critique_schema,
-            schema_name="CritiqueOutput",
-        )
-
-        parsed = self.llm.parse_json_response(response["output_text"])
-        return CritiqueOutput.model_validate(parsed)
-
-    def _refine_cards(
-        self,
-        cards_dicts: list[dict],
-        critique: CritiqueOutput,
-        guideline: TeachingGuideline,
-        variant_config: dict,
-    ) -> GenerationOutput:
-        """LLM call: refine cards based on critique feedback."""
-        topic = guideline.topic_title or guideline.topic
-        guideline_text = guideline.guideline or guideline.description or ""
-
-        # Build a refinement prompt that includes the original cards + critique
-        critique_text = ""
-        if critique.issues:
-            critique_text += "ISSUES FOUND:\n"
-            for issue in critique.issues:
-                critique_text += f"- Card {issue.card_idx}: {issue.principle_violated} — {issue.description}\n"
-        if critique.suggestions:
-            critique_text += "\nSUGGESTIONS:\n"
-            for s in critique.suggestions:
-                critique_text += f"- Card {s.card_idx}: {s.suggestion}\n"
-
-        # Build prior topics section
         prior_topics_section = ""
         if guideline.prior_topics_context:
             prior_topics_section = (
@@ -364,20 +285,18 @@ class ExplanationGeneratorService:
             }
         }, indent=2)
 
-        refinement_prompt = _REFINEMENT_PROMPT.format(
+        prompt = _REVIEW_REFINE_PROMPT.format(
             topic_name=topic,
             subject=guideline.subject,
             grade=guideline.grade,
             guideline_text=guideline_text,
             prior_topics_section=prior_topics_section,
-            variant_approach=variant_config["approach"],
-            original_cards_json=json.dumps(cards_dicts, indent=2),
-            critique_text=critique_text,
+            cards_json=cards_json,
             output_schema=output_schema,
         )
 
         response = self.llm.call(
-            prompt=refinement_prompt,
+            prompt=prompt,
             reasoning_effort="high",
             json_schema=self._generation_schema,
             schema_name="GenerationOutput",
