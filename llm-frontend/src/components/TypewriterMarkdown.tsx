@@ -281,12 +281,18 @@ export default function TypewriterMarkdown({
   }
 
   const archivedMd = activeIdx > 0 ? joinBlocks(blocks.slice(0, activeIdx)) : '';
+  const isTransitioning = phase === 'transitioning' && activeIdx < blocks.length;
 
   return (
     <div className="tw-spotlight-container tw-animating">
-      {archivedMd && (
+      {(archivedMd || isTransitioning) && (
         <div className="tw-archive">
-          <ReactMarkdown>{archivedMd}</ReactMarkdown>
+          {archivedMd && <ReactMarkdown>{archivedMd}</ReactMarkdown>}
+          {isTransitioning && (
+            <div className="tw-archive-incoming">
+              <ReactMarkdown>{blocks[activeIdx].raw}</ReactMarkdown>
+            </div>
+          )}
         </div>
       )}
 
