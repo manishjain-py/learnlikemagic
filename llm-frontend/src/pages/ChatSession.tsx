@@ -54,6 +54,19 @@ interface Slide {
   audioText?: string | null;
 }
 
+/** Strip markdown syntax for cleaner TTS input */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*+]\s/gm, '')
+    .replace(/^\d+\.\s/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .trim();
+}
+
 export default function ChatSession() {
   const navigate = useNavigate();
   const params = useParams<{
@@ -150,6 +163,7 @@ export default function ChatSession() {
   const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCacheRef = useRef<Map<string, Promise<Blob>>>(new Map());
 
   // URL params from nested learn routes (preferred) — already decoded by React Router
   const subject = params.subject || '';
@@ -241,7 +255,7 @@ export default function ChatSession() {
         setCurrentSlideIdx(newIdx);
         // Auto-play TTS for new slide (skip streaming slide)
         const newSlide = carouselSlides[newIdx];
-        if (newSlide && newSlide.id !== 'streaming') {
+        if (newSlide && newSlide.id !== 'streaming' && newSlide.type !== 'explanation') {
           playTeacherAudio(newSlide.audioText || newSlide.content, newSlide.id);
         }
       }
@@ -262,7 +276,8 @@ export default function ChatSession() {
     prevSlideIdx.current = currentSlideIdx;
     if (sessionPhase !== 'card_phase') return;
     const slide = carouselSlides[currentSlideIdx];
-    if (slide && slide.type === 'explanation') {
+    // Don't auto-play full audio for explanation slides — typewriter handles per-line audio
+    if (slide && slide.type !== 'explanation') {
       playTeacherAudio(slide.audioText || slide.content, slide.id);
     }
   }, [currentSlideIdx, sessionPhase, carouselSlides]);
@@ -559,6 +574,7 @@ export default function ChatSession() {
     return () => {
       ws.disconnect();
       wsRef.current = null;
+      audioCacheRef.current.clear();
     };
   }, [sessionId, sessionMode]);
 
@@ -841,6 +857,61 @@ export default function ChatSession() {
     setPlayingSlideId(null);
   };
 
+  const stopAudioWithFade = (): Promise<void> => {
+    return new Promise((resolve) => {
+      const audio = audioRef.current;
+      if (!audio || audio.paused) { setPlayingSlideId(null); resolve(); return; }
+      const startVol = audio.volume;
+      let step = 0;
+      const steps = 6;
+      const fadeInterval = setInterval(() => {
+        step++;
+        audio.volume = Math.max(0, startVol * (1 - step / steps));
+        if (step >= steps) {
+          clearInterval(fadeInterval);
+          audio.pause();
+          audio.volume = 1;
+          if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+          audio.src = '';
+          setPlayingSlideId(null);
+          resolve();
+        }
+      }, 25);
+    });
+  };
+
+  const prefetchAudio = (text: string): Promise<Blob> => {
+    const key = text;
+    if (audioCacheRef.current.has(key)) return audioCacheRef.current.get(key)!;
+    const promise = synthesizeSpeech(text, audioLang).catch(err => {
+      audioCacheRef.current.delete(key);
+      throw err;
+    });
+    audioCacheRef.current.set(key, promise);
+    return promise;
+  };
+
+  const playLineAudio = async (text: string): Promise<void> => {
+    if (!text.trim()) return;
+    const audio = getOrCreateAudio();
+    audio.pause();
+    if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+    try {
+      const blob = await prefetchAudio(text);
+      const url = URL.createObjectURL(blob);
+      audio.src = url;
+      return new Promise<void>((resolve) => {
+        audio.onended = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); resolve(); };
+        audio.onerror = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); resolve(); };
+        audio.play()
+          .then(() => setPlayingSlideId(carouselSlides[currentSlideIdx]?.id ?? null))
+          .catch(() => resolve());
+      });
+    } catch (err) {
+      console.error('Line TTS failed:', err);
+    }
+  };
+
   const handleFeedbackSubmit = async (action: 'continue' | 'restart') => {
     if (!sessionId || !feedbackText.trim()) return;
     setFeedbackSubmitting(true);
@@ -1112,9 +1183,16 @@ export default function ChatSession() {
                     if (!slide) return;
                     if (playingSlideId === slide.id) {
                       stopAudio();
-                    } else {
-                      playTeacherAudio(slide.audioText || slide.content, slide.id);
+                      return;
                     }
+                    // During active typewriter: stop audio + skip
+                    if (slide.type === 'explanation' && !revealedSlides.has(currentSlideIdx)) {
+                      setTypewriterSkip(prev => new Set(prev).add(currentSlideIdx));
+                      stopAudioWithFade();
+                      return;
+                    }
+                    // After completion: play full card audio
+                    playTeacherAudio(stripMarkdown(slide.audioText || slide.content), slide.id);
                   }}
                   aria-label={playingSlideId === carouselSlides[currentSlideIdx]?.id ? 'Stop audio' : 'Play audio'}
                 >
@@ -1435,6 +1513,7 @@ export default function ChatSession() {
                         // Tap to skip typewriter on explanation cards
                         if (slide.type === 'explanation' && i === currentSlideIdx && !revealedSlides.has(i)) {
                           setTypewriterSkip(prev => new Set(prev).add(i));
+                          stopAudioWithFade();
                         }
                       }}
                     >
@@ -1457,6 +1536,15 @@ export default function ChatSession() {
                               isActive={i === currentSlideIdx}
                               skipAnimation={revealedSlides.has(i) || typewriterSkip.has(i) || sessionPhase !== 'card_phase'}
                               onRevealComplete={() => setRevealedSlides(prev => new Set(prev).add(i))}
+                              onBlockStart={(blockText) => {
+                                const ttsText = stripMarkdown(blockText);
+                                if (ttsText.trim()) prefetchAudio(ttsText);
+                              }}
+                              onBlockTyped={async (blockText) => {
+                                const ttsText = stripMarkdown(blockText);
+                                if (!ttsText.trim()) return;
+                                await playLineAudio(ttsText);
+                              }}
                             />
                           </div>
                           {revealedSlides.has(i) && slide.visual && (
@@ -1513,7 +1601,10 @@ export default function ChatSession() {
                     )}
                     {showSimplifyOptions && !simplifyLoading && (
                       <div className="simplify-options">
-                        <div className="simplify-options-label">What would help?</div>
+                        <div className="simplify-options-header">
+                          <div className="simplify-options-label">What would help?</div>
+                          <button className="simplify-options-close" onClick={() => setShowSimplifyOptions(false)} aria-label="Close">&times;</button>
+                        </div>
                         <div className="simplify-options-row">
                           <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
                           <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
@@ -1565,7 +1656,10 @@ export default function ChatSession() {
                     )}
                     {showSimplifyOptions && !simplifyLoading && (
                       <div className="simplify-options">
-                        <div className="simplify-options-label">What would help?</div>
+                        <div className="simplify-options-header">
+                          <div className="simplify-options-label">What would help?</div>
+                          <button className="simplify-options-close" onClick={() => setShowSimplifyOptions(false)} aria-label="Close">&times;</button>
+                        </div>
                         <div className="simplify-options-row">
                           <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
                           <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>

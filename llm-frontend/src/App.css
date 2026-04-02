@@ -2725,6 +2725,15 @@ body {
   font-size: 1rem;
 }
 
+/* Subtle pulse while audio plays */
+.tw-spotlight--speaking .tw-spotlight-content {
+  animation: tw-speak-pulse 1.5s ease-in-out infinite;
+}
+@keyframes tw-speak-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
 /* Word reveal spans */
 .tw-word {
   transition: opacity 0.15s ease-in;
@@ -2827,11 +2836,28 @@ body {
   width: 100%;
   margin-bottom: 8px;
 }
+.simplify-options-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  position: relative;
+}
 .simplify-options-label {
   color: #666;
   font-size: 0.8rem;
   text-align: center;
-  margin-bottom: 6px;
+}
+.simplify-options-close {
+  position: absolute;
+  right: 0;
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  color: #999;
+  padding: 0 4px;
+  cursor: pointer;
+  line-height: 1;
 }
 .simplify-options-row {
   display: flex;

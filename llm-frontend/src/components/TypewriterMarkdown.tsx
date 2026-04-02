@@ -7,6 +7,10 @@ interface TypewriterMarkdownProps {
   isActive: boolean;
   skipAnimation: boolean;
   onRevealComplete?: () => void;
+  /** Fires when a block starts typing — use to pre-fetch audio */
+  onBlockStart?: (blockText: string, blockIdx: number) => void;
+  /** Fires when a block finishes typing — return a Promise that resolves when audio ends */
+  onBlockTyped?: (blockText: string, blockIdx: number) => Promise<void>;
 }
 
 // Timing constants (ms)
@@ -100,12 +104,14 @@ export default function TypewriterMarkdown({
   isActive,
   skipAnimation,
   onRevealComplete,
+  onBlockStart,
+  onBlockTyped,
 }: TypewriterMarkdownProps) {
   const blocks = useMemo(() => parseBlocks(title, content), [title, content]);
   const fullMarkdown = useMemo(() => joinBlocks(blocks), [blocks]);
 
   const [activeIdx, setActiveIdx] = useState(0);
-  const [phase, setPhase] = useState<'typing' | 'holding' | 'transitioning'>('typing');
+  const [phase, setPhase] = useState<'typing' | 'speaking' | 'transitioning'>('typing');
   const [wrapped, setWrapped] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [started, setStarted] = useState(false);
@@ -117,6 +123,12 @@ export default function TypewriterMarkdown({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedRef = useRef(false);
   const revealIdx = useRef(0);
+
+  // Stable refs for callbacks to avoid re-triggering effects
+  const onBlockStartRef = useRef(onBlockStart);
+  onBlockStartRef.current = onBlockStart;
+  const onBlockTypedRef = useRef(onBlockTyped);
+  onBlockTypedRef.current = onBlockTyped;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -204,12 +216,15 @@ export default function TypewriterMarkdown({
     const spans = wordSpansRef.current;
     const total = spans.length;
 
-    if (total === 0) { setPhase('holding'); return; }
+    // Notify parent that this block is starting (for audio pre-fetch)
+    onBlockStartRef.current?.(blocks[activeIdx].raw, activeIdx);
+
+    if (total === 0) { setPhase('speaking'); return; }
 
     let idx = revealIdx.current;
 
     const revealNext = () => {
-      if (idx >= total) { setPhase('holding'); return; }
+      if (idx >= total) { setPhase('speaking'); return; }
 
       spans[idx]?.classList.remove('tw-hidden');
       idx++;
@@ -222,14 +237,28 @@ export default function TypewriterMarkdown({
 
     timerRef.current = setTimeout(revealNext, WORD_DELAY);
     return clearTimer;
-  }, [started, wrapped, phase, isActive, clearTimer]);
+  }, [started, wrapped, phase, isActive, clearTimer, blocks, activeIdx]);
 
-  // Holding: pause after line completes
+  // Speaking: play audio or hold after line completes
   useEffect(() => {
-    if (phase !== 'holding' || !started || completedRef.current) return;
-    timerRef.current = setTimeout(() => setPhase('transitioning'), HOLD_DURATION);
-    return clearTimer;
-  }, [phase, started, clearTimer]);
+    if (phase !== 'speaking' || !started || completedRef.current) return;
+
+    if (onBlockTypedRef.current) {
+      let cancelled = false;
+      onBlockTypedRef.current(blocks[activeIdx].raw, activeIdx)
+        .then(() => {
+          if (!cancelled && !completedRef.current) setPhase('transitioning');
+        })
+        .catch(() => {
+          if (!cancelled && !completedRef.current) setPhase('transitioning');
+        });
+      return () => { cancelled = true; };
+    } else {
+      // Fallback: hold for HOLD_DURATION when no audio callback
+      timerRef.current = setTimeout(() => setPhase('transitioning'), HOLD_DURATION);
+      return clearTimer;
+    }
+  }, [phase, started, clearTimer, blocks, activeIdx]);
 
   // Transitioning: after animation, advance to next block
   useEffect(() => {
@@ -301,7 +330,7 @@ export default function TypewriterMarkdown({
       {activeIdx < blocks.length && (
         <div
           ref={spotlightRef}
-          className={`tw-spotlight${phase === 'transitioning' ? ' tw-spotlight--transitioning' : ''}`}
+          className={`tw-spotlight${phase === 'transitioning' ? ' tw-spotlight--transitioning' : ''}${phase === 'speaking' ? ' tw-spotlight--speaking' : ''}`}
         >
           <div ref={contentRef} key={activeIdx} className="tw-spotlight-content">
             <ReactMarkdown>{blocks[activeIdx].raw}</ReactMarkdown>
