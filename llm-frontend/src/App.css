@@ -2648,6 +2648,16 @@ body {
   color: #1f2937;
 }
 
+/* ─── Typewriter reveal effect ─── */
+
+.tw-word {
+  transition: color 0.08s ease-in;
+}
+
+.tw-hidden {
+  color: transparent !important;
+}
+
 .explanation-nav {
   display: flex;
   flex-direction: column;

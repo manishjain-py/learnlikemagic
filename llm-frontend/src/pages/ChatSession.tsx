@@ -24,6 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import VisualExplanationComponent from '../components/VisualExplanation';
 import InteractiveQuestion from '../components/InteractiveQuestion';
+import TypewriterMarkdown from '../components/TypewriterMarkdown';
 import '../App.css';
 
 interface Message {
@@ -111,6 +112,9 @@ export default function ChatSession() {
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
+  // Typewriter: track which slide indices have been fully revealed
+  const [revealedSlides, setRevealedSlides] = useState<Set<number>>(new Set());
+  const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
 
   // Annotate cards with 0-based source_card_idx if not already present
   const annotateCards = (cards: ExplanationCard[]): ExplanationCard[] =>
@@ -1424,7 +1428,16 @@ export default function ChatSession() {
                   }}
                 >
                   {carouselSlides.map((slide, i) => (
-                    <div key={slide.id} className="focus-slide">
+                    <div
+                      key={slide.id}
+                      className="focus-slide"
+                      onClick={() => {
+                        // Tap to skip typewriter on explanation cards
+                        if (slide.type === 'explanation' && i === currentSlideIdx && !revealedSlides.has(i)) {
+                          setTypewriterSkip(prev => new Set(prev).add(i));
+                        }
+                      }}
+                    >
                       {slide.type === 'explanation' ? (
                         <>
                           <div className="explanation-card-type">
@@ -1439,7 +1452,12 @@ export default function ChatSession() {
                           </div>
                           {slide.title && <h2 className="explanation-card-title">{slide.title}</h2>}
                           <div className="focus-tutor-msg">
-                            <ReactMarkdown>{slide.content}</ReactMarkdown>
+                            <TypewriterMarkdown
+                              content={slide.content}
+                              isActive={i === currentSlideIdx}
+                              skipAnimation={revealedSlides.has(i) || typewriterSkip.has(i) || sessionPhase !== 'card_phase'}
+                              onRevealComplete={() => setRevealedSlides(prev => new Set(prev).add(i))}
+                            />
                           </div>
                           {slide.visual && (
                             <pre className="explanation-card-visual">{slide.visual}</pre>
