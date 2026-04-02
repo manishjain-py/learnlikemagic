@@ -12,7 +12,7 @@ interface TypewriterMarkdownProps {
 }
 
 // Timing constants (ms)
-const WORD_DELAY = 80;
+const WORD_DELAY = 400;
 const SENTENCE_PAUSE = 600;
 const PARAGRAPH_PAUSE = 400;
 
