@@ -1,210 +1,309 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 interface TypewriterMarkdownProps {
   content: string;
-  /** Whether this slide is currently visible */
+  title?: string;
   isActive: boolean;
-  /** Skip animation — show all content immediately */
   skipAnimation: boolean;
-  /** Called when the full content has been revealed */
   onRevealComplete?: () => void;
 }
 
 // Timing constants (ms)
 const WORD_DELAY = 400;
 const SENTENCE_PAUSE = 600;
-const PARAGRAPH_PAUSE = 400;
+const HOLD_DURATION = 1500;
+const TRANSITION_DURATION = 600;
 
-/**
- * Renders markdown content with a word-by-word typewriter reveal effect.
- *
- * Approach: render the full markdown via ReactMarkdown, then walk the DOM
- * text nodes, wrap each word in a <span>, and progressively reveal them
- * by toggling a CSS class. This preserves all markdown formatting (bold,
- * lists, headings, etc.) while animating the text.
- */
+type BlockType = 'heading' | 'paragraph' | 'listItem' | 'code';
+
+interface Block {
+  raw: string;
+  type: BlockType;
+}
+
+/** Split markdown into logical blocks — each becomes one spotlight line */
+function parseBlocks(title: string | undefined, content: string): Block[] {
+  const blocks: Block[] = [];
+
+  if (title?.trim()) {
+    blocks.push({ raw: `## ${title.trim()}`, type: 'heading' });
+  }
+
+  const lines = content.split('\n');
+  let i = 0;
+
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) { i++; continue; }
+
+    // Code block
+    if (trimmed.startsWith('```')) {
+      let code = lines[i];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        code += '\n' + lines[i];
+        i++;
+      }
+      if (i < lines.length) { code += '\n' + lines[i]; i++; }
+      blocks.push({ raw: code, type: 'code' });
+      continue;
+    }
+
+    // Heading
+    if (/^#{1,6}\s/.test(trimmed)) {
+      blocks.push({ raw: trimmed, type: 'heading' });
+      i++; continue;
+    }
+
+    // List item
+    if (/^[-*+]\s|^\d+\.\s/.test(trimmed)) {
+      blocks.push({ raw: trimmed, type: 'listItem' });
+      i++; continue;
+    }
+
+    // Paragraph — collect consecutive non-special lines
+    let para = trimmed;
+    i++;
+    while (
+      i < lines.length && lines[i].trim() &&
+      !/^#{1,6}\s/.test(lines[i].trim()) &&
+      !/^[-*+]\s|^\d+\.\s/.test(lines[i].trim()) &&
+      !lines[i].trim().startsWith('```')
+    ) {
+      para += ' ' + lines[i].trim();
+      i++;
+    }
+    blocks.push({ raw: para, type: 'paragraph' });
+  }
+
+  return blocks;
+}
+
+/** Reconstruct markdown from blocks, keeping consecutive list items grouped */
+function joinBlocks(blocks: Block[]): string {
+  let md = '';
+  for (let i = 0; i < blocks.length; i++) {
+    if (i > 0) {
+      const prevList = blocks[i - 1].type === 'listItem';
+      const currList = blocks[i].type === 'listItem';
+      md += (prevList && currList) ? '\n' : '\n\n';
+    }
+    md += blocks[i].raw;
+  }
+  return md;
+}
+
 export default function TypewriterMarkdown({
   content,
+  title,
   isActive,
   skipAnimation,
   onRevealComplete,
 }: TypewriterMarkdownProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const wordSpansRef = useRef<HTMLSpanElement[]>([]);
-  const sentenceEndIndices = useRef<Set<number>>(new Set());
-  const paragraphEndIndices = useRef<Set<number>>(new Set());
-  const [revealedCount, setRevealedCount] = useState(0);
-  const [totalWords, setTotalWords] = useState(0);
+  const blocks = useMemo(() => parseBlocks(title, content), [title, content]);
+  const fullMarkdown = useMemo(() => joinBlocks(blocks), [blocks]);
+
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [phase, setPhase] = useState<'typing' | 'holding' | 'transitioning'>('typing');
   const [wrapped, setWrapped] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [started, setStarted] = useState(false);
+
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const wordSpansRef = useRef<HTMLSpanElement[]>([]);
+  const sentenceEnds = useRef<Set<number>>(new Set());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedRef = useRef(false);
-  const prevActiveRef = useRef(isActive);
+  const revealIdx = useRef(0);
 
-  // Wrap text nodes in spans after ReactMarkdown renders
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+  }, []);
+
+  const completeAll = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    clearTimer();
+    setCompleted(true);
+    onRevealComplete?.();
+  }, [clearTimer, onRevealComplete]);
+
+  // Start when first activated
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    // Reset
-    wordSpansRef.current = [];
-    sentenceEndIndices.current.clear();
-    paragraphEndIndices.current.clear();
-    completedRef.current = false;
-
-    const spans: HTMLSpanElement[] = [];
-
-    // Collect all text nodes
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    const textNodes: Text[] = [];
-    while (walker.nextNode()) {
-      textNodes.push(walker.currentNode as Text);
+    if (isActive && !started && !skipAnimation && !completedRef.current) {
+      setStarted(true);
     }
+  }, [isActive, started, skipAnimation]);
 
-    textNodes.forEach((textNode) => {
-      const text = textNode.textContent || '';
-      if (!text.trim()) return; // skip whitespace-only nodes
+  // Skip or lose focus → complete immediately
+  useEffect(() => {
+    if (started && !completedRef.current && (skipAnimation || !isActive)) {
+      completeAll();
+    }
+  }, [started, skipAnimation, isActive, completeAll]);
 
-      const parent = textNode.parentNode;
-      if (!parent) return;
+  // Wrap text nodes after ReactMarkdown renders each new block
+  useEffect(() => {
+    if (!started || completedRef.current || activeIdx >= blocks.length) return;
 
-      // Split into words and whitespace, keeping whitespace tokens
-      const tokens = text.split(/(\s+)/);
-      const fragment = document.createDocumentFragment();
+    const el = contentRef.current;
+    if (!el) return;
 
-      tokens.forEach((token) => {
-        if (/^\s+$/.test(token)) {
-          // Whitespace — keep as-is
-          fragment.appendChild(document.createTextNode(token));
-        } else if (token) {
-          const span = document.createElement('span');
-          span.textContent = token;
-          span.className = 'tw-word tw-hidden';
-          spans.push(span);
+    wordSpansRef.current = [];
+    sentenceEnds.current.clear();
+    revealIdx.current = 0;
+    setWrapped(false);
 
-          // Detect sentence end
-          if (/[.!?:]\s*$/.test(token)) {
-            sentenceEndIndices.current.add(spans.length - 1);
+    let cancelled = false;
+    requestAnimationFrame(() => {
+      if (cancelled || !contentRef.current) return;
+
+      const spans: HTMLSpanElement[] = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+      textNodes.forEach((textNode) => {
+        const text = textNode.textContent || '';
+        if (!text.trim()) return;
+        const parent = textNode.parentNode;
+        if (!parent) return;
+
+        const tokens = text.split(/(\s+)/);
+        const fragment = document.createDocumentFragment();
+
+        tokens.forEach((token) => {
+          if (/^\s+$/.test(token)) {
+            fragment.appendChild(document.createTextNode(token));
+          } else if (token) {
+            const span = document.createElement('span');
+            span.textContent = token;
+            span.className = 'tw-word tw-hidden';
+            spans.push(span);
+            if (/[.!?:]\s*$/.test(token)) sentenceEnds.current.add(spans.length - 1);
+            fragment.appendChild(span);
           }
+        });
 
-          fragment.appendChild(span);
-        }
+        parent.replaceChild(fragment, textNode);
       });
 
-      // Check if this text node's block parent ends here (paragraph boundary)
-      const blockParent = findBlockParent(textNode, container);
-      if (blockParent) {
-        // If this is the last text node in this block element, mark paragraph end
-        const blockTextNodes = getTextNodesIn(blockParent);
-        if (blockTextNodes.length > 0 && blockTextNodes[blockTextNodes.length - 1] === textNode) {
-          paragraphEndIndices.current.add(spans.length - 1);
-        }
-      }
-
-      parent.replaceChild(fragment, textNode);
+      wordSpansRef.current = spans;
+      setWrapped(true);
     });
 
-    wordSpansRef.current = spans;
-    setTotalWords(spans.length);
+    return () => { cancelled = true; };
+  }, [started, activeIdx, blocks.length]);
 
-    if (skipAnimation) {
-      // Show all immediately
-      spans.forEach((s) => s.classList.remove('tw-hidden'));
-      setRevealedCount(spans.length);
-      completedRef.current = true;
-      onRevealComplete?.();
-    } else {
-      setRevealedCount(0);
-    }
-
-    setWrapped(true);
-  }, [content]); // Re-run only when content changes
-
-  // Auto-complete reveal when slide loses focus mid-animation
+  // Typing: reveal words one by one
   useEffect(() => {
-    if (prevActiveRef.current && !isActive && wrapped && !completedRef.current) {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      wordSpansRef.current.forEach((s) => s.classList.remove('tw-hidden'));
-      setRevealedCount(wordSpansRef.current.length);
-      completedRef.current = true;
-      onRevealComplete?.();
-    }
-    prevActiveRef.current = isActive;
-  }, [isActive, wrapped, onRevealComplete]);
+    if (!started || completedRef.current || !wrapped || phase !== 'typing' || !isActive) return;
 
-  // Handle skipAnimation changing after mount (e.g. user taps to skip)
-  useEffect(() => {
-    if (skipAnimation && wrapped && !completedRef.current) {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      wordSpansRef.current.forEach((s) => s.classList.remove('tw-hidden'));
-      setRevealedCount(wordSpansRef.current.length);
-      completedRef.current = true;
-      onRevealComplete?.();
-    }
-  }, [skipAnimation, wrapped, onRevealComplete]);
+    const spans = wordSpansRef.current;
+    const total = spans.length;
 
-  // Word-by-word reveal timer
-  useEffect(() => {
-    if (!isActive || !wrapped || skipAnimation || totalWords === 0) return;
-    if (completedRef.current) return;
+    if (total === 0) { setPhase('holding'); return; }
 
-    let currentIdx = revealedCount;
+    let idx = revealIdx.current;
 
     const revealNext = () => {
-      if (currentIdx >= totalWords) {
-        completedRef.current = true;
-        setRevealedCount(totalWords);
-        onRevealComplete?.();
-        return;
-      }
+      if (idx >= total) { setPhase('holding'); return; }
 
-      // Reveal this word
-      const span = wordSpansRef.current[currentIdx];
-      if (span) span.classList.remove('tw-hidden');
-      currentIdx++;
-      setRevealedCount(currentIdx);
+      spans[idx]?.classList.remove('tw-hidden');
+      idx++;
+      revealIdx.current = idx;
 
-      // Determine delay for next word
       let delay = WORD_DELAY;
-      const prevIdx = currentIdx - 1;
-      if (paragraphEndIndices.current.has(prevIdx)) {
-        delay += PARAGRAPH_PAUSE + SENTENCE_PAUSE;
-      } else if (sentenceEndIndices.current.has(prevIdx)) {
-        delay += SENTENCE_PAUSE;
-      }
-
+      if (sentenceEnds.current.has(idx - 1)) delay += SENTENCE_PAUSE;
       timerRef.current = setTimeout(revealNext, delay);
     };
 
     timerRef.current = setTimeout(revealNext, WORD_DELAY);
+    return clearTimer;
+  }, [started, wrapped, phase, isActive, clearTimer]);
 
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [isActive, wrapped, skipAnimation, totalWords]);
+  // Holding: pause after line completes
+  useEffect(() => {
+    if (phase !== 'holding' || !started || completedRef.current) return;
+    timerRef.current = setTimeout(() => setPhase('transitioning'), HOLD_DURATION);
+    return clearTimer;
+  }, [phase, started, clearTimer]);
+
+  // Transitioning: after animation, advance to next block
+  useEffect(() => {
+    if (phase !== 'transitioning' || !started || completedRef.current) return;
+
+    timerRef.current = setTimeout(() => {
+      const next = activeIdx + 1;
+      if (next >= blocks.length) {
+        completeAll();
+      } else {
+        setActiveIdx(next);
+        setPhase('typing');
+        setWrapped(false);
+      }
+    }, TRANSITION_DURATION);
+
+    return clearTimer;
+  }, [phase, started, activeIdx, blocks.length, clearTimer, completeAll]);
+
+  // Auto-scroll spotlight into view (scroll only the .focus-slide ancestor, not the carousel track)
+  useEffect(() => {
+    if (!started || completedRef.current) return;
+    requestAnimationFrame(() => {
+      const el = spotlightRef.current;
+      if (!el) return;
+      let scrollParent: HTMLElement | null = el.parentElement;
+      while (scrollParent && !scrollParent.classList.contains('focus-slide')) {
+        scrollParent = scrollParent.parentElement;
+      }
+      if (!scrollParent) return;
+      const parentRect = scrollParent.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollTarget = el.offsetTop - (parentRect.height / 2) + (elRect.height / 2);
+      scrollParent.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
+    });
+  }, [started, activeIdx, wrapped]);
+
+  // --- Render ---
+
+  // Before activation or after completion: show full markdown
+  if (!started || completed) {
+    return (
+      <div className="tw-spotlight-container">
+        {(completed || skipAnimation) ? (
+          <ReactMarkdown>{fullMarkdown}</ReactMarkdown>
+        ) : null}
+      </div>
+    );
+  }
+
+  const archivedMd = activeIdx > 0 ? joinBlocks(blocks.slice(0, activeIdx)) : '';
 
   return (
-    <div ref={containerRef} className="typewriter-container">
-      <ReactMarkdown>{content}</ReactMarkdown>
+    <div className="tw-spotlight-container tw-animating">
+      {archivedMd && (
+        <div className="tw-archive">
+          <ReactMarkdown>{archivedMd}</ReactMarkdown>
+        </div>
+      )}
+
+      <div className="tw-spacer" />
+
+      {activeIdx < blocks.length && (
+        <div
+          ref={spotlightRef}
+          className={`tw-spotlight${phase === 'transitioning' ? ' tw-spotlight--transitioning' : ''}`}
+        >
+          <div ref={contentRef} key={activeIdx} className="tw-spotlight-content">
+            <ReactMarkdown>{blocks[activeIdx].raw}</ReactMarkdown>
+          </div>
+        </div>
+      )}
+
+      <div className="tw-spacer" />
     </div>
   );
-}
-
-/** Walk up from a node to find the nearest block-level parent within container */
-function findBlockParent(node: Node, container: HTMLElement): HTMLElement | null {
-  const blockTags = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'DIV', 'TR']);
-  let current = node.parentElement;
-  while (current && current !== container) {
-    if (blockTags.has(current.tagName)) return current;
-    current = current.parentElement;
-  }
-  return null;
-}
-
-/** Get all text nodes within an element */
-function getTextNodesIn(el: HTMLElement): Text[] {
-  const nodes: Text[] = [];
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
-  return nodes;
 }

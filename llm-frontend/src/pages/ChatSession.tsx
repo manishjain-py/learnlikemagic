@@ -1450,19 +1450,19 @@ export default function ChatSession() {
                                slide.cardType === 'simplification' ? 'Simplified' : slide.cardType}
                             </span>
                           </div>
-                          {slide.title && <h2 className="explanation-card-title">{slide.title}</h2>}
                           <div className="focus-tutor-msg">
                             <TypewriterMarkdown
                               content={slide.content}
+                              title={slide.title}
                               isActive={i === currentSlideIdx}
                               skipAnimation={revealedSlides.has(i) || typewriterSkip.has(i) || sessionPhase !== 'card_phase'}
                               onRevealComplete={() => setRevealedSlides(prev => new Set(prev).add(i))}
                             />
                           </div>
-                          {slide.visual && (
+                          {revealedSlides.has(i) && slide.visual && (
                             <pre className="explanation-card-visual">{slide.visual}</pre>
                           )}
-                          {slide.visualExplanation && (
+                          {revealedSlides.has(i) && slide.visualExplanation && (
                             <VisualExplanationComponent visual={slide.visualExplanation} />
                           )}
                         </>
