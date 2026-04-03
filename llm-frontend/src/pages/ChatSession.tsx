@@ -84,9 +84,12 @@ export default function ChatSession() {
   const locState = location.state as {
     firstTurn?: Turn;
     mode?: string;
+    topicKey?: string;
     conversationHistory?: Array<{ role: string; content: string }>;
     currentStep?: number;
   } | null;
+
+  const isRefresher = locState?.topicKey === 'get-ready';
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -815,13 +818,27 @@ export default function ChatSession() {
   };
 
   // Create a persistent Audio element once to satisfy browser autoplay policy.
-  // Browsers allow .play() on an element that the user has already interacted with.
   const getOrCreateAudio = (): HTMLAudioElement => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
     }
     return audioRef.current;
   };
+
+  // Unlock audio on first user interaction so programmatic play() works
+  useEffect(() => {
+    const unlock = () => {
+      const audio = getOrCreateAudio();
+      audio.volume = 0;
+      audio.play().then(() => { audio.pause(); audio.volume = 1; audio.src = ''; }).catch(() => {});
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
+    };
+  }, []);
 
   const playTeacherAudio = async (text: string, slideId?: string) => {
     try {
@@ -1071,7 +1088,18 @@ export default function ChatSession() {
     try {
       const result = await cardAction(sessionId, action);
 
-      if (result.action === 'transition_to_interactive') {
+      if (result.action === 'session_complete') {
+        // Refresher topic completed — show completion message and end session
+        setSessionPhase('interactive');
+        setMessages((prev) => [
+          ...prev,
+          { role: 'teacher', content: result.message, audioText: result.audio_text || null },
+        ]);
+        setIsComplete(true);
+        if (result.audio_text) {
+          playTeacherAudio(result.audio_text, `complete-${Date.now()}`);
+        }
+      } else if (result.action === 'transition_to_interactive') {
         setSessionPhase('interactive');
         const bridgeMsg: Message = {
           role: 'teacher' as const,
@@ -1676,15 +1704,17 @@ export default function ChatSession() {
                         onClick={() => handleCardAction('clear')}
                         disabled={cardActionLoading || simplifyLoading}
                       >
-                        Start practice
+                        {isRefresher ? "I'm Ready" : 'Start practice'}
                       </button>
-                      <button
-                        className="explanation-nav-btn secondary"
-                        onClick={() => handleCardAction('explain_differently')}
-                        disabled={cardActionLoading || simplifyLoading}
-                      >
-                        {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
-                      </button>
+                      {!isRefresher && (
+                        <button
+                          className="explanation-nav-btn secondary"
+                          onClick={() => handleCardAction('explain_differently')}
+                          disabled={cardActionLoading || simplifyLoading}
+                        >
+                          {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )

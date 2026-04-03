@@ -200,6 +200,7 @@ class SyncResponse(BaseModel):
     synced_chapters: int
     synced_topics: int
     errors: List[str]
+    refresher_deleted: bool = False
 
 
 # ───── Explanation Generation ─────

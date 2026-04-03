@@ -923,3 +923,188 @@ def get_latest_visual_job(
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Refresher Topic Endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/refresher/generate", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_refresher(
+    book_id: str,
+    chapter_id: str,
+    db: Session = Depends(get_db),
+):
+    """Generate prerequisite refresher topic for a chapter.
+
+    Launches a background job and returns 202 immediately.
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chapter {chapter_id} not found in book {book_id}",
+            )
+
+        # Chapter must have synced topics (non-refresher guidelines)
+        chapter_key = f"chapter-{chapter.chapter_number}"
+        topic_count = db.query(TeachingGuideline).filter(
+            TeachingGuideline.book_id == book_id,
+            TeachingGuideline.chapter_key == chapter_key,
+            TeachingGuideline.topic_key != "get-ready",
+        ).count()
+        if topic_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Chapter has no synced topics. Sync the chapter first.",
+            )
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            job_type=V2JobType.REFRESHER_GENERATION.value,
+            total_items=1,
+        )
+
+        run_in_background_v2(
+            _run_refresher_generation, job_id, book_id, chapter_id,
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Refresher generation failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get("/refresher-jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_refresher_job(
+    book_id: str,
+    chapter_id: str = Query(..., description="Chapter ID"),
+    db: Session = Depends(get_db),
+):
+    """Latest refresher generation job for a chapter."""
+    try:
+        job_service = ChapterJobService(db)
+        result = job_service.get_latest_job(
+            chapter_id, job_type=V2JobType.REFRESHER_GENERATION.value,
+        )
+        if not result:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No refresher generation jobs found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/landing")
+def get_chapter_landing(
+    book_id: str,
+    chapter_id: str,
+    db: Session = Depends(get_db),
+):
+    """Chapter landing page data: summary + prerequisite concepts."""
+    import json as _json
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chapter {chapter_id} not found in book {book_id}",
+            )
+
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        # Check for refresher guideline
+        refresher = db.query(TeachingGuideline).filter(
+            TeachingGuideline.book_id == book_id,
+            TeachingGuideline.chapter_key == chapter_key,
+            TeachingGuideline.topic_key == "get-ready",
+        ).first()
+
+        prerequisite_concepts = []
+        refresher_guideline_id = None
+        if refresher:
+            refresher_guideline_id = refresher.id
+            if refresher.metadata_json:
+                try:
+                    meta = _json.loads(refresher.metadata_json) if isinstance(refresher.metadata_json, str) else refresher.metadata_json
+                    prerequisite_concepts = meta.get("prerequisite_concepts", [])
+                except Exception:
+                    pass
+
+        return {
+            "chapter_summary": chapter.summary,
+            "prerequisite_concepts": prerequisite_concepts,
+            "refresher_guideline_id": refresher_guideline_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+def _run_refresher_generation(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+):
+    """Background task for refresher topic generation."""
+    from config import get_settings
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.refresher_topic_generator_service import RefresherTopicGeneratorService
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+    from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+
+    settings = get_settings()
+    config = LLMConfigService(db).get_config("explanation_generator")
+    llm_service = LLMService(
+        api_key=settings.openai_api_key,
+        provider=config["provider"],
+        model_id=config["model_id"],
+        gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+    )
+
+    job_service = ChapterJobService(db)
+    service = RefresherTopicGeneratorService(db, llm_service)
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        job_service.update_progress(job_id, current_item=f"Refresher for {chapter.chapter_title}", completed=0, failed=0)
+
+        guideline_id = service.generate_for_chapter(book_id, chapter_key)
+
+        if guideline_id:
+            job_service.update_progress(job_id, current_item=None, completed=1, failed=0)
+            final_status = "completed"
+        else:
+            job_service.update_progress(job_id, current_item=None, completed=0, failed=0,
+                                        detail='{"skipped": true, "reason": "No prerequisites needed"}')
+            final_status = "completed"
+
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception:
+        raise  # run_in_background_v2 handles marking the job as failed

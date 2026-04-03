@@ -54,6 +54,19 @@ class TopicSyncService:
         errors = []
         synced = 0
 
+        # Check if a refresher topic exists before deleting
+        chapter_key = f"chapter-{chapter.chapter_number}"
+        refresher_existed = self.db.query(TeachingGuideline).filter(
+            TeachingGuideline.book_id == book_id,
+            TeachingGuideline.chapter_key == chapter_key,
+            TeachingGuideline.topic_key == "get-ready",
+        ).count() > 0
+
+        if refresher_existed:
+            logger.warning(
+                f"Re-sync will delete refresher topic for chapter {chapter_key}"
+            )
+
         # Delete existing guidelines for this chapter
         self._delete_chapter_guidelines(book_id, chapter)
 
@@ -73,6 +86,7 @@ class TopicSyncService:
             synced_chapters=1,
             synced_topics=synced,
             errors=errors,
+            refresher_deleted=refresher_existed,
         )
 
     def sync_book(self, book_id: str) -> SyncResponse:
@@ -90,17 +104,21 @@ class TopicSyncService:
         total_topics = 0
         total_errors = []
         synced_chapters = 0
+        any_refresher_deleted = False
 
         for chapter in completed:
             result = self.sync_chapter(book_id, chapter.id)
             total_topics += result.synced_topics
             total_errors.extend(result.errors)
             synced_chapters += 1
+            if result.refresher_deleted:
+                any_refresher_deleted = True
 
         return SyncResponse(
             synced_chapters=synced_chapters,
             synced_topics=total_topics,
             errors=total_errors,
+            refresher_deleted=any_refresher_deleted,
         )
 
     def _sync_topic(

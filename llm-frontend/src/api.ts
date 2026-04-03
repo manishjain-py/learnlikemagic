@@ -191,11 +191,13 @@ export interface ChapterInfo {
   chapter_sequence: number | null;
   topic_count: number;
   guideline_ids: string[];
+  refresher_guideline_id: string | null;
 }
 
 export interface TopicInfo {
   topic: string;
   guideline_id: string;
+  topic_key: string | null;
   topic_summary: string | null;
   topic_sequence: number | null;
 }

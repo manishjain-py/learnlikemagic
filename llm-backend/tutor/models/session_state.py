@@ -201,6 +201,7 @@ class SessionState(BaseModel):
         default=False,
         description="Whether this Clarify Doubts session has been ended by the student"
     )
+    is_refresher: bool = False
 
     # Card Phase (pre-computed explanations)
     card_phase: Optional[CardPhaseState] = Field(
@@ -240,6 +241,8 @@ class SessionState(BaseModel):
             return self.clarify_complete
         if not self.topic:
             return False
+        if self.is_refresher:
+            return self.card_phase is not None and self.card_phase.completed
         return self.current_step > self.topic.study_plan.total_steps
 
     @property

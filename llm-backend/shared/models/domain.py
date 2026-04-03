@@ -69,3 +69,5 @@ class GuidelineMetadata(BaseModel):
     prerequisites: List[str] = Field(default_factory=list)
     common_misconceptions: List[str] = Field(default_factory=list)
     scope_boundary: str = ""  # what is in-scope vs out-of-scope for this grade
+    is_refresher: bool = False
+    prerequisite_concepts: list = Field(default_factory=list)
