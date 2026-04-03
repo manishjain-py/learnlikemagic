@@ -1,0 +1,49 @@
+# Implementation Log: Chapter Prerequisites (Refresher Topics)
+
+**Started:** 2026-04-03
+**Branch:** feat/chapter-prerequisites-docs
+**Plan:** docs/feature-development/chapter-prerequisites/impl-plan.md
+**PRD:** docs/feature-development/chapter-prerequisites/prd.md
+
+---
+
+## Implementation Steps
+
+### Step 1: Constants + Domain Model — DONE
+- Added `V2JobType.REFRESHER_GENERATION` to constants
+- Added `is_refresher`, `prerequisite_concepts` to `GuidelineMetadata`
+
+### Step 2: Session State + Topic Adapter — DONE
+- Added `is_refresher: bool = False` to `SessionState`
+- Fixed `is_complete` property for refresher (driven by card phase, not step count)
+- `convert_guideline_to_topic()` returns 0-step plan for refresher
+
+### Step 3: RefresherTopicGeneratorService + Prompt — DONE
+- New `RefresherTopicGeneratorService` with full pipeline
+- New `refresher_topic_generation.txt` prompt
+- Imports verified
+
+### Step 4: API Endpoints — DONE
+- `POST /refresher/generate` — background job
+- `GET /landing` — chapter landing page data
+- `GET /refresher-jobs/latest` — job status
+- `SyncResponse.refresher_deleted` warning on re-sync
+- `TopicInfo.topic_key` + `ChapterInfo.refresher_guideline_id` exposed
+
+### Step 5: Session Service Changes — DONE
+- `create_new_session()`: detect is_refresher, reject non-teach_me, skip study plan, persist flag
+- `complete_card_phase()`: short-circuit for refresher → session_complete
+- explain_differently guard for refresher
+
+### Steps 6-8: Frontend — DONE
+- ChatSession: handle session_complete, hide variant switching, "I'm Ready" button
+- ModeSelection: hide Exam/Clarify for refresher, show "Get Ready"
+- ChapterSelect: exclude refresher from progress %
+- ReportCardPage: filter refresher from scorecard
+- TopicSelect: chapter landing section with prerequisites
+- ModeSelectPage: pass topicKey through navigation
+
+### Step 9: Tests — DONE
+- 17 unit tests passing
+- State persistence, is_complete semantics, zero-step plan, output models
+- Pre-existing test failures unrelated to our changes
