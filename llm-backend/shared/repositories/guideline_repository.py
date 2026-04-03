@@ -181,8 +181,11 @@ class TeachingGuidelineRepository:
                     "chapter_summary": g.chapter_summary,
                     "chapter_sequence": g.chapter_sequence,
                     "guideline_ids": [],
+                    "refresher_guideline_id": None,
                 }
             chapter_map[ch]["guideline_ids"].append(g.id)
+            if g.topic_key == "get-ready":
+                chapter_map[ch]["refresher_guideline_id"] = g.id
 
         chapters = [
             ChapterInfo(
@@ -191,6 +194,7 @@ class TeachingGuidelineRepository:
                 chapter_sequence=data["chapter_sequence"],
                 topic_count=len(data["guideline_ids"]),
                 guideline_ids=data["guideline_ids"],
+                refresher_guideline_id=data["refresher_guideline_id"],
             )
             for data in chapter_map.values()
         ]
@@ -237,6 +241,7 @@ class TeachingGuidelineRepository:
             TopicInfo(
                 topic=g.topic,
                 guideline_id=g.id,
+                topic_key=g.topic_key,
                 topic_summary=g.topic_summary,
                 topic_sequence=g.topic_sequence,
             )

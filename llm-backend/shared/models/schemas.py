@@ -62,12 +62,14 @@ class ChapterInfo(BaseModel):
     chapter_sequence: Optional[int] = None
     topic_count: int = 0
     guideline_ids: List[str] = []
+    refresher_guideline_id: Optional[str] = None
 
 
 class TopicInfo(BaseModel):
     """Topic information with guideline ID, summary, and sequencing."""
     topic: str
     guideline_id: str
+    topic_key: Optional[str] = None
     topic_summary: Optional[str] = None
     topic_sequence: Optional[int] = None
 
