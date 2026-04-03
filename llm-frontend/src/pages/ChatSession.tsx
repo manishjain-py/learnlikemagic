@@ -818,13 +818,27 @@ export default function ChatSession() {
   };
 
   // Create a persistent Audio element once to satisfy browser autoplay policy.
-  // Browsers allow .play() on an element that the user has already interacted with.
   const getOrCreateAudio = (): HTMLAudioElement => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
     }
     return audioRef.current;
   };
+
+  // Unlock audio on first user interaction so programmatic play() works
+  useEffect(() => {
+    const unlock = () => {
+      const audio = getOrCreateAudio();
+      audio.volume = 0;
+      audio.play().then(() => { audio.pause(); audio.volume = 1; audio.src = ''; }).catch(() => {});
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
+    };
+  }, []);
 
   const playTeacherAudio = async (text: string, slideId?: string) => {
     try {
