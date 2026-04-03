@@ -69,7 +69,7 @@ class LLMService:
         self.claude_code_adapter = None
         if self.provider == "claude_code":
             from shared.services.claude_code_adapter import ClaudeCodeAdapter
-            self.claude_code_adapter = ClaudeCodeAdapter(timeout=300)
+            self.claude_code_adapter = ClaudeCodeAdapter(timeout=1800)
 
     # ─── Primary entry point ───────────────────────────────────────────
 
