@@ -24,6 +24,7 @@ logger = logging.getLogger("tutor.topic_adapter")
 def convert_guideline_to_topic(
     guideline: GuidelineResponse,
     study_plan_record: Optional[StudyPlanRecord] = None,
+    is_refresher: bool = False,
 ) -> Topic:
     """
     Convert a DB guideline + study plan into the new Topic model.
@@ -63,7 +64,10 @@ def convert_guideline_to_topic(
     )
 
     # Build StudyPlan from plan_json
-    study_plan = _convert_study_plan(study_plan_record, guideline)
+    if is_refresher and not study_plan_record:
+        study_plan = StudyPlan(steps=[])
+    else:
+        study_plan = _convert_study_plan(study_plan_record, guideline)
 
     topic_id = f"{guideline.subject}_{guideline.chapter}_{guideline.topic}".lower().replace(" ", "_")
 
