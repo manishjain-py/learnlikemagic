@@ -27,6 +27,7 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/principles/content-extraction-from-books.md` | What to extract from books (full coverage, no copyrighted expression) |
 | `docs/principles/book-ingestion-pipeline.md` | Operational principles for the multi-stage ingestion pipeline |
 | `docs/principles/autoresearch.md` | How autonomous prompt optimization works |
+| `docs/principles/prerequisites.md` | How prerequisite knowledge gaps are handled (refresher topics, warm-up framing) |
 
 ## Documentation Index
 
