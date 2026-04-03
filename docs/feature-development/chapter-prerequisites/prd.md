@@ -39,10 +39,10 @@ Add a **refresher topic** as the first topic of every chapter. This topic covers
 
 | Concept | Description |
 |---------|-------------|
-| **Refresher topic** | A regular topic (same cards, same interactive teaching) that covers the chapter's prerequisite concepts |
+| **Refresher topic** | A topic that covers the chapter's prerequisite concepts — same cards and tutor, but tuned for breadth-over-depth multi-concept review |
 | **First in sequence** | Always `topic_sequence = 0`, appearing before the chapter's content topics |
 | **Auto-generated** | Created during the ingestion pipeline by analyzing all topics in the chapter |
-| **Uses existing infrastructure** | Same explanation cards, same variants, same tutor, same scorecard tracking |
+| **Uses existing infrastructure** | Same explanation cards, same variants, same tutor, same scorecard tracking — but with refresher-aware study plans and tutor behavior |
 | **Optional** | Students can skip it and start with Topic 1 directly |
 
 ---
@@ -108,19 +108,48 @@ Scope Boundary:
 
 ### R3: Explanation Card Generation
 
-After the refresher `TeachingGuideline` is created and synced, it goes through the **existing explanation generation pipeline** — same as any other topic:
-- 3 variants (A: Everyday Analogies, B: Visual Walkthrough, C: Step-by-Step)
-- Multi-pass refinement
-- Same radical simplicity principles
-- Same card structure (`card_type`, `title`, `content`, `audio_text`, `visual`)
+After the refresher `TeachingGuideline` is created, it goes through the **existing explanation generation pipeline** — same radical simplicity principles, same card structure, same multi-pass refinement.
 
-**Refresher-specific generation guidance** (via the guideline text, not special code paths):
-- Fewer cards than a typical topic: 3-6 cards total (covering 3-5 prerequisites)
-- Each card covers one prerequisite concept
+**What stays the same:**
+- 3 variants (A: Everyday Analogies, B: Visual Walkthrough, C: Step-by-Step)
+- Same card format (`card_type`, `title`, `content`, `audio_text`, `visual`)
+- Same review-and-refine passes
+- ELIF principles apply — explanations should be simple and clear
+
+**What's different (guided by the refresher's guideline text):**
+- Fewer cards: 3-6 total (vs. 5-15 for a regular topic), since it covers breadth not depth
+- Each card covers one prerequisite concept — the refresher is a multi-concept topic
 - Every card includes a forward bridge: "This is key for what we'll learn next in [Chapter]"
 - Final card ties it together: "You're all set! These building blocks will make [Chapter] click."
 
-### R4: Student Experience
+### R4: Refresher-Aware Study Plan and Interactive Teaching
+
+A refresher topic is structurally different from a regular topic: it covers 3-5 separate concepts at shallow depth, rather than one concept deeply. The study plan and tutor behavior must reflect this.
+
+**Study plan differences:**
+
+| Aspect | Regular Topic | Refresher Topic |
+|--------|--------------|-----------------|
+| Concepts | 1-2 concepts, deep | 3-5 concepts, shallow |
+| Step types | explain → check → guided_practice → independent_practice → extend | quick_check per concept (no guided/independent practice) |
+| Total steps | 5-8 | 3-5 (one per prerequisite concept) |
+| Mastery goal | High (~80%+) | Basic confirmation (~60%) — student "gets the gist" |
+| Session length | 20-40 min | 5-10 min |
+
+**Study plan generation:** When `metadata_json.is_refresher = true`, the study plan generator uses a lighter structure:
+- One `check_understanding` step per prerequisite concept
+- No `guided_practice` or `independent_practice` steps — this is a warm-up, not a drill
+- If the student answers correctly on first try, move on immediately
+- If the student struggles, a brief re-explanation + one retry is enough — don't spiral into extended practice
+
+**Tutor behavior:** The master tutor prompt includes refresher-specific instructions when `is_refresher = true`:
+- **Pace:** Move quickly. One question per concept. If the student gets it, acknowledge and advance.
+- **Depth:** Don't deep-dive into any single prerequisite. If a student has a major gap (3+ wrong on one concept), note it but move on — the in-session detection in the actual chapter topic will handle it.
+- **Tone:** "Quick warm-up before the fun stuff." Build anticipation for the chapter.
+- **Multi-concept awareness:** The tutor knows it's covering multiple unrelated concepts in one session, not building a progressive argument. Transitions between concepts should be clean: "Great! Next building block..."
+- **Session completion:** Easier bar. The session is complete once all concepts have been touched (even if mastery is moderate). Don't extend with practice rounds.
+
+### R5: Student Experience
 
 **In the topic list:** The refresher appears as the first topic:
 ```
@@ -132,11 +161,11 @@ Chapter 3: Multiplication
   ...
 ```
 
-**Learning experience:** Identical to any other topic — explanation cards, then interactive teaching. The difference is only in content (prerequisite review vs. new material) and length (shorter).
+**Learning experience:** Same cards and tutor interface, but noticeably lighter and faster. A student doing the refresher should feel like they're "warming up" — brief, encouraging, and done in 5-10 minutes.
 
 **Skippable:** Students who feel confident can skip directly to Topic 1. The refresher is recommended, not required.
 
-### R5: Idempotent Generation
+### R6: Idempotent Generation
 
 - Running refresher generation multiple times for the same chapter replaces the previous refresher (delete old `TeachingGuideline` with `topic_key = "get-ready"`, create new)
 - Re-sync of a chapter deletes all guidelines including the refresher (existing cascade behavior)
@@ -170,9 +199,20 @@ Chapter 3: Multiplication
 - Runs as a background job (same pattern as explanation generation)
 - Returns job status
 
+### Modified: Study Plan Generator
+
+- `StudyPlanGeneratorService.generate_session_plan()` checks `metadata_json.is_refresher`
+- When true: generates a lighter plan with `check_understanding` steps only (no practice/extend), lower mastery threshold
+- Prompt receives a refresher-specific instruction block
+
+### Modified: Master Tutor Prompts
+
+- `master_tutor_prompts.py` injects refresher-specific tutor instructions when `is_refresher = true`
+- Instructions: move quickly, don't deep-dive, clean transitions between concepts, easier completion bar
+
 ### Modified: Explanation Generation
 
-- No code changes needed — the refresher is a regular TeachingGuideline. Explanation generation picks it up automatically when run for the chapter.
+- No code changes needed — the refresher is a regular TeachingGuideline. Explanation generation picks it up automatically. The guideline text guides it to produce fewer, broader cards.
 
 ### Modified: Frontend Topic List
 
@@ -181,8 +221,9 @@ Chapter 3: Multiplication
 
 ### No Changes Needed
 
-- Session service, orchestrator, master tutor, card phase, study plan — all work as-is because the refresher is a regular topic
 - Database schema — no new tables, just a new TeachingGuideline row per chapter
+- Session service — creates sessions on the refresher like any other topic
+- Card phase — renders refresher cards identically
 - Scorecard — tracks the refresher like any other topic automatically
 
 ---
@@ -191,7 +232,7 @@ Chapter 3: Multiplication
 
 1. **Every chapter has a refresher topic** (except chapters with no meaningful prerequisites). Generated automatically during the pipeline.
 2. **Refresher content is prerequisite-specific.** Covers only what THIS chapter needs — not generic review content. Each concept bridges forward to the chapter.
-3. **Same quality bar as regular topics.** 3 explanation variants, radical simplicity, review-and-refine passes. A student doing the refresher gets the same high-quality experience as any other topic.
-4. **Zero infrastructure overhead.** No new tables, no new session phases, no new frontend components. The refresher is indistinguishable from a regular topic in terms of system behavior.
-5. **Optional and frictionless.** Students can skip the refresher with zero penalty. Students who do the refresher spend 3-5 minutes max and feel "ready" for the chapter.
+3. **Same quality bar, lighter depth.** 3 explanation variants, radical simplicity, review-and-refine passes — but tuned for breadth over depth. The interactive phase is quick-check, not deep-practice.
+4. **Minimal infrastructure overhead.** No new tables, no new frontend components. Small modifications to study plan generator and tutor prompts to recognize refresher mode via `is_refresher` flag.
+5. **Optional and frictionless.** Students can skip the refresher with zero penalty. Students who do the refresher spend 5-10 minutes max and feel "ready" for the chapter.
 6. **Pipeline integration.** Refresher generation fits naturally as a post-sync step. Can be run independently or as part of a full chapter processing pipeline.

@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Generate a "refresher topic" as the first topic (`topic_sequence = 0`) of every chapter. The refresher covers the 3-5 foundational concepts the chapter assumes. It's a regular `TeachingGuideline` — no new tables, no new session phases. Explanation cards, interactive teaching, and scorecard tracking work out of the box.
+Generate a "refresher topic" as the first topic (`topic_sequence = 0`) of every chapter. The refresher covers the 3-5 foundational concepts the chapter assumes. It's a `TeachingGuideline` row — no new tables, no new session phases — but downstream systems (study plan generator, tutor prompts) recognize the `is_refresher` flag and adapt their behavior for breadth-over-depth, multi-concept review.
 
 **High-level approach:**
 - New `RefresherTopicGeneratorService` — reads all synced guidelines for a chapter, calls LLM to identify prerequisites, creates a new TeachingGuideline
@@ -17,6 +17,8 @@ Generate a "refresher topic" as the first topic (`topic_sequence = 0`) of every 
 - New API endpoint: `POST .../refresher/generate` (background job, same pattern as explanation generation)
 - After refresher is created, existing explanation generation runs for it like any other topic
 - Refresher identified by `topic_key = "get-ready"` and `metadata_json.is_refresher = true`
+- Study plan generator produces lighter plans (check-only steps, no deep practice)
+- Master tutor gets refresher-specific rules (move quickly, don't deep-dive, easier completion bar)
 
 ---
 
@@ -40,13 +42,18 @@ OFFLINE (ingestion pipeline)
   topic_explanations table
 
 ═══════════════════════════════════════════════════════════════
-ONLINE (session time) — NO CHANGES
+ONLINE (session time) — REFRESHER-AWARE BEHAVIOR
 ═══════════════════════════════════════════════════════════════
 
   Student sees "Get Ready for [Chapter]" as first topic
        ↓
-  Standard session flow: cards → interactive → scorecard
-  (identical to any other topic — no special handling)
+  SessionService reads metadata_json.is_refresher = true
+       ↓
+  StudyPlanGenerator → lighter plan (check-only steps, no practice)
+  MasterTutor → refresher-mode rules (quick pace, low mastery bar)
+       ↓
+  Same session flow: cards → interactive → scorecard
+  (but tutor moves faster, session is 5-10 min not 20-40)
 ```
 
 ### New modules
@@ -63,15 +70,22 @@ ONLINE (session time) — NO CHANGES
 | `book_ingestion_v2/api/sync_routes.py` | New `/refresher/generate` endpoint |
 | `book_ingestion_v2/constants.py` | New `V2JobType.REFRESHER_GENERATION` enum value |
 
+### Modified modules (downstream — refresher-aware behavior)
+
+| Module | Change |
+|--------|--------|
+| `study_plans/services/generator_service.py` | Detect `is_refresher` flag, generate lighter plan (check-only steps, no practice/extend) |
+| `study_plans/prompts/session_plan_v2.txt` | Add refresher-specific planning instructions |
+| `tutor/prompts/master_tutor_prompts.py` | Inject refresher-mode tutor rules when `is_refresher = true` |
+| `tutor/services/session_service.py` | Read `metadata_json.is_refresher` from guideline, pass flag through to study plan generation and tutor prompt context |
+
 ### Unchanged (works automatically)
 
 | Module | Why |
 |--------|-----|
 | `shared/models/entities.py` | Refresher is a standard `TeachingGuideline` row |
-| `tutor/services/session_service.py` | Treats refresher like any topic |
-| `tutor/orchestration/orchestrator.py` | No special handling needed |
-| `tutor/prompts/master_tutor_prompts.py` | Uses guideline text as-is |
-| `book_ingestion_v2/services/explanation_generator_service.py` | Generates cards for refresher guideline normally |
+| `tutor/orchestration/orchestrator.py` | Orchestration logic unchanged — lighter plan means fewer steps, not different orchestration |
+| `book_ingestion_v2/services/explanation_generator_service.py` | Generates cards for refresher guideline normally — guideline text guides card count/depth |
 | `llm-frontend/` | Displays refresher in topic list by `topic_sequence` order, no UI changes |
 
 ---
@@ -312,6 +326,137 @@ def generate_refreshers_for_book(
     # ...iterates chapters, generates refresher for each
 ```
 
+### 4.5 Refresher-Aware Study Plan Generation
+
+**File:** `study_plans/services/generator_service.py`
+
+The study plan generator needs to know when it's planning for a refresher topic. A refresher covers 3-5 separate prerequisite concepts at shallow depth — fundamentally different from a regular topic that covers one concept deeply.
+
+**How the flag flows:**
+
+```
+TeachingGuideline.metadata_json → {"is_refresher": true}
+  ↓
+SessionService._generate_personalized_plan()
+  ↓ (reads metadata_json, passes is_refresher to generator)
+StudyPlanGeneratorService.generate_session_plan()
+  ↓ (injects refresher instructions into prompt)
+Lighter study plan output
+```
+
+**Changes to `generate_session_plan()`:**
+
+```python
+def generate_session_plan(
+    self, guideline, explanation_summaries, card_titles,
+    variants_shown, student_context=None,
+    is_refresher: bool = False,  # NEW
+) -> Dict[str, Any]:
+    # ... existing code ...
+    refresher_block = ""
+    if is_refresher:
+        refresher_block = REFRESHER_PLAN_INSTRUCTIONS
+    prompt = self._session_plan_prompt.format(
+        ...,
+        refresher_instructions=refresher_block,
+    )
+```
+
+**Refresher plan instructions (injected into prompt):**
+
+```
+## REFRESHER TOPIC MODE
+
+This is a prerequisite refresher, NOT a regular lesson. The topic covers
+multiple independent concepts at shallow depth. Generate a LIGHTER plan:
+
+- One `check_understanding` step per prerequisite concept (3-5 steps total)
+- NO `guided_practice`, `independent_practice`, or `extend` steps
+- Each step tests ONE prerequisite concept with a quick question
+- If the student gets it right: advance immediately
+- If the student gets it wrong: brief re-explanation + one retry, then advance
+- Target session length: 5-10 minutes (not 20-40)
+- Mastery bar: ~60% (basic recall), not ~80% (deep understanding)
+- The plan should feel like a warm-up checklist, not a deep lesson
+```
+
+### 4.6 Refresher-Aware Tutor Prompts
+
+**File:** `tutor/prompts/master_tutor_prompts.py`
+
+When `is_refresher = true`, inject a section into the master tutor system prompt:
+
+```
+### REFRESHER MODE — ACTIVE
+
+This session is a prerequisite warm-up, not a regular lesson. You are
+reviewing multiple independent concepts briefly before the student starts
+the chapter. Follow these rules:
+
+PACE: Move quickly. One question per concept. Correct answer → "Great!"
+and advance. Don't linger.
+
+DEPTH: Shallow is fine. If a student answers roughly right, accept it.
+Don't probe for edge cases or push for deeper understanding — that's the
+chapter's job.
+
+WRONG ANSWERS: If the student gets it wrong:
+- 1st wrong: Give a 1-sentence hint and let them retry
+- 2nd wrong: Give a brief 2-sentence re-explanation and move on
+- Do NOT spiral into 3+ attempts or strategy switches on a single concept
+
+TRANSITIONS: You're covering multiple unrelated concepts. Between each:
+"Great! Next building block..." — clean break, no need to connect concepts
+to each other.
+
+TONE: "Quick warm-up before the fun stuff!" Build excitement for the
+chapter ahead. This is pre-game, not the game itself.
+
+COMPLETION: The session is complete once each prerequisite concept has
+been checked (even with moderate understanding). Don't extend with extra
+practice rounds.
+```
+
+**How the flag flows to the tutor:**
+
+```
+SessionState.topic.study_plan.metadata
+  ↓ (or: session_service reads guideline.metadata_json at session creation)
+SessionState stores is_refresher flag
+  ↓
+master_tutor_prompts.py checks flag when building system prompt
+  ↓
+Injects REFRESHER MODE block (or omits it for regular topics)
+```
+
+**Implementation option:** Add `is_refresher: bool = False` to `SessionState` or `Topic` model. Set it in `SessionService.create_new_session()` by reading `guideline.metadata_json`. The tutor prompt builder checks this flag.
+
+### 4.7 Session Service — Reading the Refresher Flag
+
+**File:** `tutor/services/session_service.py`
+
+In `create_new_session()`, after loading the guideline:
+
+```python
+# Detect refresher topic
+is_refresher = False
+if guideline.metadata_json:
+    try:
+        meta = json.loads(guideline.metadata_json) if isinstance(guideline.metadata_json, str) else guideline.metadata_json
+        is_refresher = meta.get("is_refresher", False)
+    except (json.JSONDecodeError, AttributeError):
+        pass
+
+# Pass to study plan generation
+if not study_plan_record and mode == "teach_me" and user_id:
+    study_plan_record = self._generate_personalized_plan(
+        guideline, user_id, student_context,
+        is_refresher=is_refresher,  # NEW
+    )
+```
+
+The `is_refresher` flag is also stored on the session state so the tutor prompt builder can access it.
+
 ---
 
 ## 5. Frontend Changes
@@ -404,5 +549,9 @@ The `/process` endpoint could be extended to auto-trigger steps 2-4 sequentially
 | `book_ingestion_v2/prompts/refresher_topic_generation.txt` | NEW | LLM prompt for prerequisite identification |
 | `book_ingestion_v2/api/sync_routes.py` | MODIFY | Add `/refresher/generate` endpoint |
 | `book_ingestion_v2/constants.py` | MODIFY | Add `REFRESHER_GENERATION` job type |
+| `study_plans/services/generator_service.py` | MODIFY | Refresher-aware plan generation (lighter steps, lower mastery bar) |
+| `study_plans/prompts/session_plan_v2.txt` | MODIFY | Add refresher plan instructions block |
+| `tutor/prompts/master_tutor_prompts.py` | MODIFY | Inject REFRESHER MODE tutor rules |
+| `tutor/services/session_service.py` | MODIFY | Read `is_refresher` from metadata_json, pass downstream |
 | `docs/principles/prerequisites.md` | NEW | Pedagogical principles |
 | `docs/feature-development/chapter-prerequisites/prd.md` | NEW | Product requirements |
