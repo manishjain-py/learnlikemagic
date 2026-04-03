@@ -122,11 +122,11 @@ const StageViewer: React.FC<{
 };
 
 /* ─── Status Badge ─── */
-const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+const StatusBadge: React.FC<{ status: string; variantCount?: number }> = ({ status, variantCount }) => {
   const cfg: Record<string, { bg: string; color: string; label: string }> = {
     not_generated: { bg: '#F3F4F6', color: '#6B7280', label: 'Not Generated' },
     running: { bg: '#EDE9FE', color: '#5B21B6', label: 'Running...' },
-    success: { bg: '#D1FAE5', color: '#065F46', label: 'Generated' },
+    success: { bg: '#D1FAE5', color: '#065F46', label: variantCount ? `Generated (${variantCount})` : 'Generated' },
     failed: { bg: '#FEE2E2', color: '#991B1B', label: 'Failed' },
   };
   const c = cfg[status] || cfg.not_generated;
@@ -322,7 +322,7 @@ export default function ExplanationAdmin() {
           Explanation Generation
         </h1>
         <div style={{ fontSize: '14px', color: '#6B7280', marginTop: '4px' }}>
-          {book?.title} &middot; {chapter?.title || chapterId}
+          {book?.title} &middot; {chapter?.chapter_title || chapterId}
         </div>
       </div>
 
@@ -415,7 +415,7 @@ export default function ExplanationAdmin() {
             }}>
               <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{i + 1}</span>
               <span style={{ fontSize: '13px', fontWeight: 500 }}>{t.topic_title}</span>
-              <StatusBadge status={topicStatus} />
+              <StatusBadge status={topicStatus} variantCount={t.variant_count} />
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <button onClick={() => handleGenerate(t.guideline_id)} disabled={topicRunning} title="Generate explanation from scratch" style={actionBtn('#8B5CF6', topicRunning)}>
                   {topicRunning ? '...' : 'Generate'}

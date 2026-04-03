@@ -851,17 +851,17 @@ const BookV2Detail: React.FC = () => {
 
                           {/* Manage links — only show for completed steps */}
                           {hasPages && (
-                            <button onClick={() => navigate(`/admin/books-v2/${id}/ocr/${ch.id}`)} style={manageLinkStyle}>OCR</button>
+                            <button onClick={() => window.open(`/admin/books-v2/${id}/ocr/${ch.id}`, '_blank')} style={manageLinkStyle}>OCR</button>
                           )}
                           {hasPages && (
-                            <button onClick={() => navigate(`/admin/books-v2/${id}/topics/${ch.id}`)} style={manageLinkStyle}>Topics</button>
+                            <button onClick={() => window.open(`/admin/books-v2/${id}/topics/${ch.id}`, '_blank')} style={manageLinkStyle}>Topics</button>
                           )}
                           {completed && (
                             <>
-                              <button onClick={() => navigate(`/admin/books-v2/${id}/guidelines/${ch.id}`)} style={manageLinkStyle}>Guidelines</button>
-                              <button onClick={() => navigate(`/admin/books-v2/${id}/explanations/${ch.id}`)} style={manageLinkStyle}>Explanations</button>
+                              <button onClick={() => window.open(`/admin/books-v2/${id}/guidelines/${ch.id}`, '_blank')} style={manageLinkStyle}>Guidelines</button>
+                              <button onClick={() => window.open(`/admin/books-v2/${id}/explanations/${ch.id}`, '_blank')} style={manageLinkStyle}>Explanations</button>
                               <button onClick={() => handleGenerateRefresher(ch)} style={manageLinkStyle}>Refresher</button>
-                              <button onClick={() => navigate(`/admin/books-v2/${id}/visuals/${ch.id}`)} style={manageLinkStyle}>Visuals</button>
+                              <button onClick={() => window.open(`/admin/books-v2/${id}/visuals/${ch.id}`, '_blank')} style={manageLinkStyle}>Visuals</button>
                             </>
                           )}
                         </div>
