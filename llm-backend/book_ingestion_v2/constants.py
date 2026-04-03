@@ -6,7 +6,7 @@ from enum import Enum
 CHUNK_SIZE = 3                    # Pages per chunk
 CHUNK_STRIDE = 3                  # Non-overlapping (stride == size)
 CHUNK_MAX_RETRIES = 3             # Retries per chunk on LLM failure
-HEARTBEAT_STALE_THRESHOLD = 600   # Seconds (10 minutes — finalization can be slow)
+HEARTBEAT_STALE_THRESHOLD = 1800  # Seconds (30 minutes — LLM calls with Opus + high effort can take 10+ min)
 PENDING_STALE_THRESHOLD = 300     # Seconds (5 minutes)
 
 # LLM config component key
