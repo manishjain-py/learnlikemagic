@@ -17,7 +17,7 @@ interface TypewriterMarkdownProps {
 const WORD_DELAY = 400;
 const SENTENCE_PAUSE = 600;
 const HOLD_DURATION = 1500;
-const TRANSITION_DURATION = 600;
+const TRANSITION_DURATION = 900;
 
 type BlockType = 'heading' | 'paragraph' | 'listItem' | 'code';
 

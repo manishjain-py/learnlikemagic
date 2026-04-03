@@ -233,11 +233,11 @@ This is the very first message of the session. The student hasn't spoken yet.
 {card_framing}
 
 Generate a warm greeting that:
-1. {name_instruction} Builds curiosity about the topic in 1 sentence. Only use a real-world
-   connection if it fits naturally — do NOT force-fit the student's interests (cricket, etc.)
-   into topics where the connection is a stretch.
-2. Briefly frames what's coming in the session.
-3. 2-3 sentences max. No questions (student can't respond yet).
+1. {name_instruction} Tells the student what they will learn today in the simplest possible words.
+2. Connects it to one everyday situation where they already use this (e.g. "You already do this
+   when you count money" or "This is how you read the time"). Keep the connection obvious and
+   real — do NOT force-fit the student's hobbies (cricket, etc.) into topics where it's a stretch.
+3. 2-3 sentences max. No questions (student can't respond yet). Use very simple language.
 
 Set all state fields to null/default — no mastery updates, no questions, no phase updates.
 """,

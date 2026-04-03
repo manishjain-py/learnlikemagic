@@ -64,6 +64,21 @@ function stripMarkdown(text: string): string {
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.+?)\*/g, '$1')
     .replace(/`(.+?)`/g, '$1')
+    // Expand symbols to spoken equivalents
+    .replace(/→|->|➜|➔/g, ' gives ')
+    .replace(/←|<-/g, ' from ')
+    .replace(/×/g, ' times ')
+    .replace(/÷/g, ' divided by ')
+    .replace(/≠|!=/g, ' is not equal to ')
+    .replace(/≥|>=/g, ' is greater than or equal to ')
+    .replace(/≤|<=/g, ' is less than or equal to ')
+    .replace(/ > /g, ' is greater than ')
+    .replace(/ < /g, ' is less than ')
+    .replace(/ = /g, ' equals ')
+    .replace(/\+/g, ' plus ')
+    .replace(/%/g, ' percent ')
+    .replace(/&/g, ' and ')
+    .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
@@ -167,6 +182,7 @@ export default function ChatSession() {
   const initializedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef<Map<string, Promise<Blob>>>(new Map());
+  const audioPlayVersion = useRef(0);
 
   // URL params from nested learn routes (preferred) — already decoded by React Router
   const subject = params.subject || '';
@@ -841,15 +857,17 @@ export default function ChatSession() {
   }, []);
 
   const playTeacherAudio = async (text: string, slideId?: string) => {
+    const version = ++audioPlayVersion.current;
     try {
       const audio = getOrCreateAudio();
-      // Stop any currently playing audio
       audio.pause();
       if (audio.src && audio.src.startsWith('blob:')) {
         URL.revokeObjectURL(audio.src);
       }
 
       const audioBlob = await synthesizeSpeech(text, audioLang);
+      // Discard if a newer play request was made while we were fetching
+      if (audioPlayVersion.current !== version) return;
       const url = URL.createObjectURL(audioBlob);
       audio.src = url;
       audio.onended = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); };
@@ -863,6 +881,7 @@ export default function ChatSession() {
   };
 
   const stopAudio = () => {
+    audioPlayVersion.current++; // Cancel any in-flight fetches
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
