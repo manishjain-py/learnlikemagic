@@ -85,6 +85,16 @@ class ExplanationGeneratorService:
             GenerationOutput.model_json_schema()
         )
 
+    def _refresh_db_session(self):
+        """Get a fresh DB session after long-running LLM calls."""
+        from database import get_db_manager
+        try:
+            self.db.close()
+        except Exception:
+            pass
+        self.db = get_db_manager().get_session()
+        self.repo = ExplanationRepository(self.db)
+
     def generate_for_guideline(
         self,
         guideline: TeachingGuideline,
@@ -170,6 +180,7 @@ class ExplanationGeneratorService:
 
         # Step 1: Generate cards
         gen_output = self._generate_cards(guideline, variant_config)
+        self._refresh_db_session()
         cards = gen_output.cards
 
         # Capture initial stage
@@ -194,6 +205,7 @@ class ExplanationGeneratorService:
         for round_num in range(1, review_rounds + 1):
             logger.info(f"Review-refine round {round_num}/{review_rounds}")
             refined_output = self._review_and_refine(cards, guideline)
+            self._refresh_db_session()
             cards = refined_output.cards
             gen_output = refined_output
 
@@ -380,6 +392,7 @@ class ExplanationGeneratorService:
                 for round_num in range(1, review_rounds + 1):
                     logger.info(f"Refine-only round {round_num}/{review_rounds} for {topic}")
                     gen_output = self._review_and_refine(cards, guideline)
+                    self._refresh_db_session()
                     cards = gen_output.cards
 
                     if stage_collector is not None:
