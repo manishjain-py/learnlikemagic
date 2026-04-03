@@ -113,6 +113,14 @@ class ClaudeCodeAdapter:
         cli_effort = effort_map.get(effective_effort, effective_effort)
         cmd.extend(["--effort", cli_effort])
 
+        logger.info(json.dumps({
+            "step": "LLM_CALL",
+            "status": "cli_command",
+            "cmd": " ".join(cmd),
+            "timeout": self.timeout,
+            "prompt_length": len(full_prompt),
+        }))
+
         # Retry loop — handles transient credit-balance / rate-limit errors
         last_error = None
         for attempt in range(self.max_retries):
