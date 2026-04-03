@@ -24,6 +24,9 @@ export default function ModeSelectPage() {
   const [guidelineId, setGuidelineId] = useState<string | null>(
     (location.state as any)?.guidelineId || null,
   );
+  const [resolvedTopicKey, setResolvedTopicKey] = useState<string | null>(
+    (location.state as any)?.topicKey || null,
+  );
   const [loading, setLoading] = useState(!guidelineId);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [creatingMode, setCreatingMode] = useState<'teach_me' | 'clarify_doubts' | 'exam' | null>(null);
@@ -34,7 +37,10 @@ export default function ModeSelectPage() {
     getCurriculum({ country, board, grade, subject, chapter })
       .then((res) => {
         const match = (res.topics || []).find((st) => st.topic === topic);
-        if (match) setGuidelineId(match.guideline_id);
+        if (match) {
+          setGuidelineId(match.guideline_id);
+          setResolvedTopicKey(match.topic_key);
+        }
       })
       .catch((err) => console.error('Failed to resolve guideline:', err))
       .finally(() => setLoading(false));
@@ -48,7 +54,7 @@ export default function ModeSelectPage() {
     );
   }
 
-  const topicInfo: TopicInfo = { topic: topic!, guideline_id: guidelineId };
+  const topicInfo: TopicInfo = { topic: topic!, guideline_id: guidelineId, topic_key: resolvedTopicKey, topic_summary: null, topic_sequence: null };
 
   const buildSessionUrl = (mode: string, sessionId: string) => {
     const seg = MODE_URL_SEGMENT[mode] || mode;
@@ -74,7 +80,7 @@ export default function ModeSelectPage() {
         mode,
       });
       navigate(buildSessionUrl(mode, response.session_id), {
-        state: { firstTurn: response.first_turn, mode },
+        state: { firstTurn: response.first_turn, mode, topicKey: resolvedTopicKey },
       });
     } catch (error: any) {
       console.error('Failed to start session:', error);

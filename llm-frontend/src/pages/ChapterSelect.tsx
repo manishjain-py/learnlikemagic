@@ -29,8 +29,12 @@ export default function ChapterSelect() {
   }, [country, board, grade, subject]);
 
   const getChapterStatus = (ch: ChapterInfo): ProgressStatus => {
-    if (ch.guideline_ids.length === 0) return 'not_started';
-    const coverages = ch.guideline_ids.map((id) => progress[id]?.coverage ?? 0);
+    // Exclude refresher topic from progress calculation
+    const progressIds = ch.refresher_guideline_id
+      ? ch.guideline_ids.filter((id) => id !== ch.refresher_guideline_id)
+      : ch.guideline_ids;
+    if (progressIds.length === 0) return 'not_started';
+    const coverages = progressIds.map((id) => progress[id]?.coverage ?? 0);
     const avg = coverages.reduce((a, b) => a + b, 0) / coverages.length;
     if (avg >= 80) return 'completed';
     if (avg > 0) return 'in_progress';
@@ -69,6 +73,7 @@ export default function ChapterSelect() {
                 onClick={() =>
                   navigate(
                     `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(ch.chapter)}`,
+                    { state: { chapterSummary: ch.chapter_summary } },
                   )
                 }
               >
@@ -80,7 +85,7 @@ export default function ChapterSelect() {
                 <div className="learning-path-content">
                   <div className="learning-path-title">{ch.chapter}</div>
                   <div className="learning-path-meta">
-                    {ch.topic_count} topic{ch.topic_count !== 1 ? 's' : ''}
+                    {ch.refresher_guideline_id ? ch.topic_count - 1 : ch.topic_count} topic{(ch.refresher_guideline_id ? ch.topic_count - 1 : ch.topic_count) !== 1 ? 's' : ''}
                     {ch.chapter_summary && (
                       <span
                         className="info-toggle"

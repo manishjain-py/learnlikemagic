@@ -66,7 +66,7 @@ function ChapterSection({
         <span className="reportcard-chapter-name">{chapter.chapter}</span>
       </div>
       <div className="reportcard-topic-list">
-        {chapter.topics.map((st) => (
+        {chapter.topics.filter((st) => st.topic_key !== 'get-ready').map((st) => (
           <div key={st.topic_key} className="reportcard-topic-row">
             <div className="reportcard-topic-toggle">
               <span className="reportcard-topic-name">{st.topic}</span>

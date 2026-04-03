@@ -21,6 +21,8 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
   const [loading, setLoading] = useState(true);
   const [showPastExams, setShowPastExams] = useState(false);
 
+  const isRefresher = topic.topic_key === 'get-ready';
+
   useEffect(() => {
     getGuidelineSessions(topic.guideline_id)
       .then(setSessions)
@@ -29,11 +31,11 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
   }, [topic.guideline_id]);
 
   // Find incomplete sessions for resume — only show if there's actual progress
-  const incompleteExam = sessions.find((s) => s.mode === 'exam' && !s.is_complete && (s.exam_answered ?? 0) > 0);
+  const incompleteExam = isRefresher ? undefined : sessions.find((s) => s.mode === 'exam' && !s.is_complete && (s.exam_answered ?? 0) > 0);
   const incompleteTeachMe = sessions.find((s) => s.mode === 'teach_me' && !s.is_complete && (s.coverage ?? 0) > 0);
 
   // Completed exams for past exams section
-  const completedExams = sessions.filter((s) => s.mode === 'exam' && s.is_complete);
+  const completedExams = isRefresher ? [] : sessions.filter((s) => s.mode === 'exam' && s.is_complete);
 
   return (
     <div className="selection-step">
@@ -107,19 +109,21 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
               </>
             ) : (
               <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
-                <strong>Teach Me</strong>
+                <strong>{isRefresher ? 'Get Ready' : 'Teach Me'}</strong>
                 <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
-                  Learn this topic from scratch
+                  {isRefresher ? 'Review the prerequisites for this chapter' : 'Learn this topic from scratch'}
                 </span>
               </button>
             )}
-            <button className="selection-card" data-testid="mode-clarify-doubts" onClick={() => onSelectMode('clarify_doubts')}>
-              <strong>Clarify Doubts</strong>
-              <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
-                I have questions about this topic
-              </span>
-            </button>
-            {!incompleteExam && (
+            {!isRefresher && (
+              <button className="selection-card" data-testid="mode-clarify-doubts" onClick={() => onSelectMode('clarify_doubts')}>
+                <strong>Clarify Doubts</strong>
+                <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                  I have questions about this topic
+                </span>
+              </button>
+            )}
+            {!isRefresher && !incompleteExam && (
               <button className="selection-card" data-testid="mode-exam" onClick={() => onSelectMode('exam')}>
                 <strong>Take Exam</strong>
                 <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
