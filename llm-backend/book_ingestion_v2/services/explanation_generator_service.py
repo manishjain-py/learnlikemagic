@@ -162,7 +162,7 @@ class ExplanationGeneratorService:
                     "cards_count": len(cards),
                 }))
 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError) as e:
                 logger.error(f"Failed to generate variant {config['key']} for {topic}: {e}")
                 continue
 
@@ -426,7 +426,7 @@ class ExplanationGeneratorService:
                 )
                 results.append(updated)
 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError) as e:
                 logger.error(f"Refine-only failed for {topic} variant {explanation.variant_key}: {e}")
                 continue
 
@@ -484,7 +484,7 @@ class ExplanationGeneratorService:
                     failed += 1
                     errors.append(f"{topic}: refine-only produced no valid output")
 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError) as e:
                 failed += 1
                 errors.append(f"{topic}: {str(e)}")
                 logger.error(f"Refine-only failed for {topic}: {e}")
@@ -572,7 +572,7 @@ class ExplanationGeneratorService:
                     failed += 1
                     errors.append(f"{topic}: no variants passed validation")
 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError) as e:
                 failed += 1
                 errors.append(f"{topic}: {str(e)}")
                 logger.error(f"Explanation generation failed for {topic}: {e}")
