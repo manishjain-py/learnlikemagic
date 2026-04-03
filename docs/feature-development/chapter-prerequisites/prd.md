@@ -14,62 +14,79 @@ Topics assume prerequisite knowledge (e.g., place value for multiplication). Tod
 
 ## Solution
 
-Auto-generate a **refresher topic** as the first topic (`topic_sequence = 0`) of every chapter. Covers the 3-5 foundational concepts the chapter assumes. Uses existing infrastructure (cards, tutor, scorecard) but with refresher-aware study plan and tutor behavior.
+Auto-generate a **refresher topic** as the first topic (`topic_sequence = 0`) of every chapter. Covers the critical foundational concepts the chapter assumes — including those from earlier chapters in the same book. Cards-only session (no interactive teaching), one explanation variant, no mastery tracking.
+
+Additionally, a **chapter landing page** shows students what they'll learn and what prerequisites the chapter assumes, with a natural entry point to the refresher.
 
 ---
 
 ## Requirements
 
-### R1: Refresher Generation (New Pipeline Stage)
+### R1: Refresher Generation (Single Pipeline Step)
+
+Runs **after explanation generation** for regular topics — so it can use explanation cards as input for richer prerequisite identification.
 
 ```
-Plan → Extract → Finalize → Sync → Generate Refresher → Generate Explanations
+Plan → Extract → Finalize → Sync → Generate Explanations → Generate Refresher
 ```
 
-LLM receives all synced guidelines for the chapter + other chapters' topics (cross-reference). Identifies 3-5 critical prerequisites not covered by earlier chapters. Outputs a `TeachingGuideline` with `topic_key = "get-ready"`, `topic_sequence = 0`, `metadata_json = {"is_refresher": true, "prerequisite_concepts": [...]}`.
+Single step that:
+1. Reads all synced guidelines + their explanation cards for the chapter
+2. LLM identifies critical prerequisites (recommends 3-5, but LLM uses judgment)
+3. Same step generates the refresher teaching guideline AND its explanation cards (1 variant)
+4. Stores both `TeachingGuideline` and `TopicExplanation` records
 
-**Scope rules:** Only genuinely needed prerequisites. Cap at 3-5. Focus on specific aspect needed, not entire prerequisite topic. Skip generation if chapter has no meaningful prerequisites.
+**Output TeachingGuideline:**
+- `topic_key = "get-ready"`, `topic_sequence = 0`
+- `metadata_json = {"is_refresher": true, "prerequisite_concepts": [...]}`
+
+**Scope:** All prerequisites the chapter assumes — including from earlier chapters in the same book, prior grades, or external concepts. If chapter has no meaningful prerequisites, skip generation.
 
 ### R2: Refresher Guideline Content
 
-Same format as regular guidelines but with prerequisite-specific structure:
+Same format as regular guidelines but prerequisite-specific:
 - Lists each prerequisite concept, why it's needed, which topics use it
 - Teaching approach: warm-up framing, 1-2 cards per concept, bridge to chapter
 - Scope boundary: only what's needed for this chapter, no deep dives
 
 ### R3: Explanation Cards
 
-Goes through existing explanation generation pipeline. Same ELIF principles, same 3 variants, same review-and-refine. Differences driven by guideline text: fewer cards (3-6 total), one per prerequisite, each bridges forward to the chapter.
+Generated in the same step as the guideline (not via separate explanation generation run). **One variant only** (not three). Same ELIF principles, same radical simplicity. Fewer cards (one per prerequisite concept), each bridges forward to the chapter.
 
-### R4: Refresher-Aware Study Plan and Tutor
+### R4: Session Flow
 
-The refresher covers 3-5 concepts at shallow depth — structurally different from a regular topic.
+- **Teach Me mode only** — no Exam or Clarify Doubts for refresher topics
+- Creates a session, goes through card phase (same as regular topics)
+- After cards: student says "clear" → session complete with a warm closing message ("You've refreshed the basics and are ready to dive into the chapter!")
+- "Explain differently" is not available (single variant)
+- **No interactive study plan phase** — cards only, then done
+- **No mastery tracking, no scoring** — session just marks as complete
+- **No scorecard entry** — refresher is not an assessed activity
 
-| Aspect | Regular | Refresher |
-|--------|---------|-----------|
-| Concepts | 1-2, deep | 3-5, shallow |
-| Steps | explain → check → practice → extend | check_understanding per concept only |
-| Mastery goal | ~80%+ | ~60% (gets the gist) |
-| Session length | 20-40 min | 5-10 min |
+### R5: Chapter Landing Page
 
-**Study plan:** `is_refresher = true` → lighter plan. One `check_understanding` step per prerequisite. No practice/extend steps. Quick advance on correct answers, brief re-explanation + move on for wrong answers.
+New chapter-level UI shown when a student visits a chapter (above the topic list):
 
-**Tutor:** Refresher-mode prompt rules — move quickly, don't deep-dive, clean transitions between concepts ("Next building block..."), easier completion bar, don't spiral on wrong answers.
+- **"What you'll learn"** — summary of what the chapter covers (from `chapter_summary`)
+- **"What you'll need"** — list of prerequisite concepts the chapter assumes (from refresher topic's `metadata_json.prerequisite_concepts`)
+- Natural entry point to the refresher topic for students who want the warm-up
 
-### R5: Idempotent
+Data source: reuses `prerequisite_concepts` from the refresher's `metadata_json`. Single source of truth.
 
-Re-running replaces existing refresher. Re-sync deletes all guidelines including refresher (existing cascade).
+### R6: Idempotent
+
+Re-running replaces existing refresher (guideline + cards). Re-sync deletes all guidelines including refresher (existing cascade).
 
 ---
 
 ## Non-Goals
 
+- Interactive teaching phase for refresher (MVP is cards only)
+- Multiple explanation variants for refresher
+- Mastery tracking or scoring for refresher
 - Per-topic prerequisite checks
-- Diagnostic quizzes before the refresher
-- Cross-session prerequisite knowledge profile
 - Prerequisite dependency graphs
 - Gating or forced sequencing
-- Custom UI for the refresher
 
 ---
 
@@ -77,6 +94,7 @@ Re-running replaces existing refresher. Re-sync deletes all guidelines including
 
 1. Every chapter gets a refresher topic (except introductory chapters with no prerequisites)
 2. Content is prerequisite-specific — each concept bridges to the chapter
-3. Same quality bar (ELIF, variants, review passes) but lighter depth
-4. Students spend 5-10 min max, feel "ready"
-5. Fits naturally as post-sync pipeline step
+3. Cards follow ELIF/radical simplicity principles
+4. Students read cards in 3-5 min, feel "ready"
+5. Chapter landing page clearly shows what the chapter covers and what it assumes
+6. Single pipeline step, runs after explanation generation
