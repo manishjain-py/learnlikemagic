@@ -96,6 +96,7 @@ class ClaudeCodeAdapter:
             "--dangerously-skip-permissions",
             "--no-session-persistence",
             "--max-turns", "1",
+            "--model", "claude-opus-4-6",
         ]
 
         # CRITICAL: Strip ANTHROPIC_API_KEY from the subprocess environment.
@@ -106,13 +107,11 @@ class ClaudeCodeAdapter:
         # rejections. We want Claude Code to use its own auth.
         clean_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
-        # Map reasoning_effort to Claude CLI --effort flag
-        if reasoning_effort and reasoning_effort != "none":
-            # CLI accepts: low, medium, high, max
-            # LLMService passes: none, low, medium, high, xhigh
-            effort_map = {"low": "low", "medium": "medium", "high": "high", "xhigh": "max"}
-            cli_effort = effort_map.get(reasoning_effort, reasoning_effort)
-            cmd.extend(["--effort", cli_effort])
+        # Map reasoning_effort to Claude CLI --effort flag (default: high)
+        effective_effort = reasoning_effort if reasoning_effort and reasoning_effort != "none" else "high"
+        effort_map = {"low": "low", "medium": "medium", "high": "high", "xhigh": "max"}
+        cli_effort = effort_map.get(effective_effort, effective_effort)
+        cmd.extend(["--effort", cli_effort])
 
         # Retry loop — handles transient credit-balance / rate-limit errors
         last_error = None
