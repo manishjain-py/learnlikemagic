@@ -66,6 +66,13 @@ class SessionService:
         if not guideline:
             raise GuidelineNotFoundException(request.goal.guideline_id)
 
+        # Detect refresher topic
+        is_refresher = bool(guideline.metadata and guideline.metadata.is_refresher)
+
+        if is_refresher and mode != "teach_me":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Refresher topics only support Teach Me mode")
+
         # Guard: prevent duplicate incomplete exams for same user+guideline
         if mode == "exam" and user_id and request.goal.guideline_id:
             existing = self._find_incomplete_session(user_id, request.goal.guideline_id, "exam")
@@ -108,21 +115,22 @@ class SessionService:
                 .first()
             )
 
-        # Generate personalized plan for teach_me mode if none exists
-        if not study_plan_record and mode == "teach_me" and user_id:
+        # Generate personalized plan for teach_me mode if none exists (skip for refresher)
+        if not study_plan_record and mode == "teach_me" and user_id and not is_refresher:
             study_plan_record = self._generate_personalized_plan(
                 guideline, user_id, student_context
             )
 
         # Convert DB guideline to new Topic model
-        topic = convert_guideline_to_topic(guideline, study_plan_record)
+        topic = convert_guideline_to_topic(guideline, study_plan_record, is_refresher=is_refresher)
 
         # Create mode-specific session
         session = create_session(topic=topic, student_context=student_context, mode=mode)
         session_id = str(uuid4())
         session.session_id = session_id
+        session.is_refresher = is_refresher
 
-        logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode}")
+        logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode} is_refresher={is_refresher}")
 
         import asyncio
 
@@ -962,6 +970,16 @@ class SessionService:
         if not session.is_in_card_phase():
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Session is not in card phase")
+
+        if session.is_refresher:
+            session.is_paused = False
+            self._persist_session_state(session_id, session, expected_version)
+            return {
+                "action": "session_complete",
+                "message": "You've refreshed the basics and are ready to dive into the chapter!",
+                "audio_text": "You've refreshed the basics and are ready to dive into the chapter!",
+                "is_complete": True,
+            }
 
         import asyncio
 
