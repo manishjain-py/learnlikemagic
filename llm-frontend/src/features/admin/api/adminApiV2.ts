@@ -324,6 +324,27 @@ export async function deleteExplanations(
   );
 }
 
+// ===== Refresher Generation =====
+
+export async function generateRefresher(
+  bookId: string,
+  chapterId: string,
+): Promise<ProcessingJobResponseV2> {
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/refresher/generate?chapter_id=${chapterId}`,
+    { method: 'POST' }
+  );
+}
+
+export async function getRefresherJobStatus(
+  bookId: string,
+  chapterId: string,
+): Promise<ProcessingJobResponseV2> {
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/refresher-jobs/latest?chapter_id=${chapterId}`
+  );
+}
+
 // ===== Results =====
 
 export async function getBookResults(bookId: string): Promise<BookResultsResponseV2> {

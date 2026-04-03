@@ -6,7 +6,7 @@ import {
   getLatestJobV2, getChapterTopics, syncChapter, syncBook,
   getPageDetailV2, retryPageOcrV2, generateExplanations, getExplanationJobStatus,
   getExplanationStatus, getTopicExplanations, deleteExplanations,
-  bulkOcrRetry, bulkOcrRerun,
+  bulkOcrRetry, bulkOcrRerun, generateRefresher,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
   SyncResponseV2, TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
@@ -328,6 +328,18 @@ const BookV2Detail: React.FC = () => {
       startExplanationPolling(ch.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Explanation generation failed');
+    }
+  };
+
+  const handleGenerateRefresher = async (ch: ChapterResponseV2) => {
+    if (!id) return;
+    try {
+      await generateRefresher(id, ch.id);
+      // Refresh topics to pick up the new get-ready topic
+      const topicsResp = await getChapterTopics(id, ch.id);
+      setChapterTopics(prev => ({ ...prev, [ch.id]: topicsResp.topics }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start refresher generation');
     }
   };
 
@@ -783,6 +795,7 @@ const BookV2Detail: React.FC = () => {
                       { label: 'Topics', done: topicsReady, active: ocrDone && !topicsReady && !isFailed },
                       { label: 'Sync', done: !!(syncResult[ch.id]), active: completed },
                       { label: 'Explanations', done: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0), active: completed },
+                      { label: 'Refresher', done: topics.some(t => t.topic_key === 'get-ready'), active: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0) },
                       { label: 'Visuals', done: false, active: completed },
                     ];
 
@@ -847,6 +860,7 @@ const BookV2Detail: React.FC = () => {
                             <>
                               <button onClick={() => navigate(`/admin/books-v2/${id}/guidelines/${ch.id}`)} style={manageLinkStyle}>Guidelines</button>
                               <button onClick={() => navigate(`/admin/books-v2/${id}/explanations/${ch.id}`)} style={manageLinkStyle}>Explanations</button>
+                              <button onClick={() => handleGenerateRefresher(ch)} style={manageLinkStyle}>Refresher</button>
                               <button onClick={() => navigate(`/admin/books-v2/${id}/visuals/${ch.id}`)} style={manageLinkStyle}>Visuals</button>
                             </>
                           )}
