@@ -53,7 +53,7 @@ module "secrets" {
 }
 
 #############################################################################
-# Database (Aurora Serverless v2 PostgreSQL)
+# Database (RDS PostgreSQL)
 #############################################################################
 
 module "database" {

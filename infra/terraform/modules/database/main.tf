@@ -1,4 +1,4 @@
-# Aurora Serverless v2 PostgreSQL Cluster
+# RDS PostgreSQL Instance
 
 # Security Group for Database
 resource "aws_security_group" "database" {
@@ -28,7 +28,7 @@ resource "aws_security_group" "database" {
   }
 }
 
-# Subnet Group for Aurora
+# Subnet Group
 resource "aws_db_subnet_group" "database" {
   name       = "${var.project_name}-database-${var.environment}"
   subnet_ids = var.subnet_ids
@@ -39,27 +39,10 @@ resource "aws_db_subnet_group" "database" {
   }
 }
 
-# Aurora Cluster Parameter Group
-resource "aws_rds_cluster_parameter_group" "database" {
-  name        = "${var.project_name}-cluster-pg-${var.environment}"
-  family      = "aurora-postgresql15"
-  description = "Cluster parameter group for ${var.project_name}"
-
-  parameter {
-    name  = "timezone"
-    value = "UTC"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-cluster-parameter-group"
-    Environment = var.environment
-  }
-}
-
-# Aurora DB Parameter Group
+# DB Parameter Group
 resource "aws_db_parameter_group" "database" {
-  name        = "${var.project_name}-db-pg-${var.environment}"
-  family      = "aurora-postgresql15"
+  name        = "${var.project_name}-rds-pg-${var.environment}"
+  family      = "postgres15"
   description = "DB parameter group for ${var.project_name}"
 
   tags = {
@@ -68,57 +51,37 @@ resource "aws_db_parameter_group" "database" {
   }
 }
 
-# Aurora Serverless v2 Cluster
-resource "aws_rds_cluster" "database" {
-  cluster_identifier = "${var.project_name}-${var.environment}"
-  engine             = "aurora-postgresql"
-  engine_mode        = "provisioned"
-  engine_version     = "15.10"
-  database_name      = var.db_name
-  master_username    = var.db_user
-  master_password    = var.db_password
+# RDS PostgreSQL Instance (free tier eligible)
+resource "aws_db_instance" "database" {
+  identifier     = "${var.project_name}-${var.environment}"
+  engine         = "postgres"
+  engine_version = "15"
+  instance_class = "db.t4g.micro"
 
-  db_subnet_group_name            = aws_db_subnet_group.database.name
-  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.database.name
-  vpc_security_group_ids          = [aws_security_group.database.id]
+  allocated_storage = 20
+  storage_type      = "gp2"
 
-  # Serverless v2 scaling configuration
-  serverlessv2_scaling_configuration {
-    max_capacity = 2.0 # 2 ACUs
-    min_capacity = 0.5 # 0.5 ACUs (minimum)
-  }
+  db_name  = var.db_name
+  username = var.db_user
+  password = var.db_password
 
-  # Backup and maintenance
-  backup_retention_period      = 7
-  preferred_backup_window      = "03:00-04:00"
-  preferred_maintenance_window = "mon:04:00-mon:05:00"
-
-  # Deletion protection (set to true in production)
-  deletion_protection = false
-  skip_final_snapshot = true # Set to false in production
-  # final_snapshot_identifier = "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
-
-  enabled_cloudwatch_logs_exports = ["postgresql"]
-
-  tags = {
-    Name        = "${var.project_name}-aurora-cluster"
-    Environment = var.environment
-  }
-}
-
-# Aurora Serverless v2 Instance
-resource "aws_rds_cluster_instance" "database" {
-  identifier              = "${var.project_name}-instance-${var.environment}"
-  cluster_identifier      = aws_rds_cluster.database.id
-  instance_class          = "db.serverless"
-  engine                  = aws_rds_cluster.database.engine
-  engine_version          = aws_rds_cluster.database.engine_version
-  db_parameter_group_name = aws_db_parameter_group.database.name
+  db_subnet_group_name   = aws_db_subnet_group.database.name
+  parameter_group_name   = aws_db_parameter_group.database.name
+  vpc_security_group_ids = [aws_security_group.database.id]
 
   publicly_accessible = true # Set to false in production with VPC peering
 
+  # Backup and maintenance
+  backup_retention_period = 7
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "mon:04:00-mon:05:00"
+
+  # Deletion protection
+  deletion_protection = false
+  skip_final_snapshot = true
+
   tags = {
-    Name        = "${var.project_name}-aurora-instance"
+    Name        = "${var.project_name}-rds-instance"
     Environment = var.environment
   }
 }

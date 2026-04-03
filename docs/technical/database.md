@@ -6,7 +6,7 @@ Schema, tables, migrations, and connection management.
 
 ## Database Overview
 
-- **Engine:** Aurora Serverless v2 (PostgreSQL 15.10)
+- **Engine:** RDS PostgreSQL 15 (db.t4g.micro, free tier)
 - **ORM:** SQLAlchemy (declarative base)
 - **Connection:** `DatabaseManager` with `QueuePool` (pool_size=5, max_overflow=10, pre_ping=true)
 - **Migrations:** Custom imperative approach (not Alembic)

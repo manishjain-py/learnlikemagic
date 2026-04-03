@@ -13,8 +13,8 @@ output "aws_account_id" {
 #############################################################################
 
 output "database_endpoint" {
-  description = "Aurora cluster endpoint"
-  value       = module.database.cluster_endpoint
+  description = "RDS instance endpoint"
+  value       = module.database.instance_endpoint
 }
 
 output "database_url" {
@@ -116,7 +116,7 @@ output "deployment_summary" {
 
     Frontend URL:    https://${module.frontend.cloudfront_domain_name}
     Backend API:     ${module.app_runner.service_url}
-    Database:        ${module.database.cluster_endpoint}
+    Database:        ${module.database.instance_endpoint}
 
     ECR Repository:  ${module.ecr.repository_url}
     S3 Bucket:       ${module.frontend.s3_bucket_name}

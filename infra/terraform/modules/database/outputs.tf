@@ -1,31 +1,26 @@
-output "cluster_endpoint" {
-  description = "Aurora cluster writer endpoint"
-  value       = aws_rds_cluster.database.endpoint
+output "instance_endpoint" {
+  description = "RDS instance endpoint"
+  value       = aws_db_instance.database.address
 }
 
-output "cluster_reader_endpoint" {
-  description = "Aurora cluster reader endpoint"
-  value       = aws_rds_cluster.database.reader_endpoint
+output "instance_id" {
+  description = "RDS instance identifier"
+  value       = aws_db_instance.database.identifier
 }
 
-output "cluster_id" {
-  description = "Aurora cluster ID"
-  value       = aws_rds_cluster.database.cluster_identifier
-}
-
-output "cluster_arn" {
-  description = "Aurora cluster ARN"
-  value       = aws_rds_cluster.database.arn
+output "instance_arn" {
+  description = "RDS instance ARN"
+  value       = aws_db_instance.database.arn
 }
 
 output "database_name" {
   description = "Database name"
-  value       = aws_rds_cluster.database.database_name
+  value       = aws_db_instance.database.db_name
 }
 
 output "database_url" {
   description = "Full PostgreSQL connection string"
-  value       = "postgresql://${var.db_user}:${var.db_password}@${aws_rds_cluster.database.endpoint}:5432/${var.db_name}"
+  value       = "postgresql://${var.db_user}:${var.db_password}@${aws_db_instance.database.address}:5432/${var.db_name}"
   sensitive   = true
 }
 
