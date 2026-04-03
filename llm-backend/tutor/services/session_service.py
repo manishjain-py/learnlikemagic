@@ -867,6 +867,10 @@ class SessionService:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Session is not in card phase")
 
+        if session.is_refresher:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Card simplification is not available for refresher topics")
+
         # Load current variant cards
         explanation_repo = ExplanationRepository(self.db)
         explanation = explanation_repo.get_variant(
@@ -972,6 +976,7 @@ class SessionService:
             raise HTTPException(status_code=400, detail="Session is not in card phase")
 
         if session.is_refresher:
+            session.complete_card_phase()
             session.is_paused = False
             self._persist_session_state(session_id, session, expected_version)
             return {

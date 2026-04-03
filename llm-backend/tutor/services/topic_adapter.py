@@ -64,7 +64,7 @@ def convert_guideline_to_topic(
     )
 
     # Build StudyPlan from plan_json
-    if is_refresher and not study_plan_record:
+    if is_refresher:
         study_plan = StudyPlan(steps=[])
     else:
         study_plan = _convert_study_plan(study_plan_record, guideline)
