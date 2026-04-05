@@ -80,15 +80,30 @@ export interface VisualExplanation {
   scene_type?: string;
 }
 
+export interface MatchPair {
+  left: string;
+  right: string;
+}
+
+export interface CheckInActivity {
+  activity_type: 'match_pairs';
+  instruction: string;
+  pairs: MatchPair[];
+  hint: string;
+  success_message: string;
+  audio_text: string;
+}
+
 export interface ExplanationCard {
+  card_id?: string;
   card_idx: number;
-  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary' | 'simplification';
+  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary' | 'simplification' | 'check_in';
   title: string;
   content: string;
   visual?: string | null;
   audio_text?: string | null;
   visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
-  card_id?: string;
+  check_in?: CheckInActivity | null;  // Match-the-pairs activity for check_in cards
   source_card_idx?: number;
 }
 
@@ -571,13 +586,26 @@ export async function submitFeedback(sessionId: string, feedbackText: string, ac
 // Card phase actions (pre-computed explanations)
 // ──────────────────────────────────────────────
 
+export interface CheckInEventDTO {
+  card_idx: number;
+  wrong_count: number;
+  hints_shown: number;
+  confused_pairs: Array<{ left: string; right: string; wrong_count: number }>;
+  auto_revealed: number;
+}
+
 export async function cardAction(
   sessionId: string,
   action: 'clear' | 'explain_differently',
+  checkInEvents?: CheckInEventDTO[],
 ): Promise<any> {
+  const payload: any = { action };
+  if (checkInEvents && checkInEvents.length > 0) {
+    payload.check_in_events = checkInEvents;
+  }
   const response = await apiFetch(`/sessions/${sessionId}/card-action`, {
     method: 'POST',
-    body: JSON.stringify({ action }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);

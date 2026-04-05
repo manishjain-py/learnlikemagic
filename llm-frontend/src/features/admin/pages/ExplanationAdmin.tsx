@@ -30,12 +30,14 @@ const CardList: React.FC<{ cards: ExplanationCardV2[] }> = ({ cards }) => (
               card.card_type === 'concept' ? '#EDE9FE' :
               card.card_type === 'example' ? '#DBEAFE' :
               card.card_type === 'visual' ? '#FEF3C7' :
-              card.card_type === 'analogy' ? '#D1FAE5' : '#F3F4F6',
+              card.card_type === 'analogy' ? '#D1FAE5' :
+              card.card_type === 'check_in' ? '#CCFBF1' : '#F3F4F6',
             color:
               card.card_type === 'concept' ? '#5B21B6' :
               card.card_type === 'example' ? '#1D4ED8' :
               card.card_type === 'visual' ? '#92400E' :
-              card.card_type === 'analogy' ? '#065F46' : '#374151',
+              card.card_type === 'analogy' ? '#065F46' :
+              card.card_type === 'check_in' ? '#115E59' : '#374151',
           }}>
             {card.card_type}
           </span>

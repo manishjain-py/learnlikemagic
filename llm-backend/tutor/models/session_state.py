@@ -36,6 +36,19 @@ class ConfusionEvent(BaseModel):
     escalated: bool = Field(default=False, description="Whether it escalated to interactive mode")
 
 
+class CheckInStruggleEvent(BaseModel):
+    """Tracks a student's struggles on a check-in activity."""
+    card_idx: int = Field(description="Check-in card index (1-based)")
+    card_title: str = Field(description="Check-in title for readability")
+    wrong_count: int = Field(default=0, description="Total wrong match attempts")
+    hints_shown: int = Field(default=0, description="Times hint was displayed")
+    confused_pairs: list[dict] = Field(
+        default_factory=list,
+        description="Pairs the student struggled with: [{left, right, wrong_count}]"
+    )
+    auto_revealed: int = Field(default=0, description="Pairs auto-revealed by safety valve")
+
+
 class CardPhaseState(BaseModel):
     """Tracks card-based explanation phase for pre-computed explanations."""
     guideline_id: str = Field(description="FK for explanation lookups (NOT topic_id)")
@@ -53,6 +66,10 @@ class CardPhaseState(BaseModel):
     confusion_events: list[ConfusionEvent] = Field(
         default_factory=list,
         description="Per-card confusion tracking for tutor context"
+    )
+    check_in_struggles: list[CheckInStruggleEvent] = Field(
+        default_factory=list,
+        description="Per-check-in struggle tracking for tutor context"
     )
 
 

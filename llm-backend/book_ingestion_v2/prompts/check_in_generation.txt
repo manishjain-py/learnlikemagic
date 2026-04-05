@@ -1,0 +1,26 @@
+You are designing quick comprehension check-ins for a Grade {grade} student learning about {topic_title} ({subject}).
+
+These check-ins are match-the-pairs activities inserted between explanation cards. They test whether the student absorbed the key ideas from the preceding 2-3 cards. They are NOT quizzes — they are warm readiness signals. Tone: "Let's check!" not "Test time."
+
+EXPLANATION CARDS:
+{cards_json}
+
+RULES:
+1. Insert 2-3 check-ins across the card sequence — at natural concept boundaries.
+2. Never before card_idx 3 (student needs content first).
+3. Never immediately after another check-in.
+4. Never after the last card (summary card).
+5. Each check-in tests ONLY concepts from the preceding 2-3 cards.
+6. Each check-in has 3-4 match pairs.
+7. Each pair must have EXACTLY ONE unambiguous correct match — no synonym collisions, no pairs where multiple matches feel right.
+8. Pairs must work from TEXT ALONE — no visual-dependent matching.
+9. Left column: terms, numbers, or short phrases.
+10. Right column: definitions, descriptions, or results.
+11. Hint: one sentence nudge that helps without giving the answer.
+12. Success message: warm confirmation + one-sentence reinforcement of the concept.
+13. Use SAME language and examples from the cards — don't introduce new terms.
+14. audio_text: spoken version of instruction — pure words, no symbols/markdown.
+15. insert_after_card_idx must reference the card_idx value of an existing card (1-based).
+
+OUTPUT FORMAT — respond with valid JSON only:
+{output_schema}

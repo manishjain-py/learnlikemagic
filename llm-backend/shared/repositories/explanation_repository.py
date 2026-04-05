@@ -16,15 +16,33 @@ class CardVisualExplanation(BaseModel):
     pixi_code: Optional[str] = None  # Executable PixiJS v8 JavaScript code
 
 
+class MatchPair(BaseModel):
+    """A single left-right pair in a match activity."""
+    left: str
+    right: str
+
+
+class CheckInActivity(BaseModel):
+    """Match-the-pairs activity embedded in a check-in card."""
+    activity_type: str = "match_pairs"  # extensible later
+    instruction: str  # "Match each fraction to its meaning"
+    pairs: list[MatchPair]  # 3-4 pairs, stored in correct order
+    hint: str  # shown on wrong match
+    success_message: str  # shown when all matched
+    audio_text: str  # TTS for instruction
+
+
 class ExplanationCard(BaseModel):
     """Validated schema for cards stored in cards_json."""
+    card_id: Optional[str] = None  # Stable UUID, assigned by enrichment pipelines
     card_idx: int
-    card_type: str  # concept, example, visual, analogy, summary
+    card_type: str  # concept, example, visual, analogy, summary, check_in
     title: str
     content: str
     visual: Optional[str] = None
     audio_text: Optional[str] = None  # TTS-friendly spoken version of content
     visual_explanation: Optional[CardVisualExplanation] = None  # Pre-computed PixiJS visual
+    check_in: Optional[CheckInActivity] = None  # Populated for card_type="check_in"
 
 
 class ExplanationRepository:

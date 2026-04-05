@@ -195,9 +195,19 @@ class ExplanationCardDTO(BaseModel):
     visual: Optional[str] = None
 
 
+class CheckInEventDTO(BaseModel):
+    """Check-in struggle data sent from frontend at phase transition."""
+    card_idx: int
+    wrong_count: int = 0
+    hints_shown: int = 0
+    confused_pairs: list[dict] = Field(default_factory=list)  # [{left, right, wrong_count}]
+    auto_revealed: int = 0
+
+
 class CardActionRequest(BaseModel):
     """Request body for card phase actions."""
     action: Literal["clear", "explain_differently"]
+    check_in_events: Optional[list[CheckInEventDTO]] = None
 
 
 class SimplifyCardRequest(BaseModel):

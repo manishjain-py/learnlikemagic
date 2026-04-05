@@ -7,6 +7,8 @@ import {
   getPageDetailV2, retryPageOcrV2, generateExplanations, getExplanationJobStatus,
   getExplanationStatus, getTopicExplanations, deleteExplanations,
   bulkOcrRetry, bulkOcrRerun, generateRefresher,
+  generateCheckIns, getCheckInJobStatus, getCheckInStatus,
+  TopicCheckInStatusV2,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
   SyncResponseV2, TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
@@ -56,11 +58,14 @@ const BookV2Detail: React.FC = () => {
   const [viewingExplanationsLoading, setViewingExplanationsLoading] = useState(false);
   const [topicExplJobs, setTopicExplJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [ocrJobs, setOcrJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
+  const [checkInJobs, setCheckInJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
+  const [checkInStatus, setCheckInStatus] = useState<Record<string, TopicCheckInStatusV2[]>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
   const explPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const topicExplPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const ocrPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const checkInPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     if (id) loadBook(true);
@@ -69,6 +74,7 @@ const BookV2Detail: React.FC = () => {
       Object.values(explPollingRef.current).forEach(clearInterval);
       Object.values(topicExplPollingRef.current).forEach(clearInterval);
       Object.values(ocrPollingRef.current).forEach(clearInterval);
+      Object.values(checkInPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
@@ -178,6 +184,31 @@ const BookV2Detail: React.FC = () => {
     topicExplPollingRef.current[guidelineId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
 
+  const loadCheckInStatus = useCallback(async (chapterId: string) => {
+    if (!id) return;
+    try {
+      const resp = await getCheckInStatus(id, chapterId);
+      setCheckInStatus(prev => ({ ...prev, [chapterId]: resp.topics }));
+    } catch { /* ignore */ }
+  }, [id]);
+
+  const startCheckInPolling = useCallback((chapterId: string) => {
+    if (!id || checkInPollingRef.current[chapterId]) return;
+    const poll = async () => {
+      try {
+        const job = await getCheckInJobStatus(id!, { chapterId });
+        setCheckInJobs(prev => ({ ...prev, [chapterId]: job }));
+        if (['completed', 'failed', 'completed_with_errors'].includes(job.status)) {
+          clearInterval(checkInPollingRef.current[chapterId]);
+          delete checkInPollingRef.current[chapterId];
+          loadCheckInStatus(chapterId);
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    checkInPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
   const loadExplanationStatus = useCallback(async (chapterId: string) => {
     if (!id) return;
     try {
@@ -218,6 +249,9 @@ const BookV2Detail: React.FC = () => {
     }
     if (ch.status === 'chapter_completed' && !explanationStatus[chId]) {
       loadExplanationStatus(chId);
+    }
+    if (ch.status === 'chapter_completed' && !checkInStatus[chId]) {
+      loadCheckInStatus(chId);
     }
   };
 
@@ -328,6 +362,17 @@ const BookV2Detail: React.FC = () => {
       startExplanationPolling(ch.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Explanation generation failed');
+    }
+  };
+
+  const handleGenerateCheckIns = async (ch: ChapterResponseV2, force = false) => {
+    if (!id) return;
+    try {
+      const job = await generateCheckIns(id, { chapterId: ch.id, force });
+      setCheckInJobs(prev => ({ ...prev, [ch.id]: job }));
+      startCheckInPolling(ch.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Check-in enrichment failed');
     }
   };
 
@@ -797,6 +842,7 @@ const BookV2Detail: React.FC = () => {
                       { label: 'Explanations', done: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0), active: completed },
                       { label: 'Refresher', done: topics.some(t => t.topic_key === 'get-ready'), active: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0) },
                       { label: 'Visuals', done: false, active: completed },
+                      { label: 'Check-ins', done: (checkInStatus[ch.id]?.length ?? 0) > 0 && checkInStatus[ch.id]?.some(t => t.cards_with_check_ins > 0), active: completed },
                     ];
 
                     return (
@@ -862,6 +908,12 @@ const BookV2Detail: React.FC = () => {
                               <button onClick={() => window.open(`/admin/books-v2/${id}/explanations/${ch.id}`, '_blank')} style={manageLinkStyle}>Explanations</button>
                               <button onClick={() => handleGenerateRefresher(ch)} style={manageLinkStyle}>Refresher</button>
                               <button onClick={() => window.open(`/admin/books-v2/${id}/visuals/${ch.id}`, '_blank')} style={manageLinkStyle}>Visuals</button>
+                              <button onClick={() => handleGenerateCheckIns(ch)} style={manageLinkStyle}>Check-ins</button>
+                              {checkInJobs[ch.id] && ['pending', 'running'].includes(checkInJobs[ch.id].status) && (
+                                <span style={{ fontSize: '11px', color: '#5B21B6' }}>
+                                  {checkInJobs[ch.id].current_item || 'Starting...'}
+                                </span>
+                              )}
                             </>
                           )}
                         </div>

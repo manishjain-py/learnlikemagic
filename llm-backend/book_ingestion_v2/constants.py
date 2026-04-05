@@ -31,6 +31,7 @@ class V2JobType(str, Enum):
     EXPLANATION_GENERATION = "v2_explanation_generation"
     VISUAL_ENRICHMENT = "v2_visual_enrichment"
     REFRESHER_GENERATION = "v2_refresher_generation"
+    CHECK_IN_ENRICHMENT = "v2_check_in_enrichment"
 
 
 class V2JobStatus(str, Enum):

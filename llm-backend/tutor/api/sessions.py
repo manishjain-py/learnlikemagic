@@ -450,7 +450,10 @@ def card_action(
 
     try:
         service = SessionService(db)
-        return service.complete_card_phase(session_id, request.action)
+        return service.complete_card_phase(
+            session_id, request.action,
+            check_in_events=request.check_in_events,
+        )
     except HTTPException:
         raise
     except LearnLikeMagicException as e:

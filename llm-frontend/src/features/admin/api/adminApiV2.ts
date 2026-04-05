@@ -695,3 +695,56 @@ export async function getVisualJobStatus(
     `/admin/v2/books/${bookId}/visual-jobs/latest${qs}`
   );
 }
+
+// ===== Check-In Enrichment Admin Types & API =====
+
+export interface TopicCheckInStatusV2 {
+  guideline_id: string;
+  topic_title: string;
+  topic_key?: string;
+  total_cards: number;
+  cards_with_check_ins: number;
+  has_explanations: boolean;
+}
+
+export interface ChapterCheckInStatusResponseV2 {
+  chapter_id: string;
+  chapter_key: string;
+  topics: TopicCheckInStatusV2[];
+}
+
+export async function getCheckInStatus(
+  bookId: string, chapterId: string
+): Promise<ChapterCheckInStatusResponseV2> {
+  return apiFetch<ChapterCheckInStatusResponseV2>(
+    `/admin/v2/books/${bookId}/check-in-status?chapter_id=${chapterId}`
+  );
+}
+
+export async function generateCheckIns(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.force) params.set('force', 'true');
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/generate-check-ins${qs}`,
+    { method: 'POST' }
+  );
+}
+
+export async function getCheckInJobStatus(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/check-in-jobs/latest${qs}`
+  );
+}

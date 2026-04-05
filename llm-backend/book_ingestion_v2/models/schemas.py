@@ -299,6 +299,22 @@ class ChapterVisualStatusResponse(BaseModel):
     topics: List[TopicVisualStatus]
 
 
+# ───── Check-In Enrichment Status ─────
+
+class TopicCheckInStatus(BaseModel):
+    guideline_id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    total_cards: int
+    cards_with_check_ins: int
+    has_explanations: bool = False
+
+class ChapterCheckInStatusResponse(BaseModel):
+    chapter_id: str
+    chapter_key: str
+    topics: List[TopicCheckInStatus]
+
+
 # ───── Results ─────
 
 class ChapterResultSummary(BaseModel):

@@ -18,12 +18,15 @@ import {
   SummaryResponse,
   VisualExplanation as VisualExplanationType,
   QuestionFormat,
+  CheckInActivity,
+  CheckInEventDTO,
 } from '../api';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import VisualExplanationComponent from '../components/VisualExplanation';
 import InteractiveQuestion from '../components/InteractiveQuestion';
+import MatchActivity, { MatchActivityResult } from '../components/MatchActivity';
 import TypewriterMarkdown from '../components/TypewriterMarkdown';
 import '../App.css';
 
@@ -43,7 +46,7 @@ interface ExamQuestionDraft {
 
 interface Slide {
   id: string;
-  type: 'explanation' | 'message';
+  type: 'explanation' | 'message' | 'check_in';
   content: string;
   title?: string;
   cardType?: string;
@@ -52,6 +55,7 @@ interface Slide {
   questionFormat?: QuestionFormat | null;
   studentResponse?: string | null;
   audioText?: string | null;
+  checkIn?: CheckInActivity | null;
 }
 
 /** Strip markdown syntax for cleaner TTS input */
@@ -146,6 +150,9 @@ export default function ChatSession() {
   // Typewriter: track which slide indices have been fully revealed
   const [revealedSlides, setRevealedSlides] = useState<Set<number>>(new Set());
   const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
+  // Check-in gate + struggle tracking
+  const [completedCheckIns, setCompletedCheckIns] = useState<Set<number>>(new Set());
+  const [checkInStruggles, setCheckInStruggles] = useState<Map<number, MatchActivityResult>>(new Map());
 
   // Annotate cards with 0-based source_card_idx if not already present
   const annotateCards = (cards: ExplanationCard[]): ExplanationCard[] =>
@@ -206,16 +213,28 @@ export default function ChatSession() {
     // 1. Explanation cards always come first (if they exist)
     if (explanationCards.length > 0) {
       explanationCards.forEach((card, i) => {
-        slides.push({
-          id: (card as any).card_id || `card-${i}`,
-          type: 'explanation',
-          content: card.content,
-          title: card.title,
-          cardType: card.card_type,
-          visual: card.visual,
-          visualExplanation: card.visual_explanation || null,
-          audioText: card.audio_text || card.content,
-        });
+        if (card.card_type === 'check_in' && card.check_in) {
+          slides.push({
+            id: card.card_id || `card-${i}`,
+            type: 'check_in',
+            content: card.check_in.instruction,
+            title: card.title,
+            cardType: 'check_in',
+            checkIn: card.check_in,
+            audioText: card.check_in.audio_text,
+          });
+        } else {
+          slides.push({
+            id: card.card_id || (card as any).card_id || `card-${i}`,
+            type: 'explanation',
+            content: card.content,
+            title: card.title,
+            cardType: card.card_type,
+            visual: card.visual,
+            visualExplanation: card.visual_explanation || null,
+            audioText: card.audio_text || card.content,
+          });
+        }
       });
     }
 
@@ -295,8 +314,8 @@ export default function ChatSession() {
     prevSlideIdx.current = currentSlideIdx;
     if (sessionPhase !== 'card_phase') return;
     const slide = carouselSlides[currentSlideIdx];
-    // Don't auto-play full audio for explanation slides — typewriter handles per-line audio
-    if (slide && slide.type !== 'explanation') {
+    // Auto-play for message and check_in slides; explanation slides use per-line typewriter audio
+    if (slide && (slide.type === 'message' || slide.type === 'check_in')) {
       playTeacherAudio(slide.audioText || slide.content, slide.id);
     }
   }, [currentSlideIdx, sessionPhase, carouselSlides]);
@@ -1056,7 +1075,8 @@ export default function ChatSession() {
       const dx = e.changedTouches[0].clientX - focusSwipeStartX.current;
       if (dx > 80 && currentSlideIdx > 0) {
         newIdx = currentSlideIdx - 1;
-      } else if (dx < -80 && currentSlideIdx < carouselSlides.length - 1) {
+      } else if (dx < -80 && currentSlideIdx < carouselSlides.length - 1
+          && !(carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(currentSlideIdx))) {
         newIdx = currentSlideIdx + 1;
       }
       if (newIdx !== currentSlideIdx) {
@@ -1105,7 +1125,20 @@ export default function ChatSession() {
     if (!sessionId) return;
     setCardActionLoading(true);
     try {
-      const result = await cardAction(sessionId, action);
+      // Build check-in struggle events for tutor context
+      let events: CheckInEventDTO[] | undefined;
+      if (action === 'clear' && checkInStruggles.size > 0) {
+        events = Array.from(checkInStruggles.entries()).map(([slideIdx, data]) => ({
+          card_idx: carouselSlides[slideIdx]?.cardType === 'check_in'
+            ? (explanationCards.find((_, ci) => (carouselSlides[slideIdx]?.id || '').includes(`card-${ci}`))?.card_idx ?? slideIdx)
+            : slideIdx,
+          wrong_count: data.wrongCount,
+          hints_shown: data.hintsShown,
+          confused_pairs: data.confusedPairs.map(p => ({ left: p.left, right: p.right, wrong_count: p.wrongCount })),
+          auto_revealed: data.autoRevealed,
+        }));
+      }
+      const result = await cardAction(sessionId, action, events);
 
       if (result.action === 'session_complete') {
         // Refresher topic completed — show completion message and end session
@@ -1601,6 +1634,19 @@ export default function ChatSession() {
                             <VisualExplanationComponent visual={slide.visualExplanation} />
                           )}
                         </>
+                      ) : slide.type === 'check_in' && slide.checkIn ? (
+                        <>
+                          <div className="explanation-card-type">
+                            <span style={{ background: '#CCFBF1', color: '#115E59' }}>Check-in</span>
+                          </div>
+                          <MatchActivity
+                            checkIn={slide.checkIn}
+                            onComplete={(result) => {
+                              setCompletedCheckIns(prev => new Set(prev).add(i));
+                              setCheckInStruggles(prev => new Map(prev).set(i, result));
+                            }}
+                          />
+                        </>
                       ) : (
                         <>
                           <div className="focus-tutor-msg">
@@ -1634,7 +1680,8 @@ export default function ChatSession() {
               {sessionPhase === 'card_phase' ? (
                 currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
-                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions && (
+                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions
+                      && carouselSlides[currentSlideIdx]?.type !== 'check_in' && (
                       <button
                         className="explanation-nav-btn simplify"
                         onClick={() => setShowSimplifyOptions(true)}
@@ -1681,7 +1728,7 @@ export default function ChatSession() {
                           setCurrentSlideIdx(next);
                           if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
                         }}
-                        disabled={simplifyLoading}
+                        disabled={simplifyLoading || (carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(currentSlideIdx))}
                       >
                         Next
                       </button>

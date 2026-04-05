@@ -22,6 +22,8 @@ from book_ingestion_v2.models.schemas import (
     UpdateGuidelineRequest,
     ChapterVisualStatusResponse,
     TopicVisualStatus,
+    ChapterCheckInStatusResponse,
+    TopicCheckInStatus,
 )
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
@@ -923,6 +925,242 @@ def get_latest_visual_job(
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Check-In Enrichment Endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/generate-check-ins", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_check_ins(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic enrichment"),
+    force: bool = Query(False, description="Re-generate check-ins even if they already exist"),
+    db: Session = Depends(get_db),
+):
+    """Generate interactive check-in cards for explanation cards.
+
+    Runs as a background job. Requires explanations to already exist.
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            total_items = 1
+            lock_chapter_id = guideline_id
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=lock_chapter_id,
+            job_type=V2JobType.CHECK_IN_ENRICHMENT.value,
+            total_items=total_items,
+        )
+
+        run_in_background_v2(
+            _run_check_in_enrichment, job_id, book_id,
+            chapter_id or "", guideline_id or "", str(force),
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Check-in enrichment failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get("/check-in-status", response_model=ChapterCheckInStatusResponse)
+def get_check_in_status(
+    book_id: str,
+    chapter_id: str = Query(..., description="Chapter ID"),
+    db: Session = Depends(get_db),
+):
+    """Per-topic check-in enrichment counts for a chapter."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        guidelines = (
+            db.query(TeachingGuideline)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            .order_by(TeachingGuideline.topic_sequence)
+            .all()
+        )
+
+        repo = ExplanationRepository(db)
+        topics = []
+        for g in guidelines:
+            explanations = repo.get_by_guideline_id(g.id)
+            total_cards = 0
+            cards_with_check_ins = 0
+            for expl in explanations:
+                cards = expl.cards_json or []
+                total_cards += len(cards)
+                cards_with_check_ins += sum(
+                    1 for c in cards if c.get("card_type") == "check_in"
+                )
+            topics.append(TopicCheckInStatus(
+                guideline_id=g.id,
+                topic_title=g.topic_title or g.topic,
+                topic_key=g.topic_key,
+                total_cards=total_cards,
+                cards_with_check_ins=cards_with_check_ins,
+                has_explanations=len(explanations) > 0,
+            ))
+
+        return ChapterCheckInStatusResponse(
+            chapter_id=chapter_id, chapter_key=chapter_key, topics=topics,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/check-in-jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_check_in_job(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None),
+    guideline_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Latest check-in enrichment job for a topic, chapter, or book."""
+    try:
+        lock_chapter_id = guideline_id or chapter_id or book_id
+        job_service = ChapterJobService(db)
+        result = job_service.get_latest_job(
+            lock_chapter_id, job_type=V2JobType.CHECK_IN_ENRICHMENT.value,
+        )
+        if not result:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No check-in enrichment jobs found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+def _run_check_in_enrichment(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False",
+):
+    """Background task for check-in enrichment of explanation cards."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.check_in_enrichment_service import CheckInEnrichmentService
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    force = force_str.lower() == "true"
+
+    settings = get_settings()
+
+    # LLM config — fallback to explanation_generator
+    llm_config_svc = LLMConfigService(db)
+    try:
+        config = llm_config_svc.get_config("check_in_enrichment")
+    except Exception:
+        config = llm_config_svc.get_config("explanation_generator")
+
+    llm_service = LLMService(
+        api_key=settings.openai_api_key,
+        provider=config["provider"],
+        model_id=config["model_id"],
+        gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+    )
+
+    job_service = ChapterJobService(db)
+    service = CheckInEnrichmentService(db, llm_service)
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                raise ValueError(f"Guideline {guideline_id} not found")
+
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
+
+            heartbeat_fn = lambda: job_service.update_progress(
+                job_id, current_item=topic, completed=0, failed=0,
+            )
+            result = service.enrich_guideline(guideline, force=force, heartbeat_fn=heartbeat_fn)
+
+            job_service.update_progress(
+                job_id, current_item=None,
+                completed=result["enriched"], failed=result["failed"],
+                detail=_json.dumps(result),
+            )
+            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+        else:
+            result = service.enrich_chapter(
+                book_id,
+                chapter_id=chapter_id or None,
+                force=force,
+                job_service=job_service,
+                job_id=job_id,
+            )
+
+            for error in result.get("errors", []):
+                logger.warning(f"Check-in enrichment error: {error}")
+
+            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception:
+        raise
 
 
 # ═══════════════════════════════════════════════════════════════════════════
