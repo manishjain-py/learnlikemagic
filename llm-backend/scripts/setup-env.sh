@@ -23,7 +23,7 @@ DB_NAME=$(grep '^db_name' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
 OPENAI_API_KEY=$(grep '^openai_api_key' "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
 
 # Database endpoint (from production)
-DB_ENDPOINT="learnlikemagic-production.cluster-cgp4ua06a7ei.us-east-1.rds.amazonaws.com"
+DB_ENDPOINT="learnlikemagic-production.cgp4ua06a7ei.us-east-1.rds.amazonaws.com"
 
 # Create .env file
 cat > "$BACKEND_DIR/.env" << EOF

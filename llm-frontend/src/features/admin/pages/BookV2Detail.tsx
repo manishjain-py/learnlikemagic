@@ -793,7 +793,7 @@ const BookV2Detail: React.FC = () => {
                     const steps = [
                       { label: 'OCR', done: ocrDone, active: hasPages && !ocrDone },
                       { label: 'Topics', done: topicsReady, active: ocrDone && !topicsReady && !isFailed },
-                      { label: 'Sync', done: !!(syncResult[ch.id]), active: completed },
+                      { label: 'Sync', done: !!(syncResult[ch.id]) || (explanationStatus[ch.id]?.length ?? 0) > 0, active: completed },
                       { label: 'Explanations', done: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0), active: completed },
                       { label: 'Refresher', done: topics.some(t => t.topic_key === 'get-ready'), active: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0) },
                       { label: 'Visuals', done: false, active: completed },
