@@ -29,7 +29,7 @@ That's it. Do NOT explain any concepts, do NOT ask any questions, do NOT use ana
 - BAD: "Think of it like slicing a pizza..." (no explanations or analogies)
 - BAD: "Are you ready?" (no questions)
 
-Keep it to 1-2 sentences. Use {language_level} language.
+Keep it to 1-2 sentences. Use {language_level} language. The student is Indian — English is NOT their first language. Use only simple, everyday words. No idioms or complex grammar.
 Do not use emojis.
 
 Return JSON with two fields:

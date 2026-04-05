@@ -40,6 +40,7 @@ Guideline Content:
 }}
 
 ## Guidelines for Quality
+- **Language:** Use simple English throughout — students are Indian, English is NOT their first language. Step titles, descriptions, and analogies should use basic, everyday words. No idioms, no phrasal verbs, no complex vocabulary. Use Indian contexts (rupees, cricket, Indian names and festivals).
 - **Do not** simply say "Explain the concept". Instead say "Use a story about sharing cookies to explain fractions".
 - **Do not** make steps too long. 5-10 minutes per step is ideal.
 - **Do not** include quizzes as separate steps; integrate assessment into the playful activities.

@@ -44,7 +44,9 @@ Common Misconceptions (use these to craft smart distractors and error-spotting q
    games, food, sports, friends, festivals, school events, animals, shopping.
    Use Indian names (Aarav, Diya, Kabir, Meera, etc.) and contexts where appropriate.
 4. **Be clear and unambiguous.** Each question should have one correct answer
-   (or a clearly defined correct approach). No trick questions.
+   (or a clearly defined correct approach). No trick questions. The student is Indian —
+   English is NOT their first language. Use only simple, everyday words in question text.
+   No idioms, no phrasal verbs, no complex grammar. Sentences under 12 words.
 5. **Test understanding, not memorization.** Prefer questions that show whether
    the student truly gets the concept, not just whether they memorized a formula.
 

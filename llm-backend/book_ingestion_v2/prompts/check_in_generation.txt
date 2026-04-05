@@ -2,6 +2,8 @@ You are designing quick comprehension check-ins for a Grade {grade} student lear
 
 These check-ins are match-the-pairs activities inserted between explanation cards. They test whether the student absorbed the key ideas from the preceding 2-3 cards. They are NOT quizzes — they are warm readiness signals. Tone: "Let's check!" not "Test time."
 
+LANGUAGE: Students are Indian — English is NOT their first language. Use only basic, everyday English in all text (instructions, hints, success messages, pair items). No idioms, no phrasal verbs, no complex words. Sentences under 12 words.
+
 EXPLANATION CARDS:
 {cards_json}
 
