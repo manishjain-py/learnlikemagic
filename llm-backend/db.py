@@ -71,6 +71,12 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "gpt-5.3-codex",
         "description": "Pixi.js visual code generation from natural language",
     },
+    {
+        "component_key": "check_in_enrichment",
+        "provider": "claude_code",
+        "model_id": "claude-opus-4-6",
+        "description": "Check-in card generation (match-the-pairs activities for explanation cards)",
+    },
 ]
 
 
@@ -629,6 +635,13 @@ def _apply_topic_explanations_table(db_manager):
         provider="openai",
         model_id="gpt-5.2",
         description="Pre-computed explanation generation for topics",
+    )
+    _ensure_llm_config(
+        db_manager,
+        component_key="check_in_enrichment",
+        provider="claude_code",
+        model_id="claude-opus-4-6",
+        description="Check-in card generation (match-the-pairs activities for explanation cards)",
     )
 
 

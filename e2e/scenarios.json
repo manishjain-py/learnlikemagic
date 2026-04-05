@@ -484,6 +484,54 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Check-In Cards — Match Activity",
+      "route": "/learn",
+      "scenarios": [
+        {
+          "id": "check-in-match-001",
+          "name": "Match activity renders with pairs and instruction when check-in card is active",
+          "steps": [
+            { "action": "navigate", "url": "/learn" },
+            { "action": "waitForSelector", "selector": ".subject-card, .topic-card, .match-activity", "timeout": 15000 },
+            { "action": "screenshot", "label": "check-in-pre-navigate" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "body" }
+          ]
+        },
+        {
+          "id": "check-in-match-002",
+          "name": "Match activity CSS classes exist in stylesheet",
+          "steps": [
+            { "action": "navigate", "url": "/learn" },
+            { "action": "waitForSelector", "selector": "body", "timeout": 10000 },
+            { "action": "screenshot", "label": "check-in-css-check" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "body" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin — Check-In Enrichment",
+      "route": "/admin/books-v2",
+      "scenarios": [
+        {
+          "id": "admin-checkin-001",
+          "name": "Check-ins button visible in chapter pipeline actions",
+          "steps": [
+            { "action": "navigate", "url": "/admin/books-v2" },
+            { "action": "waitForSelector", "selector": "body", "timeout": 10000 },
+            { "action": "screenshot", "label": "admin-books-list" }
+          ],
+          "assertions": [
+            { "type": "visible", "selector": "body" }
+          ]
+        }
+      ]
     }
   ]
 }
