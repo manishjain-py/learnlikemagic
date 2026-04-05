@@ -10,7 +10,7 @@ The interactive phase (live tutor) only starts *after all cards*. By then, misco
 
 Insert **interactive check-in cards** between explanation cards at natural concept boundaries. After every 2-3 cards covering one idea, the student does a quick match-the-pairs activity before continuing.
 
-Not a quiz. A warm, low-stakes comprehension check — "let's make sure that clicked before we move on."
+Not a quiz. A warm, low-stakes **readiness signal** — "let's make sure that clicked before we move on." Passing a check-in does not mean the student understands the concept deeply. It means they're ready for the interactive tutor to probe further. Match-pairs tests recognition/recall, not reasoning — that's intentional for v1 (deterministic, mobile-friendly, fast). Deep WHY-understanding is tested by the live tutor in the interactive phase.
 
 ## User Experience
 
@@ -30,6 +30,8 @@ Not a quiz. A warm, low-stakes comprehension check — "let's make sure that cli
 [Card 5: Summary]
 ```
 
+Check-ins consolidate what was just taught. They introduce no new information — only reference concepts, terms, and examples from the preceding 2-3 cards.
+
 ### Match-the-pairs interaction
 
 - Two columns: 3-4 items on left, 3-4 on right
@@ -39,12 +41,28 @@ Not a quiz. A warm, low-stakes comprehension check — "let's make sure that cli
 - All matched: success message + brief reinforcement
 - "Continue" button appears only after all pairs correct
 
-### Key rules
+### Gate behavior
 
 - Student **cannot advance** past a check-in until all pairs correct
 - No scoring, no timer, no wrong-count — unlimited retries with hints
 - No LLM evaluation — correctness is deterministic (answer key baked in at generation time)
+- **Safety valve**: if a student gets the *same pair* wrong 5+ times, that pair auto-reveals with its explanation and locks. Prevents a bad generated pair from trapping the student.
 - Tone is warm: "Let's check!" not "Test time"
+
+### Simplify action on check-ins
+
+The "I didn't understand" / simplify button does **not** appear on check-in cards. Hints serve that role during the activity. The student can always swipe back to re-read preceding explanation cards (back navigation is unrestricted).
+
+### TTS behavior
+
+- **Instruction** read aloud on card entry
+- **Hint** read aloud on wrong match
+- **Success message** read aloud on completion
+- Individual pair items are *not* read on tap (too noisy)
+
+### Client-side answer key
+
+Pairs are stored in correct order; right column shuffled client-side; validation by index match. The student's browser knows the answer key. This is a deliberate trade-off — acceptable for Grade 3-8 kids, and the alternative (server-side validation per tap) adds latency and complexity with no real benefit for this audience.
 
 ## Examples
 
@@ -72,7 +90,30 @@ Success: "Nice! The name of a shape often tells you how many sides it has."
 
 ## Data Model
 
-New card type `check_in` added to explanation cards. New field `check_in` on `ExplanationCard`:
+### Stable card identity
+
+Every deck item gets a stable `card_id` (UUID), separate from `card_idx` (display order). This prevents identity drift when check-in cards are inserted and `card_idx` is re-numbered.
+
+`card_idx` = display order (re-numbered on insert). `card_id` = stable identity (set once, never changes). Simplification, replay, analytics, and progress tracking reference `card_id`, not `card_idx`.
+
+### ExplanationCard — extended
+
+```
+ExplanationCard:
+  card_id: str                    # NEW — stable UUID
+  card_idx: int                   # display order (re-numbered on insert)
+  card_type: str                  # adds "check_in" to existing types
+  title: str
+  content: str
+  visual: Optional[str]
+  audio_text: Optional[str]
+  visual_explanation: Optional[CardVisualExplanation]
+  check_in: Optional[CheckInActivity]   # NEW — populated when card_type="check_in"
+```
+
+Note: `card_type` on `ExplanationCard` (backend Pydantic model + frontend TypeScript union) and `Slide.type` in the frontend carousel (`ChatSession.tsx`) are **separate fields**. Both need `check_in` added. The carousel maps `ExplanationCard.card_type == "check_in"` → `Slide.type = "check_in"`.
+
+### CheckInActivity
 
 ```
 CheckInActivity:
@@ -84,24 +125,53 @@ CheckInActivity:
   audio_text: str                 # TTS for instruction
 ```
 
-Right column shuffled client-side on render. Correct pairs validated client-side by index.
+## State Contracts
+
+### Gate scope
+
+The check-in gate is a **forward-navigation constraint within a live client session**. It is not server-enforced. Backend persists `current_card_idx` for session resume but does not persist check-in completion state.
+
+On resume: student is placed at their server-persisted card position. If they were past a check-in, they stay past it. If before one, they redo it. Acceptable for v1 — the primary goal is engagement during the active learning flow.
+
+### Regeneration rules
+
+Check-ins are derived from explanation content. If explanations are regenerated:
+- Check-ins are **discarded** (entire `cards_json` is replaced by `repo.upsert()`)
+- Must be re-generated by running the check-in enrichment pipeline again
+- Pipeline order: Explanation Generation → Visual Enrichment → Check-In Enrichment
+- Regenerating any stage invalidates all downstream stages
+
+### Struggle signal propagation
+
+Check-in interaction data (which pairs were hard, retry count, hints shown) is captured client-side during the card phase. When transitioning to the interactive phase, this data is forwarded as **tutor context** in the bridge/transition summary. The interactive tutor can use it to probe weak spots: "Student struggled matching X to Y — revisit this concept."
 
 ## Generation Pipeline
 
 Follows the visual enrichment pattern — separate, decoupled pipeline stage that runs after explanations (and optionally after visuals) exist.
 
 ```
-Stage 5: Explanation Generation (existing)
-Stage 6: Visual Enrichment (existing)
-Stage 7: Check-In Enrichment (NEW)
+Explanation Generation (existing)
+   ↓
+Visual Enrichment (existing)
+   ↓
+Check-In Enrichment (NEW) — named stage: "check_in_enrichment"
 ```
 
 ### Pipeline steps
 
 1. **Analyze**: LLM reads all cards for a variant, identifies concept boundaries (groups of 2-3 related cards that cover one idea)
 2. **Generate**: For each boundary, LLM creates a check-in — match pairs testing the preceding cards' content, plus hint and success message
-3. **Validate**: 2-4 pairs per check-in, no duplicate items, hint and success exist, pairs are relevant to preceding cards
-4. **Insert**: New `card_type="check_in"` cards inserted into `cards_json`, card_idx re-numbered
+3. **Validate**: strict criteria (see below), fail-open — if validation fails, skip that check-in entirely rather than inserting a bad one
+4. **Insert**: New `card_type="check_in"` cards inserted into `cards_json`. Existing cards get stable `card_id` assigned (if not already present). New check-in cards get fresh UUIDs. `card_idx` re-numbered for display order.
+
+### Validation criteria
+
+- **2-4 pairs** per check-in (not fewer, not more)
+- **Exactly one unambiguous correct mapping** per pair — no synonym collisions, no pairs where multiple matches feel right
+- **No visual-dependent pairs** — matching must work from text alone (the student may not have opened the PixiJS visual)
+- **Pairs test preceding cards only** — not content from later or unrelated cards
+- Hint and success message both present and non-empty
+- **Fail-open**: if any criterion fails, that check-in is not inserted. A missing check-in is better than a broken gate.
 
 ### Placement rules
 
@@ -119,45 +189,49 @@ Stage 7: Check-In Enrichment (NEW)
 - All matched -> `COMPLETE`
 - Large tap targets (48px+ height), mobile-first
 - Animations: highlight on select, checkmark on correct, shake on wrong
+- Safety valve: auto-reveal pair after 5 wrong attempts on same pair
 
 ### Carousel integration
 
-- New slide type `check_in` alongside `explanation` and `message`
-- Gate logic: Next/swipe disabled when on incomplete check-in
-- TTS: instruction read aloud on card entry, success message read on completion
+Two fields need `check_in` added:
+- `ExplanationCard.card_type` union in `api.ts` (currently: `concept | example | visual | analogy | summary | simplification`)
+- `Slide.type` in `ChatSession.tsx` (currently: `explanation | message`)
 
-### No backend state for check-in completion
+Mapping: `card_type == "check_in"` → `Slide.type = "check_in"`, with `slide.checkIn` populated from `card.check_in`.
 
-All tracking is client-side. On session resume, student re-does check-ins (good for reinforcement).
+Gate logic: Next/swipe disabled when `currentSlide.type === 'check_in' && !completedCheckIns.has(currentSlideIdx)`.
 
 ## Scope — What to Build
 
 | Component | Work |
 |-----------|------|
-| Backend models | `MatchPair`, `CheckInActivity` Pydantic models, extend `ExplanationCard` |
+| Backend models | `MatchPair`, `CheckInActivity` Pydantic models, add `card_id` + `check_in` to `ExplanationCard` |
 | Backend service | `CheckInEnrichmentService` (mirrors `AnimationEnrichmentService`) |
 | Backend prompt | `check_in_generation.txt` |
 | Backend script | `run_check_in_enrichment.py` |
-| Pipeline integration | Register as stage in chapter job flow |
-| Frontend types | Extend `ExplanationCard` and `Slide` in `api.ts` |
+| Pipeline integration | Register as named stage in chapter job flow |
+| Frontend types | Add `check_in` to `ExplanationCard.card_type` and `Slide.type` in `api.ts` |
 | Frontend component | `MatchActivity.tsx` |
-| Frontend integration | `ChatSession.tsx` carousel + gate logic |
-| Frontend styles | Match activity CSS (select, correct, wrong, complete states) |
+| Frontend integration | `ChatSession.tsx` carousel + gate logic + struggle signal capture |
+| Frontend styles | Match activity CSS (select, correct, wrong, complete, auto-reveal states) |
+| Admin | Add `check_in` badge color to `ExplanationAdmin.tsx` card type display |
 
 ## Scope — What NOT to Build
 
 - **Multiple activity types** — only match-pairs for now. `activity_type` field makes it extensible later (sort, sequence, true/false).
 - **Backend grading** — deterministic, client-side only.
 - **Scoring/analytics** — no scorecard integration. These are formative, not summative.
-- **Skip button** — the gate is the point.
+- **Skip button** — the gate is the point. Safety valve (auto-reveal after 5 wrong) handles bad pairs.
+- **Server-persisted check-in state** — client-side tracking for v1. Gate is forward-nav only.
 
 ## Alignment with Principles
 
 | Principle | How it applies |
 |-----------|---------------|
-| Interactive Teaching #1 — Explain Before Testing | Check understanding with a task, not just reading |
+| Interactive Teaching #1 — Explain Before Testing | Check understanding with a concrete task before moving on |
 | Interactive Teaching #11 — Structured Input | Tapping to match, no typing |
 | UX #1 — One Thing Per Screen | Each check-in is one focused activity |
 | UX #2 — Minimal Typing | Pure tap interaction |
-| How to Explain #8 — Build Progressively | Verified checkpoints in the progression |
+| How to Explain #8 — Build Progressively | Check-ins are verified checkpoints that consolidate the preceding cards, introducing no new information |
+| Evaluation #6 — Card-to-Session Coherence | Check-ins reuse the same analogies/examples from preceding cards, strengthening coherence into the interactive phase |
 | Pipeline Principles — Decoupled Stages | Separate enrichment pipeline, same pattern as visuals |
