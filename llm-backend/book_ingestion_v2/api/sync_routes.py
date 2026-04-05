@@ -1159,9 +1159,6 @@ def _run_check_in_enrichment(
 
         job_service.release_lock(job_id, status=final_status)
 
-    except Exception:
-        raise
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Refresher Topic Endpoints

@@ -842,7 +842,7 @@ const BookV2Detail: React.FC = () => {
                       { label: 'Explanations', done: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0), active: completed },
                       { label: 'Refresher', done: topics.some(t => t.topic_key === 'get-ready'), active: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0) },
                       { label: 'Visuals', done: false, active: completed },
-                      { label: 'Check-ins', done: (checkInStatus[ch.id]?.length ?? 0) > 0 && checkInStatus[ch.id]?.some(t => t.cards_with_check_ins > 0), active: completed },
+                      { label: 'Check-ins', done: (checkInStatus[ch.id]?.length ?? 0) > 0 && checkInStatus[ch.id]?.filter(t => t.has_explanations).every(t => t.cards_with_check_ins > 0), active: completed },
                     ];
 
                     return (
@@ -946,6 +946,42 @@ const BookV2Detail: React.FC = () => {
                           {ej.status === 'failed' && ej.error_message
                             ? `Explanation generation failed: ${ej.error_message}`
                             : `Explanations: ${detail?.generated ?? ej.completed_items} generated, ${detail?.skipped ?? 0} skipped, ${detail?.failed ?? ej.failed_items} failed.`}
+                          {detail?.errors && detail.errors.length > 0 && (
+                            <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                              {detail.errors.map((e, i) => <li key={i}>{e}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* Check-in enrichment progress/result banner */}
+                  {checkInJobs[ch.id] && (() => {
+                    const cj = checkInJobs[ch.id];
+                    const isRunning = ['pending', 'running'].includes(cj.status);
+                    const isDone = ['completed', 'completed_with_errors', 'failed'].includes(cj.status);
+                    const detail = cj.progress_detail as { enriched?: number; skipped?: number; failed?: number; errors?: string[] } | undefined;
+                    if (isRunning) return (
+                      <div style={{ marginTop: '12px', backgroundColor: '#CCFBF1', color: '#115E59', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                        Generating check-ins{cj.current_item ? `: ${cj.current_item}` : '...'}
+                        {cj.total_items ? ` (${cj.completed_items + cj.failed_items}/${cj.total_items})` : ''}
+                      </div>
+                    );
+                    if (isDone) {
+                      const hasErrors = cj.status === 'failed' || (detail?.errors && detail.errors.length > 0);
+                      return (
+                        <div style={{
+                          marginTop: '12px',
+                          backgroundColor: hasErrors ? '#FEF3C7' : '#CCFBF1',
+                          color: hasErrors ? '#92400E' : '#115E59',
+                          padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                        }}>
+                          <button onClick={() => setCheckInJobs(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                          {cj.status === 'failed' && cj.error_message
+                            ? `Check-in enrichment failed: ${cj.error_message}`
+                            : `Check-ins: ${detail?.enriched ?? cj.completed_items} enriched, ${detail?.skipped ?? 0} skipped, ${detail?.failed ?? cj.failed_items} failed.`}
                           {detail?.errors && detail.errors.length > 0 && (
                             <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
                               {detail.errors.map((e, i) => <li key={i}>{e}</li>)}

@@ -588,6 +588,7 @@ export async function submitFeedback(sessionId: string, feedbackText: string, ac
 
 export interface CheckInEventDTO {
   card_idx: number;
+  card_title?: string;
   wrong_count: number;
   hints_shown: number;
   confused_pairs: Array<{ left: string; right: string; wrong_count: number }>;

@@ -198,6 +198,7 @@ class ExplanationCardDTO(BaseModel):
 class CheckInEventDTO(BaseModel):
     """Check-in struggle data sent from frontend at phase transition."""
     card_idx: int
+    card_title: Optional[str] = None
     wrong_count: int = 0
     hints_shown: int = 0
     confused_pairs: list[dict] = Field(default_factory=list)  # [{left, right, wrong_count}]

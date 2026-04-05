@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { CheckInActivity } from '../api';
+import { CheckInActivity, synthesizeSpeech } from '../api';
 
 interface PairStruggle {
   left: string;
@@ -17,6 +17,18 @@ export interface MatchActivityResult {
 interface MatchActivityProps {
   checkIn: CheckInActivity;
   onComplete: (result: MatchActivityResult) => void;
+}
+
+/** Play a short TTS string — fire-and-forget, errors silently ignored */
+function playTTS(text: string) {
+  synthesizeSpeech(text)
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.play().catch(() => {});
+    })
+    .catch(() => {});
 }
 
 const AUTO_REVEAL_THRESHOLD = 5;
@@ -74,6 +86,7 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
       const newMatched = matchedPairs.size + autoRevealed.size + 1;
       if (newMatched >= pairs.length) {
         setShowSuccess(true);
+        playTTS(checkIn.success_message);
       }
     } else {
       // Wrong match
@@ -83,9 +96,10 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
       newAttempts.set(selectedLeft, count);
       setWrongAttempts(newAttempts);
 
-      // Show hint
+      // Show hint + read aloud
       setShowHint(true);
       setHintCount(prev => prev + 1);
+      playTTS(checkIn.hint);
 
       // Shake animation on wrong right item
       setShakeRight(displayIdx);
@@ -99,10 +113,11 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
         const newTotal = matchedPairs.size + autoRevealed.size + 1;
         if (newTotal >= pairs.length) {
           setShowSuccess(true);
+          playTTS(checkIn.success_message);
         }
       }
     }
-  }, [selectedLeft, shuffledRight, matchedPairs, autoRevealed, wrongAttempts, pairs.length]);
+  }, [selectedLeft, shuffledRight, matchedPairs, autoRevealed, wrongAttempts, pairs.length, checkIn]);
 
   const handleComplete = useCallback(() => {
     const confusedPairs: PairStruggle[] = [];

@@ -150,9 +150,9 @@ export default function ChatSession() {
   // Typewriter: track which slide indices have been fully revealed
   const [revealedSlides, setRevealedSlides] = useState<Set<number>>(new Set());
   const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
-  // Check-in gate + struggle tracking
-  const [completedCheckIns, setCompletedCheckIns] = useState<Set<number>>(new Set());
-  const [checkInStruggles, setCheckInStruggles] = useState<Map<number, MatchActivityResult>>(new Map());
+  // Check-in gate + struggle tracking — keyed by stable card_id, not mutable slide index
+  const [completedCheckIns, setCompletedCheckIns] = useState<Set<string>>(new Set());
+  const [checkInStruggles, setCheckInStruggles] = useState<Map<string, MatchActivityResult>>(new Map());
 
   // Annotate cards with 0-based source_card_idx if not already present
   const annotateCards = (cards: ExplanationCard[]): ExplanationCard[] =>
@@ -225,7 +225,7 @@ export default function ChatSession() {
           });
         } else {
           slides.push({
-            id: card.card_id || (card as any).card_id || `card-${i}`,
+            id: card.card_id || `card-${i}`,
             type: 'explanation',
             content: card.content,
             title: card.title,
@@ -1076,7 +1076,7 @@ export default function ChatSession() {
       if (dx > 80 && currentSlideIdx > 0) {
         newIdx = currentSlideIdx - 1;
       } else if (dx < -80 && currentSlideIdx < carouselSlides.length - 1
-          && !(carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(currentSlideIdx))) {
+          && !(carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(carouselSlides[currentSlideIdx]?.id || ''))) {
         newIdx = currentSlideIdx + 1;
       }
       if (newIdx !== currentSlideIdx) {
@@ -1127,16 +1127,19 @@ export default function ChatSession() {
     try {
       // Build check-in struggle events for tutor context
       let events: CheckInEventDTO[] | undefined;
-      if (action === 'clear' && checkInStruggles.size > 0) {
-        events = Array.from(checkInStruggles.entries()).map(([slideIdx, data]) => ({
-          card_idx: carouselSlides[slideIdx]?.cardType === 'check_in'
-            ? (explanationCards.find((_, ci) => (carouselSlides[slideIdx]?.id || '').includes(`card-${ci}`))?.card_idx ?? slideIdx)
-            : slideIdx,
-          wrong_count: data.wrongCount,
-          hints_shown: data.hintsShown,
-          confused_pairs: data.confusedPairs.map(p => ({ left: p.left, right: p.right, wrong_count: p.wrongCount })),
-          auto_revealed: data.autoRevealed,
-        }));
+      if (checkInStruggles.size > 0) {
+        events = Array.from(checkInStruggles.entries()).map(([cardId, data]) => {
+          // Find the card by card_id to get its card_idx field value
+          const card = explanationCards.find(c => c.card_id === cardId);
+          return {
+            card_idx: card?.card_idx ?? 0,
+            card_title: card?.title || `Check-in ${cardId}`,
+            wrong_count: data.wrongCount,
+            hints_shown: data.hintsShown,
+            confused_pairs: data.confusedPairs.map(p => ({ left: p.left, right: p.right, wrong_count: p.wrongCount })),
+            auto_revealed: data.autoRevealed,
+          };
+        });
       }
       const result = await cardAction(sessionId, action, events);
 
@@ -1163,6 +1166,9 @@ export default function ChatSession() {
         setExplanationCards(annotateCards(result.cards));
         setCurrentSlideIdx(0);
         setVariantsShown(prev => prev + 1);
+        // Clear check-in state — old variant's card_ids don't exist in new variant
+        setCompletedCheckIns(new Set());
+        setCheckInStruggles(new Map());
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
       } else if (result.action === 'fallback_dynamic') {
         handleBridgeTransition(result);
@@ -1642,8 +1648,8 @@ export default function ChatSession() {
                           <MatchActivity
                             checkIn={slide.checkIn}
                             onComplete={(result) => {
-                              setCompletedCheckIns(prev => new Set(prev).add(i));
-                              setCheckInStruggles(prev => new Map(prev).set(i, result));
+                              setCompletedCheckIns(prev => new Set(prev).add(slide.id));
+                              setCheckInStruggles(prev => new Map(prev).set(slide.id, result));
                             }}
                           />
                         </>
@@ -1728,7 +1734,7 @@ export default function ChatSession() {
                           setCurrentSlideIdx(next);
                           if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
                         }}
-                        disabled={simplifyLoading || (carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(currentSlideIdx))}
+                        disabled={simplifyLoading || (carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(carouselSlides[currentSlideIdx]?.id || ''))}
                       >
                         Next
                       </button>
@@ -1736,7 +1742,8 @@ export default function ChatSession() {
                   </div>
                 ) : (
                   <div className="explanation-nav">
-                    {!simplifyLoading && !showSimplifyOptions && (
+                    {!simplifyLoading && !showSimplifyOptions
+                      && carouselSlides[currentSlideIdx]?.type !== 'check_in' && (
                       <button
                         className="explanation-nav-btn simplify"
                         onClick={() => setShowSimplifyOptions(true)}

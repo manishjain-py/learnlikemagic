@@ -98,6 +98,9 @@ class CheckInEnrichmentService:
         if not explanations:
             return {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
 
+        # Pre-flight: fail fast if another enrichment pipeline is running
+        self._check_no_conflicting_jobs(guideline)
+
         if variant_keys:
             explanations = [e for e in explanations if e.variant_key in variant_keys]
 
@@ -175,6 +178,24 @@ class CheckInEnrichmentService:
         return totals
 
     # ─── Internal pipeline ──────────────────────────────────────────────
+
+    def _check_no_conflicting_jobs(self, guideline: TeachingGuideline):
+        """Pre-flight: fail fast if another enrichment pipeline is running for this chapter."""
+        from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+        from book_ingestion_v2.constants import V2JobType
+        job_service = ChapterJobService(self.db)
+        for jt in [V2JobType.EXPLANATION_GENERATION.value, V2JobType.VISUAL_ENRICHMENT.value]:
+            try:
+                job = job_service.get_latest_job(guideline.book_id, job_type=jt)
+                if job and job.status in ("pending", "running"):
+                    raise RuntimeError(
+                        f"Cannot run check-in enrichment: {jt} job is {job.status} "
+                        f"for book {guideline.book_id}"
+                    )
+            except Exception as e:
+                if "Cannot run" in str(e):
+                    raise
+                # get_latest_job may raise if no jobs exist — that's fine
 
     def _enrich_variant(
         self,
@@ -303,6 +324,8 @@ class CheckInEnrichmentService:
         summary_idxs = {c["card_idx"] for c in cards if c.get("card_type") == "summary"}
         valid = []
 
+        MIN_POSITION = 3  # Never before card_idx 3 (student needs content first)
+
         for ci in check_ins:
             # Must reference a valid non-summary card
             if ci.insert_after_card_idx not in valid_card_idxs:
@@ -310,6 +333,10 @@ class CheckInEnrichmentService:
                 continue
             if ci.insert_after_card_idx in summary_idxs:
                 logger.warning(f"Check-in after summary card {ci.insert_after_card_idx}, dropping")
+                continue
+            # Minimum position — student needs content before a check-in
+            if ci.insert_after_card_idx < MIN_POSITION:
+                logger.warning(f"Check-in too early (card_idx {ci.insert_after_card_idx} < {MIN_POSITION}), dropping")
                 continue
 
             # Pair count
@@ -329,10 +356,12 @@ class CheckInEnrichmentService:
                 logger.warning("Check-in missing hint or success_message, dropping")
                 continue
 
-            # No back-to-back check-ins
-            if valid and valid[-1].insert_after_card_idx == ci.insert_after_card_idx:
-                logger.warning("Back-to-back check-ins at same position, dropping duplicate")
-                continue
+            # Minimum gap of 2 explanation cards between consecutive check-ins
+            if valid:
+                gap = ci.insert_after_card_idx - valid[-1].insert_after_card_idx
+                if gap < 2:
+                    logger.warning(f"Check-ins too close (gap={gap}, need >=2), dropping")
+                    continue
 
             valid.append(ci)
 
