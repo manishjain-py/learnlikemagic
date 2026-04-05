@@ -28,6 +28,7 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/principles/book-ingestion-pipeline.md` | Operational principles for the multi-stage ingestion pipeline |
 | `docs/principles/autoresearch.md` | How autonomous prompt optimization works |
 | `docs/principles/prerequisites.md` | How prerequisite knowledge gaps are handled (refresher topics, warm-up framing) |
+| `docs/principles/easy-english.md` | Language accessibility for Indian ESL students (no idioms, simple grammar, Indian contexts) |
 
 ## Documentation Index
 
