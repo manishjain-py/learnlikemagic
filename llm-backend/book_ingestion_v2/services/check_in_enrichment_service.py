@@ -182,20 +182,31 @@ class CheckInEnrichmentService:
     def _check_no_conflicting_jobs(self, guideline: TeachingGuideline):
         """Pre-flight: fail fast if another enrichment pipeline is running for this chapter."""
         from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+        from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
         from book_ingestion_v2.constants import V2JobType
+
         job_service = ChapterJobService(self.db)
-        for jt in [V2JobType.EXPLANATION_GENERATION.value, V2JobType.VISUAL_ENRICHMENT.value]:
-            try:
-                job = job_service.get_latest_job(guideline.book_id, job_type=jt)
-                if job and job.status in ("pending", "running"):
-                    raise RuntimeError(
-                        f"Cannot run check-in enrichment: {jt} job is {job.status} "
-                        f"for book {guideline.book_id}"
-                    )
-            except Exception as e:
-                if "Cannot run" in str(e):
-                    raise
-                # get_latest_job may raise if no jobs exist — that's fine
+
+        # Find the actual chapter_id(s) for this guideline's chapter
+        chapter_key = guideline.chapter_key
+        if not chapter_key:
+            return  # No chapter context — skip check
+        chapters = ChapterRepository(self.db).get_by_book_id(guideline.book_id)
+        chapter_ids = [c.id for c in chapters if f"chapter-{c.chapter_number}" == chapter_key]
+
+        for chapter_id in chapter_ids:
+            for jt in [V2JobType.EXPLANATION_GENERATION.value, V2JobType.VISUAL_ENRICHMENT.value]:
+                try:
+                    job = job_service.get_latest_job(chapter_id, job_type=jt)
+                    if job and job.status in ("pending", "running"):
+                        raise RuntimeError(
+                            f"Cannot run check-in enrichment: {jt} job is {job.status} "
+                            f"for chapter {chapter_id}"
+                        )
+                except Exception as e:
+                    if "Cannot run" in str(e):
+                        raise
+                    # get_latest_job may raise if no jobs exist — that's fine
 
     def _enrich_variant(
         self,

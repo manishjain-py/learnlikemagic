@@ -1121,43 +1121,42 @@ def _run_check_in_enrichment(
     job_service = ChapterJobService(db)
     service = CheckInEnrichmentService(db, llm_service)
 
-    try:
-        if guideline_id:
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-            ).first()
-            if not guideline:
-                raise ValueError(f"Guideline {guideline_id} not found")
+    if guideline_id:
+        guideline = db.query(TeachingGuideline).filter(
+            TeachingGuideline.id == guideline_id,
+        ).first()
+        if not guideline:
+            raise ValueError(f"Guideline {guideline_id} not found")
 
-            topic = guideline.topic_title or guideline.topic
-            job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
+        topic = guideline.topic_title or guideline.topic
+        job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
 
-            heartbeat_fn = lambda: job_service.update_progress(
-                job_id, current_item=topic, completed=0, failed=0,
-            )
-            result = service.enrich_guideline(guideline, force=force, heartbeat_fn=heartbeat_fn)
+        heartbeat_fn = lambda: job_service.update_progress(
+            job_id, current_item=topic, completed=0, failed=0,
+        )
+        result = service.enrich_guideline(guideline, force=force, heartbeat_fn=heartbeat_fn)
 
-            job_service.update_progress(
-                job_id, current_item=None,
-                completed=result["enriched"], failed=result["failed"],
-                detail=_json.dumps(result),
-            )
-            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
-        else:
-            result = service.enrich_chapter(
-                book_id,
-                chapter_id=chapter_id or None,
-                force=force,
-                job_service=job_service,
-                job_id=job_id,
-            )
+        job_service.update_progress(
+            job_id, current_item=None,
+            completed=result["enriched"], failed=result["failed"],
+            detail=_json.dumps(result),
+        )
+        final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+    else:
+        result = service.enrich_chapter(
+            book_id,
+            chapter_id=chapter_id or None,
+            force=force,
+            job_service=job_service,
+            job_id=job_id,
+        )
 
-            for error in result.get("errors", []):
-                logger.warning(f"Check-in enrichment error: {error}")
+        for error in result.get("errors", []):
+            logger.warning(f"Check-in enrichment error: {error}")
 
-            final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+        final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
 
-        job_service.release_lock(job_id, status=final_status)
+    job_service.release_lock(job_id, status=final_status)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

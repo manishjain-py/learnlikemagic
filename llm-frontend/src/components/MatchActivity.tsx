@@ -3,8 +3,9 @@ import { CheckInActivity, synthesizeSpeech } from '../api';
 
 interface PairStruggle {
   left: string;
-  right: string;
+  right: string;  // correct right answer
   wrongCount: number;
+  wrongPicks?: string[];  // actual wrong right items the student selected
 }
 
 export interface MatchActivityResult {
@@ -55,14 +56,14 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
   const [matchedPairs, setMatchedPairs] = useState<Set<number>>(new Set());
   const [wrongAttempts, setWrongAttempts] = useState<Map<number, number>>(new Map());
+  // Track actual wrong right items picked per left item (for tutor context)
+  const [wrongPicks, setWrongPicks] = useState<Map<number, string[]>>(new Map());
   const [autoRevealed, setAutoRevealed] = useState<Set<number>>(new Set());
   const [showHint, setShowHint] = useState(false);
   const [shakeRight, setShakeRight] = useState<number | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [totalWrong, setTotalWrong] = useState(0);
   const [hintCount, setHintCount] = useState(0);
-
-  const allMatched = matchedPairs.size + autoRevealed.size >= pairs.length;
 
   const handleLeftTap = useCallback((leftIdx: number) => {
     if (matchedPairs.has(leftIdx) || autoRevealed.has(leftIdx)) return;
@@ -89,17 +90,27 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
         playTTS(checkIn.success_message);
       }
     } else {
-      // Wrong match
+      // Wrong match — track what the student actually picked
       setTotalWrong(prev => prev + 1);
       const newAttempts = new Map(wrongAttempts);
       const count = (newAttempts.get(selectedLeft) || 0) + 1;
       newAttempts.set(selectedLeft, count);
       setWrongAttempts(newAttempts);
 
-      // Show hint + read aloud
+      // Track the actual wrong right item for tutor context
+      setWrongPicks(prev => {
+        const next = new Map(prev);
+        const existing = next.get(selectedLeft) || [];
+        next.set(selectedLeft, [...existing, pairs[actualRightIdx].right]);
+        return next;
+      });
+
+      // Show hint — only play TTS on first wrong attempt per pair
       setShowHint(true);
       setHintCount(prev => prev + 1);
-      playTTS(checkIn.hint);
+      if (count === 1) {
+        playTTS(checkIn.hint);
+      }
 
       // Shake animation on wrong right item
       setShakeRight(displayIdx);
@@ -127,6 +138,7 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
           left: pairs[leftIdx].left,
           right: pairs[leftIdx].right,
           wrongCount: count,
+          wrongPicks: wrongPicks.get(leftIdx) || [],
         });
       }
     });

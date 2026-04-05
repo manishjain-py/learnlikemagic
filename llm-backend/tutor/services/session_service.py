@@ -988,22 +988,23 @@ class SessionService:
 
         import asyncio
 
-        if action == "clear":
-            # Store check-in struggle events from frontend
-            if check_in_events and session.card_phase:
-                from tutor.models.session_state import CheckInStruggleEvent
-                for evt in check_in_events:
-                    session.card_phase.check_in_struggles.append(
-                        CheckInStruggleEvent(
-                            card_idx=evt.card_idx,
-                            card_title=evt.card_title or f"Check-in at card {evt.card_idx}",
-                            wrong_count=evt.wrong_count,
-                            hints_shown=evt.hints_shown,
-                            confused_pairs=evt.confused_pairs,
-                            auto_revealed=evt.auto_revealed,
-                        )
+        # Store check-in struggle events from frontend (before action branching —
+        # struggles are valuable whether the student says "clear" or "explain_differently")
+        if check_in_events and session.card_phase:
+            from tutor.models.session_state import CheckInStruggleEvent
+            for evt in check_in_events:
+                session.card_phase.check_in_struggles.append(
+                    CheckInStruggleEvent(
+                        card_idx=evt.card_idx,
+                        card_title=evt.card_title or f"Check-in at card {evt.card_idx}",
+                        wrong_count=evt.wrong_count,
+                        hints_shown=evt.hints_shown,
+                        confused_pairs=evt.confused_pairs,
+                        auto_revealed=evt.auto_revealed,
                     )
+                )
 
+        if action == "clear":
             session.complete_card_phase()
 
             # Build and persist summary for tutor prompt injection
@@ -1149,10 +1150,22 @@ class SessionService:
         if session.card_phase and session.card_phase.check_in_struggles:
             struggle_lines = []
             for evt in session.card_phase.check_in_struggles:
-                pair_details = ", ".join(
-                    f'confused "{p.get("left", "?")}" with "{p.get("right", "?")}" ({p.get("wrong_count", 0)}x)'
-                    for p in evt.confused_pairs if p.get("wrong_count", 0) > 0
-                )
+                pair_details_parts = []
+                for p in evt.confused_pairs:
+                    if p.get("wrong_count", 0) > 0:
+                        wrong_picks = p.get("wrong_picks", [])
+                        if wrong_picks:
+                            # Show what the student actually picked wrong
+                            picks_str = ", ".join(f'"{wp}"' for wp in wrong_picks[:3])
+                            pair_details_parts.append(
+                                f'for "{p.get("left", "?")}" (correct: "{p.get("right", "?")}") '
+                                f'student picked: {picks_str} ({p["wrong_count"]}x wrong)'
+                            )
+                        else:
+                            pair_details_parts.append(
+                                f'confused "{p.get("left", "?")}" with "{p.get("right", "?")}" ({p["wrong_count"]}x)'
+                            )
+                pair_details = ", ".join(pair_details_parts)
                 auto = f", {evt.auto_revealed} pair(s) auto-revealed" if evt.auto_revealed else ""
                 struggle_lines.append(
                     f"- \"{evt.card_title}\": {evt.wrong_count} wrong attempts"

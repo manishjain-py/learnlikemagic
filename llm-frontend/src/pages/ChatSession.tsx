@@ -1136,7 +1136,7 @@ export default function ChatSession() {
             card_title: card?.title || `Check-in ${cardId}`,
             wrong_count: data.wrongCount,
             hints_shown: data.hintsShown,
-            confused_pairs: data.confusedPairs.map(p => ({ left: p.left, right: p.right, wrong_count: p.wrongCount })),
+            confused_pairs: data.confusedPairs.map(p => ({ left: p.left, right: p.right, wrong_count: p.wrongCount, wrong_picks: p.wrongPicks || [] })),
             auto_revealed: data.autoRevealed,
           };
         });
