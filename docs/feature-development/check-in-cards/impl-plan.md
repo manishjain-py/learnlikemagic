@@ -14,7 +14,7 @@ Interactive check-in cards are match-the-pairs activities inserted between expla
 - Extend `ExplanationCard` Pydantic model with `card_id` (UUID) and `check_in` (new struct)
 - New `CheckInEnrichmentService` — reads explanation cards, calls LLM to generate match pairs at concept boundaries, inserts new `card_type="check_in"` cards into `cards_json`
 - New `MatchActivity.tsx` frontend component — two-column tap-to-match UI with gate logic
-- Struggle signals (retry counts, hints shown) forwarded to interactive tutor via `_build_precomputed_summary()`
+- Struggle signals (per-pair retry counts, confused pairs) forwarded to interactive tutor via new `CheckInStruggleEvent` model and `_build_precomputed_summary()`
 - No new DB tables. No new API endpoints for student interaction. No server-side check-in state.
 
 ---
@@ -30,6 +30,7 @@ OFFLINE (enrichment pipeline)
   topic_explanations.cards_json (existing)
        ↓
   CheckInEnrichmentService.enrich_guideline()
+       ↓ Pre-flight: verify no other enrichment job running for this chapter
        ↓ LLM: analyze cards → generate check-ins → validate
        ↓ Insert check_in cards, assign card_ids, re-number card_idx
   topic_explanations.cards_json (updated with check-in cards)
@@ -43,9 +44,22 @@ ONLINE (session time — no changes to flow)
   Frontend receives all cards including check-ins
        ↓
   ChatSession.tsx renders check-in cards as MatchActivity
-       ↓ gate: Next disabled until all pairs matched
-  On phase transition → struggle signals added to summary
+       ↓ gate: Next + swipe disabled until all pairs matched
+  On phase transition → check-in struggle signals sent via CardActionRequest
+       ↓
+  _build_precomputed_summary() includes per-pair confusion detail for tutor
 ```
+
+### card_idx renumbering safety
+
+The enrichment pipeline runs **offline before any session consumes the cards**. Renumbering `card_idx` after inserting check-in cards is safe because:
+- Active sessions use their own snapshot of `cards_json` loaded at session creation — they are unaffected
+- All in-session references (`CardPhaseState.current_card_idx`, `ConfusionEvent.base_card_idx`, `remedial_cards` dict keys) are created from the enriched card set and stay internally consistent
+- No cross-session references to `card_idx` exist
+
+`card_idx` in card data is **1-based** (matching `ExplanationCardOutput.card_idx` from the generator). Frontend navigation uses **0-based array position**, which is separate from the card's `card_idx` field. The enrichment maintains the 1-based convention: `card["card_idx"] = i + 1`.
+
+Long-term, references should migrate from `card_idx` to `card_id` for stability. For v1, `card_id` is assigned but not yet used as the primary identifier in session state.
 
 ### New files
 
@@ -61,10 +75,13 @@ ONLINE (session time — no changes to flow)
 | File | Change |
 |------|--------|
 | `llm-backend/shared/repositories/explanation_repository.py` | Add `MatchPair`, `CheckInActivity` models; add `card_id` to `ExplanationCard` |
+| `llm-backend/tutor/models/session_state.py` | Add `CheckInStruggleEvent` model; add `check_in_struggles` to `CardPhaseState` |
+| `llm-backend/tutor/models/messages.py` | Extend `CardActionRequest` with optional `check_in_events` |
+| `llm-backend/tutor/services/session_service.py` | Handle `check_in_events` in `complete_card_phase()`; extend `_build_precomputed_summary()` |
 | `llm-backend/book_ingestion_v2/constants.py` | Add `V2JobType.CHECK_IN_ENRICHMENT` |
 | `llm-backend/book_ingestion_v2/api/processing_routes.py` | Add check-in enrichment endpoint |
 | `llm-frontend/src/api.ts` | Add `MatchPair`, `CheckInActivity` types; extend `ExplanationCard` |
-| `llm-frontend/src/pages/ChatSession.tsx` | Add `check_in` slide type, gate logic, struggle tracking |
+| `llm-frontend/src/pages/ChatSession.tsx` | Add `check_in` slide type, gate logic (button + swipe), struggle tracking |
 | `llm-frontend/src/App.css` | Match activity styles |
 | `llm-frontend/src/features/admin/pages/ExplanationAdmin.tsx` | Add `check_in` badge color |
 
@@ -80,7 +97,7 @@ Check-in cards live inside the existing `topic_explanations.cards_json` JSONB co
 
 `card_id` and `check_in` are added to the Pydantic model only. The JSONB column already stores arbitrary dicts — new fields appear naturally. Existing cards without `card_id` work fine (`Optional[str]`).
 
-**Decision:** No migration needed. The `card_id` field is Optional in the Pydantic model. The enrichment pipeline assigns `card_id` to all cards (existing + new) when it runs. Cards loaded before enrichment simply have `card_id = None`, which is harmless — the frontend already uses `card_idx` for navigation and falls back gracefully.
+**Decision:** No migration needed. The `card_id` field is Optional in the Pydantic model. The enrichment pipeline assigns `card_id` to all cards (existing + new) when it runs. Cards loaded before enrichment simply have `card_id = None`, which is harmless — the frontend already uses array position for navigation and falls back gracefully.
 
 ---
 
@@ -127,7 +144,7 @@ Mirrors `AnimationEnrichmentService` structure. Single LLM call per variant (not
 ```python
 class CheckInDecision(BaseModel):
     """LLM output: one check-in to insert."""
-    insert_after_card_idx: int          # Insert after this card
+    insert_after_card_idx: int          # Insert after this card (1-based, matching card data)
     title: str                          # "Let's check!"
     instruction: str
     pairs: list[MatchPairOutput]
@@ -150,20 +167,23 @@ class CheckInEnrichmentService:
 
 **Internal pipeline per variant:**
 
-1. **Skip check** — if cards already contain `card_type="check_in"` and `force=False`, skip
-2. **Strip existing check-ins** — if `force=True`, remove any existing check-in cards first
-3. **LLM call** — send all explanation cards (without existing check-ins), receive `CheckInGenerationOutput`
-4. **Validate each check-in:**
+1. **Pre-flight check** — verify no `v2_explanation_generation` or `v2_visual_enrichment` job is `running`/`pending` for this chapter (via `ChapterJobService`). Fail fast if conflict detected.
+2. **Skip check** — if cards already contain `card_type="check_in"` and `force=False`, skip
+3. **Strip existing check-ins** — if `force=True`, remove any existing check-in cards first
+4. **LLM call** — send all explanation cards (without existing check-ins), receive `CheckInGenerationOutput`
+5. **Validate each check-in:**
    - 2-4 pairs
    - `insert_after_card_idx` references a valid non-summary card
    - No duplicate left or right items within a check-in
    - hint and success_message non-empty
    - Fail-open: drop invalid check-ins, keep valid ones
-5. **Assign card_ids** — UUID for every card (existing cards get `card_id` if missing)
-6. **Insert and re-index** — insert check-in cards at correct positions, re-number `card_idx` sequentially
-7. **Write back** — update `cards_json` via ORM update + commit
+6. **Assign card_ids** — UUID for every card (existing cards get `card_id` if missing)
+7. **Insert and re-index** — insert check-in cards at correct positions, re-number `card_idx` sequentially (1-based, matching existing generator convention)
+8. **Write back** — update `cards_json` via ORM update + commit
 
 **Decision:** Single LLM call (not two-phase like visuals) because check-in generation is simpler — no code generation step, just structured JSON output. The decision of WHERE to place check-ins and WHAT pairs to generate are tightly coupled and best done together.
+
+**Decision:** Pre-flight concurrent-write check rather than row-level locking. The job system already tracks running jobs per chapter — a simple query before starting is sufficient. This matches the operational reality: enrichments are admin-triggered and sequential.
 
 **Key method — `_enrich_variant`:**
 
@@ -188,9 +208,9 @@ def _enrich_variant(self, explanation: TopicExplanation, guideline: TeachingGuid
     # 5. Build merged deck: explanation cards + check-in cards at correct positions
     merged = self._insert_check_ins(explanation_cards, valid_check_ins)
 
-    # 6. Re-number card_idx
+    # 6. Re-number card_idx (1-based, matching ExplanationCardOutput convention)
     for i, card in enumerate(merged):
-        card["card_idx"] = i + 1  # 1-based
+        card["card_idx"] = i + 1
 
     # 7. Write back
     self.db.query(TopicExplanation).filter(TopicExplanation.id == explanation.id)\
@@ -243,7 +263,7 @@ python scripts/run_check_in_enrichment.py --guideline-id <id> [--force]
 python scripts/run_check_in_enrichment.py --chapter-id <id> [--force]
 ```
 
-- Loads LLM config key `"check_in_enrichment"`, fallback to `"explanation_generator"`
+- Loads LLM config via `LLMConfigService.get_config("check_in_enrichment")` with try/except fallback to `get_config("explanation_generator")` — matching the `run_visual_enrichment.py` pattern exactly
 - Instantiates `CheckInEnrichmentService`
 - Calls `enrich_guideline()` or `enrich_chapter()`
 
@@ -259,22 +279,90 @@ class V2JobType(str, Enum):
 
 ### 4.6 API Route (`book_ingestion_v2/api/processing_routes.py`)
 
-Add endpoint for admin-triggered check-in enrichment (same pattern as explanation generation trigger):
+New endpoint for admin-triggered check-in enrichment. This is a **new endpoint pattern** — no visual enrichment API endpoint exists to mirror. The endpoint follows the `run_in_background_v2()` + job lock pattern from other processing endpoints (e.g., explanation generation trigger in the same file).
 
 ```python
 @router.post("/{chapter_id}/enrich-check-ins")
 def enrich_check_ins(chapter_id: str, book_id: str, force: bool = False, db = Depends(get_db)):
-    # Acquire job lock, launch background task
+    # Acquire job lock (V2JobType.CHECK_IN_ENRICHMENT)
+    # Launch background task via run_in_background_v2()
     # Returns job status for polling
 ```
 
-### 4.7 Struggle Signal in Summary (`tutor/services/session_service.py`)
+### 4.7 Struggle Signal Model (`tutor/models/session_state.py`)
 
-Extend `_build_precomputed_summary()` to include check-in struggle data. The summary already includes confusion events from simplification — check-in struggles are appended in the same format.
+New model — **not reusing `ConfusionEvent`**. The ConfusionEvent model tracks simplification depth ("student needed 3 simplifications") which is semantically different from check-in struggle ("student got 3 wrong matches"). Reusing it would cause `_build_precomputed_summary()` to produce misleading tutor context like "Card 7: 3 simplification(s)" when the student actually had 3 wrong match attempts.
 
-**No backend changes needed for this.** The struggle data is captured client-side during the card phase and sent as part of the `card-action` request when transitioning to interactive. The session service already builds the summary from `confusion_events` — we add check-in struggle data to the same list.
+```python
+class CheckInStruggleEvent(BaseModel):
+    """Tracks a student's struggles on a check-in activity."""
+    card_idx: int = Field(description="Check-in card index (1-based)")
+    card_title: str = Field(description="Check-in title for readability")
+    wrong_count: int = Field(default=0, description="Total wrong match attempts")
+    hints_shown: int = Field(default=0, description="Times hint was displayed")
+    confused_pairs: list[dict] = Field(
+        default_factory=list,
+        description="Pairs the student struggled with: [{left, right, wrong_count}]"
+    )
+    auto_revealed: int = Field(default=0, description="Pairs auto-revealed by safety valve")
+```
 
-**Decision:** Reuse the existing `ConfusionEvent` model for check-in struggles rather than creating a new model. A check-in struggle maps naturally: `base_card_idx` = the check-in card's index, `base_card_title` = check-in title, `depth_reached` = total wrong attempts, `escalated` = whether safety valve triggered. This keeps the summary builder unchanged.
+Add to `CardPhaseState`:
+
+```python
+class CardPhaseState(BaseModel):
+    # ... existing fields ...
+    check_in_struggles: list[CheckInStruggleEvent] = Field(
+        default_factory=list,
+        description="Per-check-in struggle tracking"
+    )
+```
+
+### 4.8 CardActionRequest Extension (`tutor/models/messages.py`)
+
+```python
+class CheckInEventDTO(BaseModel):
+    """Check-in struggle data sent from frontend at phase transition."""
+    card_idx: int
+    wrong_count: int = 0
+    hints_shown: int = 0
+    confused_pairs: list[dict] = Field(default_factory=list)  # [{left, right, wrong_count}]
+    auto_revealed: int = 0
+
+class CardActionRequest(BaseModel):
+    """Request body for card phase actions."""
+    action: Literal["clear", "explain_differently"]
+    check_in_events: Optional[list[CheckInEventDTO]] = None  # NEW
+```
+
+### 4.9 Summary Builder Extension (`tutor/services/session_service.py`)
+
+In `complete_card_phase()`: before building the summary, convert incoming `check_in_events` to `CheckInStruggleEvent` entries and store in `session.card_phase.check_in_struggles`.
+
+In `_build_precomputed_summary()`: add a **separate section** for check-in struggles (not mixed with simplification confusion events):
+
+```python
+# After existing confusion_events section:
+if session.card_phase and session.card_phase.check_in_struggles:
+    struggle_lines = []
+    for evt in session.card_phase.check_in_struggles:
+        pair_details = ", ".join(
+            f'confused "{p["left"]}" with "{p["right"]}" ({p["wrong_count"]}x)'
+            for p in evt.confused_pairs if p.get("wrong_count", 0) > 0
+        )
+        auto = f", {evt.auto_revealed} pair(s) auto-revealed" if evt.auto_revealed else ""
+        struggle_lines.append(
+            f"- \"{evt.card_title}\": {evt.wrong_count} wrong attempts"
+            f"{', ' + pair_details if pair_details else ''}{auto}"
+        )
+    summaries.append(
+        "Check-in struggles:\n" + "\n".join(struggle_lines)
+    )
+```
+
+This gives the tutor actionable context like: `Check-in struggles: "Match fractions": 4 wrong attempts, confused "1/2" with "one of four equal parts" (3x)`.
+
+**Decision:** Struggle data is captured client-side during the card phase and sent at phase transition via `CardActionRequest.check_in_events`. If the session is abandoned before phase transition, struggle data is lost. Acceptable for v1 — the primary value is during the active learning flow, and abandoned sessions are a minority case.
 
 ---
 
@@ -363,36 +451,77 @@ New state:
 
 ```typescript
 const [completedCheckIns, setCompletedCheckIns] = useState<Set<number>>(new Set());
-// Struggle tracking for tutor context
-const [checkInStruggles, setCheckInStruggles] = useState<Map<number, {wrongCount: number, hintsShown: number, autoRevealed: number}>>(new Map());
+// Per-check-in struggle data for tutor context
+const [checkInStruggles, setCheckInStruggles] = useState<Map<number, {
+  wrongCount: number;
+  hintsShown: number;
+  autoRevealed: number;
+  confusedPairs: Array<{left: string; right: string; wrongCount: number}>;
+}>>(new Map());
 ```
 
-In the "Next" button's `disabled` prop and swipe handler:
+Gate computed value:
 
 ```typescript
 const isGated = carouselSlides[currentSlideIdx]?.type === 'check_in'
   && !completedCheckIns.has(currentSlideIdx);
-// Next button disabled when isGated is true
+```
+
+Apply gate to **both** Next button and swipe handler:
+
+```typescript
+// Next button — add isGated to disabled prop
+<button disabled={simplifyLoading || isGated}>Next</button>
+
+// Swipe handler (~line 1059) — add gate check to forward swipe
+} else if (dx < -80 && currentSlideIdx < carouselSlides.length - 1 && !isGated) {
+  newIdx = currentSlideIdx + 1;
+}
 ```
 
 Hide "I didn't understand" button when current slide is `check_in`.
 
-### 5.5 Struggle Signal Forwarding
+### 5.5 TTS Auto-Play
 
-When `card-action` with `action: "clear"` is sent, include check-in struggle data. The existing `ConfusionEvent` pathway already flows through `_build_precomputed_summary()`.
+The existing TTS hook (`ChatSession.tsx` ~line 297) skips `'explanation'` slides:
+```typescript
+if (slide && slide.type !== 'explanation') {
+```
 
-**Implementation:** Before sending `card-action`, convert `checkInStruggles` map into `ConfusionEvent`-compatible entries and append to the session's confusion tracking. Since card actions go through the REST endpoint and the backend reads from persisted state, the simplest approach is:
+This accidentally auto-plays for `'check_in'` slides since `'check_in' !== 'explanation'`. Make this intentional:
 
-- On check-in completion (or safety valve trigger), call a lightweight endpoint or piggyback on the existing card-action payload to record the struggle event.
+```typescript
+// Auto-play audio for message slides and check-in slides (instruction)
+if (slide && (slide.type === 'message' || slide.type === 'check_in')) {
+```
 
-**Decision:** Extend the `CardActionRequest` to accept optional `check_in_events` — a list of `{card_idx, wrong_count, hints_shown, auto_revealed}`. The session service converts these to `ConfusionEvent` entries before building the summary. This is a minor extension to an existing endpoint, not a new one.
+### 5.6 Struggle Signal Forwarding
 
-### 5.6 MatchActivity Component (`components/MatchActivity.tsx`)
+When sending `card-action` with `action: "clear"`, include accumulated check-in struggle data:
+
+```typescript
+const checkInEvents = Array.from(checkInStruggles.entries()).map(([slideIdx, data]) => ({
+  card_idx: carouselSlides[slideIdx]?.cardIdx ?? slideIdx,
+  wrong_count: data.wrongCount,
+  hints_shown: data.hintsShown,
+  confused_pairs: data.confusedPairs,
+  auto_revealed: data.autoRevealed,
+}));
+
+cardAction(sessionId, { action: 'clear', check_in_events: checkInEvents });
+```
+
+### 5.7 MatchActivity Component (`components/MatchActivity.tsx`)
 
 ```typescript
 interface MatchActivityProps {
   checkIn: CheckInActivity;
-  onComplete: (struggles: {wrongCount: number, hintsShown: number, autoRevealed: number}) => void;
+  onComplete: (struggles: {
+    wrongCount: number;
+    hintsShown: number;
+    autoRevealed: number;
+    confusedPairs: Array<{left: string; right: string; wrongCount: number}>;
+  }) => void;
 }
 ```
 
@@ -400,7 +529,7 @@ interface MatchActivityProps {
 
 ```
 State: {
-  shuffledRightIndices: number[],      // Shuffled on mount
+  shuffledRightIndices: number[],      // Shuffled on mount (Fisher-Yates)
   selectedLeft: number | null,         // Currently selected left index
   matchedPairs: Set<number>,           // Left indices that are matched
   wrongAttempts: Map<number, number>,  // Per left-index wrong count
@@ -411,14 +540,29 @@ State: {
 
 **Flow:**
 1. On mount: shuffle right column indices (Fisher-Yates)
-2. Tap left box → highlight, set `selectedLeft`
-3. Tap right box → evaluate:
-   - If `shuffledRightIndices[rightIdx]` matches `selectedLeft` → correct
+2. Tap left box -> highlight, set `selectedLeft`
+3. Tap right box -> evaluate:
+   - If `shuffledRightIndices[rightIdx]` matches `selectedLeft` -> correct
      - Add to `matchedPairs`, play checkmark animation
-   - Else → wrong
+   - Else -> wrong
      - Increment `wrongAttempts[selectedLeft]`, shake animation, show hint
-     - If `wrongAttempts[selectedLeft] >= 5` → auto-reveal: lock pair, show explanation
-4. All pairs matched → show `success_message`, call `onComplete`
+     - If `wrongAttempts[selectedLeft] >= 5` -> auto-reveal: lock pair, show explanation
+4. All pairs matched -> show `success_message`, call `onComplete` with per-pair struggle data
+
+**onComplete data assembly:**
+
+```typescript
+const confusedPairs = checkIn.pairs
+  .map((pair, i) => ({ left: pair.left, right: pair.right, wrongCount: wrongAttempts.get(i) || 0 }))
+  .filter(p => p.wrongCount > 0);
+
+onComplete({
+  wrongCount: totalWrongAttempts,
+  hintsShown: hintCount,
+  autoRevealed: autoRevealedCount,
+  confusedPairs,
+});
+```
 
 **Animations:**
 - Select: border highlight + subtle scale
@@ -428,20 +572,26 @@ State: {
 - Complete: success message slides in, "Continue" button appears
 
 **TTS integration:**
-- On mount: play `audio_text` (instruction)
+- On mount: play `audio_text` (instruction) — auto-played by carousel's TTS hook (section 5.5)
 - On wrong: play hint via `synthesizeSpeech()`
-- On complete: play `success_message`
+- On complete: play `success_message` via `synthesizeSpeech()`
 
-### 5.7 Admin Badge (`features/admin/pages/ExplanationAdmin.tsx`)
+### 5.8 Simplification Interaction on Check-Ins
 
-Add `check_in` to the badge color mapping:
+The "I didn't understand" / simplify button does not appear on check-in cards — hints serve that role. If a student is stuck because they didn't understand the preceding explanation cards, they navigate back manually to re-read/simplify those cards, then return to the check-in.
+
+This flow is functional but clunky. **v2 consideration:** a "Go back and review" button on the check-in card that auto-navigates to the first relevant explanation card.
+
+### 5.9 Admin Badge (`features/admin/pages/ExplanationAdmin.tsx`)
+
+Add `check_in` to the badge color mapping (teal — positive comprehension check, not red which signals errors):
 
 ```typescript
-card.card_type === 'check_in' ? '#FEE2E2' : // background
-card.card_type === 'check_in' ? '#991B1B' : // text color
+card.card_type === 'check_in' ? '#CCFBF1' : // background (teal)
+card.card_type === 'check_in' ? '#115E59' : // text color (dark teal)
 ```
 
-### 5.8 CSS Styles (`App.css`)
+### 5.10 CSS Styles (`App.css`)
 
 New class names:
 - `.match-activity` — container
@@ -493,7 +643,7 @@ class CheckInGenerationOutput(BaseModel):
 
 ### Cost
 
-- ~3K tokens per variant × 1-3 variants per topic
+- ~3K tokens per variant x 1-3 variants per topic
 - Comparable to a single visual enrichment decision call
 - No retry loop (unlike visual code generation) — just validate and drop bad ones
 
@@ -507,7 +657,7 @@ class CheckInGenerationOutput(BaseModel):
 |---------------|----------|-------|---------|
 | `check_in_enrichment` | openai | gpt-5.2 | Check-in generation for explanation cards |
 
-Seeded via `_ensure_llm_config()` in the enrichment script (same pattern as `animation_enrichment`). Falls back to `explanation_generator` config if not present.
+Loaded via `LLMConfigService.get_config("check_in_enrichment")` with try/except fallback to `get_config("explanation_generator")` — matching the `run_visual_enrichment.py` pattern.
 
 ### No new environment variables
 
@@ -520,18 +670,20 @@ Uses existing LLM API keys and database connection.
 | Step | What to Build | Files | Depends On | Verification |
 |------|---------------|-------|------------|--------------|
 | 1 | Backend models | `explanation_repository.py` | — | `ExplanationCard` parses existing cards + new fields without breaking |
-| 2 | CheckInEnrichmentService | `check_in_enrichment_service.py` | Step 1 | Unit test: generates valid check-ins from sample cards |
-| 3 | LLM prompt | `check_in_generation.txt` | Step 2 | Manual: run against a real guideline, inspect output quality |
-| 4 | CLI script | `run_check_in_enrichment.py` | Step 2-3 | Run against test topic, verify cards_json updated with check-ins |
-| 5 | Job type constant | `constants.py` | — | Import check |
-| 6 | API endpoint | `processing_routes.py` | Step 2, 5 | Trigger via admin UI, verify job completes |
-| 7 | Frontend types | `api.ts` | — | TypeScript compiles |
-| 8 | MatchActivity component | `MatchActivity.tsx`, `App.css` | Step 7 | Storybook / manual: renders pairs, tap-tap works, gate works |
-| 9 | Carousel integration | `ChatSession.tsx` | Step 7-8 | Manual: check-in slides appear, gate prevents advance, success unlocks |
-| 10 | Struggle signal forwarding | `ChatSession.tsx`, `session_service.py` | Step 9 | Manual: complete check-in with retries, verify struggle data in tutor summary |
-| 11 | Admin badge | `ExplanationAdmin.tsx` | Step 7 | Visual: check-in cards show distinct badge color |
+| 2 | Struggle event model | `session_state.py`, `messages.py` | — | `CheckInStruggleEvent` + extended `CardActionRequest` parse correctly |
+| 3 | CheckInEnrichmentService | `check_in_enrichment_service.py` | Step 1 | Unit test: generates valid check-ins from sample cards |
+| 4 | LLM prompt | `check_in_generation.txt` | Step 3 | Manual: run against a real guideline, inspect output quality |
+| 5 | CLI script | `run_check_in_enrichment.py` | Step 3-4 | Run against test topic, verify cards_json updated with check-ins |
+| 6 | Job type constant | `constants.py` | — | Import check |
+| 7 | API endpoint | `processing_routes.py` | Step 3, 6 | Trigger via admin UI, verify job completes |
+| 8 | Summary builder | `session_service.py` | Step 2 | Unit test: check-in struggles render as separate section in summary |
+| 9 | Frontend types | `api.ts` | — | TypeScript compiles |
+| 10 | MatchActivity component | `MatchActivity.tsx`, `App.css` | Step 9 | Manual: renders pairs, tap-tap works, per-pair struggle data correct |
+| 11 | Carousel integration | `ChatSession.tsx` | Step 9-10 | Manual: check-in slides appear, gate on button + swipe, TTS intentional |
+| 12 | Struggle signal forwarding | `ChatSession.tsx` | Step 11 | Manual: complete check-in with retries, verify per-pair data in tutor summary |
+| 13 | Admin badge | `ExplanationAdmin.tsx` | Step 9 | Visual: check-in cards show teal badge |
 
-**Order rationale:** Backend models first (non-breaking — Optional fields). Service + prompt next (can test with CLI). Frontend types, then component, then integration. Admin badge last (cosmetic).
+**Order rationale:** Backend models first (non-breaking — Optional fields). Struggle event model next (needed by both service and frontend). Service + prompt next (can test with CLI). Summary builder (uses struggle model). Frontend types, then component, then integration. Admin badge last (cosmetic).
 
 ---
 
@@ -548,32 +700,37 @@ Uses existing LLM API keys and database connection.
 | `test_validate_check_ins_too_many_pairs` | Check-in with 5+ pairs rejected | — |
 | `test_validate_check_ins_duplicate_items` | Duplicate left/right items rejected | — |
 | `test_validate_check_ins_bad_insert_idx` | Invalid insert_after_card_idx rejected | — |
-| `test_insert_check_ins_correct_order` | Check-ins inserted at correct positions, card_idx re-numbered | — |
+| `test_insert_check_ins_correct_order` | Check-ins inserted at correct positions, card_idx re-numbered 1-based | — |
 | `test_card_ids_assigned` | All cards get card_id after enrichment | — |
 | `test_strip_existing_check_ins` | Re-enrichment removes old check-ins before re-generating | — |
 | `test_enrich_variant_skips_when_exists` | Skips if check-ins present and force=False | — |
 | `test_enrich_variant_force_regenerates` | Regenerates when force=True | — |
+| `test_preflight_blocks_concurrent` | Enrichment fails fast if another enrichment job is running | Mock job service |
+| `test_check_in_struggle_summary` | `_build_precomputed_summary()` renders check-in struggles as separate section with per-pair detail | — |
+| `test_check_in_struggle_not_mixed_with_confusion` | Check-in struggles don't appear in "Cards that needed simplification" section | — |
 
 ### Integration tests
 
 | Test | What it Verifies |
 |------|------------------|
-| `test_enrich_guideline_end_to_end` | Full pipeline: LLM call → validate → insert → persist (with mock LLM) |
+| `test_enrich_guideline_end_to_end` | Full pipeline: LLM call -> validate -> insert -> persist (with mock LLM) |
 | `test_session_serves_check_in_cards` | Session creation returns cards including check-in type |
+| `test_card_action_with_check_in_events` | `complete_card_phase()` correctly stores CheckInStruggleEvents from request |
 
 ### Manual verification
 
 1. Run `python scripts/run_check_in_enrichment.py --guideline-id <id>` on a test topic
-2. Check admin panel — check-in cards visible with badge
+2. Check admin panel — check-in cards visible with teal badge
 3. Start a "Teach Me" session on enriched topic
 4. Verify: check-in card renders with match pairs
-5. Verify: wrong match → shake + hint + TTS
-6. Verify: correct match → green + lock
+5. Verify: wrong match -> shake + hint + TTS
+6. Verify: correct match -> green + lock
 7. Verify: Next button disabled until all matched
-8. Verify: safety valve triggers after 5 wrong on same pair
-9. Verify: success message + TTS on completion
-10. Verify: "I didn't understand" button hidden on check-in cards
-11. Complete card phase → verify interactive tutor mentions struggle areas
+8. Verify: **swiping forward** also blocked until all matched
+9. Verify: safety valve triggers after 5 wrong on same pair
+10. Verify: success message + TTS on completion
+11. Verify: "I didn't understand" button hidden on check-in cards
+12. Complete card phase -> verify interactive tutor mentions specific confused pairs (not "simplifications")
 
 ---
 
@@ -609,12 +766,13 @@ None required. `cards_json` is JSONB — new fields appear when enrichment runs.
 |------|-----------|--------|------------|
 | LLM generates ambiguous pairs | Medium | High (student trapped) | Strict validation + fail-open (drop bad check-ins) + safety valve (auto-reveal after 5 wrong) |
 | Card count exceeds MAX_CARDS (15) | Low | Low | Check-ins are 2-3 cards. Typical topic has 5-10 explanation cards. Total stays under 15. If exceeded, drop the last check-in. |
-| Existing cards lose card_id on re-generation | Low | Medium (identity drift) | Explanation generation always replaces entire cards_json — check-ins must be re-run after. Pipeline ordering enforced by admin UI. |
-| Mobile layout cramped with 4 pairs | Low | Medium (UX) | Enforce max 4 pairs in validation. CSS uses min-height 48px. Test on small screens during development. |
-| TTS latency on hint/success | Low | Low | Hints are short strings. Pre-fetch success audio after first correct match. |
+| Concurrent enrichment overwrites | Low | High (data loss) | Pre-flight job check before starting. Pipeline ordering enforced by admin UI. |
+| Existing cards lose card_id on re-generation | Low | Medium | Explanation generation replaces entire cards_json — check-ins and card_ids must be re-run after. Pipeline ordering enforced. |
+| Mobile layout cramped with 4 pairs | Low | Medium (UX) | Enforce max 4 pairs in validation. CSS uses min-height 48px. Test on small screens. |
+| Abandoned session loses struggle data | Medium | Low | Struggle data sent at phase transition only. Acceptable for v1 — primary value is during active flow. |
 
 ---
 
 ## 12. Open Questions
 
-None — all design decisions resolved in PRD review. The implementation is straightforward and mirrors established patterns.
+- **card_id migration scope for v1:** The plan adds `card_id` to all cards but in-session references (`CardPhaseState.current_card_idx`, `remedial_cards` dict keys, `ConfusionEvent.base_card_idx`) still use `card_idx`. Migrating all references to `card_id` is the right long-term move but adds scope. For v1, `card_id` is assigned but not yet used as primary session identifier. Should we plan the full migration now or defer to a follow-up?
