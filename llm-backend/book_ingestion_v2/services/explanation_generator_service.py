@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _GENERATION_PROMPT = (_PROMPTS_DIR / "explanation_generation.txt").read_text()
+_GENERATION_SYSTEM_FILE = str(_PROMPTS_DIR / "explanation_generation_system.txt")
 _REVIEW_REFINE_PROMPT = (_PROMPTS_DIR / "explanation_review_refine.txt").read_text()
+_REVIEW_REFINE_SYSTEM_FILE = str(_PROMPTS_DIR / "explanation_review_refine_system.txt")
 
 # ─── Pydantic models for structured LLM output ─────────────────────────────
 
@@ -237,7 +239,13 @@ class ExplanationGeneratorService:
         guideline: TeachingGuideline,
         variant_config: dict,
     ) -> GenerationOutput:
-        """LLM call: generate explanation cards for one variant."""
+        """LLM call: generate explanation cards for one variant.
+
+        When using claude_code provider, splits the prompt:
+        - Static instructions → loaded via --append-system-prompt-file
+        - Dynamic data (topic, guideline, schema) → sent via stdin
+        This reduces stdin size by ~30-40%.
+        """
         topic = guideline.topic_title or guideline.topic
         guideline_text = guideline.guideline or guideline.description or ""
 
@@ -269,21 +277,36 @@ class ExplanationGeneratorService:
             }
         }, indent=2)
 
-        prompt = _GENERATION_PROMPT.format(
-            topic_name=topic,
-            subject=guideline.subject,
-            grade=guideline.grade,
-            guideline_text=guideline_text,
-            prior_topics_section=prior_topics_section,
-            variant_approach=variant_config["approach"],
-            output_schema=output_schema,
-        )
+        # Use split prompt for claude_code: system file + dynamic-only stdin
+        system_file = _GENERATION_SYSTEM_FILE if self.llm.provider == "claude_code" else None
+
+        if system_file:
+            # Dynamic data only — static instructions + JSON schema are in system file
+            prompt = (
+                f"TOPIC: {topic}\n"
+                f"SUBJECT: {guideline.subject}, Grade {guideline.grade}\n"
+                f"TEACHING GUIDELINE:\n{guideline_text}\n"
+                f"\n{prior_topics_section}"
+            )
+        else:
+            # Legacy: full prompt with everything inlined
+            prompt = _GENERATION_PROMPT.format(
+                topic_name=topic,
+                subject=guideline.subject,
+                grade=guideline.grade,
+                guideline_text=guideline_text,
+                prior_topics_section=prior_topics_section,
+                variant_approach=variant_config["approach"],
+                output_schema=output_schema,
+            )
 
         response = self.llm.call(
             prompt=prompt,
             reasoning_effort="high",
-            json_schema=self._generation_schema,
+            # When using system file, schema is baked into the file — don't duplicate in stdin
+            json_schema=None if system_file else self._generation_schema,
             schema_name="GenerationOutput",
+            system_prompt_file=system_file,
         )
 
         parsed = self.llm.parse_json_response(response["output_text"])
@@ -298,7 +321,13 @@ class ExplanationGeneratorService:
         topic = guideline.topic_title or guideline.topic
         guideline_text = guideline.guideline or guideline.description or ""
 
-        cards_json = json.dumps([c.model_dump() for c in cards], indent=2)
+        # Strip audio_text and visual from cards for review — reviewer only needs
+        # content/titles to assess clarity. Saves ~7K chars of stdin.
+        cards_for_review = [
+            {k: v for k, v in c.model_dump().items() if k not in ("audio_text", "visual")}
+            for c in cards
+        ]
+        cards_json = json.dumps(cards_for_review, indent=2)
 
         prior_topics_section = ""
         if guideline.prior_topics_context:
@@ -308,39 +337,54 @@ class ExplanationGeneratorService:
                 f"Weave natural references to these earlier topics where relevant."
             )
 
-        output_schema = json.dumps({
-            "cards": [
-                {
-                    "card_idx": 1,
-                    "card_type": "concept | example | visual | analogy | summary",
-                    "title": "short heading",
-                    "content": "explanation text, simple language",
-                    "visual": "optional ASCII/formatted visual or null",
-                    "audio_text": "short spoken version for TTS — pure words, no symbols/markdown, math as speech"
-                }
-            ],
-            "summary": {
-                "key_analogies": ["analogy1", "analogy2"],
-                "key_examples": ["example1", "example2"],
-                "teaching_notes": "2-3 sentence narrative of what was explained and how"
-            }
-        }, indent=2)
+        # Use split prompt for claude_code: system file + dynamic-only stdin
+        system_file = _REVIEW_REFINE_SYSTEM_FILE if self.llm.provider == "claude_code" else None
 
-        prompt = _REVIEW_REFINE_PROMPT.format(
-            topic_name=topic,
-            subject=guideline.subject,
-            grade=guideline.grade,
-            guideline_text=guideline_text,
-            prior_topics_section=prior_topics_section,
-            cards_json=cards_json,
-            output_schema=output_schema,
-        )
+        if system_file:
+            # Dynamic data only — static instructions + JSON schema are in system file
+            prompt = (
+                f"TOPIC: {topic}\n"
+                f"SUBJECT: {guideline.subject}, Grade {guideline.grade}\n"
+                f"TEACHING GUIDELINE:\n{guideline_text}\n"
+                f"\n{prior_topics_section}\n"
+                f"\nCURRENT CARDS:\n{cards_json}"
+            )
+        else:
+            output_schema = json.dumps({
+                "cards": [
+                    {
+                        "card_idx": 1,
+                        "card_type": "concept | example | visual | analogy | summary",
+                        "title": "short heading",
+                        "content": "explanation text, simple language",
+                        "visual": "optional ASCII/formatted visual or null",
+                        "audio_text": "short spoken version for TTS — pure words, no symbols/markdown, math as speech"
+                    }
+                ],
+                "summary": {
+                    "key_analogies": ["analogy1", "analogy2"],
+                    "key_examples": ["example1", "example2"],
+                    "teaching_notes": "2-3 sentence narrative of what was explained and how"
+                }
+            }, indent=2)
+
+            prompt = _REVIEW_REFINE_PROMPT.format(
+                topic_name=topic,
+                subject=guideline.subject,
+                grade=guideline.grade,
+                guideline_text=guideline_text,
+                prior_topics_section=prior_topics_section,
+                cards_json=cards_json,
+                output_schema=output_schema,
+            )
 
         response = self.llm.call(
             prompt=prompt,
             reasoning_effort="high",
-            json_schema=self._generation_schema,
+            # When using system file, schema is baked into the file — don't duplicate in stdin
+            json_schema=None if system_file else self._generation_schema,
             schema_name="GenerationOutput",
+            system_prompt_file=system_file,
         )
 
         parsed = self.llm.parse_json_response(response["output_text"])

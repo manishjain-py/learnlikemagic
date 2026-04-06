@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _DECISION_PROMPT = (_PROMPTS_DIR / "visual_decision_and_spec.txt").read_text()
+_DECISION_SYSTEM_FILE = str(_PROMPTS_DIR / "visual_decision_and_spec_system.txt")
 _CODE_GEN_PROMPT = (_PROMPTS_DIR / "visual_code_generation.txt").read_text()
 
 # ─── Pydantic models for structured LLM output ─────────────────────────────
@@ -252,20 +253,35 @@ class AnimationEnrichmentService:
             for c in cards
         ]
 
-        # Use replace instead of .format() — prompt contains JSON examples with curly braces
-        prompt = (_DECISION_PROMPT
-            .replace("{grade_level}", grade)
-            .replace("{topic_title}", topic)
-            .replace("{subject}", subject)
-            .replace("{variant_approach}", variant_label)
-            .replace("{cards_json}", json.dumps(cards_for_prompt, indent=2))
-        )
+        # Use system file for claude_code: static instructions loaded from file
+        system_file = _DECISION_SYSTEM_FILE if self.llm.provider == "claude_code" else None
+
+        if system_file:
+            # Dynamic data only — static instructions + schema in system file
+            prompt = (
+                f"## Context\n\n"
+                f"You are reviewing explanation cards for a {grade} student learning about: {topic}\n"
+                f"Subject: {subject}\n"
+                f"Teaching approach for this variant: {variant_label}\n\n"
+                f"## Cards to Review\n\n"
+                f"{json.dumps(cards_for_prompt, indent=2)}"
+            )
+        else:
+            # Legacy: full prompt with everything inlined
+            prompt = (_DECISION_PROMPT
+                .replace("{grade_level}", grade)
+                .replace("{topic_title}", topic)
+                .replace("{subject}", subject)
+                .replace("{variant_approach}", variant_label)
+                .replace("{cards_json}", json.dumps(cards_for_prompt, indent=2))
+            )
 
         try:
             result = self.llm.call(
                 prompt=prompt,
                 reasoning_effort="medium",
                 json_mode=True,
+                system_prompt_file=system_file,
             )
             raw = json.loads(result["output_text"])
 

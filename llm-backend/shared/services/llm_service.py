@@ -80,15 +80,22 @@ class LLMService:
         json_mode: bool = True,
         json_schema: Optional[Dict[str, Any]] = None,
         schema_name: str = "response",
+        system_prompt_file: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generic LLM call — routes to the correct API based on self.provider + self.model_id.
+
+        Args:
+            system_prompt_file: Optional path to static instructions file.
+                For claude_code provider, loaded via --append-system-prompt-file
+                (reduces stdin size). For other providers, prepended to prompt.
 
         Always returns: {output_text: str, reasoning: str|None, parsed: dict|None}
         """
         if self.provider == "claude_code":
             return self._call_claude_code(
-                prompt, reasoning_effort, json_mode, json_schema, schema_name
+                prompt, reasoning_effort, json_mode, json_schema, schema_name,
+                system_prompt_file=system_prompt_file,
             )
         elif self.provider in ("anthropic", "anthropic-haiku"):
             return self._call_anthropic(
@@ -410,6 +417,7 @@ class LLMService:
         json_mode: bool = True,
         json_schema: Optional[Dict[str, Any]] = None,
         schema_name: str = "response",
+        system_prompt_file: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Call Claude Code CLI via subprocess."""
         if not self.claude_code_adapter:
@@ -420,6 +428,7 @@ class LLMService:
             json_mode=json_mode,
             json_schema=json_schema,
             schema_name=schema_name,
+            system_prompt_file=system_prompt_file,
         )
 
     # ─── Gemini ───────────────────────────────────────────────────────
