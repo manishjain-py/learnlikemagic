@@ -1,7 +1,10 @@
 """Offline pipeline to enrich explanation cards with interactive check-in activities.
 
-Pipeline per variant: LLM analyzes cards → generates match-pairs check-ins at
+Pipeline per variant: LLM analyzes cards → generates diverse check-in activities at
 concept boundaries → validates → inserts into cards_json.
+
+Supports 6 activity types: pick_one, true_false, fill_blank, match_pairs,
+sort_buckets, sequence.
 
 Fully decoupled from explanation generation — runs after explanations (and
 optionally visuals) exist. Reads/writes same topic_explanations table.
@@ -9,7 +12,7 @@ optionally visuals) exist. Reads/writes same topic_explanations table.
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 from pydantic import BaseModel, Field
 
@@ -28,21 +31,47 @@ _CHECK_IN_PROMPT = (_PROMPTS_DIR / "check_in_generation.txt").read_text()
 
 # ─── Pydantic models for structured LLM output ───────────────────────────
 
+ACTIVITY_TYPES = ("pick_one", "true_false", "fill_blank", "match_pairs", "sort_buckets", "sequence")
+
 
 class MatchPairOutput(BaseModel):
     left: str
     right: str
 
 
+class BucketItemOutput(BaseModel):
+    text: str
+    correct_bucket: int = Field(description="0 or 1 — index into bucket_names")
+
+
 class CheckInDecision(BaseModel):
-    """LLM output: one check-in to insert."""
+    """LLM output: one check-in to insert. Flat model — fill only the fields
+    relevant to the chosen activity_type."""
     insert_after_card_idx: int = Field(description="Insert after this card (1-based card_idx)")
-    title: str
-    instruction: str
-    pairs: list[MatchPairOutput]
-    hint: str
-    success_message: str
-    audio_text: str
+    activity_type: str = Field(description="pick_one | true_false | fill_blank | match_pairs | sort_buckets | sequence")
+    title: str = Field(description="Short heading, e.g. 'Quick check!'")
+    instruction: str = Field(description="Main text shown to student")
+    hint: str = Field(description="One-sentence nudge (no spoilers)")
+    success_message: str = Field(description="Warm confirmation after correct answer")
+    audio_text: str = Field(description="Spoken version — plain words, no symbols")
+
+    # pick_one / fill_blank
+    options: list[str] = Field(default_factory=list, description="2-3 answer choices")
+    correct_index: int = Field(default=0, description="Index of correct option in options[]")
+
+    # true_false
+    statement: str = Field(default="", description="Statement to judge true/false")
+    correct_answer: bool = Field(default=True, description="Whether statement is true")
+
+    # match_pairs
+    pairs: list[MatchPairOutput] = Field(default_factory=list, description="Left-right pairs (2-3)")
+
+    # sort_buckets
+    bucket_names: list[str] = Field(default_factory=list, description="Two bucket labels")
+    bucket_items: list[BucketItemOutput] = Field(default_factory=list, description="4-6 items to sort")
+
+    # sequence
+    sequence_items: list[str] = Field(default_factory=list, description="Items in correct order (3-4)")
 
 
 class CheckInGenerationOutput(BaseModel):
@@ -52,8 +81,24 @@ class CheckInGenerationOutput(BaseModel):
 
 # ─── Constants ────────────────────────────────────────────────────────────
 
+# match_pairs
 MIN_PAIRS = 2
-MAX_PAIRS = 4
+MAX_PAIRS = 3
+
+# pick_one / fill_blank
+MIN_OPTIONS = 2
+MAX_OPTIONS = 3
+
+# sort_buckets
+MIN_BUCKET_ITEMS = 4
+MAX_BUCKET_ITEMS = 6
+
+# sequence
+MIN_SEQUENCE_ITEMS = 3
+MAX_SEQUENCE_ITEMS = 4
+
+# Placement
+MIN_GAP = 1  # Minimum card gap between consecutive check-ins
 
 
 class CheckInEnrichmentService:
@@ -286,20 +331,6 @@ class CheckInEnrichmentService:
             for c in cards
         ]
 
-        output_schema = json.dumps({
-            "check_ins": [
-                {
-                    "insert_after_card_idx": 3,
-                    "title": "Let's check!",
-                    "instruction": "Match each ... to its ...",
-                    "pairs": [{"left": "...", "right": "..."}],
-                    "hint": "one sentence nudge",
-                    "success_message": "warm confirmation + reinforcement",
-                    "audio_text": "spoken instruction, no symbols"
-                }
-            ]
-        }, indent=2)
-
         prompt = _CHECK_IN_PROMPT.replace(
             "{grade}", grade
         ).replace(
@@ -309,7 +340,9 @@ class CheckInEnrichmentService:
         ).replace(
             "{cards_json}", json.dumps(cards_for_prompt, indent=2)
         ).replace(
-            "{output_schema}", output_schema
+            "{output_schema}", json.dumps(
+                CheckInGenerationOutput.model_json_schema(), indent=2
+            )
         )
 
         try:
@@ -338,45 +371,103 @@ class CheckInEnrichmentService:
         MIN_POSITION = 3  # Never before card_idx 3 (student needs content first)
 
         for ci in check_ins:
+            label = f"check-in ({ci.activity_type}) after card {ci.insert_after_card_idx}"
+
+            # Activity type must be recognized
+            if ci.activity_type not in ACTIVITY_TYPES:
+                logger.warning(f"{label}: unknown activity_type, dropping")
+                continue
+
             # Must reference a valid non-summary card
             if ci.insert_after_card_idx not in valid_card_idxs:
-                logger.warning(f"Check-in references invalid card_idx {ci.insert_after_card_idx}, dropping")
+                logger.warning(f"{label}: invalid card_idx, dropping")
                 continue
             if ci.insert_after_card_idx in summary_idxs:
-                logger.warning(f"Check-in after summary card {ci.insert_after_card_idx}, dropping")
+                logger.warning(f"{label}: after summary card, dropping")
                 continue
             # Minimum position — student needs content before a check-in
             if ci.insert_after_card_idx < MIN_POSITION:
-                logger.warning(f"Check-in too early (card_idx {ci.insert_after_card_idx} < {MIN_POSITION}), dropping")
-                continue
-
-            # Pair count
-            if len(ci.pairs) < MIN_PAIRS or len(ci.pairs) > MAX_PAIRS:
-                logger.warning(f"Check-in has {len(ci.pairs)} pairs (need {MIN_PAIRS}-{MAX_PAIRS}), dropping")
-                continue
-
-            # No duplicate items
-            lefts = [p.left.strip().lower() for p in ci.pairs]
-            rights = [p.right.strip().lower() for p in ci.pairs]
-            if len(set(lefts)) != len(lefts) or len(set(rights)) != len(rights):
-                logger.warning("Check-in has duplicate left/right items, dropping")
+                logger.warning(f"{label}: too early (< {MIN_POSITION}), dropping")
                 continue
 
             # hint and success_message non-empty
             if not ci.hint.strip() or not ci.success_message.strip():
-                logger.warning("Check-in missing hint or success_message, dropping")
+                logger.warning(f"{label}: missing hint or success_message, dropping")
                 continue
 
-            # Minimum gap of 2 explanation cards between consecutive check-ins
+            # Type-specific validation
+            if not self._validate_activity_content(ci, label):
+                continue
+
+            # Minimum gap between consecutive check-ins
             if valid:
                 gap = ci.insert_after_card_idx - valid[-1].insert_after_card_idx
-                if gap < 2:
-                    logger.warning(f"Check-ins too close (gap={gap}, need >=2), dropping")
+                if gap < MIN_GAP:
+                    logger.warning(f"{label}: too close to previous (gap={gap}), dropping")
                     continue
 
             valid.append(ci)
 
         return valid
+
+    def _validate_activity_content(self, ci: CheckInDecision, label: str) -> bool:
+        """Validate type-specific fields for a check-in. Returns True if valid."""
+        at = ci.activity_type
+
+        if at == "pick_one" or at == "fill_blank":
+            if len(ci.options) < MIN_OPTIONS or len(ci.options) > MAX_OPTIONS:
+                logger.warning(f"{label}: {len(ci.options)} options (need {MIN_OPTIONS}-{MAX_OPTIONS}), dropping")
+                return False
+            if ci.correct_index < 0 or ci.correct_index >= len(ci.options):
+                logger.warning(f"{label}: correct_index {ci.correct_index} out of range, dropping")
+                return False
+            # No duplicate options
+            opts_lower = [o.strip().lower() for o in ci.options]
+            if len(set(opts_lower)) != len(opts_lower):
+                logger.warning(f"{label}: duplicate options, dropping")
+                return False
+
+        elif at == "true_false":
+            if not ci.statement.strip():
+                logger.warning(f"{label}: empty statement, dropping")
+                return False
+
+        elif at == "match_pairs":
+            if len(ci.pairs) < MIN_PAIRS or len(ci.pairs) > MAX_PAIRS:
+                logger.warning(f"{label}: {len(ci.pairs)} pairs (need {MIN_PAIRS}-{MAX_PAIRS}), dropping")
+                return False
+            lefts = [p.left.strip().lower() for p in ci.pairs]
+            rights = [p.right.strip().lower() for p in ci.pairs]
+            if len(set(lefts)) != len(lefts) or len(set(rights)) != len(rights):
+                logger.warning(f"{label}: duplicate left/right items, dropping")
+                return False
+
+        elif at == "sort_buckets":
+            if len(ci.bucket_names) != 2:
+                logger.warning(f"{label}: need exactly 2 bucket_names, got {len(ci.bucket_names)}, dropping")
+                return False
+            if len(ci.bucket_items) < MIN_BUCKET_ITEMS or len(ci.bucket_items) > MAX_BUCKET_ITEMS:
+                logger.warning(f"{label}: {len(ci.bucket_items)} items (need {MIN_BUCKET_ITEMS}-{MAX_BUCKET_ITEMS}), dropping")
+                return False
+            if any(bi.correct_bucket not in (0, 1) for bi in ci.bucket_items):
+                logger.warning(f"{label}: correct_bucket must be 0 or 1, dropping")
+                return False
+            # At least one item per bucket
+            buckets_used = {bi.correct_bucket for bi in ci.bucket_items}
+            if len(buckets_used) < 2:
+                logger.warning(f"{label}: all items in one bucket, dropping")
+                return False
+
+        elif at == "sequence":
+            if len(ci.sequence_items) < MIN_SEQUENCE_ITEMS or len(ci.sequence_items) > MAX_SEQUENCE_ITEMS:
+                logger.warning(f"{label}: {len(ci.sequence_items)} items (need {MIN_SEQUENCE_ITEMS}-{MAX_SEQUENCE_ITEMS}), dropping")
+                return False
+            items_lower = [s.strip().lower() for s in ci.sequence_items]
+            if len(set(items_lower)) != len(items_lower):
+                logger.warning(f"{label}: duplicate sequence items, dropping")
+                return False
+
+        return True
 
     def _insert_check_ins(
         self,
@@ -394,21 +485,51 @@ class CheckInEnrichmentService:
             merged.append(card)
             # Insert any check-ins that go after this card
             for ci in insert_map.get(card["card_idx"], []):
-                merged.append({
-                    "card_id": str(uuid4()),
-                    "card_idx": 0,  # Will be re-numbered
-                    "card_type": "check_in",
-                    "title": ci.title,
-                    "content": ci.instruction,  # content field for compatibility
-                    "audio_text": ci.audio_text,
-                    "check_in": {
-                        "activity_type": "match_pairs",
-                        "instruction": ci.instruction,
-                        "pairs": [{"left": p.left, "right": p.right} for p in ci.pairs],
-                        "hint": ci.hint,
-                        "success_message": ci.success_message,
-                        "audio_text": ci.audio_text,
-                    },
-                })
+                merged.append(self._build_check_in_card(ci))
 
         return merged
+
+    def _build_check_in_card(self, ci: CheckInDecision) -> dict:
+        """Build a card dict from a CheckInDecision."""
+        check_in_data: dict = {
+            "activity_type": ci.activity_type,
+            "instruction": ci.instruction,
+            "hint": ci.hint,
+            "success_message": ci.success_message,
+            "audio_text": ci.audio_text,
+        }
+
+        if ci.activity_type == "pick_one":
+            check_in_data["options"] = ci.options
+            check_in_data["correct_index"] = ci.correct_index
+
+        elif ci.activity_type == "true_false":
+            check_in_data["statement"] = ci.statement
+            check_in_data["correct_answer"] = ci.correct_answer
+
+        elif ci.activity_type == "fill_blank":
+            check_in_data["options"] = ci.options
+            check_in_data["correct_index"] = ci.correct_index
+
+        elif ci.activity_type == "match_pairs":
+            check_in_data["pairs"] = [{"left": p.left, "right": p.right} for p in ci.pairs]
+
+        elif ci.activity_type == "sort_buckets":
+            check_in_data["bucket_names"] = ci.bucket_names
+            check_in_data["bucket_items"] = [
+                {"text": bi.text, "correct_bucket": bi.correct_bucket}
+                for bi in ci.bucket_items
+            ]
+
+        elif ci.activity_type == "sequence":
+            check_in_data["sequence_items"] = ci.sequence_items
+
+        return {
+            "card_id": str(uuid4()),
+            "card_idx": 0,  # Will be re-numbered
+            "card_type": "check_in",
+            "title": ci.title,
+            "content": ci.instruction,  # content field for compatibility
+            "audio_text": ci.audio_text,
+            "check_in": check_in_data,
+        }

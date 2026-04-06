@@ -48,3 +48,40 @@ Include visual explanations on every explanation/demonstration turn. Describe ob
 ## 11. Prefer Structured Input Options
 
 Post-explanation interactive sessions should use structured question formats (single-select, multi-select, fill-in-the-blank) over free-text input. Kids on phones find tapping choices far easier than typing answers. Open-ended questions are fine when you need the student to explain reasoning in their own words.
+
+## 12. Check-In Cards (Pre-Computed)
+
+Lightweight interactive activities inserted between explanation cards during the card phase. They are comprehension checks — warm readiness signals, not quizzes.
+
+### Frequency
+One check-in after every 2-3 content cards. Aim for frequent, lightweight interactions that maintain engagement without feeling like a test grind.
+
+### Activity Types (6 formats, mixed for variety)
+- **pick_one** (~5s): Question + 2-3 tap options. Best for quick recall, definitions.
+- **true_false** (~5s): Statement → tap Right/Wrong. Best for common misconceptions, rule testing.
+- **fill_blank** (~10s): Sentence with blank + 2-3 tap options. Best for applying a rule just taught.
+- **match_pairs** (~20s): Match 2-3 left-right pairs. Best for vocabulary, related definitions.
+- **sort_buckets** (~15s): Sort 4-6 items into 2 labeled groups. Best for classification.
+- **sequence** (~15s): Tap 3-4 items in correct order. Best for ordering, steps, number sequences.
+
+### Variety Rules
+- Never two consecutive check-ins of the same type.
+- Lighter types early (pick_one, true_false, fill_blank), heavier later (match_pairs, sort_buckets, sequence).
+- Use at least 3 different types across a variant.
+
+### Placement Rules
+- Never before card 3 (student needs content first).
+- Never after summary card.
+- Never two check-ins back-to-back with no content card between them.
+- Each check-in tests ONLY concepts from the preceding 2-3 cards.
+
+### Language
+All check-in text follows easy-english principles (see `easy-english.md`): sentences under 12 words, no idioms, no phrasal verbs, Indian contexts, daily-life vocabulary. Audio text is pure words — no symbols or markdown.
+
+### Feedback & Safety
+- Wrong answer → hint (TTS on first wrong), shake animation.
+- Correct → success message with TTS, warm reinforcement.
+- Safety valve: auto-reveal after repeated failures (5 for match_pairs, 3 for sort_buckets) to prevent frustration.
+
+### Struggle Tracking
+Each check-in records: activity_type, wrong_count, hints_shown, confused_pairs (with wrong picks), auto_revealed. This data feeds into the tutor's context for the subsequent interactive phase — enabling targeted reinforcement of weak areas.

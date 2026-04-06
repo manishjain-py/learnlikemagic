@@ -1,23 +1,13 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
 
-interface PairStruggle {
-  left: string;
-  right: string;  // correct right answer
-  wrongCount: number;
-  wrongPicks?: string[];  // actual wrong right items the student selected
-}
-
-export interface MatchActivityResult {
-  wrongCount: number;
-  hintsShown: number;
-  autoRevealed: number;
-  confusedPairs: PairStruggle[];
-}
+// Re-export for backward compatibility
+export type MatchActivityResult = CheckInActivityResult;
 
 interface MatchActivityProps {
   checkIn: CheckInActivity;
-  onComplete: (result: MatchActivityResult) => void;
+  onComplete: (result: CheckInActivityResult) => void;
 }
 
 /** Play a short TTS string — fire-and-forget, errors silently ignored */

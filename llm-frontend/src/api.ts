@@ -85,13 +85,35 @@ export interface MatchPair {
   right: string;
 }
 
+export interface BucketItem {
+  text: string;
+  correct_bucket: number;  // 0 or 1 — index into bucket_names
+}
+
 export interface CheckInActivity {
-  activity_type: 'match_pairs';
+  activity_type: 'pick_one' | 'true_false' | 'fill_blank' | 'match_pairs' | 'sort_buckets' | 'sequence';
   instruction: string;
-  pairs: MatchPair[];
   hint: string;
   success_message: string;
   audio_text: string;
+
+  // pick_one / fill_blank
+  options?: string[];
+  correct_index?: number;
+
+  // true_false
+  statement?: string;
+  correct_answer?: boolean;
+
+  // match_pairs
+  pairs?: MatchPair[];
+
+  // sort_buckets
+  bucket_names?: string[];
+  bucket_items?: BucketItem[];
+
+  // sequence
+  sequence_items?: string[];  // in correct order; frontend shuffles for display
 }
 
 export interface ExplanationCard {
@@ -103,7 +125,7 @@ export interface ExplanationCard {
   visual?: string | null;
   audio_text?: string | null;
   visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
-  check_in?: CheckInActivity | null;  // Match-the-pairs activity for check_in cards
+  check_in?: CheckInActivity | null;  // Interactive check-in activity (6 types)
   source_card_idx?: number;
 }
 
@@ -589,9 +611,10 @@ export async function submitFeedback(sessionId: string, feedbackText: string, ac
 export interface CheckInEventDTO {
   card_idx: number;
   card_title?: string;
+  activity_type: string;
   wrong_count: number;
   hints_shown: number;
-  confused_pairs: Array<{ left: string; right: string; wrong_count: number }>;
+  confused_pairs: Array<{ left: string; right: string; wrong_count: number; wrong_picks?: string[] }>;
   auto_revealed: number;
 }
 

@@ -40,13 +40,14 @@ class CheckInStruggleEvent(BaseModel):
     """Tracks a student's struggles on a check-in activity."""
     card_idx: int = Field(description="Check-in card index (1-based)")
     card_title: str = Field(description="Check-in title for readability")
-    wrong_count: int = Field(default=0, description="Total wrong match attempts")
+    activity_type: str = Field(default="match_pairs", description="Activity type: pick_one, true_false, fill_blank, match_pairs, sort_buckets, sequence")
+    wrong_count: int = Field(default=0, description="Total wrong attempts")
     hints_shown: int = Field(default=0, description="Times hint was displayed")
     confused_pairs: list[dict] = Field(
         default_factory=list,
-        description="Pairs the student struggled with: [{left, right, wrong_count}]"
+        description="Struggle details: [{left, right, wrong_count, wrong_picks}]"
     )
-    auto_revealed: int = Field(default=0, description="Pairs auto-revealed by safety valve")
+    auto_revealed: int = Field(default=0, description="Items auto-revealed by safety valve")
 
 
 class CardPhaseState(BaseModel):

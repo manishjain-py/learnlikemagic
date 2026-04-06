@@ -997,6 +997,7 @@ class SessionService:
                     CheckInStruggleEvent(
                         card_idx=evt.card_idx,
                         card_title=evt.card_title or f"Check-in at card {evt.card_idx}",
+                        activity_type=evt.activity_type,
                         wrong_count=evt.wrong_count,
                         hints_shown=evt.hints_shown,
                         confused_pairs=evt.confused_pairs,

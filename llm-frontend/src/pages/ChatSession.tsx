@@ -26,7 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import VisualExplanationComponent from '../components/VisualExplanation';
 import InteractiveQuestion from '../components/InteractiveQuestion';
-import MatchActivity, { MatchActivityResult } from '../components/MatchActivity';
+import CheckInDispatcher, { CheckInActivityResult } from '../components/CheckInDispatcher';
 import TypewriterMarkdown from '../components/TypewriterMarkdown';
 import '../App.css';
 
@@ -152,7 +152,7 @@ export default function ChatSession() {
   const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
   // Check-in gate + struggle tracking — keyed by stable card_id, not mutable slide index
   const [completedCheckIns, setCompletedCheckIns] = useState<Set<string>>(new Set());
-  const [checkInStruggles, setCheckInStruggles] = useState<Map<string, MatchActivityResult>>(new Map());
+  const [checkInStruggles, setCheckInStruggles] = useState<Map<string, CheckInActivityResult>>(new Map());
 
   // Annotate cards with 0-based source_card_idx if not already present
   const annotateCards = (cards: ExplanationCard[]): ExplanationCard[] =>
@@ -1134,6 +1134,7 @@ export default function ChatSession() {
           return {
             card_idx: card?.card_idx ?? 0,
             card_title: card?.title || `Check-in ${cardId}`,
+            activity_type: card?.check_in?.activity_type || 'match_pairs',
             wrong_count: data.wrongCount,
             hints_shown: data.hintsShown,
             confused_pairs: data.confusedPairs.map(p => ({ left: p.left, right: p.right, wrong_count: p.wrongCount, wrong_picks: p.wrongPicks || [] })),
@@ -1645,7 +1646,7 @@ export default function ChatSession() {
                           <div className="explanation-card-type">
                             <span style={{ background: '#CCFBF1', color: '#115E59' }}>Check-in</span>
                           </div>
-                          <MatchActivity
+                          <CheckInDispatcher
                             checkIn={slide.checkIn}
                             onComplete={(result) => {
                               setCompletedCheckIns(prev => new Set(prev).add(slide.id));

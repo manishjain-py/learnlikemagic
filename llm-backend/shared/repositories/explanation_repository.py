@@ -22,14 +22,39 @@ class MatchPair(BaseModel):
     right: str
 
 
+class BucketItem(BaseModel):
+    """An item to sort into a bucket."""
+    text: str
+    correct_bucket: int  # 0 or 1 — index into bucket_names
+
+
 class CheckInActivity(BaseModel):
-    """Match-the-pairs activity embedded in a check-in card."""
-    activity_type: str = "match_pairs"  # extensible later
-    instruction: str  # "Match each fraction to its meaning"
-    pairs: list[MatchPair]  # 3-4 pairs, stored in correct order
-    hint: str  # shown on wrong match
-    success_message: str  # shown when all matched
-    audio_text: str  # TTS for instruction
+    """Interactive check-in activity embedded in a check-in card.
+    Supports 6 types: pick_one, true_false, fill_blank, match_pairs, sort_buckets, sequence.
+    """
+    activity_type: str = "match_pairs"
+    instruction: str
+    hint: str
+    success_message: str
+    audio_text: str
+
+    # pick_one / fill_blank
+    options: Optional[list[str]] = None
+    correct_index: Optional[int] = None
+
+    # true_false
+    statement: Optional[str] = None
+    correct_answer: Optional[bool] = None
+
+    # match_pairs
+    pairs: Optional[list[MatchPair]] = None
+
+    # sort_buckets
+    bucket_names: Optional[list[str]] = None
+    bucket_items: Optional[list[BucketItem]] = None
+
+    # sequence
+    sequence_items: Optional[list[str]] = None
 
 
 class ExplanationCard(BaseModel):

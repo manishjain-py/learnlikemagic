@@ -31,11 +31,12 @@ def _sample_cards(n=5, include_summary=True):
     return cards
 
 
-def _make_check_in_decision(insert_after=3, num_pairs=3):
+def _make_check_in_decision(insert_after=3, num_pairs=3, activity_type="match_pairs"):
     """Build a mock CheckInDecision."""
     from book_ingestion_v2.services.check_in_enrichment_service import CheckInDecision, MatchPairOutput
     return CheckInDecision(
         insert_after_card_idx=insert_after,
+        activity_type=activity_type,
         title="Let's check!",
         instruction="Match each term to its meaning",
         pairs=[MatchPairOutput(left=f"Term {j}", right=f"Meaning {j}") for j in range(num_pairs)],
@@ -149,7 +150,7 @@ class TestCheckInValidation:
     def test_rejects_too_many_pairs(self):
         svc = self._get_service()
         cards = _sample_cards(6)
-        ci = _make_check_in_decision(insert_after=3, num_pairs=5)
+        ci = _make_check_in_decision(insert_after=3, num_pairs=4)  # MAX_PAIRS is now 3
         result = svc._validate_check_ins([ci], cards)
         assert len(result) == 0
 
@@ -176,21 +177,21 @@ class TestCheckInValidation:
         assert len(result) == 0
 
     def test_rejects_insufficient_gap(self):
-        """Two check-ins with gap < 2 — second is dropped."""
+        """Two check-ins at same card_idx — second is dropped (gap=0 < MIN_GAP=1)."""
         svc = self._get_service()
         cards = _sample_cards(8)
         ci1 = _make_check_in_decision(insert_after=3)
-        ci2 = _make_check_in_decision(insert_after=4)  # gap of 1 — too close
+        ci2 = _make_check_in_decision(insert_after=3)  # gap of 0 — too close
         result = svc._validate_check_ins([ci1, ci2], cards)
         assert len(result) == 1
         assert result[0].insert_after_card_idx == 3
 
     def test_accepts_sufficient_gap(self):
-        """Two check-ins with gap >= 2 — both pass."""
+        """Two check-ins with gap >= 1 — both pass."""
         svc = self._get_service()
         cards = _sample_cards(8)
         ci1 = _make_check_in_decision(insert_after=3)
-        ci2 = _make_check_in_decision(insert_after=5)  # gap of 2 — OK
+        ci2 = _make_check_in_decision(insert_after=4)  # gap of 1 — OK (MIN_GAP=1)
         result = svc._validate_check_ins([ci1, ci2], cards)
         assert len(result) == 2
 
@@ -199,7 +200,8 @@ class TestCheckInValidation:
         svc = self._get_service()
         cards = _sample_cards(6)
         ci = CheckInDecision(
-            insert_after_card_idx=3, title="Check", instruction="Match",
+            insert_after_card_idx=3, activity_type="match_pairs",
+            title="Check", instruction="Match",
             pairs=[
                 MatchPairOutput(left="Same", right="A"),
                 MatchPairOutput(left="Same", right="B"),  # duplicate left

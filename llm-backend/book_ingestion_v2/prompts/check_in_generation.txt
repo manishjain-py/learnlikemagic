@@ -1,28 +1,66 @@
 You are designing quick comprehension check-ins for a Grade {grade} student learning about {topic_title} ({subject}).
 
-These check-ins are match-the-pairs activities inserted between explanation cards. They test whether the student absorbed the key ideas from the preceding 2-3 cards. They are NOT quizzes — they are warm readiness signals. Tone: "Let's check!" not "Test time."
+Check-ins are short interactive activities inserted between explanation cards. They test whether the student absorbed the key ideas from the preceding 2-3 cards. They are NOT quizzes — they are warm readiness signals. Tone: "Let's check!" not "Test time."
 
-LANGUAGE: Students are Indian — English is NOT their first language. Use only basic, everyday English in all text (instructions, hints, success messages, pair items). No idioms, no phrasal verbs, no complex words. Sentences under 12 words.
+LANGUAGE RULES (students are Indian — English is NOT their first language):
+- Sentences under 12 words. One idea per sentence.
+- No idioms, no phrasal verbs, no complex words.
+- Use Indian contexts: rupees, chapatis, cricket, Diwali, Indian names (Aarav, Meera, Kabir).
+- Use daily-life words: "big" not "enormous", "show" not "demonstrate".
+- audio_text: pure spoken words, no symbols, no markdown.
 
 EXPLANATION CARDS:
 {cards_json}
 
-RULES:
-1. Insert 2-3 check-ins across the card sequence — at natural concept boundaries.
+ACTIVITY TYPES — use all six, mixing them for variety:
+
+1. pick_one — Question + 2-3 tap options. One correct answer.
+   Fields: instruction (the question), options (2-3 choices), correct_index (0-based).
+   Best for: quick recall, definitions, "which of these".
+
+2. true_false — Statement the student judges as right or wrong.
+   Fields: statement (the claim), correct_answer (true/false).
+   instruction: always "Is this right?"
+   Best for: common mistakes, testing understanding of rules.
+
+3. fill_blank — Sentence with a blank + 2-3 tap options.
+   Fields: instruction (sentence with ___ for the blank), options (2-3 choices), correct_index.
+   Best for: applying a rule or definition just taught.
+
+4. match_pairs — Match left items to right items. 2-3 pairs.
+   Fields: instruction ("Match each ... to ..."), pairs ([{left, right}]).
+   Each pair must have ONE unambiguous correct match. No synonym collisions.
+   Left: terms, numbers, short phrases. Right: definitions, descriptions, results.
+   Best for: vocabulary, multiple related definitions.
+
+5. sort_buckets — Sort 4-6 items into 2 labeled groups.
+   Fields: instruction ("Put each ... in the right group"), bucket_names (2 labels), bucket_items ([{text, correct_bucket}]).
+   correct_bucket is 0 or 1 (index into bucket_names). At least 2 items per bucket.
+   Best for: classification, comparing categories.
+
+6. sequence — Put 3-4 items in correct order by tapping.
+   Fields: instruction ("Put these in order from ... to ..."), sequence_items (list in correct order).
+   Best for: ordering, steps, number sequences, place values.
+
+PLACEMENT RULES:
+1. Insert one check-in after every 2-3 content cards — aim for frequent, lightweight checks.
 2. Never before card_idx 3 (student needs content first).
-3. Never immediately after another check-in.
-4. Never after the last card (summary card).
+3. Never after the last card (summary card).
+4. Never two check-ins back-to-back with no content card between them.
 5. Each check-in tests ONLY concepts from the preceding 2-3 cards.
-6. Each check-in has 3-4 match pairs.
-7. Each pair must have EXACTLY ONE unambiguous correct match — no synonym collisions, no pairs where multiple matches feel right.
-8. Pairs must work from TEXT ALONE — no visual-dependent matching.
-9. Left column: terms, numbers, or short phrases.
-10. Right column: definitions, descriptions, or results.
-11. Hint: one sentence nudge that helps without giving the answer.
-12. Success message: warm confirmation + one-sentence reinforcement of the concept.
-13. Use SAME language and examples from the cards — don't introduce new terms.
-14. audio_text: spoken version of instruction — pure words, no symbols/markdown.
-15. insert_after_card_idx must reference the card_idx value of an existing card (1-based).
+
+VARIETY RULES:
+6. Never use the same activity_type for two consecutive check-ins.
+7. Start with lighter types (pick_one, true_false, fill_blank) early in the sequence.
+8. Use heavier types (match_pairs, sort_buckets, sequence) after more content has been covered.
+9. Use at least 3 different activity types across the full sequence.
+
+CONTENT RULES:
+10. Use SAME language and examples from the cards — do not introduce new terms.
+11. All content must work from TEXT ALONE — no visual-dependent activities.
+12. Hint: one sentence nudge that helps without giving the answer.
+13. Success message: warm confirmation + one sentence reinforcing the concept.
+14. insert_after_card_idx must be the card_idx value of an existing card (1-based).
 
 OUTPUT FORMAT — respond with valid JSON only:
 {output_schema}
