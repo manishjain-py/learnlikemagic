@@ -33,7 +33,7 @@ uvicorn main:app --reload  # http://localhost:8000
 
 # Frontend
 cd llm-frontend
-npm install && npm run dev  # http://localhost:5173
+npm install && npm run dev  # http://localhost:3000
 ```
 
 ## Documentation

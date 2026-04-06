@@ -61,6 +61,10 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 - `<role>_agent.py` - LLM-powered actors
 - `orchestrator.py` - Agent orchestration
 
+**Local dev servers:**
+- Backend: `http://localhost:8000` — `cd llm-backend && source venv/bin/activate && make run`
+- Frontend: `http://localhost:3000` — `cd llm-frontend && npm run dev`
+
 **Critical:** Always build Docker images with `--platform linux/amd64` for AWS deployment.
 
 ## Claude Code as LLM Provider

@@ -56,7 +56,7 @@ cd llm-backend && source venv/bin/activate
 make run  # http://localhost:8000, docs at /docs
 
 # 4. Run frontend (separate terminal)
-cd llm-frontend && npm run dev  # http://localhost:5173
+cd llm-frontend && npm run dev  # http://localhost:3000
 
 # 5. Make changes, test locally
 
