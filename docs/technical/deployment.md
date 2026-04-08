@@ -14,7 +14,7 @@ AWS infrastructure, Terraform, CI/CD, and production operations.
 |  App Runner --> ECR (FastAPI container)           [Backend]   |
 |       |                                                      |
 |       v                                                      |
-|  RDS Aurora Serverless v2 (PostgreSQL 15.10)     [Database]  |
+|  RDS PostgreSQL 15 (db.t4g.micro, 20GB gp2)      [Database]  |
 |                                                              |
 |  Secrets Manager (OpenAI, Gemini, Anthropic, DB password)    |
 |  Cognito (Authentication)                                    |
@@ -22,7 +22,7 @@ AWS infrastructure, Terraform, CI/CD, and production operations.
 +-------------------------------------------------------------+
 ```
 
-**Stack:** Terraform (AWS provider ~5.0), FastAPI, React+Vite, Aurora Serverless v2, App Runner, GitHub Actions (OIDC)
+**Stack:** Terraform (AWS provider ~5.0), FastAPI, React+Vite, RDS PostgreSQL 15 (single instance, db.t4g.micro), App Runner, GitHub Actions (OIDC)
 
 ---
 
@@ -32,7 +32,7 @@ AWS infrastructure, Terraform, CI/CD, and production operations.
 |-----------|-----|
 | Backend | https://ypwbjbcmbd.us-east-1.awsapprunner.com |
 | Frontend | https://dlayb9nj2goz.cloudfront.net |
-| Database | `learnlikemagic-production.cluster-cgp4ua06a7ei.us-east-1.rds.amazonaws.com` |
+| Database | RDS instance endpoint (see `make db-url`) |
 
 ---
 
@@ -63,14 +63,16 @@ Use `make build-prod` (not `make build-local`) for AWS deployments.
 ```bash
 cd infra/terraform
 cp terraform.tfvars.example terraform.tfvars
-# Edit with your values:
-#   project_name, environment, aws_region
-#   github_org, github_repo
-#   db_name, db_user, db_password
-#   openai_api_key, gemini_api_key, anthropic_api_key
-#   tutor_llm_provider, llm_model
-#   domain_names (optional), acm_certificate_arn (optional)
+# Required (no default in variables.tf): github_org, db_password,
+#   openai_api_key, gemini_api_key
+# Defaulted in variables.tf (override only if needed): aws_region (us-east-1),
+#   environment (production), project_name (learnlikemagic), github_repo
+#   (learnlikemagic), db_name (tutor), db_user (llmuser), llm_model
+#   (gpt-4o-mini), tutor_llm_provider (openai), anthropic_api_key (""),
+#   domain_names ([]), acm_certificate_arn ("")
 ```
+
+`terraform.tfvars.example` ships with a starter set (excluding `gemini_api_key`); add it (and any optional vars) manually. `gemini_api_key` is required by `variables.tf` and must be set.
 
 ### 2. Deploy Infrastructure
 
@@ -78,7 +80,7 @@ cp terraform.tfvars.example terraform.tfvars
 make init && make plan && make apply
 ```
 
-Creates: ECR, RDS Aurora Serverless v2, Secrets Manager (3-4 secrets; Anthropic is conditional), IAM roles, S3 + CloudFront, GitHub OIDC provider
+Creates: ECR, RDS PostgreSQL (db.t4g.micro instance, default VPC, publicly accessible, 20GB gp2, 7-day backups), Secrets Manager (3-4 secrets; Anthropic is conditional on `var.anthropic_api_key`), App Runner service + IAM roles + autoscaling config, S3 + CloudFront + SPA-routing function, GitHub OIDC provider + IAM role
 
 ### 3. Initialize Database
 
@@ -124,7 +126,7 @@ Sets (via Terraform outputs): `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REGISTRY`, `ECR
 | Deploy Backend | `deploy-backend.yml` | Push to `main` (changes in `llm-backend/**`, `docs/**`, `e2e/scenarios.json`, or the workflow file); manual | Build AMD64 image --> Push ECR --> Deploy App Runner --> Wait for completion |
 | Deploy Frontend | `deploy-frontend.yml` | Push to `main` (changes in `llm-frontend/**` or the workflow file); manual | Build with Vite --> Sync S3 (with cache headers) --> Invalidate CloudFront |
 | Manual Deploy | `manual-deploy.yml` | Manual only | Deploy frontend, backend, or both (selectable). **Note:** backend build uses native arch (no `--platform linux/amd64`) and does not copy `docs/` or `e2e/` into build context. Frontend build only passes `VITE_API_URL` (missing Cognito/Google env vars). Prefer the main deploy workflows for production |
-| Daily Coverage | `daily-coverage.yml` | Daily at 6:00 AM UTC; manual | Run pytest coverage --> Generate HTML report (with priority tier breakdown) --> Email report --> Upload artifacts (30-day retention) --> Check 80% threshold |
+| Daily Coverage | `daily-coverage.yml` | Daily at 06:00 UTC; manual | Run `pytest tests/unit/` with coverage --> Generate styled HTML report (priority-tier breakdown) --> Email via SMTP to `manishjain.py@gmail.com` --> Upload artifacts (30-day retention) --> Fail if overall coverage < 80% |
 
 All workflows use **GitHub OIDC** for AWS authentication (no long-lived credentials).
 
@@ -173,7 +175,7 @@ infra/terraform/
   Makefile             # Automation targets
   modules/
     secrets/           # Secrets Manager (OpenAI, Gemini, DB password; Anthropic conditional)
-    database/          # Aurora Serverless v2 cluster + instance + security group
+    database/          # RDS PostgreSQL 15 instance (db.t4g.micro) + subnet group + parameter group + security group
     ecr/               # ECR repository + lifecycle policy (keep last 10 images)
     app-runner/        # App Runner service + IAM roles (ECR access, Secrets, S3)
     frontend/          # S3 bucket + CloudFront distribution + SPA routing function
@@ -225,10 +227,10 @@ make clean         # Remove __pycache__, .pytest_cache, etc.
 # Connect
 psql postgresql://user:pass@endpoint:5432/tutor
 
-# Backup
-aws rds create-db-cluster-snapshot \
-  --db-cluster-identifier learnlikemagic-production \
-  --db-cluster-snapshot-identifier backup-$(date +%Y%m%d)
+# Backup (manual snapshot of the RDS instance)
+aws rds create-db-snapshot \
+  --db-instance-identifier learnlikemagic-production \
+  --db-snapshot-identifier backup-$(date +%Y%m%d)
 ```
 
 ### Logs
@@ -267,11 +269,11 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 
 | Component | Config |
 |-----------|--------|
-| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, health check at `/health` (10s interval, 5s timeout) |
-| Aurora | PostgreSQL 15.10, 0.5-2 ACU, 7-day backup retention |
-| ECR | Keep last 10 images, scan on push, AES256 encryption |
-| CloudFront | HTTPS redirect, gzip+brotli, SPA routing via CloudFront Function, OAI for S3 access, PriceClass_100 (North America + Europe) |
-| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window. Note: `GOOGLE_CLOUD_TTS_API_KEY` reuses the Gemini secret ARN in App Runner |
+| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, provisioned (always-on) for background-job CPU. Service name `llm-backend-prod`. Health check `/health` HTTP, 10s interval, 5s timeout, healthy=1, unhealthy=5. Auto-deploy disabled — deploys triggered via GitHub Actions |
+| RDS PostgreSQL | Engine `postgres` 15, `db.t4g.micro`, 20GB `gp2`, default VPC, publicly accessible (sg allows 0.0.0.0/0:5432), 7-day backups (03:00-04:00 UTC), maintenance Mon 04:00-05:00 UTC, deletion protection off, skip final snapshot |
+| ECR | Mutable tags, keep last 10 images, scan on push, AES256 encryption |
+| CloudFront | Redirect-to-HTTPS, gzip+brotli, custom cache policy (default TTL 86400s, max 31536000s, no cookies/headers/query forwarded), SPA routing via CloudFront Function (rewrites extensionless URIs to `/index.html`), 403/404 → `/index.html`, OAI for S3 access, PriceClass_100 (NA+EU) |
+| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window. App Runner instance role grants `secretsmanager:GetSecretValue` only to OpenAI + Gemini ARNs (Anthropic not in IAM policy). `GOOGLE_CLOUD_TTS_API_KEY` reuses the Gemini secret ARN in App Runner env |
 
 **Estimated cost (low traffic):** ~$10-30/month
 

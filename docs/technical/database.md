@@ -194,6 +194,7 @@ Centralized model configuration per component. Single source of truth for which 
 | `explanation_generator` | openai | gpt-5.2 | Pre-computed explanation generation for topics |
 | `fast_model` | openai | gpt-4o-mini | Lightweight model for safety checks, translation, and other fast tasks |
 | `pixi_code_generator` | openai | gpt-5.3-codex | Pixi.js visual code generation from natural language |
+| `check_in_enrichment` | claude_code | claude-opus-4-6 | Check-in card generation (match-the-pairs activities for explanation cards) |
 
 ### Session Feedback
 
@@ -405,7 +406,7 @@ Custom imperative migration (not Alembic):
 15. `_apply_focus_mode_column()` -- Adds `focus_mode` column to users (default true); if column already exists, resets all `focus_mode = FALSE` to `TRUE`
 16. `_apply_session_feedback_table()` -- Verifies session_feedback table exists (created by `create_all`)
 17. `_apply_topic_planning_columns()` -- Adds `planned_topics_json` to chapter_processing_jobs, `prior_topics_context` and `topic_assignment` to chapter_topics, and `prior_topics_context` to teaching_guidelines (topic-quality planning support)
-18. `_apply_topic_explanations_table()` -- Verifies topic_explanations table exists (created by `create_all`); ensures `explanation_generator` LLM config entry exists via `_ensure_llm_config()`
+18. `_apply_topic_explanations_table()` -- Verifies topic_explanations table exists (created by `create_all`); ensures `explanation_generator` and `check_in_enrichment` LLM config entries exist via `_ensure_llm_config()`
 19. `_apply_issues_table()` -- Verifies issues table exists (created by `create_all`)
 20. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
 21. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)

@@ -46,7 +46,7 @@ All subsequent API calls ───────────►  Verify access tok
 
 ### Email/Password
 
-1. **Signup**: Client calls `CognitoUser.signUp()` with email + name attributes → email verification required
+1. **Signup**: Client calls `userPool.signUp()` with email + a placeholder `name` attribute (`email.split('@')[0]`, since name is a required Cognito schema attribute and the real name is collected during onboarding) → email verification required
 2. **Verify**: `CognitoUser.confirmRegistration(code)` → account activated
 3. **Auto-login**: `loginWithEmail(email, password)` is called immediately after verification (password is passed via React Router state)
 4. **Login**: `CognitoUser.authenticateUser()` → get ID + Access tokens
@@ -117,8 +117,8 @@ On app mount:
 |--------|------|------|-------------|
 | `GET` | `/profile/enrichment` | Access Token | Get kid's enrichment profile (returns empty object if none exists) |
 | `PUT` | `/profile/enrichment` | Access Token | Create/update enrichment profile. Triggers personality regeneration asynchronously via debounced background task if data changed. |
-| `GET` | `/profile/personality` | Access Token | Get latest derived personality + status (`none`, `generating`, `ready`, `failed`) |
-| `POST` | `/profile/personality/regenerate` | Access Token | Force regeneration of personality (requires existing enrichment data with at least one section filled) |
+| `GET` | `/profile/personality` | Access Token | Get latest derived personality + status (`none`, `generating`, `ready`, `failed`). `updated_at` is sourced from the personality row's `created_at`. |
+| `POST` | `/profile/personality/regenerate` | Access Token | Force regeneration of personality (requires existing enrichment with meaningful data — chip section, parent_notes, attention_span, or pace_preference). Runs `_force_regenerate_bg` as a background task using its own DB session (not request-scoped). |
 
 ---
 
@@ -308,7 +308,7 @@ The `useStudentProfile` hook (`hooks/useStudentProfile.ts`) bridges auth/profile
 
 Profile updates to personality-triggering fields (name, preferred_name, age, grade, board) also trigger regeneration if an enrichment profile exists.
 
-`POST /profile/personality/regenerate` calls `PersonalityService.force_regenerate()`, which bypasses the hash-based skip check and always creates a new personality version.
+`POST /profile/personality/regenerate` schedules `_force_regenerate_bg` (which opens its own DB session), which calls `PersonalityService.force_regenerate()`. This bypasses the hash-based skip check and always creates a new personality version. Returns `{"status": "regenerating"}` immediately.
 
 ### Enrichment Service
 
@@ -339,7 +339,7 @@ Profile updates to personality-triggering fields (name, preferred_name, age, gra
 | `llm-frontend/src/pages/ForgotPasswordPage.tsx` | Two-step password reset (send code, set new password) |
 | `llm-frontend/src/pages/OAuthCallbackPage.tsx` | Google OAuth redirect handler, token exchange, error display with retry |
 | `llm-frontend/src/pages/OnboardingFlow.tsx` | Onboarding wizard (6 steps: name, preferred name, age, grade, board, about + done screen) |
-| `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with language prefs, focus mode, enrichment CTA |
+| `llm-frontend/src/pages/ProfilePage.tsx` | Profile view/edit with language prefs and enrichment CTA. Read-only by default; "Edit Profile" toggles editing. Account section shows `auth_provider` + email/phone. (No focus_mode toggle in UI — backend supports it but no control.) |
 | `llm-frontend/src/pages/ReportIssuePage.tsx` | Issue reporting form (text/voice input + screenshot upload) |
 | `llm-frontend/src/pages/EnrichmentPage.tsx` | Enrichment profile form (interests, learning styles, motivations, challenges, notes, session prefs) + personality card |
 | `llm-frontend/src/components/enrichment/SectionCard.tsx` | Collapsible section card for enrichment form |

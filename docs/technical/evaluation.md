@@ -72,6 +72,8 @@ Generate Reports (JSON + Markdown artifacts)
 
 `ConversationEvaluator` sends full transcript plus persona context to an LLM judge. Uses `config.create_llm_service("evaluator")` for provider-agnostic LLM calls with `reasoning_effort="high"` and `json_mode=True`.
 
+The system prompt is loaded at module import time from `prompts/evaluator.txt`; the card-phase dimensions block is loaded from `prompts/card_phase_dimensions.txt` and spliced in via `{card_phase_dimensions}` only when the conversation contains `explanation_card` messages. The schema (scores + analysis fields) is generated dynamically per call based on which dimensions apply.
+
 ### 7 Evaluation Dimensions (scored 1-10)
 
 **Core dimensions (always scored):**
@@ -116,7 +118,7 @@ The `_build_user_message()` method assembles the evaluator input:
 - Persona context: name, ID, description, personality traits, correct answer probability, behavioral tendencies
 - Topic context (when available): topic name, grade level, and nested `guidelines` containing `learning_objectives` and `common_misconceptions`
 
-**Note:** Topic context is only provided in the session evaluation path (`_run_session_evaluation`), where it is extracted from the session state. Simulated evaluation (both API and CLI) does not pass `topic_info` to the evaluator -- the judge evaluates based on the transcript and persona alone.
+**Note:** Topic context is only provided in the session evaluation path (`_run_session_evaluation`), where it is extracted from the session state via `hasattr` lookups on `topic.grade_level`, `topic.learning_objectives`, and `topic.common_misconceptions`. Simulated evaluation (both API and CLI) does not pass `topic_info` to the evaluator -- the judge evaluates based on the transcript and persona alone.
 
 ### Model Configuration
 
@@ -155,7 +157,7 @@ The directory name includes the persona ID when run from CLI, and a `_r{N}` suff
 | `config.json` | JSON | Topic ID, tutor model, evaluator model, persona, max turns, timestamp, provider config |
 | `conversation.json` | JSON | Machine-readable transcript with messages, session metadata, config, `has_card_phase`, `card_phase_data` |
 | `conversation.md` | Markdown | Human-readable transcript with persona info header |
-| `evaluation.json` | JSON | Scores (5-7 dimensions + avg), dimension analysis, problems with severity/root cause, summary |
+| `evaluation.json` | JSON | Scores (5-7 dimensions), `avg_score` (mean across all present dimensions, rounded to 2 decimals), dimension analysis, problems with severity/root cause, summary |
 | `review.md` | Markdown | Formatted report with score bars, detailed analysis per dimension, problems |
 | `problems.md` | Markdown | Problem-focused report with overview table, root cause distribution, suggested fixes |
 | `run.log` | Text | Timestamped execution log from session runner |
@@ -221,7 +223,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `claude_code` (no API key needed). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display purposes, but the evaluation pipeline's model routing only checks `== "anthropic"` or `== "claude_code"` -- using `anthropic-haiku` as a provider would incorrectly route to the OpenAI client and fail.
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `claude_code` (no API key needed). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display purposes, and `LLMService` itself routes `anthropic-haiku` to the Anthropic client. However, `EvalConfig.create_llm_service()` selects the model_id by checking `provider == "anthropic"` only -- with `anthropic-haiku`, it falls through to the default `evaluator_model`/`simulator_model` (e.g., `gpt-5.2`), so the call would attempt to use the Anthropic client with an OpenAI model_id and fail. Use `anthropic` for Opus or wire haiku model selection into `create_llm_service` to use Haiku.
 
 ---
 
@@ -404,8 +406,8 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 
 - **Run list** -- cards with run ID, timestamp, source badge (Simulated/Session), topic, message count, avg score badge, mini score bars
 - **Start form** -- tabbed panel with two modes:
-  - "Evaluate Existing Session" -- dropdown of sessions from DB (shows topic, message count, date)
-  - "New Simulated Session" -- dropdown of approved guidelines, student persona dropdown (loaded from `GET /api/evaluation/personas`), max turns slider (5-40). The start request sends `persona_file` alongside `topic_id` and `max_turns`.
+  - "Evaluate Existing Session" -- dropdown of sessions from DB (shows topic, message count, date); warns if the selected session has zero messages
+  - "New Simulated Session" -- dropdown of approved guidelines (filtered by `status=APPROVED`), student persona dropdown (loaded from `GET /api/evaluation/personas`, auto-selects `average_student.json` as default), max turns slider (5-40). The start request sends `persona_file` alongside `topic_id` and `max_turns`.
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
@@ -425,6 +427,8 @@ The frontend `DIMENSIONS` constant hardcodes the 5 core evaluation dimensions: r
 | `autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py` | CLI entry point, single-persona and multi-persona orchestration |
 | `autoresearch/tutor_teaching_quality/evaluation/api.py` | FastAPI endpoints, background thread execution, status polling, session evaluation |
 | `autoresearch/tutor_teaching_quality/evaluation/personas/*.json` | 8 student persona definitions |
+| `autoresearch/tutor_teaching_quality/evaluation/prompts/evaluator.txt` | LLM judge system prompt with 5 core dimension rubrics, persona-aware criteria, and JSON output schema templates |
+| `autoresearch/tutor_teaching_quality/evaluation/prompts/card_phase_dimensions.txt` | Two card-phase dimension rubrics, spliced into evaluator prompt only when cards present |
 | `llm-frontend/src/features/admin/pages/EvaluationDashboard.tsx` | Evaluation UI: run list, detail view, start form, status polling |
 | `llm-frontend/src/features/admin/api/adminApi.ts` | API client functions for evaluation endpoints |
 | `llm-frontend/src/features/admin/types/index.ts` | TypeScript types for evaluation data |
