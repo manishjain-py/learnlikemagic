@@ -10,6 +10,7 @@ A learning session is a one-on-one conversation between a student and the AI tut
 2. **Pick a topic** — Choose a topic within that subject (e.g., Fractions)
 3. **Pick a subtopic** — Choose a specific subtopic (e.g., Comparing Fractions)
    - Subtopics show progress badges if you've studied them before: a check mark for mastered, a dot for in progress, along with a percentage score
+   - Some subtopics are marked as **warm-up / refresher** topics (they cover prerequisite knowledge from earlier grades). These are restricted to Teach Me mode and use the card-based explanation flow only — no exam, no Clarify Doubts. When you finish reading the refresher cards, the session ends right there — there is no follow-up interactive lesson and no per-card "I didn't understand" simplification
 4. **Pick a mode** — Choose how you want to learn:
    - **Teach Me** — Learn the topic from scratch with a structured lesson
    - **Clarify Doubts** — Ask questions about the topic and get direct answers

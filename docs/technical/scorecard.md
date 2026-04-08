@@ -16,7 +16,7 @@ The report card is **deterministic only** — it shows coverage completion perce
 | `GET` | `/sessions/guideline/{guideline_id}` | Required | `GuidelineSessionsResponse` | List sessions for a topic (mode selection, past exams, resume detection) |
 | `GET` | `/sessions/{session_id}/exam-review` | Required | `ExamReviewResponse` | Detailed question-by-question review of a completed exam |
 
-All endpoints are in `tutor/api/sessions.py`. The first two delegate to `ReportCardService`; the resumable endpoint queries `SessionModel` directly for paused teach_me sessions; the guideline sessions endpoint delegates to `SessionRepository.list_by_guideline()`; the exam-review endpoint parses `SessionState` directly.
+All endpoints are in `tutor/api/sessions.py`. The first two delegate to `ReportCardService`; the resumable endpoint queries `SessionModel` directly for paused teach_me sessions and validates state via `SessionState.model_validate_json`; the guideline sessions endpoint delegates to `SessionRepository.list_by_guideline()`; the exam-review endpoint loads the session, validates `mode == "exam"` and `exam_finished`, then parses `SessionState` directly to build `ExamReviewQuestion` entries.
 
 ---
 
@@ -128,8 +128,9 @@ Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.t
 
 **Backend** (`ReportCardService.get_topic_progress`):
 - Only counts **Teach Me** sessions (clarify_doubts and exam sessions are excluded entirely)
-- `status = "studied"` if `session_count > 0`
-- `status = "not_started"` otherwise
+- Coverage uses `mastery_estimates` keys from the latest teach_me session as the plan denominator (same logic as the full report card)
+- Returns map keyed by `topic_id` (the session's `state.topic.topic_id`, which is the guideline id)
+- Returned `status` is always `"studied"` in practice — entries only exist for guidelines the user has touched. The frontend treats missing keys as "not started" implicitly
 - Returns `{user_progress: {guideline_id: {coverage, session_count, status}}}`
 
 **Frontend badge mapping** — Both components define a local `ProgressStatus` type (`completed | in_progress | not_started`) derived from backend coverage values:
@@ -271,7 +272,9 @@ The frontend (`ModeSelection.tsx`) uses this to:
 - Detect incomplete teach_me sessions with progress (`coverage > 0`) and show "Continue Lesson"
 - Detect incomplete exams with progress (`exam_answered > 0`) and show "Resume Exam"
 - Hide the "Take Exam" button while an incomplete exam exists (prevents duplicate exams)
-- List completed exams in an expandable "Past Exams" section with date and score
+- List completed exams in an expandable "Past Exams" section with date, score, and percentage (color-coded: green >=70%, orange >=40%, red <40%)
+
+Refresher topics (`topic.topic_key === 'get-ready'`) suppress the exam path entirely: no resume-exam, no Take Exam button, no Past Exams section, no Clarify Doubts option. Only the Teach Me ("Get Ready") card is shown.
 
 ---
 
@@ -310,6 +313,8 @@ The frontend calls `getReportCard()` which hits `/sessions/report-card`. It rend
 
 - **Overview** — Title "My Report Card", session/chapter counts, subject cards grid
 - **Subject Detail** — Back navigation, chapter/topic tree with coverage bars, exam scores, last-studied dates, and "Practice Again" buttons
+
+`ChapterSection` filters out topics where `topic_key === 'get-ready'` so refresher/prerequisite warm-ups don't pollute the report card. "Practice Again" is only rendered when `topic.guideline_id` is set (sessions without a guideline link can't be replayed).
 
 ### Mode Selection (Past Exams and Resume)
 

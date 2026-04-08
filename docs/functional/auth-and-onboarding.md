@@ -77,8 +77,7 @@ Progress dots at the top show which step you're on (six dots for the six input s
 
 After onboarding, you can view and update your profile from the profile page (accessible via the user menu in the top navigation bar).
 
-- **View mode** — Shows all your profile fields in read-only format, plus your sign-in method (email, phone, or Google) and account details
-- **Edit mode** — Tap "Edit Profile" to make changes, then "Save Changes" to confirm or "Cancel" to discard. A success message appears after saving.
+All fields are visible by default in read-only state. Tap "Edit Profile" to enable editing, then "Save Changes" to confirm or "Cancel" to discard. A success message appears after saving. The Account section at the bottom shows your sign-in method (email, phone, or Google) along with the email or phone used.
 
 Editable fields:
 - Name

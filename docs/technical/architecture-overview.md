@@ -97,17 +97,16 @@ llm-backend/
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
 │   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
-│   │                     #   explanation_generator_service
+│   │                     #   explanation_generator_service, animation_enrichment_service,
+│   │                     #   check_in_enrichment_service, refresher_topic_generator_service
 │   ├── repositories/     # chapter_repository, chapter_page_repository, chunk_repository,
 │   │                     #   processing_job_repository, topic_repository
 │   ├── models/           # schemas, database, processing_models
 │   ├── utils/            # chunk_builder
 │   ├── constants.py      # Pipeline config, status enums, job types
 │   └── prompts/
-├── study_plans/          # Study plan generation
-│   ├── api/
-│   ├── services/         # generator_service, reviewer_service, orchestrator
-│   └── models/
+├── study_plans/          # Study plan generation (services-only; imported by tutor)
+│   └── services/         # generator_service, reviewer_service
 ├── autoresearch/         # Autonomous experiment pipelines (6 pipelines)
 │   ├── tutor_teaching_quality/
 │   │   ├── evaluation/   # Session evaluation pipeline (flat structure)
@@ -165,6 +164,8 @@ Most modules follow the layered internal structure:
 
 ### Routers Registered in `main.py`
 
+All routers below are wired in `main.py` via `app.include_router()`. The `study_plans` module has no router (used internally by the tutor session service).
+
 | Router | Prefix | Purpose |
 |--------|--------|---------|
 | health | (none) | Root endpoint, `/health`, `/health/db`, `/config/models` |
@@ -221,8 +222,16 @@ llm-frontend/src/
 │   ├── AppShell.tsx          # Shared layout for authenticated pages (nav bar, user menu)
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
 │   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/exam/resume)
+│   ├── TypewriterMarkdown.tsx   # Markdown renderer with typewriter animation for tutor messages
 │   ├── VisualExplanation.tsx    # Renders LLM-generated Pixi.js visuals in sandboxed iframe
-│   ├── InteractiveQuestion.tsx # Rich question formats: fill-in-the-blank, MCQ, matching
+│   ├── InteractiveQuestion.tsx  # Rich question formats: fill-in-the-blank, MCQ, matching, etc.
+│   ├── CheckInDispatcher.tsx    # Routes a check-in activity payload to the right activity component
+│   ├── MatchActivity.tsx        # Match-the-pairs check-in
+│   ├── PickOneActivity.tsx      # Multiple-choice check-in
+│   ├── TrueFalseActivity.tsx    # True/False check-in
+│   ├── FillBlankActivity.tsx    # Fill-in-the-blank check-in
+│   ├── SortBucketsActivity.tsx  # Sort-into-buckets check-in
+│   ├── SequenceActivity.tsx     # Ordering/sequence check-in
 │   └── enrichment/           # Enrichment form components
 │       ├── SectionCard.tsx
 │       ├── ChipSelector.tsx
@@ -239,6 +248,11 @@ llm-frontend/src/
 │   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
 │   │   │   ├── CreateBookV2.tsx      # Create new book (V2)
 │   │   │   ├── BookV2Detail.tsx      # Book detail + chapters (V2)
+│   │   │   ├── TopicsAdmin.tsx       # Per-chapter topic editor + reprocess/refinalize
+│   │   │   ├── GuidelinesAdmin.tsx   # Per-chapter guideline editor (approve/reject/sync)
+│   │   │   ├── ExplanationAdmin.tsx  # Per-chapter explanation card generator + viewer
+│   │   │   ├── VisualsAdmin.tsx      # Per-chapter Pixi visual generator + coverage tracker
+│   │   │   ├── OCRAdmin.tsx          # Per-chapter OCR page viewer + retry/rerun
 │   │   │   ├── EvaluationDashboard.tsx
 │   │   │   ├── DocsViewer.tsx        # In-app documentation browser
 │   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
@@ -294,6 +308,11 @@ llm-frontend/src/
 | `/admin/books-v2` | AdminLayout > BookV2Dashboard | Unprotected | Book management (V2) |
 | `/admin/books-v2/new` | AdminLayout > CreateBookV2 | Unprotected | Create new book (V2) |
 | `/admin/books-v2/:id` | AdminLayout > BookV2Detail | Unprotected | Book detail + chapters (V2) |
+| `/admin/books-v2/:bookId/topics/:chapterId` | AdminLayout > TopicsAdmin | Unprotected | Per-chapter topics editor |
+| `/admin/books-v2/:bookId/guidelines/:chapterId` | AdminLayout > GuidelinesAdmin | Unprotected | Per-chapter guidelines editor |
+| `/admin/books-v2/:bookId/explanations/:chapterId` | AdminLayout > ExplanationAdmin | Unprotected | Per-chapter explanation cards |
+| `/admin/books-v2/:bookId/visuals/:chapterId` | AdminLayout > VisualsAdmin | Unprotected | Per-chapter Pixi visuals |
+| `/admin/books-v2/:bookId/ocr/:chapterId` | AdminLayout > OCRAdmin | Unprotected | Per-chapter OCR page viewer |
 | `/admin/evaluation` | AdminLayout > EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | AdminLayout > DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
@@ -357,11 +376,13 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 
 ### LLM Configuration (DB-Backed)
 
-Each system component (tutor, book_ingestion_v2, evaluator, etc.) has its own row in the `llm_config` DB table specifying which provider and model it uses. This replaced the earlier environment-variable-based provider switching.
+Each system component has its own row in the `llm_config` DB table specifying which provider and model it uses. This replaced the earlier environment-variable-based provider switching.
 
 - **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
 - **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
+- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `pixi_code_generator`, `check_in_enrichment`
+- **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
 
 ### Key Provider Files
 

@@ -22,6 +22,8 @@ Tap any subject card to see a detailed breakdown:
   - The date the student last studied this topic
   - A "Practice Again" button to start a new session
 
+"Get Ready" refresher topics (prerequisite warm-ups attached to a chapter) are hidden from the report card listing — only the actual chapter topics appear.
+
 ---
 
 ## Coverage
@@ -56,7 +58,7 @@ If a student takes multiple exams on the same topic, only the latest result is d
 
 ## Past Exams and Exam Review
 
-On the mode selection screen (where students choose Teach Me, Clarify Doubts, or Take Exam), there is an expandable "Past Exams" section that lists all completed exams for that topic. Each entry shows the date and score.
+On the mode selection screen (where students choose Teach Me, Clarify Doubts, or Take Exam), there is an expandable "Past Exams" section that lists all completed exams for that topic. Each entry shows the date, the score (e.g., "7/10"), and the percentage, color-coded green/orange/red based on performance.
 
 Tapping a past exam opens a detailed **Exam Review** page showing:
 
@@ -68,10 +70,12 @@ Tapping a past exam opens a detailed **Exam Review** page showing:
 
 ## Resuming Sessions
 
-On the mode selection screen, if the student has an incomplete Teach Me lesson or an in-progress exam for that topic, the app shows a resume option:
+On the mode selection screen, if the student has an incomplete Teach Me lesson with coverage above 0% or an in-progress exam with at least one answered question, the app shows a resume option:
 
 - **Continue Lesson** — Shows the coverage so far and lets the student pick up where they left off. A "Start Fresh" button is also available to begin a new lesson instead.
 - **Resume Exam** — Shows how many questions have been answered and lets the student continue the exam. While an incomplete exam exists, the "Take Exam" button is hidden to prevent duplicate exams.
+
+For "Get Ready" refresher topics, only the Teach Me option is shown — Clarify Doubts, Take Exam, and Past Exams are not offered.
 
 ---
 

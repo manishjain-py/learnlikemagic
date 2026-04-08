@@ -35,13 +35,20 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
 | **Feature Flags** | Admin tool to toggle runtime features on or off (e.g., visuals in tutor flow). Changes take effect immediately for new sessions |
 | **Pre-Computed Explanations** | During book ingestion, the system pre-generates multiple explanation variants for each topic (e.g., everyday analogies, visual/hands-on, story-based). During a Teach Me session, the tutor can present these as step-by-step explanation cards. If the student wants a different approach, they can request an alternative variant |
-| **Interactive Questions** | During exams and teaching, the tutor presents questions in rich interactive formats — fill-in-the-blank with tappable blanks, multiple-choice with option buttons, and matching exercises — instead of plain text. Students tap or type answers directly in the structured format |
+| **Interactive Questions** | During exams and teaching, the tutor presents questions in rich interactive formats — fill-in-the-blank, multiple choice, true/false, matching, sort-into-buckets, and sequencing — instead of plain text. Students tap or type answers directly in the structured format |
+| **Check-In Activities** | Mid-explanation comprehension checks rendered as quick interactive activities (match-the-pairs, pick-one, true/false, fill-in-blank, sort-into-buckets, sequence) to verify understanding before moving on |
+| **Get Ready Refresher** | A prerequisite "warm-up" topic appears at the top of each chapter. It revisits foundational knowledge needed before diving into the chapter's main topics |
 | **Report Issue** | Students can report problems via text, voice recording, or screenshot attachments. Reports are tracked by status (open, in progress, closed) |
 | **Visual Explanations (PoC)** | Admin tool to generate interactive diagrams and animations from text prompts using AI + Pixi.js |
 | **Interactive Visuals (PoC)** | Admin tool to test interactive visual templates (drag-and-drop, sliders) with editable JSON parameters |
 | **Issue Management** | Admin tool to view, triage, and update status of user-reported issues with screenshot viewing |
 | **Test Scenarios** | Admin tool to view end-to-end test results and screenshots |
 | **Docs Viewer** | Admin tool to browse project documentation inside the app |
+| **Topics Admin** | Per-chapter admin tool to view, edit, delete, and reprocess extracted topics from a book chapter |
+| **Guidelines Admin** | Per-chapter admin tool to view, edit, approve, reject, and sync teaching guidelines |
+| **Explanations Admin** | Per-chapter admin tool to generate, view, and delete pre-computed explanation card variants per topic |
+| **Visuals Admin** | Per-chapter admin tool to generate Pixi.js visuals for explanation cards and track visual coverage |
+| **OCR Admin** | Per-chapter admin tool to view, retry, and bulk re-run OCR on chapter pages |
 
 ---
 
@@ -92,11 +99,12 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 5. **Run evaluations** — Test the tutor with simulated students and review quality scores
 6. **Configure AI models** — Choose which AI provider and model powers each component
 7. **Manage feature flags** — Toggle runtime features on or off from the admin dashboard
-8. **Generate visual explanations** — Create interactive diagrams and animations from text descriptions (proof of concept)
-9. **Test interactive visuals** — Try drag-and-drop and other interactive templates with editable parameters (proof of concept)
-10. **Manage reported issues** — View user-reported issues, update status (open / in progress / closed), view attached screenshots
-11. **View test scenarios** — Review end-to-end test results and screenshots for each feature
-12. **Browse documentation** — View project docs directly in the admin interface
+8. **Edit topics, guidelines, explanations, visuals, OCR** — Per-chapter admin tools to inspect and refine each artifact produced by the ingestion pipeline
+9. **Generate visual explanations** — Create interactive diagrams and animations from text descriptions (proof of concept)
+10. **Test interactive visuals** — Try drag-and-drop and other interactive templates with editable parameters (proof of concept)
+11. **Manage reported issues** — View user-reported issues, update status (open / in progress / closed), view attached screenshots
+12. **View test scenarios** — Review end-to-end test results and screenshots for each feature
+13. **Browse documentation** — View project docs directly in the admin interface
 
 ---
 
