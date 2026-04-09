@@ -52,10 +52,13 @@ class ReportCardService:
 
     def get_topic_progress(self, user_id: str) -> dict:
         """
-        Returns {guideline_id: {coverage, session_count, status}} for the
-        curriculum picker coverage indicators.
+        Returns {guideline_id: {coverage, session_count, status, last_practiced}}
+        for the curriculum picker coverage indicators.
 
-        Only counts teach_me sessions for coverage.
+        Coverage numerator = concepts covered across teach_me + practice sessions.
+        Coverage denominator = canonical concept list from most recent teach_me
+        session's plan (never from a practice plan, to prevent denominator shrinkage).
+        Practice sessions contribute only if they have >=3 questions answered (FR-30).
         """
         sessions = self._load_user_sessions(user_id)
         progress: dict[str, dict] = {}
@@ -75,24 +78,40 @@ class ReportCardService:
                 continue
 
             mode = state.get("mode", "teach_me")
-            if mode != "teach_me":
+            if mode not in ("teach_me", "practice"):
                 continue
+
+            # Practice 3-question gate
+            if mode == "practice" and state.get("practice_questions_answered", 0) < 3:
+                continue
+
+            session_date = session_row.created_at.isoformat() if session_row.created_at else None
 
             existing = progress.get(topic_id, {
                 "covered_set": set(),
                 "plan_concepts": set(),
                 "session_count": 0,
+                "last_practiced": None,
             })
 
-            # Accumulate concepts covered
+            # Accumulate concepts covered (from both teach_me and practice)
             concepts_covered = state.get("concepts_covered_set", [])
             if isinstance(concepts_covered, list):
                 existing["covered_set"].update(concepts_covered)
 
-            # Plan concepts from latest session's mastery_estimates keys
-            mastery_estimates = state.get("mastery_estimates", {})
-            if isinstance(mastery_estimates, dict) and mastery_estimates:
-                existing["plan_concepts"] = set(mastery_estimates.keys())
+            # Canonical denominator comes from teach_me sessions ONLY.
+            # Practice plans are struggle-weighted subsets — using them would
+            # shrink the denominator and falsely inflate combined coverage.
+            if mode == "teach_me":
+                mastery_estimates = state.get("mastery_estimates", {})
+                if isinstance(mastery_estimates, dict) and mastery_estimates:
+                    existing["plan_concepts"] = set(mastery_estimates.keys())
+
+            # Track last_practiced from practice sessions (3+ questions gate already applied)
+            if mode == "practice" and session_date:
+                last_p = existing.get("last_practiced")
+                if not last_p or session_date > last_p:
+                    existing["last_practiced"] = session_date
 
             existing["session_count"] += 1
             progress[topic_id] = existing
@@ -110,6 +129,7 @@ class ReportCardService:
                 "coverage": coverage,
                 "session_count": data["session_count"],
                 "status": "studied" if data["session_count"] > 0 else "not_started",
+                "last_practiced": data.get("last_practiced"),
             }
 
         return {"user_progress": result}
@@ -232,21 +252,37 @@ class ReportCardService:
             existing_covered = set(existing.get("concepts_covered", []))
             existing_plan = set(existing.get("plan_concepts", []))
             existing_last_studied = existing.get("last_studied")
+            existing_last_practiced = existing.get("last_practiced")
             existing_exam_score = existing.get("latest_exam_score")
             existing_exam_total = existing.get("latest_exam_total")
 
-            # Only accumulate coverage from teach_me sessions
+            # Coverage contribution: teach_me always, practice gated on 3+ questions (FR-30)
+            contributes_to_coverage = False
             if mode == "teach_me":
+                contributes_to_coverage = True
+            elif mode == "practice":
+                if state.get("practice_questions_answered", 0) >= 3:
+                    contributes_to_coverage = True
+
+            if contributes_to_coverage:
                 concepts_covered = state.get("concepts_covered_set", [])
                 if isinstance(concepts_covered, list):
                     existing_covered.update(concepts_covered)
 
-                # Use latest session's plan concepts (not union) to avoid denominator drift
-                mastery_estimates = state.get("mastery_estimates", {})
-                if isinstance(mastery_estimates, dict) and mastery_estimates:
-                    existing_plan = set(mastery_estimates.keys())
-
                 existing_last_studied = session_date
+
+                # Canonical denominator comes from teach_me sessions ONLY.
+                # Practice plans are struggle-weighted subsets — using them would
+                # shrink the denominator and falsely inflate combined coverage.
+                if mode == "teach_me":
+                    mastery_estimates = state.get("mastery_estimates", {})
+                    if isinstance(mastery_estimates, dict) and mastery_estimates:
+                        existing_plan = set(mastery_estimates.keys())
+
+            # Track last_practiced from practice sessions (with 3-question gate)
+            if mode == "practice" and state.get("practice_questions_answered", 0) >= 3:
+                if not existing_last_practiced or (session_date and session_date > existing_last_practiced):
+                    existing_last_practiced = session_date
 
             # Track latest exam score (with type guards for legacy data)
             if mode == "exam" and state.get("exam_finished", False):
@@ -266,6 +302,7 @@ class ReportCardService:
                 "concepts_covered": list(existing_covered),
                 "plan_concepts": list(existing_plan),
                 "last_studied": existing_last_studied,
+                "last_practiced": existing_last_practiced,
                 "latest_exam_score": existing_exam_score,
                 "latest_exam_total": existing_exam_total,
             }
@@ -294,6 +331,7 @@ class ReportCardService:
                         "latest_exam_score": topic_info.get("latest_exam_score"),
                         "latest_exam_total": topic_info.get("latest_exam_total"),
                         "last_studied": topic_info.get("last_studied"),
+                        "last_practiced": topic_info.get("last_practiced"),
                     })
 
                 chapters_data.append({

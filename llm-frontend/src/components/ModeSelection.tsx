@@ -1,38 +1,72 @@
 import React, { useEffect, useState } from 'react';
-import { getGuidelineSessions, GuidelineSessionEntry, TopicInfo } from '../api';
+import { getGuidelineSessions, getTopicProgress, GuidelineSessionEntry, TopicInfo } from '../api';
+
+type SelectableMode = 'teach_me' | 'clarify_doubts' | 'exam' | 'practice';
 
 const MODE_LOADING_MESSAGES: Record<string, string> = {
   teach_me: 'Creating your personalized lesson plan...',
   clarify_doubts: 'Getting ready for your questions...',
   exam: 'Preparing your question paper...',
+  practice: 'Setting up your practice session...',
 };
 
 interface ModeSelectionProps {
   topic: TopicInfo;
-  onSelectMode: (mode: 'teach_me' | 'clarify_doubts' | 'exam') => void;
+  onSelectMode: (mode: SelectableMode) => void;
   onResume: (sessionId: string, mode: string) => void;
   onBack: () => void;
   onViewExamReview: (sessionId: string) => void;
-  creatingMode?: 'teach_me' | 'clarify_doubts' | 'exam' | null;
+  creatingMode?: SelectableMode | null;
+}
+
+function formatRelativeDate(isoDate: string | null | undefined): string {
+  if (!isoDate) return '';
+  const then = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - then.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 14) return 'last week';
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  return `${Math.floor(diffDays / 30)} months ago`;
 }
 
 function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview, creatingMode }: ModeSelectionProps) {
   const [sessions, setSessions] = useState<GuidelineSessionEntry[]>([]);
+  const [lastPracticed, setLastPracticed] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPastExams, setShowPastExams] = useState(false);
 
   const isRefresher = topic.topic_key === 'get-ready';
 
   useEffect(() => {
-    getGuidelineSessions(topic.guideline_id)
-      .then(setSessions)
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    Promise.all([
+      getGuidelineSessions(topic.guideline_id).catch(() => [] as GuidelineSessionEntry[]),
+      getTopicProgress().catch(() => ({} as Record<string, any>)),
+    ])
+      .then(([sessionsData, progressData]) => {
+        if (cancelled) return;
+        setSessions(sessionsData);
+        const progress = progressData[topic.guideline_id];
+        setLastPracticed(progress?.last_practiced ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [topic.guideline_id]);
 
   // Find incomplete sessions for resume — only show if there's actual progress
   const incompleteExam = isRefresher ? undefined : sessions.find((s) => s.mode === 'exam' && !s.is_complete && (s.exam_answered ?? 0) > 0);
   const incompleteTeachMe = sessions.find((s) => s.mode === 'teach_me' && !s.is_complete && (s.coverage ?? 0) > 0);
+  const incompletePractice = isRefresher ? undefined : sessions.find(
+    (s) => s.mode === 'practice' && !s.is_complete && (s.practice_questions_answered ?? 0) > 0
+  );
 
   // Completed exams for past exams section
   const completedExams = isRefresher ? [] : sessions.filter((s) => s.mode === 'exam' && s.is_complete);
@@ -111,15 +145,43 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
               <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
                 <strong>{isRefresher ? 'Get Ready' : 'Teach Me'}</strong>
                 <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
-                  {isRefresher ? 'Review the prerequisites for this chapter' : 'Learn this topic from scratch'}
+                  {isRefresher ? 'Review the prerequisites for this chapter' : 'Learn this topic step by step'}
                 </span>
+              </button>
+            )}
+            {!isRefresher && incompletePractice && (
+              <button
+                className="selection-card resume-card"
+                onClick={() => onResume(incompletePractice.session_id, 'practice')}
+                style={{
+                  background: 'linear-gradient(135deg, #38a169 0%, #2f855a 100%)',
+                  color: 'white',
+                }}
+              >
+                <strong>Resume Practice</strong>
+                <span style={{ display: 'block', fontSize: '0.85rem', marginTop: '4px' }}>
+                  {incompletePractice.practice_questions_answered ?? 0} question(s) answered — pick up where you left off
+                </span>
+              </button>
+            )}
+            {!isRefresher && !incompletePractice && (
+              <button className="selection-card" data-testid="mode-practice" onClick={() => onSelectMode('practice')}>
+                <strong>Let's Practice</strong>
+                <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                  Practice what you learned
+                </span>
+                {lastPracticed && (
+                  <span style={{ display: 'block', fontSize: '0.8rem', color: '#38a169', marginTop: '2px', fontWeight: 500 }}>
+                    Practiced {formatRelativeDate(lastPracticed)}
+                  </span>
+                )}
               </button>
             )}
             {!isRefresher && (
               <button className="selection-card" data-testid="mode-clarify-doubts" onClick={() => onSelectMode('clarify_doubts')}>
                 <strong>Clarify Doubts</strong>
                 <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
-                  I have questions about this topic
+                  Ask me anything about this topic
                 </span>
               </button>
             )}
@@ -127,7 +189,7 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
               <button className="selection-card" data-testid="mode-exam" onClick={() => onSelectMode('exam')}>
                 <strong>Take Exam</strong>
                 <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
-                  Test my knowledge
+                  Formal test with a score
                 </span>
               </button>
             )}

@@ -263,6 +263,8 @@ class TeacherOrchestrator:
                 return await self._process_clarify_turn(session, context, turn_id, start_time)
             elif session.mode == "exam":
                 return await self._process_exam_turn(session, context, turn_id, start_time)
+            elif session.mode == "practice":
+                return await self._process_practice_turn(session, context, turn_id, start_time)
 
             # Step 2: Master tutor (teach_me mode)
             tutor_start = time.time()
@@ -463,12 +465,14 @@ class TeacherOrchestrator:
                 ))
                 return
 
-            # Exam and clarify_doubts: fall back to non-streaming
-            if session.mode in ("exam", "clarify_doubts"):
+            # Exam, clarify_doubts, and practice: fall back to non-streaming
+            if session.mode in ("exam", "clarify_doubts", "practice"):
                 if session.mode == "clarify_doubts":
                     result = await self._process_clarify_turn(session, context, turn_id, start_time)
-                else:
+                elif session.mode == "exam":
                     result = await self._process_exam_turn(session, context, turn_id, start_time)
+                else:  # practice
+                    result = await self._process_practice_turn(session, context, turn_id, start_time)
                 yield ("result", result)
                 return
 
@@ -989,6 +993,195 @@ class TeacherOrchestrator:
             specialists_called=["master_tutor"],
             state_changed=True,
         )
+
+    async def _process_practice_turn(
+        self, session: SessionState, context: AgentContext, turn_id: str, start_time: float
+    ) -> TurnResult:
+        """Process a Practice turn.
+
+        Reuses _apply_state_updates() and _handle_question_lifecycle() from the
+        teach_me path for scaffolded correction, misconception tracking, mastery
+        updates, and question lifecycle state. Adds practice-specific question
+        counting and mastery completion check on top.
+        """
+        # Count this student turn as an answered question.
+        # Increment BEFORE the LLM call so even if the tutor ends the session
+        # this turn, the final answer is counted.
+        session.practice_questions_answered += 1
+
+        # Track per-concept question count for the "at least 2 per concept" rule.
+        # We use the concept from the CURRENT pending question (set on the
+        # previous tutor turn) — that's the concept this student answer pertains to.
+        if session.last_question and session.last_question.concept:
+            concept = session.last_question.concept
+            session.practice_concept_question_counts[concept] = (
+                session.practice_concept_question_counts.get(concept, 0) + 1
+            )
+
+        tutor_start = time.time()
+        self.master_tutor.set_session(session)
+        tutor_output: TutorTurnOutput = await self.master_tutor.execute(context)
+        tutor_duration = int((time.time() - tutor_start) * 1000)
+
+        self._log_agent_event(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            agent_name="master_tutor",
+            event_type="completed",
+            output=self._extract_output_dict(tutor_output),
+            reasoning=tutor_output.reasoning,
+            duration_ms=tutor_duration,
+            prompt=self.master_tutor.last_prompt,
+            metadata={
+                "mode": "practice",
+                "intent": tutor_output.intent,
+                "answer_correct": tutor_output.answer_correct,
+                "question_asked": tutor_output.question_asked is not None,
+                "session_complete": tutor_output.session_complete,
+                "questions_answered": session.practice_questions_answered,
+            },
+        )
+
+        self._check_response_sanitization(session.session_id, turn_id, tutor_output.response)
+
+        # Reuse existing state update machinery. This gives practice sessions:
+        #  - scaffolded correction (wrong → probe → hint → explain)
+        #  - misconception tracking
+        #  - question lifecycle state
+        #  - mastery updates
+        # We ignore advance_to_step since practice has no step progression —
+        # _apply_state_updates guards against step advancement when session_complete
+        # is set on a non-final step, but practice plans have no meaningful concept
+        # of a "final step", so we just don't look at advance_to_step in practice.
+        self._apply_state_updates(session, tutor_output)
+
+        # Practice-specific mastery completion check, layered on top of standard updates.
+        self._check_practice_mastery(session, tutor_output)
+
+        session.add_message(create_teacher_message(
+            tutor_output.response, audio_text=tutor_output.audio_text
+        ))
+
+        # Update turn timeline
+        turn_entry = f"Turn {session.turn_count}: {tutor_output.turn_summary}"
+        session.session_summary.turn_timeline.append(turn_entry)
+        if len(session.session_summary.turn_timeline) > 30:
+            session.session_summary.turn_timeline = session.session_summary.turn_timeline[-30:]
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        self._log_agent_event(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            agent_name="orchestrator",
+            event_type="turn_completed",
+            duration_ms=duration_ms,
+            metadata={
+                "mode": "practice",
+                "intent": tutor_output.intent,
+                "questions_answered": session.practice_questions_answered,
+                "mastery_achieved": session.practice_mastery_achieved,
+            },
+        )
+
+        return TurnResult(
+            response=tutor_output.response,
+            audio_text=tutor_output.audio_text,
+            intent=tutor_output.intent,
+            specialists_called=["master_tutor"],
+            state_changed=True,
+            visual_explanation=await self._generate_pixi_code(tutor_output.visual_explanation)
+                if tutor_output.visual_explanation else None,
+            question_format=tutor_output.question_format.model_dump()
+                if tutor_output.question_format else None,
+        )
+
+    def _check_practice_mastery(self, session: SessionState, tutor_output: "TutorTurnOutput") -> None:
+        """Enforce FR-27: practice session completion criteria.
+
+        Rules:
+        - Minimum 5 questions answered before session can end on mastery
+        - 70% mastery across ALL canonical concepts (not just touched ones)
+        - At least 2 questions per key concept
+        - Maximum ~20 questions — hard cap for attention-aware wrap-up
+        """
+        MIN_QUESTIONS = 5
+        MAX_QUESTIONS = 20
+        MASTERY_THRESHOLD = 0.7
+        MIN_QUESTIONS_PER_CONCEPT = 2
+
+        if session.practice_mastery_achieved:
+            return
+
+        # Hard cap — force wrap up regardless of mastery state
+        if session.practice_questions_answered >= MAX_QUESTIONS:
+            session.practice_mastery_achieved = True
+            logger.info(
+                f"Practice session {session.session_id} hit max questions cap "
+                f"({session.practice_questions_answered})"
+            )
+            return
+
+        # Minimum gate
+        if session.practice_questions_answered < MIN_QUESTIONS:
+            return
+
+        # All canonical concepts must be at/above threshold.
+        # mastery_estimates is seeded with all concepts at 0.0 in create_session
+        # for practice, so this checks the full topic — not a narrow slice.
+        if not session.mastery_estimates:
+            return
+
+        all_mastered = all(
+            score >= MASTERY_THRESHOLD
+            for score in session.mastery_estimates.values()
+        )
+        if not all_mastered:
+            return
+
+        # Each concept must have had at least 2 questions
+        all_covered = all(
+            session.practice_concept_question_counts.get(concept, 0) >= MIN_QUESTIONS_PER_CONCEPT
+            for concept in session.mastery_estimates.keys()
+        )
+        if not all_covered:
+            return
+
+        # If LLM also signaled completion, honor it.
+        # Otherwise, we let the LLM run one more turn — it will see full mastery
+        # in its context and wrap up naturally on the next turn.
+        if tutor_output.session_complete:
+            session.practice_mastery_achieved = True
+            logger.info(f"Practice session {session.session_id} reached mastery")
+
+    async def generate_practice_welcome(self, session: SessionState) -> tuple[str, Optional[str]]:
+        """Generate a practice-specific welcome message.
+
+        Uses master_tutor.generate_practice_welcome() which loads the
+        PRACTICE_WELCOME_PROMPT (question-first, not explanation-first).
+        """
+        try:
+            self.master_tutor.set_session(session)
+            output = await self.master_tutor.generate_practice_welcome(session)
+
+            # Save the first question to session state so scaffolded correction
+            # works on the very first student response.
+            if output.question_asked:
+                from tutor.models.session_state import Question
+                current_concept = (
+                    session.current_step_data.concept if session.current_step_data else None
+                )
+                session.set_question(Question(
+                    question_text=output.question_asked,
+                    expected_answer=output.expected_answer or "",
+                    concept=output.question_concept or current_concept or "practice",
+                ))
+
+            return output.response, output.audio_text
+        except Exception as e:
+            logger.warning(f"Master tutor practice welcome failed, using fallback: {e}")
+            topic = session.topic.topic_name if session.topic else "this topic"
+            fallback = f"Let's practice {topic}! Ready?"
+            return fallback, fallback
 
     @staticmethod
     def _build_exam_feedback(session: SessionState) -> "ExamFeedback":

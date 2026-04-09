@@ -133,7 +133,7 @@ def get_resumable_session(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Find a paused Teach Me session for the given topic."""
+    """Find a paused Teach Me or Practice session for the given topic."""
     from shared.models.entities import Session as SessionModel
 
     session = (
@@ -142,7 +142,7 @@ def get_resumable_session(
             SessionModel.user_id == current_user.id,
             SessionModel.guideline_id == guideline_id,
             SessionModel.is_paused == True,
-            SessionModel.mode == "teach_me",
+            SessionModel.mode.in_(["teach_me", "practice"]),
         )
         .order_by(SessionModel.updated_at.desc())
         .first()
@@ -156,6 +156,7 @@ def get_resumable_session(
 
     return ResumableSessionResponse(
         session_id=session.id,
+        mode=session_state.mode,
         coverage=session_state.coverage_percentage,
         current_step=session_state.current_step,
         total_steps=total_steps,
@@ -245,6 +246,15 @@ def get_session_replay(
         raise HTTPException(status_code=403, detail="Not your session")
 
     state = json.loads(session.state_json)
+
+    # Compute canonical is_complete via SessionState.is_complete (single source
+    # of truth). This gives the frontend a backend-authoritative completion flag
+    # instead of re-implementing the check client-side.
+    try:
+        session_state = SessionState.model_validate_json(session.state_json)
+        state["is_complete"] = session_state.is_complete
+    except Exception:
+        state["is_complete"] = False
 
     # Include explanation cards if card phase exists (active or completed)
     # so they appear in the slide history on session resume
@@ -336,15 +346,18 @@ def pause_session(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Pause a Teach Me session for later resumption."""
+    """Pause a Teach Me or Practice session for later resumption."""
     repo = SessionRepository(db)
     session_row = repo.get_by_id(session_id)
     if not session_row:
         raise HTTPException(status_code=404, detail="Session not found")
     _check_session_ownership(session_row, current_user)
 
-    if session_row.mode != "teach_me":
-        raise HTTPException(status_code=400, detail="Only Teach Me sessions can be paused")
+    if session_row.mode not in ("teach_me", "practice"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only Teach Me and Practice sessions can be paused",
+        )
 
     try:
         service = SessionService(db)
@@ -401,6 +414,35 @@ def end_clarify_session(
         service = SessionService(db)
         result = service.end_clarify_session(session_id)
         return result
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+
+
+@router.post("/{session_id}/end-practice")
+def end_practice_session(
+    session_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """End a Practice session early, marking it complete server-side."""
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    if session_row.mode != "practice":
+        raise HTTPException(
+            status_code=400, detail="Only practice sessions can be ended via this endpoint"
+        )
+
+    session_state = SessionState.model_validate_json(session_row.state_json)
+    if session_state.practice_mastery_achieved:
+        raise HTTPException(status_code=400, detail="Session already ended")
+
+    try:
+        service = SessionService(db)
+        return service.end_practice_session(session_id)
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
 
@@ -942,7 +984,7 @@ def _save_session_to_db(
             step_idx=session.current_step,
             state_version=expected_version + 1,
             mode=session.mode,
-            is_paused=session.is_paused if session.mode == "teach_me" else False,
+            is_paused=session.is_paused if session.mode in ("teach_me", "practice") else False,
             exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
             exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
             updated_at=datetime.utcnow(),

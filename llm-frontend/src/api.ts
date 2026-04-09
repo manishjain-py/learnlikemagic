@@ -68,7 +68,8 @@ export interface Goal {
 export interface CreateSessionRequest {
   student: Student;
   goal: Goal;
-  mode?: 'teach_me' | 'clarify_doubts' | 'exam';
+  mode?: 'teach_me' | 'clarify_doubts' | 'exam' | 'practice';
+  source_session_id?: string;  // For Teach Me → Practice handoff context
 }
 
 export interface VisualExplanation {
@@ -366,6 +367,7 @@ export interface ReportCardTopic {
   latest_exam_score: number | null;
   latest_exam_total: number | null;
   last_studied: string | null;
+  last_practiced?: string | null;
 }
 
 export interface ReportCardChapter {
@@ -389,10 +391,12 @@ export interface TopicProgress {
   coverage: number;
   session_count: number;
   status: 'studied' | 'not_started';
+  last_practiced?: string | null;
 }
 
 export interface ResumableSession {
   session_id: string;
+  mode: 'teach_me' | 'practice';
   coverage: number;
   current_step: number;
   total_steps: number;
@@ -461,6 +465,18 @@ export async function endExamEarly(sessionId: string): Promise<ExamSummary> {
   return response.json();
 }
 
+export interface EndPracticeResponse {
+  is_complete: boolean;
+  questions_answered: number;
+  message: string;
+}
+
+export async function endPracticeSession(sessionId: string): Promise<EndPracticeResponse> {
+  const response = await apiFetch(`/sessions/${sessionId}/end-practice`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to end practice session: ${response.statusText}`);
+  return response.json();
+}
+
 export async function getSessionReplay(sessionId: string): Promise<any> {
   const response = await apiFetch(`/sessions/${sessionId}/replay`);
   if (!response.ok) throw new Error(`Failed to fetch session replay: ${response.statusText}`);
@@ -481,6 +497,7 @@ export interface GuidelineSessionEntry {
   exam_total: number | null;
   exam_answered: number | null;
   coverage: number | null;
+  practice_questions_answered?: number | null;
 }
 
 export interface ExamReviewQuestion {

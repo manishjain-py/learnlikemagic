@@ -9,7 +9,8 @@ class CreateSessionRequest(BaseModel):
     """Request to create a new learning session."""
     student: Student
     goal: Goal
-    mode: Literal["teach_me", "clarify_doubts", "exam"] = "teach_me"
+    mode: Literal["teach_me", "clarify_doubts", "exam", "practice"] = "teach_me"
+    source_session_id: Optional[str] = None  # For Teach Me → Practice handoff context
 
 
 class CreateSessionResponse(BaseModel):
@@ -88,10 +89,11 @@ class ReportCardTopic(BaseModel):
     topic: str
     topic_key: str
     guideline_id: Optional[str] = None
-    coverage: float                          # 0-100%, teach_me sessions only
+    coverage: float                          # 0-100%, from teach_me + practice combined
     latest_exam_score: Optional[int] = None  # X in X/Y
     latest_exam_total: Optional[int] = None  # Y in X/Y
     last_studied: Optional[str] = None
+    last_practiced: Optional[str] = None     # Latest practice session date (3+ questions)
 
 
 class ReportCardChapter(BaseModel):
@@ -117,6 +119,7 @@ class ReportCardResponse(BaseModel):
 class ResumableSessionResponse(BaseModel):
     """Response for GET /sessions/resumable."""
     session_id: str
+    mode: str = "teach_me"
     coverage: float
     current_step: int
     total_steps: int
@@ -143,6 +146,7 @@ class TopicProgressEntry(BaseModel):
     coverage: float
     session_count: int
     status: str  # "studied" | "not_started"
+    last_practiced: Optional[str] = None  # Latest practice session date (3+ questions)
 
 
 class TopicProgressResponse(BaseModel):
@@ -161,6 +165,7 @@ class GuidelineSessionEntry(BaseModel):
     exam_total: Optional[int] = None
     exam_answered: Optional[int] = None
     coverage: Optional[float] = None
+    practice_questions_answered: Optional[int] = None
 
 
 class GuidelineSessionsResponse(BaseModel):

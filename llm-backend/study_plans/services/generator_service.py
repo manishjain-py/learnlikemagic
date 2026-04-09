@@ -384,6 +384,145 @@ class StudyPlanGeneratorService:
             logger.error(f"Failed to generate session plan: {str(e)}", exc_info=True)
             raise
 
+    def generate_practice_plan(
+        self,
+        guideline: TeachingGuideline,
+        student_context: Optional["StudentContext"] = None,
+        check_in_struggles: Optional[List[Dict[str, Any]]] = None,
+        is_cold_start: bool = False,
+    ) -> Dict[str, Any]:
+        """Generate a practice-focused study plan (question-heavy, no explain steps).
+
+        Called at Let's Practice session creation time. Uses a dedicated practice
+        prompt that produces a SessionPlan of question-only steps
+        (check_understanding, guided_practice, independent_practice, extend).
+
+        Args:
+            guideline: Teaching guideline for the topic
+            student_context: Optional student profile for personalization
+            check_in_struggles: Optional list of check-in struggle events from
+                a prior Teach Me session. When provided, the plan weights early
+                steps toward the concepts where the student struggled.
+            is_cold_start: True when there is no prior Teach Me context for this
+                topic. Controls first-step difficulty (medium for cold, easy/medium
+                for post-Teach-Me).
+        """
+        try:
+            prompt_template = self.prompt_loader.load("practice_plan_generator")
+
+            topic = guideline.topic_title or guideline.topic
+            guideline_text = guideline.guideline or guideline.description or ""
+
+            # Build session context summary
+            if is_cold_start:
+                session_context = (
+                    "This is a COLD-START practice session — no prior Teach Me context. "
+                    "The student jumped straight into practice. Distribute questions "
+                    "evenly across the key concepts and start at medium difficulty."
+                )
+            elif check_in_struggles:
+                struggle_summary_parts = []
+                for evt in check_in_struggles:
+                    if isinstance(evt, dict) and evt.get("wrong_count", 0) > 0:
+                        title = evt.get("card_title", "a check-in")
+                        wrong = evt.get("wrong_count", 0)
+                        struggle_summary_parts.append(f"- {title}: {wrong} wrong attempt(s)")
+                if struggle_summary_parts:
+                    session_context = (
+                        "The student just finished Teach Me and struggled on these check-ins:\n"
+                        + "\n".join(struggle_summary_parts)
+                        + "\n\nWeight the EARLY practice steps toward these struggle areas."
+                    )
+                else:
+                    session_context = (
+                        "The student just finished Teach Me without obvious struggles. "
+                        "Distribute practice evenly and start easy."
+                    )
+            else:
+                session_context = (
+                    "The student just finished Teach Me. No specific struggle data. "
+                    "Distribute practice evenly across the key concepts and start easy."
+                )
+
+            first_step_difficulty = "medium" if is_cold_start else "easy"
+
+            # Common misconceptions from guideline metadata
+            raw_metadata = guideline.metadata_json
+            metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else (raw_metadata or {})
+            misconceptions = metadata.get("common_misconceptions", [])
+            common_misconceptions = "\n".join(f"- {m}" for m in misconceptions) if misconceptions else "None specified"
+
+            prompt = prompt_template.format(
+                topic=topic,
+                grade=guideline.grade,
+                session_context=session_context,
+                guideline_text=guideline_text,
+                common_misconceptions=common_misconceptions,
+                first_step_difficulty=first_step_difficulty,
+                student_personality_section=self._build_personality_section(student_context),
+            )
+
+            logger.info(json.dumps({
+                "step": "PRACTICE_PLAN_GENERATION",
+                "status": "starting",
+                "guideline_id": guideline.id,
+                "topic": topic,
+                "is_cold_start": is_cold_start,
+                "has_struggle_data": bool(check_in_struggles),
+            }))
+
+            response = self.llm_service.call(
+                prompt=prompt,
+                reasoning_effort="high",
+                json_schema=self._session_plan_schema,
+                schema_name="SessionPlan",
+            )
+
+            plan_json = self.llm_service.parse_json_response(response["output_text"])
+            validated_plan = SessionPlan.model_validate(plan_json)
+            plan_dict = validated_plan.model_dump()
+
+            # Guard: ensure the plan has no explain steps (practice = no upfront teaching)
+            allowed_types = {"check_understanding", "guided_practice", "independent_practice", "extend"}
+            for step in plan_dict.get("steps", []):
+                if step.get("type") not in allowed_types:
+                    raise ValueError(
+                        f"Practice plan generator returned disallowed step type '{step.get('type')}'. "
+                        f"Allowed: {allowed_types}"
+                    )
+
+            plan_dict["metadata"]["plan_version"] = 2
+            plan_dict["metadata"]["variants_shown"] = []  # practice has no variants
+            if student_context and student_context.student_name:
+                plan_dict["metadata"]["is_generic"] = False
+
+            reasoning_obj = response.get("reasoning")
+            reasoning_str = ""
+            if reasoning_obj is not None:
+                if hasattr(reasoning_obj, "summary"):
+                    reasoning_str = str(reasoning_obj.summary) if reasoning_obj.summary else ""
+                elif hasattr(reasoning_obj, "text"):
+                    reasoning_str = str(reasoning_obj.text) if reasoning_obj.text else ""
+                else:
+                    reasoning_str = str(reasoning_obj)
+
+            logger.info(json.dumps({
+                "step": "PRACTICE_PLAN_GENERATION",
+                "status": "complete",
+                "guideline_id": guideline.id,
+                "steps_count": len(plan_dict.get("steps", [])),
+            }))
+
+            return {
+                "plan": plan_dict,
+                "reasoning": reasoning_str,
+                "model": self.llm_service.model_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate practice plan: {str(e)}", exc_info=True)
+            raise
+
     @staticmethod
     def _build_feedback_section(
         feedback_text: str,

@@ -13,7 +13,10 @@ const MODE_URL_SEGMENT: Record<string, string> = {
   teach_me: 'teach',
   clarify_doubts: 'clarify',
   exam: 'exam',
+  practice: 'practice',
 };
+
+type SelectableMode = 'teach_me' | 'clarify_doubts' | 'exam' | 'practice';
 
 export default function ModeSelectPage() {
   const navigate = useNavigate();
@@ -29,7 +32,7 @@ export default function ModeSelectPage() {
   );
   const [loading, setLoading] = useState(!guidelineId);
   const [sessionError, setSessionError] = useState<string | null>(null);
-  const [creatingMode, setCreatingMode] = useState<'teach_me' | 'clarify_doubts' | 'exam' | null>(null);
+  const [creatingMode, setCreatingMode] = useState<SelectableMode | null>(null);
 
   // For deep links: if no guidelineId in location state, fetch it
   useEffect(() => {
@@ -61,7 +64,7 @@ export default function ModeSelectPage() {
     return `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter!)}/${encodeURIComponent(topic!)}/${seg}/${sessionId}`;
   };
 
-  const handleModeSelect = async (mode: 'teach_me' | 'clarify_doubts' | 'exam') => {
+  const handleModeSelect = async (mode: SelectableMode) => {
     setSessionError(null);
     setCreatingMode(mode);
     try {
