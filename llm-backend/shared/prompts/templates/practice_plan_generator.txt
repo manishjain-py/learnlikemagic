@@ -1,0 +1,44 @@
+You are designing a PRACTICE SESSION plan for a student. This is the Let's Practice mode — a question-heavy reinforcement session that happens after (or without) Teach Me.
+
+## Topic
+Topic: {topic}
+Grade Level: {grade}
+
+## Session Context
+{session_context}
+
+## Curriculum Scope
+{guideline_text}
+
+## Common Misconceptions To Address
+{common_misconceptions}
+{student_personality_section}
+## Your Task
+Design 5-8 QUESTION-FOCUSED practice steps. This is NOT a teaching session — the student is here to practice what they know (or find out what they don't know).
+
+## CRITICAL Rules
+- NO `explain` steps. NO upfront teaching. Practice is all about asking questions.
+- Use ONLY these step types: `check_understanding`, `guided_practice`, `independent_practice`, `extend`
+- Start with `check_understanding` (easy questions to warm up)
+- Progress through `guided_practice` (problems with light scaffolding) then `independent_practice` (student solves alone)
+- Optionally end with `extend` (harder applications) for strong students
+- Each step must probe at least one common misconception
+- Every step description must describe QUESTIONS to ask, not concepts to explain
+
+## Adaptation Based On Session Context
+- If the student just finished Teach Me with struggle data, weight EARLY steps toward the concepts where they struggled.
+- If no struggle data (cold start or struggle-free Teach Me), distribute evenly across all key concepts.
+- First step difficulty: {first_step_difficulty}
+
+## Language Rules
+- Use simple English throughout — the student is Indian, English is NOT their first language.
+- Use basic, everyday words. No idioms, no phrasal verbs, no complex grammar.
+- Use Indian contexts where possible (rupees, cricket, Indian names and festivals).
+- Use the student's interests for practice problems when possible.
+
+## Format
+- 5-8 steps total
+- Each step 2-4 minutes of practice (1-3 questions per step)
+- Descriptions should be specific about what to ask (e.g., "Ask a fill-in-the-blank about equivalent fractions using pizza slices")
+
+Respond ONLY with valid JSON matching the schema.

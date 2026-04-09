@@ -11,6 +11,8 @@ import {
   submitFeedback,
   cardAction,
   simplifyCard,
+  createSession,
+  endPracticeSession,
   TutorWebSocket,
   Turn,
   ExplanationCard,
@@ -96,7 +98,7 @@ export default function ChatSession() {
   }>();
   const sessionId = params.sessionId;
   const location = useLocation();
-  const { grade } = useStudentProfile();
+  const { grade, board, studentId } = useStudentProfile();
   const { user } = useAuth();
   const audioLang = user?.audio_language_preference || 'en';
 
@@ -121,7 +123,7 @@ export default function ChatSession() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
-  const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts' | 'exam'>(
+  const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts' | 'exam' | 'practice'>(
     (locState?.mode as any) || 'teach_me',
   );
   const [coverage, setCoverage] = useState(0);
@@ -147,6 +149,20 @@ export default function ChatSession() {
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
+
+  // Teach Me completion screen state (shown after card phase ends — summary + Practice CTA)
+  const [teachMeComplete, setTeachMeComplete] = useState(false);
+  const [teachMeCompletionMessage, setTeachMeCompletionMessage] = useState<string | null>(null);
+  const [teachMeConceptsCovered, setTeachMeConceptsCovered] = useState<string[]>([]);
+  const [teachMeGuidelineId, setTeachMeGuidelineId] = useState<string | null>(null);
+  const [creatingPractice, setCreatingPractice] = useState(false);
+  const [practiceStartError, setPracticeStartError] = useState<string | null>(null);
+
+  // Practice completion screen state (shown when mastery achieved or ended early)
+  const [practiceComplete, setPracticeComplete] = useState(false);
+  const [practiceSummary, setPracticeSummary] = useState<string | null>(null);
+  const [practiceQuestionsAnswered, setPracticeQuestionsAnswered] = useState(0);
+  const [endingPractice, setEndingPractice] = useState(false);
   // Typewriter: track which slide indices have been fully revealed
   const [revealedSlides, setRevealedSlides] = useState<Set<number>>(new Set());
   const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
@@ -497,10 +513,14 @@ export default function ChatSession() {
             // else: card phase completed — cards loaded for history but sessionPhase stays 'interactive'
           }
 
-          // Hydrate completion for all modes
-          const completed = state.clarify_complete
-            || state.exam_finished
-            || (state.topic && state.current_step > (state.topic?.study_plan?.steps?.length ?? Infinity));
+          // Hydrate completion using backend is_complete (single source of truth).
+          // Fall back to legacy checks only if the field is missing (shouldn't
+          // happen with the new replay API but safe to keep).
+          const completed = state.is_complete
+            ?? (state.clarify_complete
+                || state.exam_finished
+                || state.practice_mastery_achieved
+                || (state.topic && state.current_step > (state.topic?.study_plan?.steps?.length ?? Infinity)));
           if (completed) {
             setIsComplete(true);
             // Reconstruct exam summary from persisted feedback
@@ -516,6 +536,11 @@ export default function ChatSession() {
                 total: state.exam_feedback.total,
                 percentage: state.exam_feedback.percentage,
               });
+            }
+            // Reconstruct practice completion state on resume
+            if (state.mode === 'practice' && state.practice_mastery_achieved) {
+              setPracticeComplete(true);
+              setPracticeQuestionsAnswered(state.practice_questions_answered || 0);
             }
           }
         })
@@ -674,6 +699,10 @@ export default function ChatSession() {
             });
           }
           setExamResults(response.next_turn.exam_results || []);
+        } else if (sessionMode === 'practice') {
+          // Practice mastery achieved — show practice completion screen
+          setPracticeComplete(true);
+          setPracticeSummary(response.next_turn.message);
         } else if (sessionMode !== 'clarify_doubts') {
           const summaryData = await getSummary(sessionId);
           setSummary(summaryData);
@@ -1098,28 +1127,6 @@ export default function ChatSession() {
     focusSwipeDir.current = null;
   };
 
-  // ─── Bridge transition helper (shared by clear + fallback_dynamic) ──
-  const handleBridgeTransition = (result: any) => {
-    setSessionPhase('interactive');
-    const bridgeMsg: Message = {
-      role: 'teacher' as const,
-      content: result.message,
-      audioText: result.audio_text || null,
-      questionFormat: result.question_format || null,
-    };
-    setMessages(prev => [...prev, bridgeMsg]);
-    localStorage.removeItem(`slide-pos-${sessionId}`);
-    // Welcome(0) + explanationCards(1..N) → bridge at N+1
-    // Use a callback so the auto-advance useEffect places us correctly
-    // Set to last card for now; auto-advance will bump to bridge slide
-    setCurrentSlideIdx(explanationCards.length);
-    if (result.audio_text) {
-      playTeacherAudio(result.audio_text, `bridge-${Date.now()}`);
-    } else {
-      playTeacherAudio(result.message, `msg-${messages.length}`);
-    }
-  };
-
   // ─── Card phase action handler ─────────────────────────────────────
   const handleCardAction = async (action: 'clear' | 'explain_differently') => {
     if (!sessionId) return;
@@ -1155,14 +1162,19 @@ export default function ChatSession() {
         if (result.audio_text) {
           playTeacherAudio(result.audio_text, `complete-${Date.now()}`);
         }
-      } else if (result.action === 'transition_to_interactive') {
-        setSessionPhase('interactive');
-        const bridgeMsg: Message = {
-          role: 'teacher' as const,
-          content: result.message,
-          audioText: result.audio_text || null,
-        };
-        handleBridgeTransition(result);
+      } else if (result.action === 'teach_me_complete') {
+        // NEW: Teach Me card phase ended → show summary + Practice CTA
+        // No bridge turn, no interactive phase. Student can click "Let's Practice"
+        // or "I'm done for now".
+        setIsComplete(true);
+        setTeachMeComplete(true);
+        setTeachMeCompletionMessage(result.message || null);
+        setTeachMeConceptsCovered(result.concepts_covered || []);
+        setTeachMeGuidelineId(result.guideline_id || null);
+        if (result.coverage != null) setCoverage(result.coverage);
+        if (result.audio_text) {
+          playTeacherAudio(result.audio_text, `teach-complete-${Date.now()}`);
+        }
       } else if (result.action === 'switch_variant' && result.cards) {
         setExplanationCards(annotateCards(result.cards));
         setCurrentSlideIdx(0);
@@ -1171,14 +1183,84 @@ export default function ChatSession() {
         setCompletedCheckIns(new Set());
         setCheckInStruggles(new Map());
         localStorage.setItem(`slide-pos-${sessionId}`, '0');
-      } else if (result.action === 'fallback_dynamic') {
-        handleBridgeTransition(result);
       }
     } catch (err: any) {
       console.error('Card action failed:', err);
     } finally {
       setCardActionLoading(false);
     }
+  };
+
+  // ─── Practice CTA handlers ────────────────────────────────────────
+  const handleStartPracticeFromCTA = async () => {
+    if (!sessionId || !subject || !chapter || !topic) return;
+    // guideline_id comes from the teach_me_complete response
+    if (!teachMeGuidelineId) {
+      setPracticeStartError('Could not determine topic for practice. Try again from topic selection.');
+      return;
+    }
+    setCreatingPractice(true);
+    setPracticeStartError(null);
+    try {
+      const response = await createSession({
+        student: {
+          id: studentId,
+          grade,
+          prefs: { style: 'standard', lang: 'en' },
+        },
+        goal: {
+          chapter,
+          syllabus: `${board}-G${grade}`,
+          learning_objectives: [`Practice ${topic}`],
+          guideline_id: teachMeGuidelineId,
+        },
+        mode: 'practice',
+        source_session_id: sessionId,  // FR-10: explicit handoff
+      });
+      navigate(
+        `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}/practice/${response.session_id}`,
+        { state: { firstTurn: response.first_turn, mode: 'practice' } },
+      );
+    } catch (err: any) {
+      console.error('Failed to start practice:', err);
+      setPracticeStartError(err?.message || 'Could not start practice session. Please try again.');
+    } finally {
+      setCreatingPractice(false);
+    }
+  };
+
+  const handleDoneForNow = () => {
+    if (!subject || !chapter || !topic) {
+      navigate('/learn');
+      return;
+    }
+    navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
+  };
+
+  const handleEndPractice = async () => {
+    if (!sessionId) return;
+    if (!confirm("End this practice session? You'll see your progress.")) return;
+    setEndingPractice(true);
+    try {
+      const result = await endPracticeSession(sessionId);
+      setPracticeComplete(true);
+      setIsComplete(true);
+      setPracticeSummary(result.message);
+      setPracticeQuestionsAnswered(result.questions_answered);
+    } catch (err: any) {
+      console.error('Failed to end practice:', err);
+    } finally {
+      setEndingPractice(false);
+    }
+  };
+
+  const handleStartExamFromPractice = () => {
+    if (!subject || !chapter || !topic) {
+      navigate('/learn');
+      return;
+    }
+    // Navigate back to mode-select so they can choose exam
+    navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
   };
 
   const [showSimplifyOptions, setShowSimplifyOptions] = useState(false);
@@ -1251,6 +1333,17 @@ export default function ChatSession() {
           </span>
 
           <div className="nav-actions">
+            {sessionId && sessionMode === 'practice' && !isComplete && (
+              <button
+                onClick={handleEndPractice}
+                className="nav-action-btn"
+                disabled={endingPractice}
+                title="End this practice session"
+                data-testid="end-practice-btn"
+              >
+                {endingPractice ? 'Ending...' : 'End Practice'}
+              </button>
+            )}
             {sessionId && sessionMode !== 'exam' && !isComplete && (
               <button
                 onClick={() => setFeedbackModalOpen(true)}
@@ -1340,7 +1433,106 @@ export default function ChatSession() {
         </div>
 
         <div className="chat-container" data-testid="chat-container">
-          {showSummary ? (
+          {teachMeComplete ? (
+            <div className="summary-card" data-testid="teach-me-complete" style={{ flex: 1, overflowY: 'auto' }}>
+              <h2>Nice work!</h2>
+              {teachMeConceptsCovered.length > 0 && (
+                <div className="summary-content">
+                  <p>You've covered:</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                    {teachMeConceptsCovered.map((c, i) => (
+                      <span key={i} style={{
+                        display: 'inline-block',
+                        background: '#dcfce7',
+                        borderRadius: '12px',
+                        padding: '4px 12px',
+                        fontSize: '0.85rem',
+                        color: '#166534',
+                      }}>{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {teachMeCompletionMessage && (
+                <p style={{ marginTop: '16px', fontSize: '1rem', color: '#2d3748' }}>
+                  {teachMeCompletionMessage}
+                </p>
+              )}
+              {practiceStartError && (
+                <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginTop: '8px' }}>
+                  {practiceStartError}
+                </p>
+              )}
+              <button
+                onClick={handleStartPracticeFromCTA}
+                disabled={creatingPractice}
+                className="restart-button"
+                data-testid="start-practice-cta"
+                style={{
+                  marginTop: '20px',
+                  fontSize: '1.1rem',
+                  padding: '14px 24px',
+                  fontWeight: 700,
+                }}
+              >
+                {creatingPractice ? 'Setting up practice...' : "Let's Practice — put it to work!"}
+              </button>
+              <button
+                onClick={handleDoneForNow}
+                disabled={creatingPractice}
+                className="restart-button"
+                style={{
+                  marginTop: '10px',
+                  background: 'white',
+                  color: '#667eea',
+                  border: '2px solid #667eea',
+                  fontSize: '0.9rem',
+                }}
+              >
+                I'm done for now
+              </button>
+            </div>
+          ) : practiceComplete ? (
+            <div className="summary-card" data-testid="practice-complete" style={{ flex: 1, overflowY: 'auto' }}>
+              <h2>Great practice session!</h2>
+              {practiceSummary && (
+                <p style={{ marginTop: '12px', fontSize: '1rem', color: '#2d3748' }}>
+                  {practiceSummary}
+                </p>
+              )}
+              {practiceQuestionsAnswered > 0 && (
+                <p style={{ marginTop: '8px', fontSize: '0.85rem', color: '#718096' }}>
+                  You answered {practiceQuestionsAnswered} question{practiceQuestionsAnswered === 1 ? '' : 's'}.
+                </p>
+              )}
+              <button
+                onClick={handleStartExamFromPractice}
+                className="restart-button"
+                data-testid="start-exam-cta"
+                style={{
+                  marginTop: '20px',
+                  fontSize: '1.05rem',
+                  padding: '14px 24px',
+                  fontWeight: 700,
+                }}
+              >
+                Make it official — take the exam
+              </button>
+              <button
+                onClick={handleDoneForNow}
+                className="restart-button"
+                style={{
+                  marginTop: '10px',
+                  background: 'white',
+                  color: '#667eea',
+                  border: '2px solid #667eea',
+                  fontSize: '0.9rem',
+                }}
+              >
+                I'm done for now
+              </button>
+            </div>
+          ) : showSummary ? (
             <div className="summary-card" data-testid="session-summary" style={{ flex: 1, overflowY: 'auto' }}>
               {sessionMode === 'clarify_doubts' ? (
                 <>

@@ -131,6 +131,9 @@ def migrate():
         # Issues table (created by create_all, seed LLM config)
         _apply_issues_table(db_manager)
 
+        # Rebuild paused-session unique index to include mode (teach_me + practice can both be paused)
+        _apply_practice_mode_support(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -205,6 +208,9 @@ def _apply_learning_modes_columns(db_manager):
             print("  ✓ state_version column added")
 
         # Partial unique index: only one paused session per user+guideline
+        # NOTE: This is the legacy (user_id, guideline_id) variant. The mode-aware
+        # rebuild happens in _apply_practice_mode_support() so that paused Teach Me
+        # and paused Practice sessions for the same topic don't collide.
         conn.execute(text(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
             "ON sessions(user_id, guideline_id) WHERE is_paused = TRUE"
@@ -214,6 +220,29 @@ def _apply_learning_modes_columns(db_manager):
         conn.execute(text("UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL"))
 
         conn.commit()
+
+
+def _apply_practice_mode_support(db_manager):
+    """Rebuild the paused-session unique index to include mode.
+
+    Before: (user_id, guideline_id) WHERE is_paused = TRUE
+    After:  (user_id, guideline_id, mode) WHERE is_paused = TRUE
+
+    This allows a paused Teach Me session and a paused Practice session to
+    coexist for the same user+topic without colliding on the unique constraint.
+    Idempotent: DROP IF EXISTS + CREATE IF NOT EXISTS.
+    """
+    with db_manager.engine.connect() as conn:
+        print("  Rebuilding paused-session unique index to include mode...")
+        conn.execute(text(
+            "DROP INDEX IF EXISTS idx_sessions_one_paused_per_user_guideline"
+        ))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+            "ON sessions(user_id, guideline_id, mode) WHERE is_paused = TRUE"
+        ))
+        conn.commit()
+        print("  ✓ paused-session unique index now includes mode")
 
 
 def _apply_user_language_columns(db_manager):

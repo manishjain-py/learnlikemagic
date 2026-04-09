@@ -195,7 +195,13 @@ class SessionRepository:
         self, user_id: str, guideline_id: str,
         mode: Optional[str] = None, finished_only: bool = False,
     ) -> list[dict]:
-        """List sessions for a user+guideline, optionally filtered by mode and completion."""
+        """List sessions for a user+guideline, optionally filtered by mode and completion.
+
+        Uses SessionState.is_complete as the single source of truth for completion
+        across all modes (teach_me, practice, exam, clarify_doubts).
+        """
+        from tutor.models.session_state import SessionState
+
         query = (
             self.db.query(SessionModel)
             .filter(SessionModel.user_id == user_id, SessionModel.guideline_id == guideline_id)
@@ -205,56 +211,126 @@ class SessionRepository:
         rows = query.order_by(SessionModel.created_at.desc()).all()
 
         results = []
+        # Canonical concepts for this guideline (used as the coverage denominator).
+        # Pulled from the latest teach_me session's plan — never from a practice plan,
+        # since practice plans are struggle-weighted subsets that would shrink the denominator.
+        canonical_concepts = self._get_canonical_concepts(guideline_id)
+
         for row in rows:
             try:
-                state = json.loads(row.state_json)
+                session_state = SessionState.model_validate_json(row.state_json)
             except Exception:
-                state = {}
+                logger.warning("Skipping session %s: cannot parse state_json", row.id)
+                continue
 
-            exam_finished = state.get("exam_finished", False)
-            is_complete = state.get("clarify_complete", False) if state.get("mode") == "clarify_doubts" else False
-
-            # For teach_me: complete when current_step > total_steps
-            if state.get("mode") == "teach_me":
-                topic = state.get("topic") or {}
-                plan = topic.get("study_plan", {})
-                total_steps = plan.get("total_steps") or len(plan.get("steps", []))
-                current_step = state.get("current_step", 1)
-                is_complete = current_step > total_steps if total_steps else False
-
-            if state.get("mode") == "exam":
-                is_complete = exam_finished
+            is_complete = session_state.is_complete
 
             if finished_only and not is_complete:
                 continue
 
-            # Compute exam score from fractional scores
-            exam_questions = state.get("exam_questions", [])
-            exam_score = round(sum(q.get("score", 0) for q in exam_questions), 1) if exam_questions else None
-            exam_answered = sum(1 for q in exam_questions if q.get("student_answer"))
+            # Exam score / answered (only relevant for exam mode)
+            exam_questions = session_state.exam_questions if session_state.mode == "exam" else []
+            exam_score = (
+                round(sum(q.score for q in exam_questions), 1)
+                if exam_questions else None
+            )
+            exam_answered = sum(1 for q in exam_questions if q.student_answer)
 
-            # Coverage for teach_me
+            # Coverage: teach_me always, practice gated on min 3 questions (FR-30)
             coverage = None
-            if state.get("mode") == "teach_me":
-                covered_set = set(state.get("concepts_covered_set", []))
-                topic = state.get("topic") or {}
-                plan_steps = (topic.get("study_plan") or {}).get("steps", [])
-                all_concepts = [s.get("concept") for s in plan_steps if s.get("concept")]
-                if all_concepts:
-                    coverage = round(len(covered_set & set(all_concepts)) / len(all_concepts) * 100, 1)
+            if session_state.mode == "teach_me":
+                coverage = self._compute_coverage(
+                    session_state.concepts_covered_set, canonical_concepts
+                )
+            elif session_state.mode == "practice":
+                if session_state.practice_questions_answered >= 3:
+                    coverage = self._compute_coverage(
+                        session_state.concepts_covered_set, canonical_concepts
+                    )
 
             results.append({
                 "session_id": row.id,
-                "mode": state.get("mode", row.mode or "teach_me"),
+                "mode": session_state.mode,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "is_complete": is_complete,
-                "exam_finished": exam_finished,
-                "exam_score": exam_score if state.get("mode") == "exam" else None,
-                "exam_total": len(exam_questions) if state.get("mode") == "exam" else None,
-                "exam_answered": exam_answered if state.get("mode") == "exam" else None,
+                "exam_finished": session_state.exam_finished,
+                "exam_score": exam_score if session_state.mode == "exam" else None,
+                "exam_total": len(exam_questions) if session_state.mode == "exam" else None,
+                "exam_answered": exam_answered if session_state.mode == "exam" else None,
                 "coverage": coverage,
+                "practice_questions_answered": (
+                    session_state.practice_questions_answered
+                    if session_state.mode == "practice" else None
+                ),
             })
         return results
+
+    def find_most_recent_completed_teach_me(
+        self, user_id: str, guideline_id: str
+    ):
+        """Find the most recent completed Teach Me session for a user+topic.
+
+        Used by Practice session creation for context auto-attach (FR-21). Returns
+        the deserialized SessionState, or None if no completed Teach Me exists.
+        """
+        from tutor.models.session_state import SessionState
+
+        rows = (
+            self.db.query(SessionModel)
+            .filter(
+                SessionModel.user_id == user_id,
+                SessionModel.guideline_id == guideline_id,
+                SessionModel.mode == "teach_me",
+            )
+            .order_by(SessionModel.created_at.desc())
+            .all()
+        )
+        for row in rows:
+            try:
+                state = SessionState.model_validate_json(row.state_json)
+                if state.is_complete:
+                    return state
+            except Exception:
+                continue
+        return None
+
+    def _get_canonical_concepts(self, guideline_id: str) -> list[str]:
+        """Get the canonical concept list for a topic.
+
+        Uses the most recent teach_me session's plan as the canonical concept set.
+        Teach_me plans cover the full topic, while practice plans are subsets — so
+        we anchor the coverage denominator on teach_me only to prevent denominator
+        shrinkage when a struggle-weighted practice plan becomes the latest session.
+
+        Returns an empty list if no teach_me session exists (practice-only users
+        get 0% coverage until they also do Teach Me — acceptable).
+        """
+        from tutor.models.session_state import SessionState
+
+        teach_me_row = (
+            self.db.query(SessionModel)
+            .filter(
+                SessionModel.guideline_id == guideline_id,
+                SessionModel.mode == "teach_me",
+            )
+            .order_by(SessionModel.created_at.desc())
+            .first()
+        )
+        if teach_me_row:
+            try:
+                state = SessionState.model_validate_json(teach_me_row.state_json)
+                return list(state.mastery_estimates.keys())
+            except Exception:
+                pass
+        return []
+
+    @staticmethod
+    def _compute_coverage(covered_set: set, canonical_concepts: list[str]) -> float:
+        """Compute coverage % using the canonical concept list as the denominator."""
+        if not canonical_concepts:
+            return 0.0
+        covered = covered_set & set(canonical_concepts)
+        return round(len(covered) / len(canonical_concepts) * 100, 1)
 
     def delete(self, session_id: str) -> bool:
         """

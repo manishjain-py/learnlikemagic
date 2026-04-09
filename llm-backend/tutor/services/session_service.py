@@ -124,6 +124,16 @@ class SessionService:
         # Convert DB guideline to new Topic model
         topic = convert_guideline_to_topic(guideline, study_plan_record, is_refresher=is_refresher)
 
+        # Practice mode has its own creation flow — context resolution + practice plan + dynamic welcome
+        if mode == "practice":
+            return self._create_practice_session(
+                request=request,
+                user_id=user_id,
+                guideline=guideline,
+                topic=topic,
+                student_context=student_context,
+            )
+
         # Create mode-specific session
         session = create_session(topic=topic, student_context=student_context, mode=mode)
         session_id = str(uuid4())
@@ -245,6 +255,213 @@ class SessionService:
 
         return response
 
+    def _create_practice_session(
+        self,
+        request: CreateSessionRequest,
+        user_id: Optional[str],
+        guideline,
+        topic,
+        student_context: StudentContext,
+    ) -> CreateSessionResponse:
+        """Create a Let's Practice session.
+
+        Flow:
+        1. Resolve practice context (explicit source, auto-attach, or cold start)
+        2. Generate a practice-focused study plan (question-heavy, no explain steps)
+        3. Replace topic.study_plan with the practice plan
+        4. Create SessionState with mode='practice' and seeded mastery
+        5. Generate dynamic practice welcome
+        6. Persist and return first turn
+        """
+        import asyncio
+
+        source_session_id = getattr(request, "source_session_id", None)
+        context_data = self._resolve_practice_context(
+            user_id, request.goal.guideline_id, source_session_id
+        )
+
+        # Generate a practice-specific plan. On failure, keep the existing plan
+        # from the topic so the session can still start (non-fatal fallback).
+        practice_plan = self._generate_practice_plan_for_session(
+            guideline=guideline,
+            student_context=student_context,
+            context_data=context_data,
+        )
+        if practice_plan is not None and practice_plan.steps:
+            topic.study_plan = practice_plan
+        else:
+            logger.warning(
+                "Practice plan generation failed — falling back to the existing "
+                "topic study plan for session creation."
+            )
+
+        # Create session with mode='practice' — create_session will seed mastery
+        session = create_session(topic=topic, student_context=student_context, mode="practice")
+        session_id = str(uuid4())
+        session.session_id = session_id
+        session.practice_source = context_data["source"]
+        session.source_session_id = context_data.get("source_session_id")
+
+        # Inject the explanation summary for post-Teach-Me practice sessions.
+        # The system prompt builder reads this and renders the explanation context section.
+        if context_data.get("explanation_summary"):
+            session.precomputed_explanation_summary = context_data["explanation_summary"]
+
+        logger.info(
+            f"Created practice session {session_id} for topic {topic.topic_name} "
+            f"source={context_data['source']} source_session_id={context_data.get('source_session_id')}"
+        )
+
+        # Generate dynamic practice welcome (skips card phase, straight to first question)
+        welcome, audio_text = asyncio.run(
+            self.orchestrator.generate_practice_welcome(session)
+        )
+        session.add_message(create_teacher_message(welcome, audio_text=audio_text))
+
+        first_turn = {
+            "message": welcome,
+            "audio_text": audio_text,
+            "hints": [],
+            "step_idx": session.current_step,
+            "session_phase": "interactive",  # practice skips card phase
+        }
+
+        self._persist_session(
+            session_id, session, request,
+            user_id=user_id,
+            subject=guideline.subject if guideline else None,
+        )
+
+        self.event_repo.log(
+            session_id=session_id,
+            node="welcome",
+            step_idx=session.current_step,
+            payload={
+                "action": "session_created",
+                "mode": "practice",
+                "practice_source": context_data["source"],
+            },
+        )
+
+        return CreateSessionResponse(
+            session_id=session_id,
+            first_turn=first_turn,
+            mode="practice",
+        )
+
+    def _resolve_practice_context(
+        self,
+        user_id: Optional[str],
+        guideline_id: str,
+        source_session_id: Optional[str] = None,
+    ) -> dict:
+        """Resolve context for a practice session (FR-19, FR-21, FR-22).
+
+        Priority:
+        1. Explicit source_session_id (from Teach Me CTA handoff)
+        2. Auto-detect most recent completed Teach Me session
+        3. Cold start (no context)
+
+        Reads all required data points directly from the source session's
+        CardPhaseState — no new storage needed.
+        """
+        source_state = None
+
+        if source_session_id:
+            # Explicit handoff from Teach Me CTA
+            db_row = self.session_repo.get_by_id(source_session_id)
+            if db_row:
+                try:
+                    source_state = SessionState.model_validate_json(db_row.state_json)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load explicit source session {source_session_id}: {e}"
+                    )
+        elif user_id:
+            # Auto-attach from most recent completed Teach Me (FR-21)
+            source_state = self.session_repo.find_most_recent_completed_teach_me(
+                user_id, guideline_id
+            )
+
+        if source_state is None or source_state.card_phase is None:
+            # Truly cold start (FR-22)
+            return {
+                "source": "cold",
+                "source_session_id": None,
+                "explanation_summary": None,
+                "variants_shown": [],
+                "remedial_cards": {},
+                "check_in_struggles": [],
+            }
+
+        # Context attached — read everything from source session's CardPhaseState (FR-19)
+        return {
+            "source": "teach_me",
+            "source_session_id": source_state.session_id,
+            "explanation_summary": source_state.precomputed_explanation_summary,
+            "variants_shown": list(source_state.card_phase.variants_shown),
+            "remedial_cards": {
+                idx: [rc.model_dump() for rc in cards]
+                for idx, cards in source_state.card_phase.remedial_cards.items()
+            },
+            "check_in_struggles": [
+                evt.model_dump() for evt in source_state.card_phase.check_in_struggles
+            ],
+        }
+
+    def _generate_practice_plan_for_session(
+        self,
+        guideline,
+        student_context: StudentContext,
+        context_data: dict,
+    ):
+        """Generate a practice-focused study plan via StudyPlanGeneratorService.
+
+        Returns a tutor StudyPlan model, or None on failure (caller falls back).
+        """
+        try:
+            from shared.models.entities import TeachingGuideline as GuidelineEntity
+            from shared.services.llm_config_service import LLMConfigService
+            from shared.prompts import PromptLoader
+            from study_plans.services.generator_service import StudyPlanGeneratorService
+            from tutor.services.topic_adapter import convert_session_plan_to_study_plan
+
+            # Load the ORM entity (generator expects TeachingGuideline, not GuidelineResponse)
+            guideline_entity = (
+                self.db.query(GuidelineEntity)
+                .filter(GuidelineEntity.id == guideline.id)
+                .first()
+            )
+            if not guideline_entity:
+                logger.warning(f"Guideline entity not found for {guideline.id}")
+                return None
+
+            # Create LLM service with study_plan_generator config
+            settings = get_settings()
+            gen_config = LLMConfigService(self.db).get_config("study_plan_generator")
+            gen_llm = LLMService(
+                api_key=settings.openai_api_key,
+                provider=gen_config["provider"],
+                model_id=gen_config["model_id"],
+                gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+                anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+            )
+
+            generator = StudyPlanGeneratorService(gen_llm, PromptLoader)
+            is_cold_start = (context_data["source"] == "cold")
+            result = generator.generate_practice_plan(
+                guideline=guideline_entity,
+                student_context=student_context,
+                check_in_struggles=context_data.get("check_in_struggles"),
+                is_cold_start=is_cold_start,
+            )
+
+            return convert_session_plan_to_study_plan(result["plan"])
+
+        except Exception as e:
+            logger.error(f"Failed to generate practice plan: {e}", exc_info=True)
+            return None
+
     def process_step(self, session_id: str, request: StepRequest) -> StepResponse:
         """Process a student's answer using the new orchestrator."""
         # Load session from DB
@@ -281,14 +498,15 @@ class SessionService:
             },
         )
 
-        # Build response (maintain same REST contract)
+        # Build response (maintain same REST contract). is_complete now comes
+        # from SessionState.is_complete — single source of truth across all modes.
         next_turn = {
             "message": turn_result.response,
             "audio_text": turn_result.audio_text,
             "hints": [],
             "step_idx": session.current_step,
             "mastery_score": session.overall_mastery,
-            "is_complete": session.exam_finished if session.mode == "exam" else session.is_complete,
+            "is_complete": session.is_complete,
         }
 
         if turn_result.visual_explanation:
@@ -525,7 +743,7 @@ class SessionService:
             db_record.mastery = session.overall_mastery
             db_record.step_idx = session.current_step
             db_record.mode = session.mode
-            db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
+            db_record.is_paused = session.is_paused if session.mode in ("teach_me", "practice") else False
             db_record.updated_at = datetime.utcnow()
             self.db.commit()
 
@@ -549,7 +767,7 @@ class SessionService:
                 step_idx=session.current_step,
                 state_version=expected_version + 1,
                 mode=session.mode,
-                is_paused=session.is_paused if session.mode == "teach_me" else False,
+                is_paused=session.is_paused if session.mode in ("teach_me", "practice") else False,
                 exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
                 exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
                 updated_at=datetime.utcnow(),
@@ -561,21 +779,43 @@ class SessionService:
         self.db.commit()
 
     def pause_session(self, session_id: str) -> dict:
-        """Pause a Teach Me session with version-safe persistence."""
+        """Pause a Teach Me or Practice session with version-safe persistence."""
         db_session = self.session_repo.get_by_id(session_id)
         if not db_session:
             raise SessionNotFoundException(session_id)
         expected_version = db_session.state_version or 1
 
         session = SessionState.model_validate_json(db_session.state_json)
-        session.is_paused = True
 
+        if session.mode not in ("teach_me", "practice"):
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="Only Teach Me and Practice sessions can be paused",
+            )
+
+        session.is_paused = True
         self._persist_session_state(session_id, session, expected_version)
 
+        # Mode-specific pause summary
+        if session.mode == "practice":
+            return {
+                "coverage": session.coverage_percentage,
+                "concepts_covered": list(session.concepts_covered_set),
+                "message": (
+                    f"Paused after {session.practice_questions_answered} question(s). "
+                    "You can pick up where you left off anytime."
+                ),
+            }
+
+        # teach_me
         return {
             "coverage": session.coverage_percentage,
             "concepts_covered": list(session.concepts_covered_set),
-            "message": f"You've covered {session.coverage_percentage:.0f}% so far. You can pick up where you left off anytime.",
+            "message": (
+                f"You've covered {session.coverage_percentage:.0f}% so far. "
+                "You can pick up where you left off anytime."
+            ),
         }
 
     def resume_session(self, session_id: str) -> dict:
@@ -618,6 +858,40 @@ class SessionService:
         return {
             "concepts_discussed": session.concepts_discussed,
             "message": "Doubts session ended successfully.",
+        }
+
+    def end_practice_session(self, session_id: str) -> dict:
+        """End a practice session early (FR-16).
+
+        Marks the session complete by setting practice_mastery_achieved=True
+        so is_complete returns True and the session persists as finished.
+        """
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+
+        if session.mode != "practice":
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="Only practice sessions can be ended via this endpoint",
+            )
+
+        session.practice_mastery_achieved = True
+        session.is_paused = False
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        return {
+            "is_complete": True,
+            "questions_answered": session.practice_questions_answered,
+            "message": (
+                f"Session ended. You answered {session.practice_questions_answered} "
+                f"question(s)."
+            ),
         }
 
     def end_exam(self, session_id: str) -> dict:
@@ -963,7 +1237,16 @@ class SessionService:
         }
 
     def complete_card_phase(self, session_id: str, action: str, check_in_events=None) -> dict:
-        """Handle card phase completion. action: 'clear' or 'explain_differently'."""
+        """Handle card phase completion. action: 'clear' or 'explain_differently'.
+
+        NEW BEHAVIOR (Teach Me / Practice split):
+        - 'clear' → end the Teach Me session (no bridge turn, no v2 plan, no
+          transition to interactive phase). The frontend shows a summary + a
+          "Let's Practice" CTA. Practice is a separate session created via the
+          CTA handoff.
+        - 'explain_differently' → switch to the next unseen variant. If all
+          variants are exhausted, also end the session (with a gentler message).
+        """
         db_session = self.session_repo.get_by_id(session_id)
         if not db_session:
             raise SessionNotFoundException(session_id)
@@ -986,8 +1269,6 @@ class SessionService:
                 "is_complete": True,
             }
 
-        import asyncio
-
         # Store check-in struggle events from frontend (before action branching —
         # struggles are valuable whether the student says "clear" or "explain_differently")
         if check_in_events and session.card_phase:
@@ -1006,28 +1287,7 @@ class SessionService:
                 )
 
         if action == "clear":
-            session.complete_card_phase()
-
-            # Build and persist summary for tutor prompt injection
-            precomputed_summary = self._build_precomputed_summary(session)
-            session.precomputed_explanation_summary = precomputed_summary
-
-            # Generate v2 session plan from explanation data
-            self._generate_v2_session_plan(session)
-
-            # Master tutor generates bridge (replaces hardcoded transition)
-            bridge_result = asyncio.run(
-                self.orchestrator.generate_bridge_turn(session, bridge_type="understood")
-            )
-
-            self._persist_session_state(session_id, session, expected_version)
-
-            return {
-                "action": "transition_to_interactive",
-                "message": bridge_result.response,
-                "audio_text": bridge_result.audio_text,
-                "question_format": bridge_result.question_format,
-            }
+            return self._finalize_teach_me_session(session, session_id, expected_version)
 
         elif action == "explain_differently":
             # Find next unseen variant
@@ -1038,31 +1298,65 @@ class SessionService:
 
             if unseen:
                 return self._switch_variant_internal(session, session_id, unseen[0], expected_version)
-            else:
-                # All variants exhausted — master tutor re-explains
-                precomputed_summary = self._build_precomputed_summary(session)
-                session.precomputed_explanation_summary = precomputed_summary
-
-                session.complete_card_phase()
-
-                # Still generate v2 plan — tutor will adapt interactively
-                self._generate_v2_session_plan(session)
-
-                bridge_result = asyncio.run(
-                    self.orchestrator.generate_bridge_turn(session, bridge_type="confused")
-                )
-
-                self._persist_session_state(session_id, session, expected_version)
-
-                return {
-                    "action": "fallback_dynamic",
-                    "message": bridge_result.response,
-                    "audio_text": bridge_result.audio_text,
-                    "question_format": bridge_result.question_format,
-                }
+            # All variants exhausted — end the session with a gentle nudge to practice
+            return self._finalize_teach_me_session(
+                session, session_id, expected_version,
+                custom_message="We've looked at this from a few angles. Let's practice to see what stuck!",
+            )
 
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=f"Unknown card action: {action}")
+
+    def _finalize_teach_me_session(
+        self,
+        session: SessionState,
+        session_id: str,
+        expected_version: int,
+        custom_message: Optional[str] = None,
+    ) -> dict:
+        """End a Teach Me session after card phase. No bridge turn, no v2 plan.
+
+        This is the new completion path — the session is considered done once
+        the card phase is marked completed. The student will see a summary
+        screen with a prominent "Let's Practice" CTA in the frontend.
+        """
+        session.complete_card_phase()
+
+        # Build and persist the explanation summary. Stored on the session so a
+        # later Practice session (launched via the CTA or auto-attached) can read
+        # it as shared vocabulary via `source_state.precomputed_explanation_summary`.
+        precomputed_summary = self._build_precomputed_summary(session)
+        session.precomputed_explanation_summary = precomputed_summary
+
+        # Add card concepts to coverage set. We use the actual cards the student saw,
+        # not the plan steps — the cards are the source of truth for what was taught.
+        if session.card_phase:
+            explanation_repo = ExplanationRepository(self.db)
+            for vk in session.card_phase.variants_shown:
+                exp = explanation_repo.get_variant(session.card_phase.guideline_id, vk)
+                if exp and exp.cards_json:
+                    for card in exp.cards_json:
+                        concept = card.get("concept") or card.get("title")
+                        if concept:
+                            session.concepts_covered_set.add(concept)
+                            session.card_covered_concepts.add(concept)
+
+        # Clear paused state — the session is now complete, not paused
+        session.is_paused = False
+
+        self._persist_session_state(session_id, session, expected_version)
+
+        message = custom_message or "Nice work! You've covered the key ideas. Ready to practice?"
+
+        return {
+            "action": "teach_me_complete",
+            "message": message,
+            "audio_text": message,
+            "is_complete": True,
+            "coverage": session.coverage_percentage,
+            "concepts_covered": list(session.concepts_covered_set),
+            "guideline_id": session.card_phase.guideline_id if session.card_phase else None,
+        }
 
     def _switch_variant_internal(
         self, session: SessionState, session_id: str, variant_key: str, expected_version: int

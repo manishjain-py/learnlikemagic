@@ -140,6 +140,13 @@ function App() {
               </OnboardingGuard>
             </ProtectedRoute>
           } />
+          <Route path="/learn/:subject/:chapter/:topic/practice/:sessionId" element={
+            <ProtectedRoute>
+              <OnboardingGuard>
+                <ChatSession key="practice" />
+              </OnboardingGuard>
+            </ProtectedRoute>
+          } />
 
           {/* Backward compat: old session URL */}
           <Route path="/session/:sessionId" element={

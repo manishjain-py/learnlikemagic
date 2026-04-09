@@ -15,7 +15,7 @@ from tutor.models.study_plan import Topic, StudyPlan
 
 MasteryLevel = Literal["not_started", "needs_work", "developing", "adequate", "strong", "mastered"]
 
-SessionMode = Literal["teach_me", "clarify_doubts", "exam"]
+SessionMode = Literal["teach_me", "clarify_doubts", "exam", "practice"]
 
 ExplanationPhaseName = Literal["not_started", "opening", "explaining", "informal_check", "complete"]
 
@@ -221,6 +221,24 @@ class SessionState(BaseModel):
     )
     is_refresher: bool = False
 
+    # Practice mode state
+    practice_source: Optional[Literal["teach_me", "cold"]] = Field(
+        default=None, description="How this practice session was initiated"
+    )
+    source_session_id: Optional[str] = Field(
+        default=None, description="Teach Me session ID that provided context (if any)"
+    )
+    practice_questions_answered: int = Field(
+        default=0, description="Total questions answered in this practice session"
+    )
+    practice_concept_question_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Questions answered per concept (for 'at least 2 per concept' rule)"
+    )
+    practice_mastery_achieved: bool = Field(
+        default=False, description="Whether practice mastery threshold was met"
+    )
+
     # Card Phase (pre-computed explanations)
     card_phase: Optional[CardPhaseState] = Field(
         default=None, description="Card-based explanation phase state (pre-computed explanations)"
@@ -255,12 +273,22 @@ class SessionState(BaseModel):
 
     @property
     def is_complete(self) -> bool:
+        """Single source of truth for session completion across all modes."""
         if self.mode == "clarify_doubts":
             return self.clarify_complete
+        if self.mode == "exam":
+            return self.exam_finished
+        if self.mode == "practice":
+            return self.practice_mastery_achieved
+        # teach_me
         if not self.topic:
             return False
         if self.is_refresher:
             return self.card_phase is not None and self.card_phase.completed
+        # Card-based Teach Me (the only path going forward): complete when card phase is done
+        if self.card_phase is not None:
+            return self.card_phase.completed
+        # v1 fallback (non-card sessions, out of scope but preserved for legacy data)
         return self.current_step > self.topic.study_plan.total_steps
 
     @property
@@ -396,7 +424,13 @@ def create_session(
 ) -> SessionState:
     """Create a new session for a topic."""
     concepts = topic.study_plan.get_concepts()
-    mastery_estimates = {concept: 0.0 for concept in concepts} if mode == "teach_me" else {}
+    # Seed mastery for modes that use per-concept mastery tracking.
+    # Practice mode must be seeded so the "all concepts mastered" completion
+    # check fires against the full canonical concept list, not a narrow slice.
+    if mode in ("teach_me", "practice"):
+        mastery_estimates = {concept: 0.0 for concept in concepts}
+    else:
+        mastery_estimates = {}
 
     return SessionState(
         topic=topic,
