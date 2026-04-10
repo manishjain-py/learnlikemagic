@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { CheckInActivity, synthesizeSpeech } from '../api';
 import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
 
@@ -140,6 +140,11 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
     });
   }, [wrongAttempts, totalWrong, hintCount, autoRevealed, pairs, onComplete]);
 
+  // Auto-complete when success is shown (no Continue button needed)
+  useEffect(() => {
+    if (showSuccess) handleComplete();
+  }, [showSuccess, handleComplete]);
+
   return (
     <div className="match-activity">
       <div className="match-instruction">{checkIn.instruction}</div>
@@ -194,9 +199,6 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
       {showSuccess && (
         <div className="match-success">
           <div className="match-success-message">{checkIn.success_message}</div>
-          <button className="match-continue-btn" onClick={handleComplete} type="button">
-            Continue
-          </button>
         </div>
       )}
     </div>

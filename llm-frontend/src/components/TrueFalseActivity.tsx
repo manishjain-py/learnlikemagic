@@ -27,23 +27,6 @@ export default function TrueFalseActivity({ checkIn, onComplete }: Props) {
   const [hintShown, setHintShown] = useState(false);
   const [wrongPicks, setWrongPicks] = useState<string[]>([]);
 
-  const handleTap = useCallback((choice: boolean) => {
-    if (isCorrect !== null) return;
-
-    if (choice === correctAnswer) {
-      setAnswered(choice);
-      setIsCorrect(true);
-      playTTS(checkIn.success_message);
-    } else {
-      setWrongCount(prev => prev + 1);
-      setWrongPicks(prev => [...prev, choice ? 'Right' : 'Wrong']);
-      if (!hintShown) {
-        setHintShown(true);
-        playTTS(checkIn.hint);
-      }
-    }
-  }, [isCorrect, correctAnswer, hintShown, checkIn]);
-
   const handleComplete = useCallback(() => {
     onComplete({
       wrongCount,
@@ -54,6 +37,24 @@ export default function TrueFalseActivity({ checkIn, onComplete }: Props) {
         : [],
     });
   }, [wrongCount, hintShown, checkIn.statement, correctAnswer, wrongPicks, onComplete]);
+
+  const handleTap = useCallback((choice: boolean) => {
+    if (isCorrect !== null) return;
+
+    if (choice === correctAnswer) {
+      setAnswered(choice);
+      setIsCorrect(true);
+      playTTS(checkIn.success_message);
+      handleComplete();
+    } else {
+      setWrongCount(prev => prev + 1);
+      setWrongPicks(prev => [...prev, choice ? 'Right' : 'Wrong']);
+      if (!hintShown) {
+        setHintShown(true);
+        playTTS(checkIn.hint);
+      }
+    }
+  }, [isCorrect, correctAnswer, hintShown, checkIn, handleComplete]);
 
   return (
     <div className="checkin-activity">
@@ -93,9 +94,6 @@ export default function TrueFalseActivity({ checkIn, onComplete }: Props) {
       {isCorrect && (
         <div className="checkin-success">
           <div className="checkin-success-message">{checkIn.success_message}</div>
-          <button className="checkin-continue-btn" onClick={handleComplete} type="button">
-            Continue
-          </button>
         </div>
       )}
     </div>

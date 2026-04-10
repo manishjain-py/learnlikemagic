@@ -29,25 +29,6 @@ export default function PickOneActivity({ checkIn, onComplete }: Props) {
   const [shakeIdx, setShakeIdx] = useState<number | null>(null);
   const [wrongPicks, setWrongPicks] = useState<string[]>([]);
 
-  const handleTap = useCallback((idx: number) => {
-    if (isCorrect !== null) return; // already answered
-
-    if (idx === correctIdx) {
-      setSelected(idx);
-      setIsCorrect(true);
-      playTTS(checkIn.success_message);
-    } else {
-      setWrongCount(prev => prev + 1);
-      setWrongPicks(prev => [...prev, options[idx]]);
-      setShakeIdx(idx);
-      setTimeout(() => setShakeIdx(null), 500);
-      if (!hintShown) {
-        setHintShown(true);
-        playTTS(checkIn.hint);
-      }
-    }
-  }, [isCorrect, correctIdx, hintShown, options, checkIn]);
-
   const handleComplete = useCallback(() => {
     onComplete({
       wrongCount,
@@ -58,6 +39,26 @@ export default function PickOneActivity({ checkIn, onComplete }: Props) {
         : [],
     });
   }, [wrongCount, hintShown, checkIn.instruction, options, correctIdx, wrongPicks, onComplete]);
+
+  const handleTap = useCallback((idx: number) => {
+    if (isCorrect !== null) return; // already answered
+
+    if (idx === correctIdx) {
+      setSelected(idx);
+      setIsCorrect(true);
+      playTTS(checkIn.success_message);
+      handleComplete();
+    } else {
+      setWrongCount(prev => prev + 1);
+      setWrongPicks(prev => [...prev, options[idx]]);
+      setShakeIdx(idx);
+      setTimeout(() => setShakeIdx(null), 500);
+      if (!hintShown) {
+        setHintShown(true);
+        playTTS(checkIn.hint);
+      }
+    }
+  }, [isCorrect, correctIdx, hintShown, options, checkIn, handleComplete]);
 
   return (
     <div className="checkin-activity">
@@ -88,9 +89,6 @@ export default function PickOneActivity({ checkIn, onComplete }: Props) {
       {isCorrect && (
         <div className="checkin-success">
           <div className="checkin-success-message">{checkIn.success_message}</div>
-          <button className="checkin-continue-btn" onClick={handleComplete} type="button">
-            Continue
-          </button>
         </div>
       )}
     </div>

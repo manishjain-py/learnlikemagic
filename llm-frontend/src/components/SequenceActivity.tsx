@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { CheckInActivity, synthesizeSpeech } from '../api';
 import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
 
@@ -99,6 +99,11 @@ export default function SequenceActivity({ checkIn, onComplete }: Props) {
     });
   }, [wrongCount, hintCount, wrongPicks, correctOrder, onComplete]);
 
+  // Auto-complete when success is shown (no Continue button needed)
+  useEffect(() => {
+    if (showSuccess) handleComplete();
+  }, [showSuccess, handleComplete]);
+
   return (
     <div className="checkin-activity">
       <div className="checkin-instruction">{checkIn.instruction}</div>
@@ -149,9 +154,6 @@ export default function SequenceActivity({ checkIn, onComplete }: Props) {
       {showSuccess && (
         <div className="checkin-success">
           <div className="checkin-success-message">{checkIn.success_message}</div>
-          <button className="checkin-continue-btn" onClick={handleComplete} type="button">
-            Continue
-          </button>
         </div>
       )}
     </div>
