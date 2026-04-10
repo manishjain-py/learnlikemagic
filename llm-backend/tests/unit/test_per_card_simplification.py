@@ -160,6 +160,7 @@ class TestSimplifyCardService:
         simplified_card = {
             "card_type": "simplification",
             "title": "Adding — Super Simple",
+            "lines": [{"display": "When you put things together, you get more.", "audio": "When you put things together, you get more."}],
             "content": "When you put things together, you get more.",
             "audio_text": "When you put things together, you get more.",
             "visual": None,
@@ -194,10 +195,11 @@ class TestSimplifyCardService:
 
             result = service.simplify_card("sess_test", card_idx=2, reason='example')
 
-        assert result["action"] == "insert_card"
-        assert result["card"]["card_type"] == "simplification"
+        assert result["action"] == "append_to_card"
+        assert result["simplification"]["card_type"] == "simplification"
         assert result["card_id"] == "remedial_A_2_1"
-        assert result["insert_after"] == "A_2"
+        assert result["source_card_idx"] == 2
+        assert result["depth"] == 1
 
         # Verify orchestrator was called with new signature
         service.orchestrator.generate_simplified_card.assert_awaited_once()
@@ -234,6 +236,7 @@ class TestSimplifyCardService:
         depth2_card = {
             "card_type": "simplification",
             "title": "Number Line — Easiest",
+            "lines": [{"display": "Imagine hopping on a line.", "audio": "Imagine hopping on a line."}],
             "content": "Imagine hopping on a line.",
             "audio_text": "Imagine hopping on a line.",
             "visual": None,
@@ -265,9 +268,10 @@ class TestSimplifyCardService:
 
             result = service.simplify_card("sess_test", card_idx=2, reason='simpler_words')
 
-        assert result["action"] == "insert_card"
+        assert result["action"] == "append_to_card"
         assert result["card_id"] == "remedial_A_2_2"
-        assert result["insert_after"] == "remedial_A_2_1"
+        assert result["source_card_idx"] == 2
+        assert result["depth"] == 2
 
         # Verify orchestrator was called with ORIGINAL base card + previous attempts
         service.orchestrator.generate_simplified_card.assert_awaited_once()
@@ -302,6 +306,7 @@ class TestSimplifyCardService:
         depth3_card = {
             "card_type": "simplification",
             "title": "Number Line — Simplest",
+            "lines": [{"display": "Just hop along!", "audio": "Just hop along!"}],
             "content": "Just hop along!",
             "audio_text": "Just hop along!",
             "visual": None,
@@ -333,10 +338,11 @@ class TestSimplifyCardService:
 
             result = service.simplify_card("sess_test", card_idx=2, reason='elaborate')
 
-        assert result["action"] == "insert_card"
+        assert result["action"] == "append_to_card"
         assert result["card_id"] == "remedial_A_2_3"
-        assert result["insert_after"] == "remedial_A_2_2"
-        assert result["card"]["card_type"] == "simplification"
+        assert result["source_card_idx"] == 2
+        assert result["depth"] == 3
+        assert result["simplification"]["card_type"] == "simplification"
 
         # Verify orchestrator was called with ORIGINAL base card + all previous attempts
         call_kwargs = service.orchestrator.generate_simplified_card.call_args[1]
@@ -434,6 +440,12 @@ class TestVariantSwitchClearsRemedials:
         with patch.object(SessionService, '__init__', lambda self, db: None):
             service = SessionService.__new__(SessionService)
             service.db = MagicMock()
+            service.session_repo = MagicMock()
+
+            # session_repo.get_by_id returns a row with no user_id (anonymous)
+            db_session_row = MagicMock()
+            db_session_row.user_id = None
+            service.session_repo.get_by_id.return_value = db_session_row
 
             mock_expl = MagicMock()
             mock_expl.cards_json = SAMPLE_CARDS
@@ -568,12 +580,11 @@ class TestSimplificationPrompt:
             card_title="Number Line",
             card_content="On a number line, start at 3...",
             all_cards_summary="1. [concept] What is Addition?\n2. [example] Adding Apples\n3. [visual] Number Line",
-            reason_label="I need a simpler explanation",
-            reason_directive="Use simpler words and shorter sentences.",
             previous_attempts_section="",
         )
 
         assert "Number Line" in rendered
-        assert "I need a simpler explanation" in rendered
+        assert "I didn't understand" in rendered  # prompt mentions what the student tapped
         assert "card_type" in rendered  # output requirements mention this
         assert "CRITICAL RULES" in rendered
+        assert "lines" in rendered  # output format uses lines array
