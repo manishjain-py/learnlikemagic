@@ -311,12 +311,15 @@ export default function ChatSession() {
     }
   }, [carouselSlides.length]);
 
-  // Clamp slide index to valid range — prevents blank screen on out-of-bounds
+  // Clamp slide index to valid range — prevents blank screen on out-of-bounds.
+  // During card_phase, currentSlideIdx === carouselSlides.length is the valid
+  // "past last card" state that shows the "Start practice" nav, so don't clamp it.
   useEffect(() => {
     if (carouselSlides.length > 0 && currentSlideIdx >= carouselSlides.length) {
+      if (sessionPhase === 'card_phase' && currentSlideIdx === carouselSlides.length) return;
       setCurrentSlideIdx(carouselSlides.length - 1);
     }
-  }, [currentSlideIdx, carouselSlides.length]);
+  }, [currentSlideIdx, carouselSlides.length, sessionPhase]);
 
   // Auto-play audio when navigating explanation cards (Back/Next or swipe)
   const prevSlideIdx = useRef(0);
@@ -1068,7 +1071,7 @@ export default function ChatSession() {
 
     if (focusSwipeDir.current === 'h') {
       const w = getContainerWidth();
-      const pxOffset = -(currentSlideIdx * w) + dx;
+      const pxOffset = -(Math.min(currentSlideIdx, carouselSlides.length - 1) * w) + dx;
       if (focusTrackRef.current) {
         focusTrackRef.current.style.transform = `translateX(${pxOffset}px)`;
       }
@@ -1757,7 +1760,7 @@ export default function ChatSession() {
                   ref={focusTrackRef}
                   className="focus-track"
                   style={{
-                    transform: `translateX(${-(currentSlideIdx * 100)}%)`,
+                    transform: `translateX(${-(Math.min(currentSlideIdx, carouselSlides.length - 1) * 100)}%)`,
                     transition: 'transform 0.3s ease-out',
                   }}
                 >
