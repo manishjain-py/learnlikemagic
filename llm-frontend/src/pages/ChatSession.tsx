@@ -851,18 +851,32 @@ export default function ChatSession() {
     return audioRef.current;
   };
 
-  // Unlock audio on first user interaction so programmatic play() works
+  // Unlock audio on user interaction so programmatic play() works on mobile.
+  // Uses a tiny silent WAV (iOS Safari needs a real src to unlock) and stays
+  // active (not once) since the first interaction may happen before mount.
+  const audioUnlockedRef = useRef(false);
   useEffect(() => {
+    const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
     const unlock = () => {
+      if (audioUnlockedRef.current) return;
       const audio = getOrCreateAudio();
+      audio.src = silentWav;
       audio.volume = 0;
-      audio.play().then(() => { audio.pause(); audio.volume = 1; audio.src = ''; }).catch(() => {});
+      const p = audio.play();
+      if (p) p.then(() => {
+        audio.pause();
+        audio.volume = 1;
+        audio.currentTime = 0;
+        audioUnlockedRef.current = true;
+      }).catch(() => {});
     };
-    document.addEventListener('click', unlock, { once: true });
-    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock);
+    document.addEventListener('touchstart', unlock);
+    document.addEventListener('touchend', unlock);
     return () => {
       document.removeEventListener('click', unlock);
       document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('touchend', unlock);
     };
   }, []);
 
