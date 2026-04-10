@@ -4,7 +4,7 @@ import { getGuidelineSessions, getTopicProgress, GuidelineSessionEntry, TopicInf
 type SelectableMode = 'teach_me' | 'clarify_doubts' | 'exam' | 'practice';
 
 const MODE_LOADING_MESSAGES: Record<string, string> = {
-  teach_me: 'Creating your personalized lesson plan...',
+  teach_me: 'Preparing your lesson...',
   clarify_doubts: 'Getting ready for your questions...',
   exam: 'Preparing your question paper...',
   practice: 'Setting up your practice session...',
