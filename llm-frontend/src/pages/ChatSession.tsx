@@ -1839,10 +1839,11 @@ export default function ChatSession() {
               </div>
 
               {/* Bottom action area — hidden during typewriter animation */}
-              {sessionPhase === 'card_phase' && (
-                carouselSlides[currentSlideIdx]?.type !== 'explanation' || revealedSlides.has(currentSlideIdx)
-              ) ? (
-                currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
+              {sessionPhase === 'card_phase' ? (
+                /* Hide nav while explanation card is still animating */
+                carouselSlides[currentSlideIdx]?.type === 'explanation' && !revealedSlides.has(currentSlideIdx)
+                ? null
+                : currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
                     {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions
                       && carouselSlides[currentSlideIdx]?.type !== 'check_in' && (

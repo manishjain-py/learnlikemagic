@@ -2743,15 +2743,14 @@ body {
   opacity: 0 !important;
 }
 
-/* Blinking cursor — visible while card is still animating */
+/* Blinking cursor bar — centered below text while card is still animating */
 .tw-cursor {
-  display: inline-block;
-  width: 3px;
-  height: 1.4em;
+  display: block;
+  width: 24px;
+  height: 3px;
   background: #6366f1;
   border-radius: 2px;
-  margin-left: 4px;
-  vertical-align: text-bottom;
+  margin: 20px auto 0;
   animation: tw-blink 0.8s step-end infinite;
 }
 @keyframes tw-blink {
