@@ -273,6 +273,7 @@ export default function TypewriterMarkdown({
     const revealNext = () => {
       if (idx >= total) {
         cursor.remove();
+        cursorRef.current = null;
         setPhase('speaking');
         return;
       }
@@ -300,14 +301,23 @@ export default function TypewriterMarkdown({
     if (onBlockTypedRef.current) {
       let cancelled = false;
       const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
+      // Safety: if onBlockTyped never resolves (e.g. audio hangs), force-advance after 35s
+      const safetyTimer = setTimeout(() => {
+        if (!cancelled && !completedRef.current) {
+          console.warn('TypewriterMarkdown: speaking safety timeout — forcing transition');
+          setPhase('transitioning');
+        }
+      }, 35_000);
       onBlockTypedRef.current(audioText, activeIdx)
         .then(() => {
+          clearTimeout(safetyTimer);
           if (!cancelled && !completedRef.current) setPhase('transitioning');
         })
         .catch(() => {
+          clearTimeout(safetyTimer);
           if (!cancelled && !completedRef.current) setPhase('transitioning');
         });
-      return () => { cancelled = true; };
+      return () => { cancelled = true; clearTimeout(safetyTimer); };
     } else {
       // Fallback: hold for HOLD_DURATION when no audio callback
       timerRef.current = setTimeout(() => setPhase('transitioning'), HOLD_DURATION);

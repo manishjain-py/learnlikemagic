@@ -728,11 +728,15 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
     headers['Authorization'] = `Bearer ${_accessToken}`;
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
   const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ text, language }),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
 
   if (response.status === 401) {
     window.location.href = '/login';

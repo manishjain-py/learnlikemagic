@@ -947,6 +947,11 @@ export default function ChatSession() {
   const prefetchAudio = (text: string): Promise<Blob> => {
     const key = text;
     if (audioCacheRef.current.has(key)) return audioCacheRef.current.get(key)!;
+    // Cap cache at 30 entries to limit memory on mobile devices
+    if (audioCacheRef.current.size >= 30) {
+      const oldest = audioCacheRef.current.keys().next().value;
+      if (oldest !== undefined) audioCacheRef.current.delete(oldest);
+    }
     const promise = synthesizeSpeech(text, audioLang).catch(err => {
       audioCacheRef.current.delete(key);
       throw err;
@@ -965,11 +970,39 @@ export default function ChatSession() {
       const url = URL.createObjectURL(blob);
       audio.src = url;
       return new Promise<void>((resolve) => {
-        audio.onended = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); resolve(); };
-        audio.onerror = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); resolve(); };
+        let resolved = false;
+        const done = () => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(safetyTimeout);
+          audio.onended = null;
+          audio.onerror = null;
+          audio.onpause = null;
+          audio.onstalled = null;
+          setPlayingSlideId(null);
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        // Safety timeout: if audio doesn't finish within 30s, move on.
+        // Prevents animation freeze when mobile browser audio session degrades.
+        const safetyTimeout = setTimeout(() => {
+          console.warn('playLineAudio: safety timeout — audio did not finish in 30s');
+          done();
+        }, 30_000);
+        audio.onended = done;
+        audio.onerror = done;
+        // Catch silent stalls: browser may pause/stall audio after many plays
+        audio.onpause = () => {
+          // Only resolve if WE didn't pause it (i.e. no new playLineAudio call)
+          if (audio.src === url) done();
+        };
+        audio.onstalled = () => {
+          console.warn('playLineAudio: audio stalled');
+          done();
+        };
         audio.play()
           .then(() => setPlayingSlideId(carouselSlides[currentSlideIdx]?.id ?? null))
-          .catch(() => resolve());
+          .catch(() => done());
       });
     } catch (err) {
       console.error('Line TTS failed:', err);
