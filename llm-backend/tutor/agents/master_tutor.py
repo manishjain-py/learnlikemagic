@@ -192,17 +192,19 @@ class TutorTurnOutput(BaseModel):
     reasoning: str = Field(default="", description="Your internal reasoning (not shown to student)")
 
 
+class SimplifiedCardLine(BaseModel):
+    display: str = Field(description="One sentence of the explanation (markdown OK)")
+    audio: str = Field(description="TTS-friendly spoken version (pure words, Roman script)")
+
+
 class SimplifiedCardOutput(BaseModel):
     """Structured output from the LLM for card simplification."""
     card_type: str = Field(default="simplification")
     title: str = Field(description="Simplified title")
-    content: str = Field(description="Simplified explanation")
-    audio_text: str = Field(description="TTS-friendly spoken version")
+    lines: list[SimplifiedCardLine] = Field(description="Per-line display+audio pairs")
     visual_prompt: Optional[str] = Field(
         default=None,
-        description="Natural language description of a helpful visual for this card. "
-        "Be specific: objects, layout, colors, labels, animation steps. "
-        "Set to null if the card doesn't benefit from a visual."
+        description="Natural language description of a helpful visual for this card."
     )
 
 
@@ -317,15 +319,13 @@ class MasterTutorAgent(BaseAgent):
             "duration_ms": duration_ms, "card_title": card_title,
         }))
 
-        return {
-            "card_type": "simplification",
-            "title": result.title,
-            "content": result.content,
-            "audio_text": result.audio_text,
-            "visual": None,
-            "visual_explanation": None,
-            "visual_prompt": result.visual_prompt,
-        }
+        result_dict = result.model_dump()
+        # Derive flat content and audio_text from structured lines
+        result_dict["content"] = "\n\n".join(line["display"] for line in result_dict["lines"])
+        result_dict["audio_text"] = " ".join(line["audio"] for line in result_dict["lines"])
+        result_dict["visual"] = None
+        result_dict["visual_explanation"] = None
+        return result_dict
 
     def _build_welcome_prompt(self, session: SessionState) -> str:
         has_cards = session.card_phase is not None
