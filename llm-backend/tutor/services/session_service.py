@@ -96,39 +96,25 @@ class SessionService:
                 language_level="simple" if request.student.grade <= 5 else "standard",
             )
 
-        # Check for pre-computed explanations early — if they exist, we skip
-        # study plan generation entirely (cards are the lesson, plan is unused).
-        has_precomputed = False
-        if mode == "teach_me":
-            try:
-                has_precomputed = ExplanationRepository(self.db).has_explanations(request.goal.guideline_id)
-            except Exception:
-                pass
-
-        # Load personalized study plan from DB (user_id + guideline_id)
+        # Load personalized study plan from DB — teach_me doesn't need one
+        # (pre-computed explanation cards ARE the lesson), but other modes may.
         study_plan_record = None
-        if user_id:
-            study_plan_record = (
-                self.db.query(StudyPlanRecord)
-                .filter(
-                    StudyPlanRecord.user_id == user_id,
-                    StudyPlanRecord.guideline_id == request.goal.guideline_id,
+        if mode != "teach_me":
+            if user_id:
+                study_plan_record = (
+                    self.db.query(StudyPlanRecord)
+                    .filter(
+                        StudyPlanRecord.user_id == user_id,
+                        StudyPlanRecord.guideline_id == request.goal.guideline_id,
+                    )
+                    .first()
                 )
-                .first()
-            )
-        if not study_plan_record:
-            # Fallback: check for any existing plan for this guideline
-            study_plan_record = (
-                self.db.query(StudyPlanRecord)
-                .filter(StudyPlanRecord.guideline_id == request.goal.guideline_id)
-                .first()
-            )
-
-        # Generate personalized plan only if no pre-computed explanations and no cached plan
-        if not study_plan_record and mode == "teach_me" and user_id and not is_refresher and not has_precomputed:
-            study_plan_record = self._generate_personalized_plan(
-                guideline, user_id, student_context
-            )
+            if not study_plan_record:
+                study_plan_record = (
+                    self.db.query(StudyPlanRecord)
+                    .filter(StudyPlanRecord.guideline_id == request.goal.guideline_id)
+                    .first()
+                )
 
         # Convert DB guideline to new Topic model
         topic = convert_guideline_to_topic(guideline, study_plan_record, is_refresher=is_refresher)
