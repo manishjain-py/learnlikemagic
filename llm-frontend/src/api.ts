@@ -117,14 +117,20 @@ export interface CheckInActivity {
   sequence_items?: string[];  // in correct order; frontend shuffles for display
 }
 
+export interface ExplanationLine {
+  display: string;  // Markdown line shown on screen
+  audio: string;    // TTS-friendly spoken version
+}
+
 export interface ExplanationCard {
   card_id?: string;
   card_idx: number;
-  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary' | 'simplification' | 'check_in';
+  card_type: 'concept' | 'example' | 'visual' | 'analogy' | 'summary' | 'simplification' | 'check_in' | 'welcome';
   title: string;
-  content: string;
+  lines: ExplanationLine[];  // Per-line display+audio pairs
+  content: string;  // Derived from joining lines[].display
   visual?: string | null;
-  audio_text?: string | null;
+  audio_text?: string | null;  // Derived from joining lines[].audio
   visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
   check_in?: CheckInActivity | null;  // Interactive check-in activity (6 types)
   source_card_idx?: number;

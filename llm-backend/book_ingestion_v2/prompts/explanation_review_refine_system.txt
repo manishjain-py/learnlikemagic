@@ -13,13 +13,29 @@ REVIEW CHECKLIST — read each card and ask:
 6. Does the tone feel like a warm older sibling, not a textbook?
 7. Would the student finish feeling "I can do this"?
 
-FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep audio_text on every card (short TTS-friendly spoken version — no symbols/markdown, math as words, shorter than content).
+FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep per-line audio on every line (TTS-friendly spoken version — no symbols/markdown, math as words).
 
 The "teaching_notes" in summary should describe the conceptual progression and key insight — written as if briefing another tutor.
 
 OUTPUT FORMAT — You MUST respond with valid JSON only — no markdown fences, no explanation outside the JSON. Your response must conform to this JSON schema:
 {
   "$defs": {
+    "ExplanationLineOutput": {
+      "description": "A single line within a card: display text + spoken audio version.",
+      "properties": {
+        "display": {
+          "description": "One line of explanation text (may use simple markdown: **bold**)",
+          "type": "string"
+        },
+        "audio": {
+          "description": "TTS-friendly spoken version of this line — pure words, no symbols/markdown, math as speech",
+          "type": "string"
+        }
+      },
+      "required": ["display", "audio"],
+      "type": "object",
+      "additionalProperties": false
+    },
     "ExplanationCardOutput": {
       "description": "A single explanation card returned by the LLM.",
       "properties": {
@@ -28,28 +44,25 @@ OUTPUT FORMAT — You MUST respond with valid JSON only — no markdown fences, 
           "type": "integer"
         },
         "card_type": {
-          "description": "concept, example, visual, analogy, or summary",
+          "description": "concept, example, visual, analogy, summary, or welcome",
           "type": "string"
         },
         "title": {
           "description": "Short heading for the card",
           "type": "string"
         },
-        "content": {
-          "description": "Explanation text — simple language, short sentences",
-          "type": "string"
+        "lines": {
+          "description": "Card content as ordered lines, each with display + audio",
+          "items": {"$ref": "#/$defs/ExplanationLineOutput"},
+          "type": "array"
         },
         "visual": {
           "anyOf": [{"type": "string"}, {"type": "null"}],
           "default": null,
           "description": "Optional ASCII diagram or formatted visual"
-        },
-        "audio_text": {
-          "description": "Short spoken version for TTS — pure words, no symbols/markdown, math as speech",
-          "type": "string"
         }
       },
-      "required": ["card_idx", "card_type", "title", "content", "visual", "audio_text"],
+      "required": ["card_idx", "card_type", "title", "lines", "visual"],
       "type": "object",
       "additionalProperties": false
     },

@@ -1,16 +1,22 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 
+interface AudioLine {
+  display: string;
+  audio: string;
+}
+
 interface TypewriterMarkdownProps {
   content: string;
   title?: string;
   isActive: boolean;
   skipAnimation: boolean;
+  audioLines?: AudioLine[];  // Per-line LLM-generated audio text
   onRevealComplete?: () => void;
   /** Fires when a block starts typing — use to pre-fetch audio */
-  onBlockStart?: (blockText: string, blockIdx: number) => void;
+  onBlockStart?: (audioText: string, blockIdx: number) => void;
   /** Fires when a block finishes typing — return a Promise that resolves when audio ends */
-  onBlockTyped?: (blockText: string, blockIdx: number) => Promise<void>;
+  onBlockTyped?: (audioText: string, blockIdx: number) => Promise<void>;
 }
 
 // Timing constants (ms)
@@ -103,12 +109,34 @@ export default function TypewriterMarkdown({
   title,
   isActive,
   skipAnimation,
+  audioLines,
   onRevealComplete,
   onBlockStart,
   onBlockTyped,
 }: TypewriterMarkdownProps) {
   const blocks = useMemo(() => parseBlocks(title, content), [title, content]);
   const fullMarkdown = useMemo(() => joinBlocks(blocks), [blocks]);
+
+  // Build per-block audio text lookup: maps block index → audio string.
+  // When audioLines is provided, title block (first block from parseBlocks) gets
+  // the title text as audio, and subsequent blocks map to audioLines by content index.
+  const blockAudioRef = useRef<Map<number, string>>(new Map());
+  useMemo(() => {
+    const m = new Map<number, string>();
+    if (audioLines && audioLines.length > 0) {
+      let audioIdx = 0;
+      for (let bi = 0; bi < blocks.length; bi++) {
+        if (blocks[bi].type === 'heading' && bi === 0 && title?.trim()) {
+          // Title heading — use title text as audio (no markdown)
+          m.set(bi, title.trim());
+        } else if (audioIdx < audioLines.length) {
+          m.set(bi, audioLines[audioIdx].audio);
+          audioIdx++;
+        }
+      }
+    }
+    blockAudioRef.current = m;
+  }, [audioLines, blocks, title]);
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [phase, setPhase] = useState<'typing' | 'speaking' | 'transitioning'>('typing');
@@ -216,8 +244,10 @@ export default function TypewriterMarkdown({
     const spans = wordSpansRef.current;
     const total = spans.length;
 
-    // Notify parent that this block is starting (for audio pre-fetch)
-    onBlockStartRef.current?.(blocks[activeIdx].raw, activeIdx);
+    // Notify parent that this block is starting (for audio pre-fetch).
+    // Use LLM-generated audio text when available, fall back to raw block text.
+    const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
+    onBlockStartRef.current?.(audioText, activeIdx);
 
     if (total === 0) { setPhase('speaking'); return; }
 
@@ -245,7 +275,8 @@ export default function TypewriterMarkdown({
 
     if (onBlockTypedRef.current) {
       let cancelled = false;
-      onBlockTypedRef.current(blocks[activeIdx].raw, activeIdx)
+      const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
+      onBlockTypedRef.current(audioText, activeIdx)
         .then(() => {
           if (!cancelled && !completedRef.current) setPhase('transitioning');
         })

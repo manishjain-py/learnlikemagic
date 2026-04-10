@@ -186,11 +186,18 @@ class DetailedSessionStateDTO(BaseModel):
 
 # ─── Card Phase DTOs ─────
 
+class ExplanationLineDTO(BaseModel):
+    """Per-line display+audio pair for frontend rendering."""
+    display: str
+    audio: str
+
+
 class ExplanationCardDTO(BaseModel):
     """Explanation card for frontend rendering."""
     card_idx: int
-    card_type: Literal["concept", "example", "visual", "analogy", "summary", "simplification"]
+    card_type: Literal["concept", "example", "visual", "analogy", "summary", "simplification", "welcome"]
     title: str
+    lines: list[ExplanationLineDTO] = []
     content: str
     visual: Optional[str] = None
 

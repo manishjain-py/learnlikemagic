@@ -57,15 +57,22 @@ class CheckInActivity(BaseModel):
     sequence_items: Optional[list[str]] = None
 
 
+class ExplanationLine(BaseModel):
+    """A single display line within a card, paired with its TTS-friendly audio version."""
+    display: str  # Markdown line shown on screen
+    audio: str    # TTS-friendly spoken version (LLM-generated, no symbols/markdown)
+
+
 class ExplanationCard(BaseModel):
     """Validated schema for cards stored in cards_json."""
     card_id: Optional[str] = None  # Stable UUID, assigned by enrichment pipelines
     card_idx: int
-    card_type: str  # concept, example, visual, analogy, summary, check_in
+    card_type: str  # concept, example, visual, analogy, summary, welcome, check_in
     title: str
-    content: str
+    lines: list[ExplanationLine] = []  # Per-line display+audio pairs
+    content: str  # Derived from joining lines[].display
     visual: Optional[str] = None
-    audio_text: Optional[str] = None  # TTS-friendly spoken version of content
+    audio_text: Optional[str] = None  # Derived from joining lines[].audio
     visual_explanation: Optional[CardVisualExplanation] = None  # Pre-computed PixiJS visual
     check_in: Optional[CheckInActivity] = None  # Populated for card_type="check_in"
 

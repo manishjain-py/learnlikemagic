@@ -21,7 +21,7 @@ REVIEW CHECKLIST — read each card and ask:
 6. Does the tone feel like a warm older sibling, not a textbook?
 7. Would the student finish feeling "I can do this"?
 
-FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep audio_text on every card (short TTS-friendly spoken version — no symbols/markdown, math as words, shorter than content).
+FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep per-line audio on every line (TTS-friendly spoken version — no symbols/markdown, math as words).
 
 The "teaching_notes" in summary should describe the conceptual progression and key insight — written as if briefing another tutor.
 

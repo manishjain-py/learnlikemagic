@@ -25,21 +25,29 @@ _REVIEW_REFINE_SYSTEM_FILE = str(_PROMPTS_DIR / "explanation_review_refine_syste
 # ─── Pydantic models for structured LLM output ─────────────────────────────
 
 
+class ExplanationLineOutput(BaseModel):
+    """A single line within a card: display text + spoken audio version."""
+    display: str = Field(description="One line of explanation text (may contain simple markdown: **bold**, etc.)")
+    audio: str = Field(
+        description="TTS-friendly spoken version of this line. "
+        "PURE SPOKEN WORDS ONLY — zero symbols, zero markdown, zero emoji. "
+        "Write math as natural speech ('five plus three is eight', never '5 + 3 = 8'). "
+        "Skip content that only works visually (diagrams, tables). "
+        "Warm, conversational tone."
+    )
+
+
 class ExplanationCardOutput(BaseModel):
     """A single explanation card returned by the LLM."""
     card_idx: int = Field(description="1-based card index")
-    card_type: str = Field(description="concept, example, visual, analogy, or summary")
+    card_type: str = Field(description="concept, example, visual, analogy, summary, or welcome")
     title: str = Field(description="Short heading for the card")
-    content: str = Field(description="Explanation text — simple language, short sentences")
-    visual: Optional[str] = Field(default=None, description="Optional ASCII diagram or formatted visual")
-    audio_text: str = Field(
-        description="Short spoken version of this card for TTS audio playback. "
-        "PURE SPOKEN WORDS ONLY — zero symbols, zero markdown, zero emoji. "
-        "Write math as natural speech ('five plus three is eight', never '5 + 3 = 8'). "
-        "Skip content that only works visually (diagrams, tables, ASCII art). "
-        "Shorter than content — just the key idea in a warm, conversational tone. "
-        "The student reads the full card on screen, this is a quick spoken companion."
+    lines: list[ExplanationLineOutput] = Field(
+        description="Card content as an ordered list of lines. Each line has a display version "
+        "(shown on screen, may use simple markdown) and an audio version (spoken aloud via TTS). "
+        "Split content into natural speaking units — one sentence or one short thought per line."
     )
+    visual: Optional[str] = Field(default=None, description="Optional ASCII diagram or formatted visual")
 
 
 class ExplanationSummaryOutput(BaseModel):
@@ -69,6 +77,15 @@ MIN_CARDS = 3
 MAX_CARDS = 15
 DEFAULT_VARIANT_COUNT = 1     # How many variants to generate per topic (1-3)
 DEFAULT_REVIEW_ROUNDS = 1     # How many review-and-refine passes per variant
+
+
+def _card_output_to_dict(card: ExplanationCardOutput) -> dict:
+    """Convert LLM output card to storage dict, deriving content/audio_text from lines."""
+    d = card.model_dump()
+    # Derive backward-compat fields from lines
+    d["content"] = "\n".join(line["display"] for line in d["lines"])
+    d["audio_text"] = " ".join(line["audio"] for line in d["lines"])
+    return d
 
 
 class ExplanationGeneratorService:
@@ -150,7 +167,7 @@ class ExplanationGeneratorService:
                     guideline_id=guideline.id,
                     variant_key=config["key"],
                     variant_label=config["label"],
-                    cards_json=[c.model_dump() for c in cards],
+                    cards_json=[_card_output_to_dict(c) for c in cards],
                     summary_json=summary_json,
                     generator_model=self.llm.model_id,
                 )
@@ -192,7 +209,7 @@ class ExplanationGeneratorService:
                 "topic_title": topic,
                 "variant_key": variant_config["key"],
                 "stage": "initial",
-                "cards": [c.model_dump() for c in cards],
+                "cards": [_card_output_to_dict(c) for c in cards],
                 "timestamp": datetime.utcnow().isoformat(),
             })
 
@@ -218,7 +235,7 @@ class ExplanationGeneratorService:
                     "topic_title": topic,
                     "variant_key": variant_config["key"],
                     "stage": f"refine_{round_num}",
-                    "cards": [c.model_dump() for c in cards],
+                    "cards": [_card_output_to_dict(c) for c in cards],
                     "timestamp": datetime.utcnow().isoformat(),
                 })
 
@@ -265,9 +282,11 @@ class ExplanationGeneratorService:
                     "card_idx": 1,
                     "card_type": "concept | example | visual | analogy | summary",
                     "title": "short heading",
-                    "content": "explanation text, simple language",
-                    "visual": "optional ASCII/formatted visual or null",
-                    "audio_text": "short spoken version for TTS — pure words, no symbols/markdown, math as speech"
+                    "lines": [
+                        {"display": "One sentence of explanation (may use **bold**)", "audio": "Same sentence spoken naturally for TTS"},
+                        {"display": "Next sentence or thought", "audio": "Next sentence spoken naturally"}
+                    ],
+                    "visual": "optional ASCII/formatted visual or null"
                 }
             ],
             "summary": {
@@ -321,12 +340,15 @@ class ExplanationGeneratorService:
         topic = guideline.topic_title or guideline.topic
         guideline_text = guideline.guideline or guideline.description or ""
 
-        # Strip audio_text and visual from cards for review — reviewer only needs
-        # content/titles to assess clarity. Saves ~7K chars of stdin.
-        cards_for_review = [
-            {k: v for k, v in c.model_dump().items() if k not in ("audio_text", "visual")}
-            for c in cards
-        ]
+        # Strip visual and audio from cards for review — reviewer only needs
+        # display text/titles to assess clarity. Keep lines[].display, drop lines[].audio.
+        cards_for_review = []
+        for c in cards:
+            d = c.model_dump()
+            d.pop("visual", None)
+            if d.get("lines"):
+                d["lines"] = [{"display": line["display"]} for line in d["lines"]]
+            cards_for_review.append(d)
         cards_json = json.dumps(cards_for_review, indent=2)
 
         prior_topics_section = ""
@@ -356,9 +378,11 @@ class ExplanationGeneratorService:
                         "card_idx": 1,
                         "card_type": "concept | example | visual | analogy | summary",
                         "title": "short heading",
-                        "content": "explanation text, simple language",
-                        "visual": "optional ASCII/formatted visual or null",
-                        "audio_text": "short spoken version for TTS — pure words, no symbols/markdown, math as speech"
+                        "lines": [
+                            {"display": "One sentence of explanation (may use **bold**)", "audio": "Same sentence spoken naturally for TTS"},
+                            {"display": "Next sentence or thought", "audio": "Next sentence spoken naturally"}
+                        ],
+                        "visual": "optional ASCII/formatted visual or null"
                     }
                 ],
                 "summary": {
@@ -445,7 +469,7 @@ class ExplanationGeneratorService:
                             "topic_title": topic,
                             "variant_key": explanation.variant_key,
                             "stage": f"refine_{round_num}",
-                            "cards": [c.model_dump() for c in cards],
+                            "cards": [_card_output_to_dict(c) for c in cards],
                             "timestamp": datetime.utcnow().isoformat(),
                         })
 
@@ -464,7 +488,7 @@ class ExplanationGeneratorService:
                     guideline_id=guideline.id,
                     variant_key=explanation.variant_key,
                     variant_label=explanation.variant_label,
-                    cards_json=[c.model_dump() for c in cards],
+                    cards_json=[_card_output_to_dict(c) for c in cards],
                     summary_json=summary_json,
                     generator_model=self.llm.model_id,
                 )

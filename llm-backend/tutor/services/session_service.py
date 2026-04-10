@@ -168,10 +168,10 @@ class SessionService:
                 available_variant_keys=[e.variant_key for e in explanations],
             )
 
-            # Master tutor generates welcome (replaces hardcoded message)
-            welcome, audio_text = asyncio.run(
-                self.orchestrator.generate_tutor_welcome(session)
-            )
+            # Welcome is the first card (card_type="welcome") — use its content for the message
+            first_card = first_variant.cards_json[0] if first_variant.cards_json else {}
+            welcome = first_card.get("content", "")
+            audio_text = first_card.get("audio_text", welcome)
 
             first_turn = {
                 "message": welcome,

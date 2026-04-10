@@ -57,35 +57,8 @@ interface Slide {
   questionFormat?: QuestionFormat | null;
   studentResponse?: string | null;
   audioText?: string | null;
+  audioLines?: { display: string; audio: string }[];  // Per-line audio from LLM
   checkIn?: CheckInActivity | null;
-}
-
-/** Strip markdown syntax for cleaner TTS input */
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^[-*+]\s/gm, '')
-    .replace(/^\d+\.\s/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`(.+?)`/g, '$1')
-    // Expand symbols to spoken equivalents
-    .replace(/→|->|➜|➔/g, ' gives ')
-    .replace(/←|<-/g, ' from ')
-    .replace(/×/g, ' times ')
-    .replace(/÷/g, ' divided by ')
-    .replace(/≠|!=/g, ' is not equal to ')
-    .replace(/≥|>=/g, ' is greater than or equal to ')
-    .replace(/≤|<=/g, ' is less than or equal to ')
-    .replace(/ > /g, ' is greater than ')
-    .replace(/ < /g, ' is less than ')
-    .replace(/ = /g, ' equals ')
-    .replace(/\+/g, ' plus ')
-    .replace(/%/g, ' percent ')
-    .replace(/&/g, ' and ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
 }
 
 export default function ChatSession() {
@@ -216,17 +189,7 @@ export default function ChatSession() {
   const carouselSlides = useMemo(() => {
     const slides: Slide[] = [];
 
-    // 0. Welcome slide — always first if we have explanation cards and a teacher message
-    if (explanationCards.length > 0 && messages.length > 0 && messages[0].role === 'teacher') {
-      slides.push({
-        id: 'welcome',
-        type: 'message' as const,
-        content: messages[0].content,
-        audioText: messages[0].audioText || messages[0].content,
-      });
-    }
-
-    // 1. Explanation cards always come first (if they exist)
+    // Explanation cards (including welcome as first card)
     if (explanationCards.length > 0) {
       explanationCards.forEach((card, i) => {
         if (card.card_type === 'check_in' && card.check_in) {
@@ -249,6 +212,7 @@ export default function ChatSession() {
             visual: card.visual,
             visualExplanation: card.visual_explanation || null,
             audioText: card.audio_text || card.content,
+            audioLines: card.lines,
           });
         }
       });
@@ -431,12 +395,10 @@ export default function ChatSession() {
         hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
       }
 
-      // Auto-play TTS for first slide (welcome slide is now slide 0 in card_phase)
+      // Auto-play TTS for first slide
       if (locState.firstTurn.session_phase === 'card_phase') {
-        // +1 for welcome slide
-        prevSlidesLen.current = (locState.firstTurn.explanation_cards?.length || 0) + 1;
-        // Play welcome message audio (slide 0)
-        playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 'welcome');
+        // Welcome is the first card — typewriter handles per-line audio
+        prevSlidesLen.current = (locState.firstTurn.explanation_cards?.length || 0);
       } else {
         prevSlidesLen.current = 1;
         playTeacherAudio(locState.firstTurn.audio_text || locState.firstTurn.message, 'msg-0');
@@ -1371,8 +1333,8 @@ export default function ChatSession() {
                       stopAudioWithFade();
                       return;
                     }
-                    // After completion: play full card audio
-                    playTeacherAudio(stripMarkdown(slide.audioText || slide.content), slide.id);
+                    // After completion: play full card audio (audioText is already TTS-friendly)
+                    playTeacherAudio(slide.audioText || slide.content, slide.id);
                   }}
                   aria-label={playingSlideId === carouselSlides[currentSlideIdx]?.id ? 'Stop audio' : 'Play audio'}
                 >
@@ -1798,6 +1760,7 @@ export default function ChatSession() {
                     >
                       {slide.type === 'explanation' ? (
                         <>
+                          {slide.cardType !== 'welcome' && (
                           <div className="explanation-card-type">
                             <span>
                               {slide.cardType === 'concept' ? 'Concept' :
@@ -1808,21 +1771,21 @@ export default function ChatSession() {
                                slide.cardType === 'simplification' ? 'Simplified' : slide.cardType}
                             </span>
                           </div>
+                          )}
                           <div className="focus-tutor-msg">
                             <TypewriterMarkdown
                               content={slide.content}
                               title={slide.title}
                               isActive={i === currentSlideIdx}
                               skipAnimation={revealedSlides.has(i) || typewriterSkip.has(i) || sessionPhase !== 'card_phase'}
+                              audioLines={slide.audioLines}
                               onRevealComplete={() => setRevealedSlides(prev => new Set(prev).add(i))}
-                              onBlockStart={(blockText) => {
-                                const ttsText = stripMarkdown(blockText);
-                                if (ttsText.trim()) prefetchAudio(ttsText);
+                              onBlockStart={(audioText) => {
+                                if (audioText.trim()) prefetchAudio(audioText);
                               }}
-                              onBlockTyped={async (blockText) => {
-                                const ttsText = stripMarkdown(blockText);
-                                if (!ttsText.trim()) return;
-                                await playLineAudio(ttsText);
+                              onBlockTyped={async (audioText) => {
+                                if (!audioText.trim()) return;
+                                await playLineAudio(audioText);
                               }}
                             />
                           </div>
