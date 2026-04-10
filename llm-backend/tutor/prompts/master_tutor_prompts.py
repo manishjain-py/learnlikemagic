@@ -277,8 +277,7 @@ Content:
 The student didn't understand the card above. Re-explain the SAME concept, but simpler. You must:
 1. **Break it down further** — split the idea into smaller, bite-sized pieces. One idea per sentence.
 2. **Use simpler words** — only words a 5-year-old uses daily. No technical terms. If you must mention a concept like 'place value', describe it instead ('which box the number sits in'). Max 10 words per sentence.
-3. **Use a concrete example** — pick ONE relatable example from the student's daily life (food, toys, rupees, cricket, school). Walk through it step by step. Let the concept emerge from the example.
-4. **Try a different angle** — if the original used numbers, try a story. If it used a story, try a hands-on activity. The new explanation must feel like a fresh start.
+3. **Fill in missing steps** — if the original skipped a step or assumed knowledge, spell it out explicitly.
 
 ### Output requirements
 Return a single simplified explanation card as JSON:
