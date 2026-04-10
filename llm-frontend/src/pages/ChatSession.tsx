@@ -1838,14 +1838,13 @@ export default function ChatSession() {
                 </div>
               </div>
 
-              {/* Bottom action area — hidden during typewriter animation */}
-              {sessionPhase === 'card_phase' ? (
-                /* Hide nav while explanation card is still animating */
-                carouselSlides[currentSlideIdx]?.type === 'explanation' && !revealedSlides.has(currentSlideIdx)
-                ? null
-                : currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
+              {/* Bottom action area — greyed out during typewriter animation */}
+              {(() => {
+                const isAnimating = carouselSlides[currentSlideIdx]?.type === 'explanation' && !revealedSlides.has(currentSlideIdx);
+                return sessionPhase === 'card_phase' ? (
+                currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
-                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions
+                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions && !isAnimating
                       && carouselSlides[currentSlideIdx]?.type !== 'check_in' && (
                       <button
                         className="explanation-nav-btn simplify"
@@ -1882,7 +1881,7 @@ export default function ChatSession() {
                           setCurrentSlideIdx(prev);
                           if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(prev));
                         }}
-                        disabled={currentSlideIdx === 0 || simplifyLoading}
+                        disabled={currentSlideIdx === 0 || simplifyLoading || isAnimating}
                       >
                         Back
                       </button>
@@ -1893,7 +1892,7 @@ export default function ChatSession() {
                           setCurrentSlideIdx(next);
                           if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(next));
                         }}
-                        disabled={simplifyLoading || (carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(carouselSlides[currentSlideIdx]?.id || ''))}
+                        disabled={simplifyLoading || isAnimating || (carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(carouselSlides[currentSlideIdx]?.id || ''))}
                       >
                         Next
                       </button>
@@ -2021,7 +2020,8 @@ export default function ChatSession() {
                   </form>
                 </div>
                 )
-              ) : null}
+              ) : null;
+              })()}
               {isComplete && sessionMode === 'teach_me' && summary && (
                 <div className="session-complete-card" style={{
                   margin: '16px',

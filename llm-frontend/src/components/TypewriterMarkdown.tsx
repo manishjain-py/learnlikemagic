@@ -153,6 +153,7 @@ export default function TypewriterMarkdown({
 
   const spotlightRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const cursorRef = useRef<HTMLSpanElement | null>(null);
   const wordSpansRef = useRef<HTMLSpanElement[]>([]);
   const sentenceEnds = useRef<Set<number>>(new Set());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -173,6 +174,7 @@ export default function TypewriterMarkdown({
     if (completedRef.current) return;
     completedRef.current = true;
     clearTimer();
+    cursorRef.current?.remove();
     setCompleted(true);
     onRevealComplete?.();
   }, [clearTimer, onRevealComplete]);
@@ -258,12 +260,27 @@ export default function TypewriterMarkdown({
 
     if (total === 0) { setPhase('speaking'); return; }
 
+    // Create cursor element if it doesn't exist
+    if (!cursorRef.current) {
+      const c = document.createElement('span');
+      c.className = 'tw-cursor';
+      cursorRef.current = c;
+    }
+    const cursor = cursorRef.current;
+
     let idx = revealIdx.current;
 
     const revealNext = () => {
-      if (idx >= total) { setPhase('speaking'); return; }
+      if (idx >= total) {
+        cursor.remove();
+        setPhase('speaking');
+        return;
+      }
 
-      spans[idx]?.classList.remove('tw-hidden');
+      const span = spans[idx];
+      span?.classList.remove('tw-hidden');
+      // Move cursor right after the revealed word
+      span?.parentNode?.insertBefore(cursor, span.nextSibling);
       idx++;
       revealIdx.current = idx;
 
@@ -373,7 +390,6 @@ export default function TypewriterMarkdown({
           <div ref={contentRef} key={activeIdx} className="tw-spotlight-content">
             <ReactMarkdown>{blocks[activeIdx].raw}</ReactMarkdown>
           </div>
-          <span className="tw-cursor" />
         </div>
       )}
 

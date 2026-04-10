@@ -2666,7 +2666,6 @@ body {
 
 .tw-spotlight {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 32px 4px;
@@ -2744,14 +2743,15 @@ body {
   opacity: 0 !important;
 }
 
-/* Blinking cursor bar — centered below text while card is still animating */
+/* Blinking cursor — follows the last revealed word inline */
 .tw-cursor {
-  display: block;
-  width: 24px;
-  height: 3px;
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
   background: #6366f1;
-  border-radius: 2px;
-  margin: 20px auto 0;
+  border-radius: 1px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
   animation: tw-blink 0.8s step-end infinite;
 }
 @keyframes tw-blink {
