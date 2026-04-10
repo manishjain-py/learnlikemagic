@@ -373,6 +373,7 @@ export default function TypewriterMarkdown({
           <div ref={contentRef} key={activeIdx} className="tw-spotlight-content">
             <ReactMarkdown>{blocks[activeIdx].raw}</ReactMarkdown>
           </div>
+          <span className="tw-cursor" />
         </div>
       )}
 

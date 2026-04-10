@@ -1838,8 +1838,10 @@ export default function ChatSession() {
                 </div>
               </div>
 
-              {/* Bottom action area */}
-              {sessionPhase === 'card_phase' ? (
+              {/* Bottom action area — hidden during typewriter animation */}
+              {sessionPhase === 'card_phase' && (
+                carouselSlides[currentSlideIdx]?.type !== 'explanation' || revealedSlides.has(currentSlideIdx)
+              ) ? (
                 currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
                     {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions
