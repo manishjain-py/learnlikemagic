@@ -59,6 +59,7 @@ interface Slide {
   audioText?: string | null;
   audioLines?: { display: string; audio: string }[];  // Per-line audio from LLM
   checkIn?: CheckInActivity | null;
+  simplifications?: ExplanationCard['simplifications'];
 }
 
 // ─── Global audio element + unlock ──────────────────────────────────
@@ -152,6 +153,7 @@ export default function ChatSession() {
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
+  const [simplifyJustAdded, setSimplifyJustAdded] = useState(false);
   const [variantsShown, setVariantsShown] = useState(1);
 
   // Teach Me completion screen state (shown after card phase ends — summary + Practice CTA)
@@ -244,6 +246,7 @@ export default function ChatSession() {
             visualExplanation: card.visual_explanation || null,
             audioText: card.audio_text || card.content,
             audioLines: card.lines,
+            simplifications: card.simplifications || [],
           });
         }
       });
@@ -1278,31 +1281,35 @@ export default function ChatSession() {
 
   const handleSimplifyCard = async () => {
     if (!sessionId || simplifyLoading) return;
-    const cardArrayIdx = currentSlideIdx - 1;
-    if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
+    const cardIdx = currentSlideIdx;
+    if (cardIdx < 0 || cardIdx >= explanationCards.length) return;
 
-    const currentCard = explanationCards[cardArrayIdx];
-    const baseCardIdx = currentCard.source_card_idx ?? cardArrayIdx;
+    const currentCard = explanationCards[cardIdx];
+    const baseCardIdx = currentCard.source_card_idx ?? cardIdx;
 
+    setSimplifyJustAdded(false);
     setSimplifyLoading(true);
     try {
       const result = await simplifyCard(sessionId, baseCardIdx);
 
-      if (result.action === 'insert_card' && result.card) {
-        const newCard: ExplanationCard = {
-          ...result.card,
-          card_id: result.card_id,
-          card_idx: baseCardIdx,
-          source_card_idx: baseCardIdx,
-        };
+      if (result.action === 'append_to_card' && result.simplification) {
         setExplanationCards(prev => {
           const updated = [...prev];
-          updated.splice(cardArrayIdx + 1, 0, newCard);
+          if (cardIdx >= 0 && cardIdx < updated.length) {
+            const card = { ...updated[cardIdx] };
+            card.simplifications = [...(card.simplifications || []), result.simplification];
+            updated[cardIdx] = card;
+          }
           return updated;
         });
-        const newIdx = currentSlideIdx + 1;
-        setCurrentSlideIdx(newIdx);
-        if (sessionId) localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
+        setSimplifyJustAdded(true);
+        // Auto-scroll to new section
+        setTimeout(() => {
+          const slide = document.querySelector(`.focus-slide:nth-child(${currentSlideIdx + 1})`);
+          if (slide) {
+            slide.scrollTo({ top: slide.scrollHeight, behavior: 'smooth' });
+          }
+        }, 100);
       }
     } catch (err: any) {
       console.error('Simplify card failed:', err);
@@ -1842,6 +1849,56 @@ export default function ChatSession() {
                           )}
                           {revealedSlides.has(i) && slide.visualExplanation && (
                             <VisualExplanationComponent visual={slide.visualExplanation} />
+                          )}
+                          {/* Inline simplification sections */}
+                          {slide.simplifications?.map((simplification: any, sIdx: number) => {
+                            const isNew = sIdx === (slide.simplifications?.length || 0) - 1 && simplifyJustAdded;
+                            const separatorTexts = [
+                              'Let me break this down',
+                              'Even simpler',
+                              'One more way to think about it',
+                              'Let\u2019s try another angle',
+                            ];
+                            return (
+                              <div key={`simplification-${sIdx}`} className="inline-simplification">
+                                <div className="simplification-separator">
+                                  <span>{separatorTexts[Math.min(sIdx, separatorTexts.length - 1)]}</span>
+                                </div>
+                                <div className="focus-tutor-msg">
+                                  <TypewriterMarkdown
+                                    content={simplification.content || ''}
+                                    title={simplification.title}
+                                    isActive={i === currentSlideIdx && isNew}
+                                    skipAnimation={!isNew}
+                                    audioLines={simplification.lines}
+                                    onRevealComplete={() => setSimplifyJustAdded(false)}
+                                    onBlockStart={(audioText: string) => {
+                                      if (audioText.trim()) prefetchAudio(audioText);
+                                    }}
+                                    onBlockTyped={async (audioText: string) => {
+                                      if (!audioText.trim()) return;
+                                      await playLineAudio(audioText);
+                                    }}
+                                  />
+                                </div>
+                                {simplification.visual_explanation && (
+                                  <VisualExplanationComponent visual={simplification.visual_explanation} />
+                                )}
+                              </div>
+                            );
+                          })}
+                          {/* Loading skeleton while generating simplification */}
+                          {simplifyLoading && i === currentSlideIdx && (
+                            <div className="inline-simplification">
+                              <div className="simplification-separator">
+                                <span>Let me break this down</span>
+                              </div>
+                              <div className="simplification-skeleton">
+                                <div className="skeleton-line" />
+                                <div className="skeleton-line short" />
+                                <div className="skeleton-line" />
+                              </div>
+                            </div>
                           )}
                         </>
                       ) : slide.type === 'check_in' && slide.checkIn ? (

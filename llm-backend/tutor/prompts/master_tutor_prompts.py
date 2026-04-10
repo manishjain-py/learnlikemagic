@@ -283,9 +283,11 @@ The student didn't understand the card above. Re-explain the SAME concept, but s
 Return a single simplified explanation card as JSON:
 - card_type: "simplification"
 - title: A fresh, short title for this concept (3-6 words). Do NOT reuse the original title. Do NOT prefix with "Let's simplify:" or any meta-text.
-- content: The simplified explanation (under 500 words). Jump straight into the explanation. Do NOT start with preamble like "Let me explain this more simply" or "Here's another way to think about it."
-- audio_text: TTS-friendly spoken version (pure words, no symbols/markdown, Roman script only)
-- visual_prompt: A description of a helpful visual diagram or animation for this card. Be specific about objects, layout, colors, labels, and any animation steps. For example: "Show 4 boxes labeled Th, H, T, O. Place digits 3, 5, 2, 7 in each box. Highlight the Thousands box in yellow." Set to null ONLY if the card truly doesn't benefit from any visual.
+- lines: An array of line objects. Each line has:
+  - "display": one sentence of the simplified explanation (markdown OK)
+  - "audio": TTS-friendly spoken version of that sentence (pure words, no symbols/markdown, Roman script only)
+  One idea per line. Keep each line under 15 words. This is how the student will see the content revealed one line at a time.
+- visual_prompt: A description of a helpful visual diagram or animation for this card. Be specific about objects, layout, colors, labels, and any animation steps. Set to null ONLY if the card truly doesn't benefit from any visual.
 
 CRITICAL RULES:
 - Explain ONLY the same concept. Do NOT advance to new topics.

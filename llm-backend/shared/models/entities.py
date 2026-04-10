@@ -338,6 +338,24 @@ class TopicExplanation(Base):
     )
 
 
+class StudentTopicCards(Base):
+    """Per-student, per-variant simplification overlays for explanation cards."""
+    __tablename__ = "student_topic_cards"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"), nullable=False)
+    variant_key = Column(String, nullable=False)
+    explanation_id = Column(String, nullable=False)
+    simplifications = Column(JSONB, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "guideline_id", "variant_key",
+                         name="uq_student_topic_cards_user_guideline_variant"),
+    )
+
+
 class Issue(Base):
     """User-reported issues tracked by status."""
     __tablename__ = "issues"

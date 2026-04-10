@@ -134,6 +134,13 @@ export interface ExplanationCard {
   visual_explanation?: VisualExplanation | null;  // Pre-computed PixiJS visual
   check_in?: CheckInActivity | null;  // Interactive check-in activity (6 types)
   source_card_idx?: number;
+  simplifications?: {
+    content: string;
+    title?: string;
+    lines?: ExplanationLine[];
+    audio_text?: string;
+    visual_explanation?: VisualExplanation | null;
+  }[];
 }
 
 export interface CardPhaseDTO {

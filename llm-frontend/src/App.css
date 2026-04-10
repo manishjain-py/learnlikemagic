@@ -2848,58 +2848,46 @@ body {
   gap: 12px;
   width: 100%;
 }
-.simplify-options {
-  width: 100%;
-  margin-bottom: 8px;
+/* Inline simplification sections */
+.inline-simplification {
+    margin-top: 24px;
 }
-.simplify-options-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 6px;
-  position: relative;
+
+.simplification-separator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 16px;
+    color: #999;
+    font-size: 0.85rem;
 }
-.simplify-options-label {
-  color: #666;
-  font-size: 0.8rem;
-  text-align: center;
+.simplification-separator::before,
+.simplification-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #ddd;
 }
-.simplify-options-close {
-  position: absolute;
-  right: 0;
-  background: none;
-  border: none;
-  font-size: 1.3rem;
-  color: #999;
-  padding: 0 4px;
-  cursor: pointer;
-  line-height: 1;
+
+/* Loading skeleton for simplification generation */
+.simplification-skeleton {
+    padding: 16px 0;
 }
-.simplify-options-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
+.skeleton-line {
+    height: 14px;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    width: 100%;
 }
-.simplify-option {
-  flex: 1;
-  padding: 10px 6px;
-  border: none;
-  border-bottom: 3px solid #D4D4D4;
-  border-radius: 12px;
-  background: #F0F0F0;
-  color: #374151;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.1s;
+.skeleton-line.short {
+    width: 60%;
 }
-.simplify-option:hover {
-  background: #E5E5E5;
-}
-.simplify-option:active {
-  transform: translateY(1px);
-  border-bottom-width: 1px;
-  margin-top: 2px;
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 
 /* ===== Interactive Question Formats ===== */

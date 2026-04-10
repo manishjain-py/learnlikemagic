@@ -269,23 +269,23 @@ def get_session_replay(
         if explanation:
             state["_replay_explanation_cards"] = explanation.cards_json
 
-            # Merge remedial cards into the deck for replay
-            card_phase = state.get("card_phase", {})
+            # Merge remedial cards as inline simplifications (not separate cards)
             remedial_map = card_phase.get("remedial_cards", {})
             variant_key = card_phase.get("current_variant_key", "A")
             base_cards = state["_replay_explanation_cards"]
-            merged = []
+
             for i, card in enumerate(base_cards):
                 card["card_id"] = f"{variant_key}_{i}"
                 card["source_card_idx"] = i
-                merged.append(card)
-                # Insert any remedial cards after their source
-                for remedial in remedial_map.get(str(i), remedial_map.get(i, [])):
-                    remedial_card = remedial.get("card", {}) if isinstance(remedial, dict) else {}
-                    remedial_card["card_id"] = remedial.get("card_id", f"remedial_{variant_key}_{i}")
-                    remedial_card["source_card_idx"] = i
-                    merged.append(remedial_card)
-            state["_replay_explanation_cards"] = merged
+                # Attach simplifications inline
+                remedials = remedial_map.get(str(i), remedial_map.get(i, []))
+                if remedials:
+                    card["simplifications"] = [
+                        r.get("card", {}) if isinstance(r, dict) else {}
+                        for r in remedials
+                    ]
+
+            state["_replay_explanation_cards"] = base_cards
 
     return state
 
