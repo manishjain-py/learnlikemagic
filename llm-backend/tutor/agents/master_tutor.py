@@ -320,6 +320,9 @@ class MasterTutorAgent(BaseAgent):
         }))
 
         result_dict = result.model_dump()
+        # Guard against empty lines — fall back to title as minimal content
+        if not result_dict.get("lines"):
+            result_dict["lines"] = [{"display": result_dict.get("title", ""), "audio": result_dict.get("title", "")}]
         # Derive flat content and audio_text from structured lines
         result_dict["content"] = "\n\n".join(line["display"] for line in result_dict["lines"])
         result_dict["audio_text"] = " ".join(line["audio"] for line in result_dict["lines"])

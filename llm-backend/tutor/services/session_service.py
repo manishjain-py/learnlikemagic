@@ -180,9 +180,6 @@ class SessionService:
 
             # Pre-load saved simplifications for returning students
             if user_id:
-                if not preferred_variant_key:
-                    from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
-                    stc_repo = StudentTopicCardsRepository(self.db)
                 saved = stc_repo.get(user_id, request.goal.guideline_id, first_variant.variant_key)
                 if saved:
                     if saved.explanation_id == first_variant.id:
@@ -1461,6 +1458,7 @@ class SessionService:
                 session.card_phase.remedial_cards = {}
                 if saved:
                     stc_repo.delete_stale(db_session_obj.user_id, session.card_phase.guideline_id, variant_key)
+                    self.db.commit()
         else:
             session.card_phase.remedial_cards = {}
 
