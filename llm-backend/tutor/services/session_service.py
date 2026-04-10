@@ -150,8 +150,23 @@ class SessionService:
 
         if explanations and mode == "teach_me":
             # Card phase: skip welcome LLM call AND explanation phase init
-            # Use first available variant (don't assume "A" exists — it may have failed validation)
-            first_variant = explanations[0]
+            # Check for student's last-used variant (for returning students)
+            preferred_variant_key = None
+            if user_id:
+                from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
+                stc_repo = StudentTopicCardsRepository(self.db)
+                most_recent = stc_repo.get_most_recent(user_id, request.goal.guideline_id)
+                if most_recent:
+                    preferred_variant_key = most_recent.variant_key
+
+            # Select variant: prefer saved, fall back to first available
+            if preferred_variant_key:
+                first_variant = next(
+                    (e for e in explanations if e.variant_key == preferred_variant_key),
+                    explanations[0],
+                )
+            else:
+                first_variant = explanations[0]
 
             session.card_phase = CardPhaseState(
                 guideline_id=request.goal.guideline_id,
@@ -162,6 +177,28 @@ class SessionService:
                 variants_shown=[first_variant.variant_key],
                 available_variant_keys=[e.variant_key for e in explanations],
             )
+
+            # Pre-load saved simplifications for returning students
+            if user_id:
+                if not preferred_variant_key:
+                    from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
+                    stc_repo = StudentTopicCardsRepository(self.db)
+                saved = stc_repo.get(user_id, request.goal.guideline_id, first_variant.variant_key)
+                if saved:
+                    if saved.explanation_id == first_variant.id:
+                        from tutor.models.session_state import RemedialCard
+                        session.card_phase.remedial_cards = {
+                            int(k): [RemedialCard(
+                                card_id=f"remedial_{first_variant.variant_key}_{k}_{i+1}",
+                                source_card_idx=int(k),
+                                depth=i + 1,
+                                card=s,
+                            ) for i, s in enumerate(v)]
+                            for k, v in (saved.simplifications or {}).items()
+                        }
+                    else:
+                        stc_repo.delete_stale(user_id, request.goal.guideline_id, first_variant.variant_key)
+                        self.db.commit()
 
             # Welcome is the first card (card_type="welcome") — use its content for the message
             first_card = first_variant.cards_json[0] if first_variant.cards_json else {}
@@ -184,6 +221,18 @@ class SessionService:
                     "available_variants": len(explanations),
                 },
             }
+
+            # Attach pre-loaded simplifications to card dicts for frontend
+            explanation_cards = first_turn["explanation_cards"]
+            if session.card_phase.remedial_cards:
+                # Make a mutable copy to avoid mutating the cached cards_json
+                explanation_cards = [dict(c) for c in explanation_cards]
+                for card_idx_str, remedials in session.card_phase.remedial_cards.items():
+                    idx = int(card_idx_str)
+                    if 0 <= idx < len(explanation_cards):
+                        explanation_cards[idx]["simplifications"] = [r.card for r in remedials]
+                first_turn["explanation_cards"] = explanation_cards
+
             logger.info(f"Card phase initialized for session {session_id}: variant={first_variant.variant_key}, cards={len(first_variant.cards_json)}")
         else:
             # Existing path: init explanation phase + dynamic welcome
@@ -1230,11 +1279,26 @@ class SessionService:
 
         self._persist_session_state(session_id, session, expected_version)
 
+        # Persist to student_topic_cards for cross-session persistence (same DB session)
+        if db_session.user_id:
+            from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
+            stc_repo = StudentTopicCardsRepository(self.db)
+            stc_repo.upsert(
+                user_id=db_session.user_id,
+                guideline_id=session.card_phase.guideline_id,
+                variant_key=variant_key,
+                explanation_id=explanation.id,
+                card_idx=card_idx,
+                simplification=card_dict,
+            )
+            self.db.commit()
+
         return {
-            "action": "insert_card",
-            "card": card_dict,
+            "action": "append_to_card",
+            "source_card_idx": card_idx,
+            "simplification": card_dict,
+            "depth": depth,
             "card_id": card_id,
-            "insert_after": f"{variant_key}_{card_idx}" if depth == 1 else f"remedial_{variant_key}_{card_idx}_{depth - 1}",
         }
 
     def complete_card_phase(self, session_id: str, action: str, check_in_events=None) -> dict:
@@ -1376,8 +1440,29 @@ class SessionService:
         session.card_phase.total_cards = len(explanation.cards_json)
         session.card_phase.variants_shown.append(variant_key)
 
-        # Clear remedial cards from previous variant (clean slate for new variant)
-        session.card_phase.remedial_cards = {}
+        # Check for saved simplifications for the new variant
+        db_session_obj = self.session_repo.get_by_id(session_id)
+        if db_session_obj and db_session_obj.user_id:
+            from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
+            stc_repo = StudentTopicCardsRepository(self.db)
+            saved = stc_repo.get(db_session_obj.user_id, session.card_phase.guideline_id, variant_key)
+            if saved and saved.explanation_id == explanation.id:
+                from tutor.models.session_state import RemedialCard
+                session.card_phase.remedial_cards = {
+                    int(k): [RemedialCard(
+                        card_id=f"remedial_{variant_key}_{k}_{i+1}",
+                        source_card_idx=int(k),
+                        depth=i + 1,
+                        card=s,
+                    ) for i, s in enumerate(v)]
+                    for k, v in (saved.simplifications or {}).items()
+                }
+            else:
+                session.card_phase.remedial_cards = {}
+                if saved:
+                    stc_repo.delete_stale(db_session_obj.user_id, session.card_phase.guideline_id, variant_key)
+        else:
+            session.card_phase.remedial_cards = {}
 
         self._persist_session_state(session_id, session, expected_version)
 
