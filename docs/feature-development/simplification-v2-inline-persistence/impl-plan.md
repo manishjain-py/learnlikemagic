@@ -20,16 +20,19 @@ CURRENT SESSION:
     -> POST /sessions/{id}/simplify-card { card_idx: 3 }
     -> SessionService.simplify_card()
        -> Orchestrator.generate_simplified_card() (returns lines[] + visual)
-       -> Store in session.card_phase.remedial_cards[3]
-       -> Upsert to student_topic_cards (user_id, guideline_id)      <-- NEW
-    -> Response: { action: "append_to_card", simplification: {...} }  <-- CHANGED
+       -> In ONE transaction:
+          -> Store in session.card_phase.remedial_cards[3]
+          -> Upsert to student_topic_cards (user_id, guideline_id, variant_key)  <-- NEW
+    -> Response: { action: "append_to_card", simplification: {...} }             <-- CHANGED
     -> Frontend: append to card.simplifications[], auto-scroll, typewriter
 
 NEXT VISIT:
   create_new_session(user_id, guideline_id)
-    -> Load base cards from TopicExplanation
-    -> Lookup student_topic_cards(user_id, guideline_id)              <-- NEW
-    -> If found: attach saved simplifications to matching cards
+    -> Find student's last-used variant from student_topic_cards                 <-- NEW
+    -> Load base cards from TopicExplanation (saved variant or default)
+    -> Lookup student_topic_cards(user_id, guideline_id, variant_key)            <-- NEW
+    -> If found AND explanation_id matches: attach saved simplifications
+    -> If explanation_id differs: delete stale record, start fresh
     -> Frontend: render inline sections from start (no typewriter for pre-loaded)
 ```
 
@@ -59,6 +62,15 @@ NEXT VISIT:
 
 ## 3. Database
 
+### Card Index Contract
+
+`card_idx` has ONE canonical meaning everywhere:
+- **0-based index into `variant.cards_json`** (which includes welcome card at index 0)
+- Frontend `explanationCards[i]` = `cards_json[i]` = `carouselSlides[i]` during card_phase
+- Frontend sends `currentSlideIdx` directly as `card_idx` — **no offset math**
+- Persistence keys use the same `card_idx` (as string keys in the JSONB)
+- The v1 `cardArrayIdx = currentSlideIdx - 1` offset is removed entirely
+
 ### New table: `student_topic_cards`
 
 ```sql
@@ -67,16 +79,21 @@ CREATE TABLE student_topic_cards (
     user_id         VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     guideline_id    VARCHAR NOT NULL REFERENCES teaching_guidelines(id) ON DELETE CASCADE,
     variant_key     VARCHAR NOT NULL,
+    explanation_id  VARCHAR NOT NULL,
     simplifications JSONB NOT NULL DEFAULT '{}',
-    base_card_count INTEGER NOT NULL DEFAULT 0,
     updated_at      TIMESTAMP DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX idx_student_topic_cards_user_guideline
-    ON student_topic_cards(user_id, guideline_id);
+CREATE UNIQUE INDEX idx_student_topic_cards_user_guideline_variant
+    ON student_topic_cards(user_id, guideline_id, variant_key);
 ```
 
-`simplifications` JSONB structure:
+Key differences from v1 draft:
+- **`UNIQUE (user_id, guideline_id, variant_key)`** — one row per variant. Switching variants doesn't destroy other variants' data.
+- **`explanation_id`** replaces `base_card_count` — stores the `TopicExplanation.id` UUID. On read, if the current explanation has a different ID, saved simplifications are stale (explanations were regenerated). Catches same-count regenerations, reordered cards, and content changes.
+- No `base_card_count` — `explanation_id` is a strictly stronger guard.
+
+`simplifications` JSONB structure (keys are `card_idx` per the contract above):
 ```json
 {
   "3": [
@@ -92,8 +109,6 @@ CREATE UNIQUE INDEX idx_student_topic_cards_user_guideline
   ]
 }
 ```
-
-`base_card_count` stores the variant's card count at write time. On read, if the current variant has a different count, saved simplifications are discarded (stale guard).
 
 ### Migration
 
@@ -123,11 +138,11 @@ Add after `TopicExplanation` class (~line 338):
 
 ```python
 class StudentTopicCards(Base):
-    """Per-student simplification overlays for explanation cards.
+    """Per-student, per-variant simplification overlays for explanation cards.
 
     Stores the simplifications a student generated via "I didn't understand"
-    so they persist across sessions. The overlay is merged with base cards
-    from TopicExplanation on session creation.
+    so they persist across sessions. One row per (user, guideline, variant).
+    The overlay is merged with base cards from TopicExplanation on session creation.
     """
     __tablename__ = "student_topic_cards"
 
@@ -135,12 +150,13 @@ class StudentTopicCards(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"), nullable=False)
     variant_key = Column(String, nullable=False)
+    explanation_id = Column(String, nullable=False)  # TopicExplanation.id — stale guard
     simplifications = Column(JSONB, nullable=False, default=dict)
-    base_card_count = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
-        UniqueConstraint("user_id", "guideline_id", name="uq_student_topic_cards_user_guideline"),
+        UniqueConstraint("user_id", "guideline_id", "variant_key",
+                         name="uq_student_topic_cards_user_guideline_variant"),
     )
 ```
 
@@ -153,40 +169,63 @@ class StudentTopicCardsRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get(self, user_id: str, guideline_id: str) -> Optional[StudentTopicCards]:
-        """Fetch saved simplifications for a student+topic."""
+    def get(self, user_id: str, guideline_id: str, variant_key: str) -> Optional[StudentTopicCards]:
+        """Fetch saved simplifications for a student+topic+variant."""
         return self.db.query(StudentTopicCards).filter(
             StudentTopicCards.user_id == user_id,
             StudentTopicCards.guideline_id == guideline_id,
+            StudentTopicCards.variant_key == variant_key,
         ).first()
 
+    def get_most_recent(self, user_id: str, guideline_id: str) -> Optional[StudentTopicCards]:
+        """Fetch the most recently used variant's record for a student+topic."""
+        return self.db.query(StudentTopicCards).filter(
+            StudentTopicCards.user_id == user_id,
+            StudentTopicCards.guideline_id == guideline_id,
+        ).order_by(StudentTopicCards.updated_at.desc()).first()
+
     def upsert(self, user_id: str, guideline_id: str, variant_key: str,
-               card_idx: int, simplification: dict, base_card_count: int):
-        """Add a simplification to the student's saved overlay."""
-        record = self.get(user_id, guideline_id)
+               explanation_id: str, card_idx: int, simplification: dict):
+        """Add a simplification to the student's saved overlay.
+
+        Does NOT commit — caller is responsible for committing the transaction
+        (allows atomic write with session state persistence).
+        """
+        record = self.get(user_id, guideline_id, variant_key)
         if record:
+            # Stale guard: if explanation was regenerated, reset simplifications
+            if record.explanation_id != explanation_id:
+                record.simplifications = {}
+                record.explanation_id = explanation_id
             existing = record.simplifications or {}
             key = str(card_idx)
             if key not in existing:
                 existing[key] = []
             existing[key].append(simplification)
             record.simplifications = existing
-            record.variant_key = variant_key
-            record.base_card_count = base_card_count
             record.updated_at = datetime.utcnow()
-            # Force JSONB change detection
             flag_modified(record, "simplifications")
         else:
             record = StudentTopicCards(
                 user_id=user_id,
                 guideline_id=guideline_id,
                 variant_key=variant_key,
+                explanation_id=explanation_id,
                 simplifications={str(card_idx): [simplification]},
-                base_card_count=base_card_count,
             )
             self.db.add(record)
-        self.db.commit()
+        # No commit here — caller commits both session state + this in one transaction
+
+    def delete_stale(self, user_id: str, guideline_id: str, variant_key: str):
+        """Delete a stale record (explanation was regenerated)."""
+        self.db.query(StudentTopicCards).filter(
+            StudentTopicCards.user_id == user_id,
+            StudentTopicCards.guideline_id == guideline_id,
+            StudentTopicCards.variant_key == variant_key,
+        ).delete()
 ```
+
+**Transaction boundary:** `upsert()` does NOT commit independently. The caller (`session_service.simplify_card()`) commits both the session state persistence and the student_topic_cards upsert in one `db.commit()`. This prevents partial-failure states where one write succeeds and the other fails.
 
 ### Step 3: Prompt — Add `lines[]` to Output
 
@@ -241,23 +280,24 @@ return result_dict
 
 **File:** `tutor/services/session_service.py`
 
-In `simplify_card()` (~line 1200-1238), after persisting session state:
+In `simplify_card()` (~line 1200-1238), after building the remedial card but BEFORE the existing `_persist_session_state()` call:
 
 ```python
 # Persist to student_topic_cards for cross-session persistence
-if session_id:
-    db_session = self._get_session_from_db(session_id)
-    if db_session and db_session.user_id:
-        from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
-        stc_repo = StudentTopicCardsRepository(self.db)
-        stc_repo.upsert(
-            user_id=db_session.user_id,
-            guideline_id=session.card_phase.guideline_id,
-            variant_key=variant_key,
-            card_idx=card_idx,
-            simplification=card_dict,
-            base_card_count=len(all_cards),
-        )
+# (same DB session — committed together with session state)
+db_session = self._get_session_from_db(session_id)
+if db_session and db_session.user_id:
+    from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
+    stc_repo = StudentTopicCardsRepository(self.db)
+    stc_repo.upsert(
+        user_id=db_session.user_id,
+        guideline_id=session.card_phase.guideline_id,
+        variant_key=variant_key,
+        explanation_id=variant.id,  # TopicExplanation.id — stale guard
+        card_idx=card_idx,
+        simplification=card_dict,
+    )
+# _persist_session_state() commits the transaction (both writes)
 ```
 
 Change the response format (~line 1233):
@@ -276,28 +316,50 @@ return {
 
 **File:** `tutor/services/session_service.py`
 
-In `create_new_session()`, after initializing `CardPhaseState` (~line 164), add:
+In `create_new_session()`, BEFORE selecting the variant (~line 151), check for the student's last-used variant:
 
 ```python
-# Pre-load saved simplifications for returning students
-saved_simplifications = {}
+# Check for student's last-used variant (for returning students)
+preferred_variant_key = None
 if user_id and explanations and mode == "teach_me":
     from shared.repositories.student_topic_cards_repository import StudentTopicCardsRepository
     stc_repo = StudentTopicCardsRepository(self.db)
-    saved = stc_repo.get(user_id, request.goal.guideline_id)
-    if saved and saved.variant_key == first_variant.variant_key \
-       and saved.base_card_count == len(first_variant.cards_json):
-        saved_simplifications = saved.simplifications or {}
+    most_recent = stc_repo.get_most_recent(user_id, request.goal.guideline_id)
+    if most_recent:
+        preferred_variant_key = most_recent.variant_key
 
-session.card_phase.remedial_cards = {
-    int(k): [RemedialCard(
-        card_id=f"remedial_{first_variant.variant_key}_{k}_{i+1}",
-        source_card_idx=int(k),
-        depth=i + 1,
-        card=s,
-    ) for i, s in enumerate(v)]
-    for k, v in saved_simplifications.items()
-}
+# Select variant: prefer saved, fall back to first available
+if preferred_variant_key:
+    first_variant = next(
+        (e for e in explanations if e.variant_key == preferred_variant_key),
+        explanations[0],  # fall back if saved variant no longer exists
+    )
+else:
+    first_variant = explanations[0]
+```
+
+After initializing `CardPhaseState` (~line 164), pre-load saved simplifications:
+
+```python
+# Pre-load saved simplifications for returning students
+if user_id and mode == "teach_me":
+    saved = stc_repo.get(user_id, request.goal.guideline_id, first_variant.variant_key)
+    if saved:
+        if saved.explanation_id == first_variant.id:
+            # Explanation unchanged — restore simplifications
+            session.card_phase.remedial_cards = {
+                int(k): [RemedialCard(
+                    card_id=f"remedial_{first_variant.variant_key}_{k}_{i+1}",
+                    source_card_idx=int(k),
+                    depth=i + 1,
+                    card=s,
+                ) for i, s in enumerate(v)]
+                for k, v in (saved.simplifications or {}).items()
+            }
+        else:
+            # Explanation was regenerated — discard stale simplifications
+            stc_repo.delete_stale(user_id, request.goal.guideline_id, first_variant.variant_key)
+            self.db.commit()
 ```
 
 This populates `remedial_cards` from saved data — same structure as if the student had just generated them. The rest of the pipeline (replay, frontend) works unchanged.
@@ -338,15 +400,46 @@ The initial session response (returned from `create_new_session`) includes expla
 
 ```python
 # Attach pre-loaded simplifications to card dicts for frontend
+# card_idx = cards_json index = explanationCards index (per card index contract, no offset)
 if session.card_phase.remedial_cards:
     for card_idx_str, remedials in session.card_phase.remedial_cards.items():
         idx = int(card_idx_str)
-        # +1 because explanation_cards[0] is welcome card, idx is 0-based content cards
-        frontend_idx = idx + 1
-        if frontend_idx < len(explanation_cards):
-            explanation_cards[frontend_idx]["simplifications"] = [
+        if 0 <= idx < len(explanation_cards):
+            explanation_cards[idx]["simplifications"] = [
                 r.card for r in remedials
             ]
+```
+
+### Step 8b: Service — Variant Switch Wiring
+
+**File:** `tutor/services/session_service.py` — `_switch_variant_internal()` (~line 1362)
+
+When the student clicks "Explain differently", the existing code swaps the variant and clears `remedial_cards`. Add persistence awareness:
+
+```python
+def _switch_variant_internal(self, session, session_id, new_variant_key, ...):
+    # ... existing variant switch logic ...
+
+    # Load any saved simplifications for the new variant
+    db_session = self._get_session_from_db(session_id)
+    if db_session and db_session.user_id:
+        stc_repo = StudentTopicCardsRepository(self.db)
+        saved = stc_repo.get(db_session.user_id, session.card_phase.guideline_id, new_variant_key)
+        new_variant = self.explanation_repo.get_variant(
+            session.card_phase.guideline_id, new_variant_key)
+
+        if saved and new_variant and saved.explanation_id == new_variant.id:
+            # Restore saved simplifications for this variant
+            session.card_phase.remedial_cards = {
+                int(k): [RemedialCard(...) for i, s in enumerate(v)]
+                for k, v in (saved.simplifications or {}).items()
+            }
+        else:
+            session.card_phase.remedial_cards = {}
+            # Clean up stale record if exists
+            if saved:
+                stc_repo.delete_stale(db_session.user_id,
+                    session.card_phase.guideline_id, new_variant_key)
 ```
 
 ---
@@ -396,15 +489,16 @@ Replace the entire `handleSimplifyCard` function:
 const handleSimplifyCard = async () => {
   if (!sessionId || simplifyLoading) return;
 
-  // cardArrayIdx maps from slide index to backend card index
-  // (slide 0 = welcome, slide 1 = backend card 0)
-  const cardArrayIdx = currentSlideIdx - 1;
-  if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
+  // Per card index contract: currentSlideIdx = cards_json index = explanationCards index
+  // No offset math. Welcome card (idx 0) never shows simplify button.
+  const cardIdx = currentSlideIdx;
+  if (cardIdx < 0 || cardIdx >= explanationCards.length) return;
 
-  const currentCard = explanationCards[cardArrayIdx];
-  const baseCardIdx = currentCard.source_card_idx ?? cardArrayIdx;
+  const currentCard = explanationCards[cardIdx];
+  const baseCardIdx = currentCard.source_card_idx ?? cardIdx;
 
   setSimplifyLoading(true);
+  setSimplifyJustAdded(false);
   try {
     const result = await simplifyCard(sessionId, baseCardIdx);
 
@@ -412,17 +506,16 @@ const handleSimplifyCard = async () => {
       // Append to the card's inline simplifications — no new card, no index change
       setExplanationCards(prev => {
         const updated = [...prev];
-        // Find the card at the current slide position
-        const targetIdx = currentSlideIdx; // slide index = explanationCards index
-        if (targetIdx >= 0 && targetIdx < updated.length) {
-          const card = { ...updated[targetIdx] };
+        if (cardIdx >= 0 && cardIdx < updated.length) {
+          const card = { ...updated[cardIdx] };
           card.simplifications = [...(card.simplifications || []), result.simplification];
-          updated[targetIdx] = card;
+          updated[cardIdx] = card;
         }
         return updated;
       });
+      setSimplifyJustAdded(true);
       // No setCurrentSlideIdx — we stay on the same card
-      // Auto-scroll to new section handled by rendering logic
+      // Auto-scroll to new section (step 12)
     }
   } catch (err: any) {
     console.error('Simplify card failed:', err);
@@ -433,6 +526,7 @@ const handleSimplifyCard = async () => {
 ```
 
 Key differences from v1:
+- **No `-1` offset** — `currentSlideIdx` sent directly as `card_idx` (per card index contract)
 - No `splice` — no card insertion
 - No `setCurrentSlideIdx` — user stays on same card
 - Appends to `card.simplifications[]` instead
@@ -612,15 +706,17 @@ Dependency-ordered steps. Each step is independently testable.
 | Order | Step | Description | Files |
 |-------|------|-------------|-------|
 | 1 | ORM model + migration | `StudentTopicCards` entity + `db.py` migration | `entities.py`, `db.py` |
-| 2 | Repository | CRUD for `student_topic_cards` | `student_topic_cards_repository.py` (NEW) |
+| 2 | Repository | CRUD for `student_topic_cards` (per-variant, no independent commit) | `student_topic_cards_repository.py` (NEW) |
 | 3 | Prompt + agent | `lines[]` in `SimplifiedCardOutput` + updated prompt | `master_tutor_prompts.py`, `master_tutor.py` |
-| 4 | Service — write path | Upsert to `student_topic_cards` on each simplification | `session_service.py` |
-| 5 | Service — read path | Pre-load saved simplifications on session creation | `session_service.py` |
-| 6 | API — response format | `append_to_card` response + replay merge change | `sessions.py` |
-| 7 | Frontend API types | `simplifications` on `ExplanationCard` | `api.ts` |
-| 8 | Frontend handler | Replace splice with append-to-card logic | `ChatSession.tsx` |
-| 9 | Frontend rendering | Inline sections, separator, skeleton, auto-scroll | `ChatSession.tsx`, `App.css` |
-| 10 | CSS cleanup | Remove stale `.simplify-options` styles | `App.css` |
+| 4 | Service — write path | Upsert to `student_topic_cards` (same transaction as session state) | `session_service.py` |
+| 5 | Service — read path | Variant selection + pre-load saved simplifications | `session_service.py` |
+| 6 | Service — variant switch | Restore/clear simplifications on `_switch_variant_internal()` | `session_service.py` |
+| 7 | API — response format | `append_to_card` response + replay merge change | `sessions.py` |
+| 8 | Frontend — card index fix | Remove `-1` offset in `handleSimplifyCard`, align with contract | `ChatSession.tsx` |
+| 9 | Frontend — API types | `simplifications` on `ExplanationCard` | `api.ts` |
+| 10 | Frontend — handler | Replace splice with append-to-card logic | `ChatSession.tsx` |
+| 11 | Frontend — rendering | Inline sections, separator, skeleton, auto-scroll | `ChatSession.tsx`, `App.css` |
+| 12 | CSS cleanup | Remove stale `.simplify-options` styles | `App.css` |
 
 ---
 
@@ -631,13 +727,18 @@ Dependency-ordered steps. Each step is independently testable.
 | `test_simplify_returns_append_to_card` | Response format is `append_to_card` with `simplification` dict containing `lines[]` |
 | `test_simplification_has_lines` | LLM output includes `lines` array with `display` + `audio` pairs |
 | `test_student_topic_cards_upsert` | Upsert creates record on first simplification, appends on subsequent |
+| `test_student_topic_cards_per_variant` | Separate rows for variant A and B; switching doesn't destroy other variant's data |
 | `test_student_topic_cards_preload` | New session pre-loads saved simplifications into `remedial_cards` |
-| `test_preload_skips_stale` | Saved simplifications discarded when `base_card_count` differs |
-| `test_preload_skips_variant_mismatch` | Saved simplifications discarded when variant_key differs |
+| `test_preload_uses_saved_variant` | Returning student starts on their last-used variant, not always "A" |
+| `test_preload_skips_stale_explanation` | Saved simplifications discarded when `explanation_id` differs (explanations regenerated) |
+| `test_preload_deletes_stale_record` | Stale record is deleted, not silently ignored |
 | `test_preload_skips_anonymous` | No pre-loading when `user_id` is None |
 | `test_replay_inline_merge` | Replay attaches simplifications as `card.simplifications[]`, not separate cards |
-| `test_variant_switch_updates_student_cards` | Variant switch updates `student_topic_cards` with new variant_key |
+| `test_variant_switch_restores_saved` | Switching to variant B restores B's previously saved simplifications |
+| `test_variant_switch_clears_on_stale` | Switching to variant B clears simplifications if explanation_id doesn't match |
+| `test_write_atomicity` | Session state + student_topic_cards written in same transaction; partial failure rolls back both |
 | `test_guideline_cascade_delete` | Deleting guideline cascades to `student_topic_cards` |
+| `test_card_idx_no_offset` | Frontend sends `currentSlideIdx` directly; backend receives correct card_idx |
 | Frontend: inline render | Simplification sections appear below original content with separator |
 | Frontend: auto-scroll | Card scrolls to new section after generation |
 | Frontend: typewriter | New simplification gets typewriter animation; pre-loaded ones don't |

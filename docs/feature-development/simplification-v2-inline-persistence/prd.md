@@ -129,23 +129,38 @@ interface ExplanationCard {
 
 **FR-12**: The carousel slide derivation (`carouselSlides` memo) does NOT change — the same card renders with more content, it doesn't create additional slides.
 
-### 6.4 Per-Student Persistence
+### 6.4 Card Index Contract
 
-**FR-13**: New database table:
+**FR-13**: `card_idx` has ONE canonical meaning everywhere — backend, frontend, persistence, replay, tests:
+- **0-based index into `variant.cards_json`** (which includes the welcome card at index 0)
+- Content cards start at index 1
+- The welcome card (index 0) is never simplifiable (button hidden in frontend)
+- Frontend `explanationCards` array maps 1:1 to `cards_json` — `explanationCards[i]` = `cards_json[i]`
+- Frontend `carouselSlides` maps 1:1 to `explanationCards` during card_phase — `currentSlideIdx` = array index directly
+- **No offset math anywhere.** Frontend sends `currentSlideIdx` to backend as `card_idx`. Backend uses it directly as the index into `all_cards`.
+
+### 6.5 Per-Student Persistence
+
+**FR-14**: New database table — **one row per (user, guideline, variant)**:
 ```sql
 CREATE TABLE student_topic_cards (
     id              TEXT PRIMARY KEY,
-    user_id         TEXT NOT NULL REFERENCES users(id),
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     guideline_id    TEXT NOT NULL REFERENCES teaching_guidelines(id) ON DELETE CASCADE,
     variant_key     TEXT NOT NULL,
+    explanation_id  TEXT NOT NULL,
     simplifications JSONB NOT NULL DEFAULT '{}',
     updated_at      TIMESTAMP DEFAULT NOW(),
-    UNIQUE (user_id, guideline_id)
+    UNIQUE (user_id, guideline_id, variant_key)
 );
 CREATE INDEX idx_student_topic_cards_user ON student_topic_cards(user_id);
 ```
 
-**FR-14**: The `simplifications` JSONB column stores the overlay:
+Key design decisions:
+- **`UNIQUE (user_id, guideline_id, variant_key)`** — each variant's simplifications are stored separately. Switching from variant A to B doesn't destroy A's data. Switching back restores it.
+- **`explanation_id`** — the `TopicExplanation.id` (UUID) at the time simplifications were saved. If explanations are regenerated, the UUID changes. On read, if the current explanation has a different ID, saved simplifications are discarded (stale guard). This is stronger than card-count comparison — catches same-count regenerations, reordered cards, and content changes.
+
+**FR-15**: The `simplifications` JSONB column stores the overlay:
 ```json
 {
   "3": [
@@ -157,32 +172,38 @@ CREATE INDEX idx_student_topic_cards_user ON student_topic_cards(user_id);
   ]
 }
 ```
-Keys are base card indices (as strings). Values are ordered lists of simplification objects.
+Keys are `card_idx` values (as strings, per FR-13 contract). Values are ordered lists of simplification objects.
 
-**FR-15**: **Write path** — on each simplification event, upsert to `student_topic_cards`:
-1. Load existing record for (user_id, guideline_id) if any
+**FR-16**: **Write path** — on each simplification event, upsert to `student_topic_cards`:
+1. Load existing record for (user_id, guideline_id, variant_key) if any
 2. Merge the new simplification into the `simplifications` dict under the correct card_idx
-3. Upsert with current variant_key and updated_at
+3. Upsert with current explanation_id and updated_at
+4. Both the session state write and student_topic_cards write happen **in the same DB transaction** — no partial-failure states.
 
-This happens alongside the existing session state persistence — both are written on each simplification.
-
-**FR-16**: **Read path** — on new Teach Me session creation:
-1. After loading base cards from `TopicExplanation`, check `student_topic_cards` for (user_id, guideline_id)
-2. If found AND variant_key matches AND base card count matches: attach `simplifications` to the corresponding cards
-3. If found but card count differs (base cards were regenerated): discard saved simplifications, start fresh
+**FR-17**: **Read path** — on new Teach Me session creation:
+1. After loading base cards from `TopicExplanation`, check `student_topic_cards` for (user_id, guideline_id, variant_key)
+2. If found AND `explanation_id` matches the current `TopicExplanation.id`: attach `simplifications` to the corresponding cards
+3. If found but `explanation_id` differs (explanations were regenerated): delete the stale record, start fresh
 4. If not found OR user is anonymous: normal flow, no pre-loading
 
-**FR-17**: Pre-loaded simplifications render inline from the start — no typewriter animation for pre-loaded content (treated as already-revealed). Typewriter only applies to newly generated simplifications during the current session.
+**FR-18**: Pre-loaded simplifications render inline from the start — no typewriter animation for pre-loaded content (treated as already-revealed). Typewriter only applies to newly generated simplifications during the current session.
 
-**FR-18**: When a student clicks "Explain differently" (variant switch), the `student_topic_cards` record is updated with the new variant_key and its simplifications (initially empty for the new variant).
+**FR-19**: **Variant switch behavior** — when a student clicks "Explain differently":
+1. The current variant's simplifications are already persisted (written on each simplification event)
+2. The new variant loads fresh from `TopicExplanation`
+3. Check `student_topic_cards` for (user_id, guideline_id, new_variant_key) — if the student previously simplified cards on this variant, those simplifications are restored
+4. Session state's `remedial_cards` is reset for the new variant (or populated from saved data if found)
+5. No data is lost — both variants' simplifications coexist as separate rows
 
-### 6.5 Simplification Content Quality
+**FR-20**: **Variant selection on revisit** — when creating a new session, use the student's most recently used variant (from `student_topic_cards.updated_at`) instead of always defaulting to variant "A". Fall back to first available variant if no saved data exists.
 
-**FR-19**: The simplification prompt focuses on one strategy: break it down further, use simpler words, fill missing steps. No tiered depth levels — every simplification gets the same directive.
+### 6.6 Simplification Content Quality
 
-**FR-20**: The LLM receives all previous simplifications for the same card (so it avoids repeating the same approach) and the full lesson card list (for context).
+**FR-21**: The simplification prompt focuses on one strategy: break it down further, use simpler words, fill missing steps. No tiered depth levels — every simplification gets the same directive.
 
-**FR-21**: Each simplification must return structured `lines[]` matching the format:
+**FR-22**: The LLM receives all previous simplifications for the same card (so it avoids repeating the same approach) and the full lesson card list (for context).
+
+**FR-23**: Each simplification must return structured `lines[]` matching the format:
 ```json
 [
   {"display": "Think of 4 boxes in a row.", "audio": "Think of four boxes in a row."},
@@ -191,21 +212,21 @@ This happens alongside the existing session state persistence — both are writt
 ]
 ```
 
-### 6.6 Loading UX
+### 6.7 Loading UX
 
-**FR-22**: While simplification is generating, show an animated skeleton/shimmer below the current card content where the new section will appear. The separator line ("Let me break this down") appears immediately.
+**FR-24**: While simplification is generating, show an animated skeleton/shimmer below the current card content where the new section will appear. The separator line ("Let me break this down") appears immediately.
 
-**FR-23**: When generation completes, the skeleton is replaced with the actual content and typewriter animation begins.
+**FR-25**: When generation completes, the skeleton is replaced with the actual content and typewriter animation begins.
 
-**FR-24**: All navigation (Back/Next) remains disabled during generation (unchanged from v1).
+**FR-26**: All navigation (Back/Next) remains disabled during generation (unchanged from v1).
 
-### 6.7 Session State (Unchanged from v1)
+### 6.8 Session State (Unchanged from v1)
 
-**FR-25**: `card_phase.remedial_cards` continues to track simplifications in session state — this is the source of truth for the current session and for replay.
+**FR-27**: `card_phase.remedial_cards` continues to track simplifications in session state — this is the source of truth for the current session and for replay.
 
-**FR-26**: `card_phase.confusion_events` continues to track per-card confusion — used for tutor context and analytics.
+**FR-28**: `card_phase.confusion_events` continues to track per-card confusion — used for tutor context and analytics.
 
-**FR-27**: Replay endpoint reconstructs cards with inline simplifications (instead of inserted cards).
+**FR-29**: Replay endpoint reconstructs cards with inline simplifications (instead of inserted cards).
 
 ## Technical Architecture
 
@@ -285,9 +306,9 @@ Frontend receives cards with pre-loaded simplifications
 |----------|----------|
 | LLM call fails | Show error message in place of skeleton. Student stays on card, can retry. |
 | Card grows very long (5+ simplifications) | Natural scrolling handles it. Consider: after 3 simplifications, change button text to "Want to try a different approach?" suggesting variant switch. |
-| Student revisits but base cards were regenerated (different count) | Discard saved simplifications, start fresh. Log event for monitoring. |
+| Student revisits but base cards were regenerated | `explanation_id` won't match → discard saved simplifications, delete stale record, start fresh. Log event for monitoring. |
 | Anonymous user (no user_id) | Inline expansion works for current session. No persistence (student_topic_cards requires user_id). |
-| Student simplifies, then variant-switches, then switches back | Simplifications for original variant are still in student_topic_cards. Reloading original variant restores them. |
+| Student simplifies, then variant-switches, then switches back | Each variant has its own row in `student_topic_cards`. Switching back restores the original variant's simplifications. No data loss. |
 | Page refresh mid-generation | Request lost. On replay, previously saved simplifications render. Student can re-tap. |
 | Pre-loaded simplification has stale visual (old PixiJS version) | Render as-is. PixiJS is sandboxed iframe — old code should still work. |
 
@@ -311,7 +332,7 @@ Frontend receives cards with pre-loaded simplifications
 - Progressive depth tiers (different prompt per depth) — keep it simple, one strategy
 - Escalation to interactive mode after N simplifications
 - Improving base cards from confusion data (Problem B — future content pipeline work)
-- Per-student variant selection history (always starts with saved variant or default "A")
+- Proactive base card improvement from confusion data (Problem B — future pipeline work)
 - Proactive simplification (reading time signals)
 - Free-text "what confused you?" input
 
