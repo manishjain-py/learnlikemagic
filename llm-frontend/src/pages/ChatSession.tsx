@@ -1243,11 +1243,8 @@ export default function ChatSession() {
     navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
   };
 
-  const [showSimplifyOptions, setShowSimplifyOptions] = useState(false);
-
-  const handleSimplifyCard = async (reason: string) => {
+  const handleSimplifyCard = async () => {
     if (!sessionId || simplifyLoading) return;
-    setShowSimplifyOptions(false);
     const cardArrayIdx = currentSlideIdx - 1;
     if (cardArrayIdx < 0 || cardArrayIdx >= explanationCards.length) return;
 
@@ -1256,7 +1253,7 @@ export default function ChatSession() {
 
     setSimplifyLoading(true);
     try {
-      const result = await simplifyCard(sessionId, baseCardIdx, reason);
+      const result = await simplifyCard(sessionId, baseCardIdx);
 
       if (result.action === 'insert_card' && result.card) {
         const newCard: ExplanationCard = {
@@ -1862,11 +1859,11 @@ export default function ChatSession() {
                 return sessionPhase === 'card_phase' ? (
                 currentSlideIdx < explanationCards.length ? ( /* last card is at index explanationCards.length (welcome=0) */
                   <div className="explanation-nav">
-                    {currentSlideIdx > 0 && !simplifyLoading && !showSimplifyOptions && !isAnimating
+                    {currentSlideIdx > 0 && !simplifyLoading && !isAnimating
                       && carouselSlides[currentSlideIdx]?.type !== 'check_in' && (
                       <button
                         className="explanation-nav-btn simplify"
-                        onClick={() => setShowSimplifyOptions(true)}
+                        onClick={() => handleSimplifyCard()}
                         disabled={cardActionLoading}
                       >
                         I didn't understand
@@ -1874,22 +1871,6 @@ export default function ChatSession() {
                     )}
                     {simplifyLoading && (
                       <div className="explanation-nav-btn simplify" style={{opacity: 0.6}}>Simplifying...</div>
-                    )}
-                    {showSimplifyOptions && !simplifyLoading && (
-                      <div className="simplify-options">
-                        <div className="simplify-options-header">
-                          <div className="simplify-options-label">What would help?</div>
-                          <button className="simplify-options-close" onClick={() => setShowSimplifyOptions(false)} aria-label="Close">&times;</button>
-                        </div>
-                        <div className="simplify-options-row">
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
-                        </div>
-                        <div className="simplify-options-row">
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('elaborate')}>Explain in more detail</button>
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('different_approach')}>Explain differently</button>
-                        </div>
-                      </div>
                     )}
                     <div className="explanation-nav-row">
                       <button
@@ -1918,11 +1899,11 @@ export default function ChatSession() {
                   </div>
                 ) : (
                   <div className="explanation-nav">
-                    {!simplifyLoading && !showSimplifyOptions
+                    {!simplifyLoading
                       && carouselSlides[currentSlideIdx]?.type !== 'check_in' && (
                       <button
                         className="explanation-nav-btn simplify"
-                        onClick={() => setShowSimplifyOptions(true)}
+                        onClick={() => handleSimplifyCard()}
                         disabled={cardActionLoading}
                       >
                         I didn't understand
@@ -1930,22 +1911,6 @@ export default function ChatSession() {
                     )}
                     {simplifyLoading && (
                       <div className="explanation-nav-btn simplify" style={{opacity: 0.6}}>Simplifying...</div>
-                    )}
-                    {showSimplifyOptions && !simplifyLoading && (
-                      <div className="simplify-options">
-                        <div className="simplify-options-header">
-                          <div className="simplify-options-label">What would help?</div>
-                          <button className="simplify-options-close" onClick={() => setShowSimplifyOptions(false)} aria-label="Close">&times;</button>
-                        </div>
-                        <div className="simplify-options-row">
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('example')}>Show an example</button>
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('simpler_words')}>Use simpler words</button>
-                        </div>
-                        <div className="simplify-options-row">
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('elaborate')}>Explain in more detail</button>
-                          <button className="simplify-option" onClick={() => handleSimplifyCard('different_approach')}>Explain differently</button>
-                        </div>
-                      </div>
                     )}
                     <div className="explanation-actions">
                       <button

@@ -222,7 +222,7 @@ class CardActionRequest(BaseModel):
 class SimplifyCardRequest(BaseModel):
     """Request body for per-card simplification."""
     card_idx: int = Field(description="Index of the card to simplify (0-based)")
-    reason: str = Field(description="Why the student didn't understand: 'example', 'simpler_words', 'elaborate', 'different_approach'")
+    reason: str = Field(default="simplify", description="Simplification reason (default: general simplify)")
 
 
 class CardPhaseDTO(BaseModel):

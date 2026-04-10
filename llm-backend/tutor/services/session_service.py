@@ -1169,12 +1169,18 @@ class SessionService:
 
         import asyncio
 
+        # Strip audio_text from cards to save tokens — LLM only needs display content
+        cards_for_llm = [
+            {k: v for k, v in c.items() if k != "audio_text"}
+            for c in all_cards
+        ]
+
         card_dict = asyncio.run(
             self.orchestrator.generate_simplified_card(
                 session=session,
                 card_title=card_title,
                 card_content=card_content,
-                all_cards=all_cards,
+                all_cards=cards_for_llm,
                 reason=reason,
                 previous_attempts=previous_attempts,
             )

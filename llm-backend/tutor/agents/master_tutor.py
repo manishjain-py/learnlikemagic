@@ -237,37 +237,7 @@ class MasterTutorAgent(BaseAgent):
         output.mastery_updates = []
         return output
 
-    # Reason labels and LLM directives for "I didn't understand" options
-    REASON_MAP = {
-        "example": (
-            "I need an example",
-            "Build the ENTIRE explanation around ONE concrete, relatable example from the "
-            "student's daily life (food, toys, friends, school). Walk through the example "
-            "step by step, showing how the concept works IN the example. Do NOT explain "
-            "the theory first and add an example — start with the example and let the "
-            "concept emerge from it. The example must be a single coherent scene, not a "
-            "collection of unrelated objects.",
-        ),
-        "simpler_words": (
-            "The language is tough",
-            "Rewrite using only words a 5-year-old uses daily. No technical terms at all. "
-            "If you must mention a concept like 'place value', describe it instead "
-            "(e.g., 'which box the number sits in'). Maximum 10 words per sentence.",
-        ),
-        "elaborate": (
-            "I need more detail",
-            "Break the concept into smaller pieces. Explain step by step, "
-            "numbering each step. Fill in any gap the previous card left — "
-            "if it said 'do X', explain WHY we do X and WHAT happens if we don't.",
-        ),
-        "different_approach": (
-            "Explain it differently",
-            "Use a completely different angle, analogy, or mental model. "
-            "If the previous card used numbers, try a story. If it used a story, "
-            "try a hands-on activity. The new approach must feel like a fresh start, "
-            "not a variation of the same explanation.",
-        ),
-    }
+    # (Legacy REASON_MAP removed — simplification now uses a single unified approach)
 
     async def generate_simplified_card(
         self,
@@ -281,13 +251,10 @@ class MasterTutorAgent(BaseAgent):
         """Generate a simplified version of a specific explanation card."""
         system_prompt = self._build_system_prompt(session)
 
+        # Build card summaries for context (titles + types only, no audio)
         all_cards_summary = "\n".join(
-            f"{i+1}. [{c.get('card_type', 'unknown')}] {c.get('title', 'Untitled')}"
+            f"{i+1}. [{c.get('card_type', 'unknown')}] {c.get('title', 'Untitled')}: {c.get('content', '')[:200]}"
             for i, c in enumerate(all_cards)
-        )
-
-        reason_label, reason_directive = self.REASON_MAP.get(
-            reason, ("I didn't understand", "Simplify the explanation. Use simpler words and a concrete example.")
         )
 
         # Build previous attempts section so LLM knows what to avoid
@@ -305,8 +272,6 @@ class MasterTutorAgent(BaseAgent):
             card_title=card_title,
             card_content=card_content,
             all_cards_summary=all_cards_summary,
-            reason_label=reason_label,
-            reason_directive=reason_directive,
             previous_attempts_section=previous_attempts_section,
         )
 

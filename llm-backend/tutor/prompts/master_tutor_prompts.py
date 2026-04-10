@@ -270,15 +270,15 @@ Title: "{card_title}"
 Content:
 {card_content}
 {previous_attempts_section}
-### Student's feedback
-The student said: **{reason_label}**
-
-### All cards in this variant (for context)
+### All cards in this topic (for context — so you know what comes before and after)
 {all_cards_summary}
 
 ### Your task
-Re-explain the SAME concept from the original card above, but address the student's feedback:
-{reason_directive}
+The student didn't understand the card above. Re-explain the SAME concept, but simpler. You must:
+1. **Break it down further** — split the idea into smaller, bite-sized pieces. One idea per sentence.
+2. **Use simpler words** — only words a 5-year-old uses daily. No technical terms. If you must mention a concept like 'place value', describe it instead ('which box the number sits in'). Max 10 words per sentence.
+3. **Use a concrete example** — pick ONE relatable example from the student's daily life (food, toys, rupees, cricket, school). Walk through it step by step. Let the concept emerge from the example.
+4. **Try a different angle** — if the original used numbers, try a story. If it used a story, try a hands-on activity. The new explanation must feel like a fresh start.
 
 ### Output requirements
 Return a single simplified explanation card as JSON:
@@ -291,10 +291,9 @@ Return a single simplified explanation card as JSON:
 
 CRITICAL RULES:
 - Explain ONLY the same concept. Do NOT advance to new topics.
-- Your explanation must be SUBSTANTIALLY DIFFERENT — use a different analogy, different structure, different angle. Do NOT reword the same sentences.
+- Your explanation must be SUBSTANTIALLY DIFFERENT from the original card — different analogy, different structure, different angle. Do NOT reword the same sentences.
 - Do NOT echo or repeat content from the original card or any previous attempts. The student already read those and didn't understand — repeating them is useless.
-- Shorter sentences. One idea at a time. The student is Indian — English is NOT their first language.
-- If the card used a technical term, replace it with an everyday word. No idioms, no phrasal verbs, no complex grammar.
+- The student is Indian — English is NOT their first language. No idioms, no phrasal verbs, no complex grammar.
 - NO meta-commentary. No "Let me explain this differently" or "Here's a simpler version." Just explain the concept directly.
 """,
     name="simplify_card",

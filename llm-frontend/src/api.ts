@@ -664,11 +664,10 @@ export async function cardAction(
 export async function simplifyCard(
   sessionId: string,
   cardIdx: number,
-  reason: string,
 ): Promise<any> {
   const response = await apiFetch(`/sessions/${sessionId}/simplify-card`, {
     method: 'POST',
-    body: JSON.stringify({ card_idx: cardIdx, reason }),
+    body: JSON.stringify({ card_idx: cardIdx }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
