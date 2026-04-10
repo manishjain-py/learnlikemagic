@@ -1,0 +1,24 @@
+# Implementation Log: Simplification v2 — Inline Expansion + Per-Student Persistence
+
+**Start:** 2026-04-11
+**Branch:** implement/simplification-v2-inline-persistence
+**Plan:** docs/feature-development/simplification-v2-inline-persistence/impl-plan.md
+**PRD:** docs/feature-development/simplification-v2-inline-persistence/prd.md
+
+## Progress
+
+| Step | Description | Status | Notes |
+|------|-------------|--------|-------|
+| 1 | ORM model + migration | done | StudentTopicCards in entities.py, create_all handles table |
+| 2 | Repository | done | New file: student_topic_cards_repository.py |
+| 3 | Prompt + agent | done | lines[] in SimplifiedCardOutput, content/audio_text derived |
+| 4 | Service — write path | done | Upsert after session state persist, append_to_card response |
+| 5 | Service — read path | done | Variant preference + pre-load in create_new_session |
+| 6 | Service — variant switch | done | _switch_variant_internal restores/clears saved |
+| 7 | API — response format + replay | done | Inline merge in replay, no separate card insertion |
+| 8 | Frontend — card index fix | done | Removed -1 offset, uses currentSlideIdx directly |
+| 9 | Frontend — API types | done | simplifications field on ExplanationCard |
+| 10 | Frontend — handler | done | Append to card.simplifications[], auto-scroll |
+| 11 | Frontend — rendering | done | Inline sections, separator, skeleton, typewriter |
+| 12 | CSS cleanup | done | New styles added, stale simplify-options removed |
+| Tests | Update existing + new | done | 21 tests passing (15 updated + 6 new) |
