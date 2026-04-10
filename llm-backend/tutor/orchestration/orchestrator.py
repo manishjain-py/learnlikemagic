@@ -1435,6 +1435,7 @@ class TeacherOrchestrator:
         """Generate a simplified version of a specific explanation card.
 
         Returns a dict with card content (title, content, audio_text, card_type).
+        Also generates a PixiJS visual if the LLM provides a visual_prompt.
         """
         try:
             self.master_tutor.set_session(session)
@@ -1446,6 +1447,27 @@ class TeacherOrchestrator:
                 reason=reason,
                 previous_attempts=previous_attempts or [],
             )
+
+            # Generate PixiJS visual if the LLM provided a visual prompt.
+            # Uses pixi_generator directly (not _generate_pixi_code) because
+            # simplified cards should always get visuals, regardless of the
+            # show_visuals_in_tutor_flow feature flag.
+            visual_prompt = result.pop("visual_prompt", None)
+            if visual_prompt:
+                try:
+                    pixi_code = await self.pixi_generator.generate(
+                        visual_prompt=visual_prompt,
+                        output_type="image",
+                    )
+                    if pixi_code:
+                        result["visual_explanation"] = {
+                            "output_type": "image",
+                            "title": result.get("title"),
+                            "pixi_code": pixi_code,
+                        }
+                except Exception as e:
+                    logger.warning(f"Visual generation for simplified card failed: {e}")
+
             return result
         except Exception as e:
             logger.exception(f"Simplified card generation failed: {e}")

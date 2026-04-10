@@ -198,6 +198,12 @@ class SimplifiedCardOutput(BaseModel):
     title: str = Field(description="Simplified title")
     content: str = Field(description="Simplified explanation")
     audio_text: str = Field(description="TTS-friendly spoken version")
+    visual_prompt: Optional[str] = Field(
+        default=None,
+        description="Natural language description of a helpful visual for this card. "
+        "Be specific: objects, layout, colors, labels, animation steps. "
+        "Set to null if the card doesn't benefit from a visual."
+    )
 
 
 class MasterTutorAgent(BaseAgent):
@@ -318,6 +324,7 @@ class MasterTutorAgent(BaseAgent):
             "audio_text": result.audio_text,
             "visual": None,
             "visual_explanation": None,
+            "visual_prompt": result.visual_prompt,
         }
 
     def _build_welcome_prompt(self, session: SessionState) -> str:
