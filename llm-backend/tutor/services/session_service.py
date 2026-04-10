@@ -96,6 +96,15 @@ class SessionService:
                 language_level="simple" if request.student.grade <= 5 else "standard",
             )
 
+        # Check for pre-computed explanations early — if they exist, we skip
+        # study plan generation entirely (cards are the lesson, plan is unused).
+        has_precomputed = False
+        if mode == "teach_me":
+            try:
+                has_precomputed = ExplanationRepository(self.db).has_explanations(request.goal.guideline_id)
+            except Exception:
+                pass
+
         # Load personalized study plan from DB (user_id + guideline_id)
         study_plan_record = None
         if user_id:
@@ -115,8 +124,8 @@ class SessionService:
                 .first()
             )
 
-        # Generate personalized plan for teach_me mode if none exists (skip for refresher)
-        if not study_plan_record and mode == "teach_me" and user_id and not is_refresher:
+        # Generate personalized plan only if no pre-computed explanations and no cached plan
+        if not study_plan_record and mode == "teach_me" and user_id and not is_refresher and not has_precomputed:
             study_plan_record = self._generate_personalized_plan(
                 guideline, user_id, student_context
             )
