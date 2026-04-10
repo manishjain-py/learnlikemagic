@@ -61,6 +61,37 @@ interface Slide {
   checkIn?: CheckInActivity | null;
 }
 
+// ─── Global audio element + unlock ──────────────────────────────────
+// Module-scope so it survives route changes. The "Teach Me" tap on
+// ModeSelection unlocks the element before ChatSession even mounts.
+let _globalAudio: HTMLAudioElement | null = null;
+let _audioUnlocked = false;
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+
+function getGlobalAudio(): HTMLAudioElement {
+  if (!_globalAudio) _globalAudio = new Audio();
+  return _globalAudio;
+}
+
+function _unlockAudio() {
+  if (_audioUnlocked) return;
+  const audio = getGlobalAudio();
+  audio.src = SILENT_WAV;
+  audio.volume = 0;
+  const p = audio.play();
+  if (p) p.then(() => {
+    audio.pause();
+    audio.volume = 1;
+    audio.currentTime = 0;
+    _audioUnlocked = true;
+  }).catch(() => {});
+}
+
+// Register unlock on first load — any tap anywhere in the app unlocks audio
+document.addEventListener('click', _unlockAudio);
+document.addEventListener('touchstart', _unlockAudio);
+document.addEventListener('touchend', _unlockAudio);
+
 export default function ChatSession() {
   const navigate = useNavigate();
   const params = useParams<{
@@ -843,42 +874,12 @@ export default function ChatSession() {
     }
   };
 
-  // Create a persistent Audio element once to satisfy browser autoplay policy.
+  // Use the module-scope audio element (unlocked by any tap in the app)
   const getOrCreateAudio = (): HTMLAudioElement => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-    }
-    return audioRef.current;
+    const audio = getGlobalAudio();
+    audioRef.current = audio;
+    return audio;
   };
-
-  // Unlock audio on user interaction so programmatic play() works on mobile.
-  // Uses a tiny silent WAV (iOS Safari needs a real src to unlock) and stays
-  // active (not once) since the first interaction may happen before mount.
-  const audioUnlockedRef = useRef(false);
-  useEffect(() => {
-    const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-    const unlock = () => {
-      if (audioUnlockedRef.current) return;
-      const audio = getOrCreateAudio();
-      audio.src = silentWav;
-      audio.volume = 0;
-      const p = audio.play();
-      if (p) p.then(() => {
-        audio.pause();
-        audio.volume = 1;
-        audio.currentTime = 0;
-        audioUnlockedRef.current = true;
-      }).catch(() => {});
-    };
-    document.addEventListener('click', unlock);
-    document.addEventListener('touchstart', unlock);
-    document.addEventListener('touchend', unlock);
-    return () => {
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('touchstart', unlock);
-      document.removeEventListener('touchend', unlock);
-    };
-  }, []);
 
   const playTeacherAudio = async (text: string, slideId?: string) => {
     const version = ++audioPlayVersion.current;
