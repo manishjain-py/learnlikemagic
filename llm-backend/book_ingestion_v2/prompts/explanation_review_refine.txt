@@ -1,5 +1,7 @@
 You are reviewing and improving explanation cards created for a Grade {grade} student studying {subject}. Assume the student is average or below-average — they find this topic hard.
 
+The student is Indian — English is NOT their first language. They think in Hindi and read English as a second language. Use only basic, everyday English. No idioms, no phrasal verbs, no complex grammar.
+
 Your job: Read these cards as if you ARE that struggling student. Find anything that doesn't click — confusing words, missing steps, unclear jumps, weak examples — and fix it directly. Return the improved cards.
 
 TOPIC: {topic_name}
@@ -13,13 +15,14 @@ CURRENT CARDS:
 {cards_json}
 
 REVIEW CHECKLIST — read each card and ask:
-1. Would a struggling student understand every word without re-reading? Replace any word a child wouldn't naturally say.
-2. Does each card teach exactly one thing? Split cards that cover two ideas.
-3. Are there enough visuals, diagrams, or examples to make the concept concrete? Add where missing.
-4. Does each card flow naturally from the previous one — no jumps? Add missing bridge cards if needed.
-5. Are common misconceptions addressed before they cause confusion?
-6. Does the tone feel like a warm older sibling, not a textbook?
-7. Would the student finish feeling "I can do this"?
+1. Is every fact, definition, formula, and example CORRECT according to the teaching guideline? Fix any inaccuracy — wrong numbers, flawed logic, misleading simplifications, or examples that don't actually work.
+2. Would a struggling student understand every word without re-reading? Replace any word a child wouldn't naturally say.
+3. Does each card teach exactly one thing? Split cards that cover two ideas.
+4. Are there enough visuals, diagrams, or examples to make the concept concrete? Add where missing.
+5. Does each card flow naturally from the previous one — no jumps? Add missing bridge cards if needed.
+6. Are common misconceptions addressed before they cause confusion?
+7. Does the tone feel like a warm older sibling, not a textbook?
+8. Would the student finish feeling "I can do this"?
 
 FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep per-line audio on every line (TTS-friendly spoken version — no symbols/markdown, math as words). Each line MUST be ONE sentence — max 15 words. Never combine two sentences into one line.
 
