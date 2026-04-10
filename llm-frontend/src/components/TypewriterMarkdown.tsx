@@ -114,29 +114,36 @@ export default function TypewriterMarkdown({
   onBlockStart,
   onBlockTyped,
 }: TypewriterMarkdownProps) {
-  const blocks = useMemo(() => parseBlocks(title, content), [title, content]);
+  // When audioLines exist, each line is its own block (skip parseBlocks which
+  // merges consecutive plain lines into one paragraph). This gives tight
+  // line-by-line reveal + audio sync.
+  const blocks = useMemo(() => {
+    if (audioLines && audioLines.length > 0) {
+      const b: Block[] = [];
+      if (title?.trim()) {
+        b.push({ raw: `## ${title.trim()}`, type: 'heading' });
+      }
+      for (const line of audioLines) {
+        b.push({ raw: line.display, type: 'paragraph' });
+      }
+      return b;
+    }
+    return parseBlocks(title, content);
+  }, [audioLines, title, content]);
+
   const fullMarkdown = useMemo(() => joinBlocks(blocks), [blocks]);
 
-  // Build per-block audio text lookup: maps block index → audio string.
-  // When audioLines is provided, title block (first block from parseBlocks) gets
-  // the title text as audio, and subsequent blocks map to audioLines by content index.
+  // Maps block index → audio text for TTS callbacks
   const blockAudioRef = useRef<Map<number, string>>(new Map());
   useMemo(() => {
     const m = new Map<number, string>();
     if (audioLines && audioLines.length > 0) {
-      let audioIdx = 0;
-      for (let bi = 0; bi < blocks.length; bi++) {
-        if (blocks[bi].type === 'heading' && bi === 0 && title?.trim()) {
-          // Title heading — use title text as audio (no markdown)
-          m.set(bi, title.trim());
-        } else if (audioIdx < audioLines.length) {
-          m.set(bi, audioLines[audioIdx].audio);
-          audioIdx++;
-        }
-      }
+      const offset = title?.trim() ? 1 : 0;
+      if (offset) m.set(0, title!.trim());
+      audioLines.forEach((line, i) => m.set(i + offset, line.audio));
     }
     blockAudioRef.current = m;
-  }, [audioLines, blocks, title]);
+  }, [audioLines, title]);
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [phase, setPhase] = useState<'typing' | 'speaking' | 'transitioning'>('typing');

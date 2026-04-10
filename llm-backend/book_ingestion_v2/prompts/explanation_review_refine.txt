@@ -21,7 +21,7 @@ REVIEW CHECKLIST — read each card and ask:
 6. Does the tone feel like a warm older sibling, not a textbook?
 7. Would the student finish feeling "I can do this"?
 
-FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep per-line audio on every line (TTS-friendly spoken version — no symbols/markdown, math as words).
+FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep per-line audio on every line (TTS-friendly spoken version — no symbols/markdown, math as words). Each line MUST be ONE sentence — max 15 words. Never combine two sentences into one line.
 
 The "teaching_notes" in summary should describe the conceptual progression and key insight — written as if briefing another tutor.
 

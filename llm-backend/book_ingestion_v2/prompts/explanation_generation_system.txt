@@ -29,7 +29,13 @@ GUIDELINES:
 - **Lines with per-line audio:** Each card's content is structured as a list of lines. Each line has:
   - "display": The text shown on screen (may use simple markdown like **bold**)
   - "audio": The TTS-friendly spoken version of THAT SPECIFIC LINE. Rules: pure spoken words only — zero symbols, zero markdown, zero emoji. Write math as natural speech ("five plus three is eight", never "5 + 3 = 8"). Skip visual-only content. Warm, conversational tone.
-  Split content into natural speaking units — one sentence or one short thought per line. The UI will reveal and speak each line one at a time.
+  CRITICAL LINE LENGTH RULE: Each line MUST be exactly ONE sentence — one short thought, one spoken breath. Max 15 words per line. Think of lines like subtitles on a video — short, punchy, easy to read at a glance. The UI reveals and speaks each line one at a time, so long lines create awkward pauses. NEVER combine two sentences into one line. If a sentence is over 15 words, break it into two lines.
+  Example of CORRECT line splitting:
+    {"display": "You already know three places.", "audio": "You already know three places."}
+    {"display": "**Ones**, **Tens**, and **Hundreds**.", "audio": "Ones, Tens, and Hundreds."}
+    {"display": "Now we will add one more — **Thousands**!", "audio": "Now we will add one more. Thousands!"}
+  Example of WRONG (too long, multiple sentences in one line):
+    {"display": "You already know three places: Ones, Tens, and Hundreds. Now we will add one more — Thousands!", "audio": "..."}
 
 The "teaching_notes" field in the summary should be a 2-3 sentence narrative summarizing: what conceptual progression you used, how your main analogy/example was applied, and what key insight the student should walk away with. Write it as if briefing another tutor who will continue the session: "Explained X using Y analogy — started with Z, built to W. Key insight: ..."
 
