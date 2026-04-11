@@ -30,7 +30,9 @@ class BucketItem(BaseModel):
 
 class CheckInActivity(BaseModel):
     """Interactive check-in activity embedded in a check-in card.
-    Supports 6 types: pick_one, true_false, fill_blank, match_pairs, sort_buckets, sequence.
+    Supports 11 types: pick_one, true_false, fill_blank, match_pairs, sort_buckets,
+    sequence, spot_the_error, odd_one_out, predict_then_reveal, swipe_classify,
+    estimation_slider.
     """
     activity_type: str = "match_pairs"
     instruction: str
@@ -49,12 +51,29 @@ class CheckInActivity(BaseModel):
     # match_pairs
     pairs: Optional[list[MatchPair]] = None
 
-    # sort_buckets
+    # sort_buckets / swipe_classify
     bucket_names: Optional[list[str]] = None
     bucket_items: Optional[list[BucketItem]] = None
 
     # sequence
     sequence_items: Optional[list[str]] = None
+
+    # spot_the_error
+    error_steps: Optional[list[str]] = None
+    error_index: Optional[int] = None
+
+    # odd_one_out
+    odd_items: Optional[list[str]] = None
+    odd_index: Optional[int] = None
+
+    # predict_then_reveal (uses options + correct_index for predictions)
+    reveal_text: Optional[str] = None
+
+    # estimation_slider
+    slider_min: Optional[int] = None
+    slider_max: Optional[int] = None
+    correct_value: Optional[int] = None
+    tolerance: Optional[int] = None
 
 
 class ExplanationLine(BaseModel):

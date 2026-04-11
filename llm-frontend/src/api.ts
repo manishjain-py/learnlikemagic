@@ -92,13 +92,14 @@ export interface BucketItem {
 }
 
 export interface CheckInActivity {
-  activity_type: 'pick_one' | 'true_false' | 'fill_blank' | 'match_pairs' | 'sort_buckets' | 'sequence';
+  activity_type: 'pick_one' | 'true_false' | 'fill_blank' | 'match_pairs' | 'sort_buckets' | 'sequence'
+    | 'spot_the_error' | 'odd_one_out' | 'predict_then_reveal' | 'swipe_classify' | 'estimation_slider';
   instruction: string;
   hint: string;
   success_message: string;
   audio_text: string;
 
-  // pick_one / fill_blank
+  // pick_one / fill_blank / predict_then_reveal
   options?: string[];
   correct_index?: number;
 
@@ -109,12 +110,29 @@ export interface CheckInActivity {
   // match_pairs
   pairs?: MatchPair[];
 
-  // sort_buckets
+  // sort_buckets / swipe_classify
   bucket_names?: string[];
   bucket_items?: BucketItem[];
 
   // sequence
   sequence_items?: string[];  // in correct order; frontend shuffles for display
+
+  // spot_the_error
+  error_steps?: string[];
+  error_index?: number;
+
+  // odd_one_out
+  odd_items?: string[];
+  odd_index?: number;
+
+  // predict_then_reveal
+  reveal_text?: string;
+
+  // estimation_slider
+  slider_min?: number;
+  slider_max?: number;
+  correct_value?: number;
+  tolerance?: number;
 }
 
 export interface ExplanationLine {

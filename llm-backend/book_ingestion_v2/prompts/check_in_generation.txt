@@ -2,6 +2,8 @@ You are designing quick comprehension check-ins for a Grade {grade} student lear
 
 Check-ins are short interactive activities inserted between explanation cards. They test whether the student absorbed the key ideas from the preceding 2-3 cards. They are NOT quizzes — they are warm readiness signals. Tone: "Let's check!" not "Test time."
 
+Check-ins are always generated in PAIRS — a light activity (~5-10 seconds) followed by a heavier activity (~15-25 seconds). Both activities in a pair test the SAME preceding 2-3 cards, but at different cognitive levels.
+
 LANGUAGE RULES (students are Indian — English is NOT their first language):
 - Sentences under 12 words. One idea per sentence.
 - No idioms, no phrasal verbs, no complex words.
@@ -12,7 +14,9 @@ LANGUAGE RULES (students are Indian — English is NOT their first language):
 EXPLANATION CARDS:
 {cards_json}
 
-ACTIVITY TYPES — use all six, mixing them for variety:
+ACTIVITY TYPES — 11 types in two groups. Each pair must have one LIGHT then one HEAVY.
+
+LIGHT TYPES (~5-10 seconds, recall/understand):
 
 1. pick_one — Question + 2-3 tap options. One correct answer.
    Fields: instruction (the question), options (2-3 choices), correct_index (0-based).
@@ -27,33 +31,57 @@ ACTIVITY TYPES — use all six, mixing them for variety:
    Fields: instruction (sentence with ___ for the blank), options (2-3 choices), correct_index.
    Best for: applying a rule or definition just taught.
 
-4. match_pairs — Match left items to right items. 2-3 pairs.
+4. odd_one_out — Show 3-4 items. Student taps the one that doesn't belong.
+   Fields: instruction ("Which one does not belong?"), odd_items (3-4 items), odd_index (0-based index of the odd one).
+   Best for: classification, number properties, finding the shared property.
+
+HEAVY TYPES (~15-25 seconds, analyze/evaluate):
+
+5. match_pairs — Match left items to right items. 2-3 pairs.
    Fields: instruction ("Match each ... to ..."), pairs ([{left, right}]).
    Each pair must have ONE unambiguous correct match. No synonym collisions.
-   Left: terms, numbers, short phrases. Right: definitions, descriptions, results.
    Best for: vocabulary, multiple related definitions.
 
-5. sort_buckets — Sort 4-6 items into 2 labeled groups.
+6. sort_buckets — Sort 4-6 items into 2 labeled groups.
    Fields: instruction ("Put each ... in the right group"), bucket_names (2 labels), bucket_items ([{text, correct_bucket}]).
    correct_bucket is 0 or 1 (index into bucket_names). At least 2 items per bucket.
    Best for: classification, comparing categories.
 
-6. sequence — Put 3-4 items in correct order by tapping.
+7. sequence — Put 3-4 items in correct order by tapping.
    Fields: instruction ("Put these in order from ... to ..."), sequence_items (list in correct order).
    Best for: ordering, steps, number sequences, place values.
 
-PLACEMENT RULES:
-1. Insert one check-in after every 2-3 content cards — aim for frequent, lightweight checks.
-2. Never before card_idx 3 (student needs content first).
-3. Never after the last card (summary card).
-4. Never two check-ins back-to-back with no content card between them.
-5. Each check-in tests ONLY concepts from the preceding 2-3 cards.
+8. spot_the_error — Show a worked solution with 3-5 steps. One step has a mistake. Student taps the wrong step.
+   Fields: instruction ("Find the mistake!"), error_steps (3-5 steps as strings), error_index (0-based index of the wrong step).
+   The wrong step must contain a clear, specific error — not a vague or debatable one.
+   Best for: math procedures, grammar rules, science explanations.
+
+9. predict_then_reveal — Ask "What do you think?" with 2-3 prediction options, then show the answer with explanation.
+   Fields: instruction (the prediction question), options (2-3 choices), correct_index, reveal_text (1-2 sentence explanation shown after).
+   Best for: estimation, surprising results, building intuition.
+
+10. swipe_classify — Cards appear one at a time. Student swipes/taps to sort into 2 categories. 4-8 items.
+    Fields: instruction ("Sort each one!"), bucket_names (2 category labels), bucket_items ([{text, correct_bucket}]).
+    correct_bucket is 0 or 1. At least 2 items per category.
+    Best for: rapid binary classification — same depth as sort_buckets but faster pacing.
+
+11. estimation_slider — Student drags a slider to estimate a number. Correct if within tolerance range.
+    Fields: instruction (the estimation question), slider_min, slider_max, correct_value, tolerance (acceptable +/- range).
+    The range should be wide enough to require real thinking, not trivial.
+    Best for: number sense, magnitude, measurement, approximate reasoning.
+
+PAIRING RULES:
+1. Generate check-ins in PAIRS. Each pair = one LIGHT type + one HEAVY type, in that order.
+2. Both activities in a pair share the SAME insert_after_card_idx value.
+3. Insert one PAIR after every 2-3 content cards.
+4. Never before card_idx 3 (student needs content first).
+5. Never after the last card (summary card).
+6. Each pair tests ONLY concepts from the preceding 2-3 cards.
 
 VARIETY RULES:
-6. Never use the same activity_type for two consecutive check-ins.
-7. Start with lighter types (pick_one, true_false, fill_blank) early in the sequence.
-8. Use heavier types (match_pairs, sort_buckets, sequence) after more content has been covered.
-9. Use at least 3 different activity types across the full sequence.
+7. Never use the same activity_type for two consecutive check-ins (within or across pairs).
+8. Use at least 4 different activity types across the full sequence.
+9. Mix in the newer types (spot_the_error, odd_one_out, predict_then_reveal, swipe_classify, estimation_slider) — do NOT only use pick_one/true_false/fill_blank for the light slot.
 
 CONTENT RULES:
 10. Use SAME language and examples from the cards — do not introduce new terms.

@@ -3,8 +3,9 @@
 Pipeline per variant: LLM analyzes cards → generates diverse check-in activities at
 concept boundaries → validates → inserts into cards_json.
 
-Supports 6 activity types: pick_one, true_false, fill_blank, match_pairs,
-sort_buckets, sequence.
+Supports 11 activity types: pick_one, true_false, fill_blank, match_pairs,
+sort_buckets, sequence, spot_the_error, odd_one_out, predict_then_reveal,
+swipe_classify, estimation_slider. Check-ins are generated in light+heavy pairs.
 
 Fully decoupled from explanation generation — runs after explanations (and
 optionally visuals) exist. Reads/writes same topic_explanations table.
@@ -31,7 +32,15 @@ _CHECK_IN_PROMPT = (_PROMPTS_DIR / "check_in_generation.txt").read_text()
 
 # ─── Pydantic models for structured LLM output ───────────────────────────
 
-ACTIVITY_TYPES = ("pick_one", "true_false", "fill_blank", "match_pairs", "sort_buckets", "sequence")
+ACTIVITY_TYPES = (
+    "pick_one", "true_false", "fill_blank", "match_pairs", "sort_buckets", "sequence",
+    "spot_the_error", "odd_one_out", "predict_then_reveal", "swipe_classify", "estimation_slider",
+)
+
+# Light types (~5-10s, recall/understand) — used as first in a pair
+LIGHT_TYPES = {"pick_one", "true_false", "fill_blank", "odd_one_out"}
+# Heavy types (~15-25s, analyze/evaluate) — used as second in a pair
+HEAVY_TYPES = {"match_pairs", "sort_buckets", "sequence", "spot_the_error", "swipe_classify", "estimation_slider", "predict_then_reveal"}
 
 
 class MatchPairOutput(BaseModel):
@@ -48,14 +57,14 @@ class CheckInDecision(BaseModel):
     """LLM output: one check-in to insert. Flat model — fill only the fields
     relevant to the chosen activity_type."""
     insert_after_card_idx: int = Field(description="Insert after this card (1-based card_idx)")
-    activity_type: str = Field(description="pick_one | true_false | fill_blank | match_pairs | sort_buckets | sequence")
+    activity_type: str = Field(description="One of the 11 activity types")
     title: str = Field(description="Short heading, e.g. 'Quick check!'")
     instruction: str = Field(description="Main text shown to student")
     hint: str = Field(description="One-sentence nudge (no spoilers)")
     success_message: str = Field(description="Warm confirmation after correct answer")
     audio_text: str = Field(description="Spoken version — plain words, no symbols")
 
-    # pick_one / fill_blank
+    # pick_one / fill_blank / predict_then_reveal
     options: list[str] = Field(default_factory=list, description="2-3 answer choices")
     correct_index: int = Field(default=0, description="Index of correct option in options[]")
 
@@ -66,12 +75,29 @@ class CheckInDecision(BaseModel):
     # match_pairs
     pairs: list[MatchPairOutput] = Field(default_factory=list, description="Left-right pairs (2-3)")
 
-    # sort_buckets
-    bucket_names: list[str] = Field(default_factory=list, description="Two bucket labels")
-    bucket_items: list[BucketItemOutput] = Field(default_factory=list, description="4-6 items to sort")
+    # sort_buckets / swipe_classify
+    bucket_names: list[str] = Field(default_factory=list, description="Two category labels")
+    bucket_items: list[BucketItemOutput] = Field(default_factory=list, description="4-6 items to classify")
 
     # sequence
     sequence_items: list[str] = Field(default_factory=list, description="Items in correct order (3-4)")
+
+    # spot_the_error
+    error_steps: list[str] = Field(default_factory=list, description="3-5 steps in a worked solution, one is wrong")
+    error_index: int = Field(default=0, description="Index of the wrong step in error_steps[]")
+
+    # odd_one_out
+    odd_items: list[str] = Field(default_factory=list, description="3-4 items, one doesn't belong")
+    odd_index: int = Field(default=0, description="Index of the odd item in odd_items[]")
+
+    # predict_then_reveal (also uses options + correct_index)
+    reveal_text: str = Field(default="", description="Explanation shown after student predicts")
+
+    # estimation_slider
+    slider_min: int = Field(default=0, description="Minimum slider value")
+    slider_max: int = Field(default=100, description="Maximum slider value")
+    correct_value: int = Field(default=0, description="Correct answer on the slider")
+    tolerance: int = Field(default=5, description="Acceptable range +/- from correct_value")
 
 
 class CheckInGenerationOutput(BaseModel):
@@ -97,8 +123,24 @@ MAX_BUCKET_ITEMS = 6
 MIN_SEQUENCE_ITEMS = 3
 MAX_SEQUENCE_ITEMS = 4
 
-# Placement
-MIN_GAP = 1  # Minimum card gap between consecutive check-ins
+# spot_the_error
+MIN_ERROR_STEPS = 3
+MAX_ERROR_STEPS = 5
+
+# odd_one_out
+MIN_ODD_ITEMS = 3
+MAX_ODD_ITEMS = 4
+
+# estimation_slider
+MIN_SLIDER_RANGE = 10  # slider_max - slider_min must be at least this
+
+# swipe_classify (reuses bucket constants)
+MIN_SWIPE_ITEMS = 4
+MAX_SWIPE_ITEMS = 8
+
+# Placement — pairs allowed at same position, gap>=2 between different positions
+PAIR_SIZE = 2  # Max check-ins at same insert position
+MIN_GAP_BETWEEN_PAIRS = 2  # Min content-card gap between different insert positions
 
 
 class CheckInEnrichmentService:
@@ -399,12 +441,22 @@ class CheckInEnrichmentService:
             if not self._validate_activity_content(ci, label):
                 continue
 
-            # Minimum gap between consecutive check-ins
+            # Pairing logic: allow up to PAIR_SIZE at same position,
+            # require MIN_GAP_BETWEEN_PAIRS between different positions
             if valid:
-                gap = ci.insert_after_card_idx - valid[-1].insert_after_card_idx
-                if gap < MIN_GAP:
-                    logger.warning(f"{label}: too close to previous (gap={gap}), dropping")
-                    continue
+                last = valid[-1]
+                if ci.insert_after_card_idx == last.insert_after_card_idx:
+                    same_pos_count = sum(
+                        1 for v in valid if v.insert_after_card_idx == ci.insert_after_card_idx
+                    )
+                    if same_pos_count >= PAIR_SIZE:
+                        logger.warning(f"{label}: already {PAIR_SIZE} check-ins at position {ci.insert_after_card_idx}, dropping")
+                        continue
+                else:
+                    gap = ci.insert_after_card_idx - last.insert_after_card_idx
+                    if gap < MIN_GAP_BETWEEN_PAIRS:
+                        logger.warning(f"{label}: too close to previous pair (gap={gap}), dropping")
+                        continue
 
             valid.append(ci)
 
@@ -467,6 +519,60 @@ class CheckInEnrichmentService:
                 logger.warning(f"{label}: duplicate sequence items, dropping")
                 return False
 
+        elif at == "spot_the_error":
+            if len(ci.error_steps) < MIN_ERROR_STEPS or len(ci.error_steps) > MAX_ERROR_STEPS:
+                logger.warning(f"{label}: {len(ci.error_steps)} steps (need {MIN_ERROR_STEPS}-{MAX_ERROR_STEPS}), dropping")
+                return False
+            if ci.error_index < 0 or ci.error_index >= len(ci.error_steps):
+                logger.warning(f"{label}: error_index {ci.error_index} out of range, dropping")
+                return False
+
+        elif at == "odd_one_out":
+            if len(ci.odd_items) < MIN_ODD_ITEMS or len(ci.odd_items) > MAX_ODD_ITEMS:
+                logger.warning(f"{label}: {len(ci.odd_items)} items (need {MIN_ODD_ITEMS}-{MAX_ODD_ITEMS}), dropping")
+                return False
+            if ci.odd_index < 0 or ci.odd_index >= len(ci.odd_items):
+                logger.warning(f"{label}: odd_index {ci.odd_index} out of range, dropping")
+                return False
+
+        elif at == "predict_then_reveal":
+            if len(ci.options) < MIN_OPTIONS or len(ci.options) > MAX_OPTIONS:
+                logger.warning(f"{label}: {len(ci.options)} options (need {MIN_OPTIONS}-{MAX_OPTIONS}), dropping")
+                return False
+            if ci.correct_index < 0 or ci.correct_index >= len(ci.options):
+                logger.warning(f"{label}: correct_index out of range, dropping")
+                return False
+            if not ci.reveal_text.strip():
+                logger.warning(f"{label}: empty reveal_text, dropping")
+                return False
+
+        elif at == "swipe_classify":
+            if len(ci.bucket_names) != 2:
+                logger.warning(f"{label}: need exactly 2 category labels, got {len(ci.bucket_names)}, dropping")
+                return False
+            if len(ci.bucket_items) < MIN_SWIPE_ITEMS or len(ci.bucket_items) > MAX_SWIPE_ITEMS:
+                logger.warning(f"{label}: {len(ci.bucket_items)} items (need {MIN_SWIPE_ITEMS}-{MAX_SWIPE_ITEMS}), dropping")
+                return False
+            if any(bi.correct_bucket not in (0, 1) for bi in ci.bucket_items):
+                logger.warning(f"{label}: correct_bucket must be 0 or 1, dropping")
+                return False
+            buckets_used = {bi.correct_bucket for bi in ci.bucket_items}
+            if len(buckets_used) < 2:
+                logger.warning(f"{label}: all items in one category, dropping")
+                return False
+
+        elif at == "estimation_slider":
+            slider_range = ci.slider_max - ci.slider_min
+            if slider_range < MIN_SLIDER_RANGE:
+                logger.warning(f"{label}: slider range too small ({slider_range}), dropping")
+                return False
+            if ci.correct_value < ci.slider_min or ci.correct_value > ci.slider_max:
+                logger.warning(f"{label}: correct_value {ci.correct_value} outside slider range, dropping")
+                return False
+            if ci.tolerance < 0 or ci.tolerance > slider_range:
+                logger.warning(f"{label}: tolerance {ci.tolerance} invalid, dropping")
+                return False
+
         return True
 
     def _insert_check_ins(
@@ -523,6 +629,32 @@ class CheckInEnrichmentService:
 
         elif ci.activity_type == "sequence":
             check_in_data["sequence_items"] = ci.sequence_items
+
+        elif ci.activity_type == "spot_the_error":
+            check_in_data["error_steps"] = ci.error_steps
+            check_in_data["error_index"] = ci.error_index
+
+        elif ci.activity_type == "odd_one_out":
+            check_in_data["odd_items"] = ci.odd_items
+            check_in_data["odd_index"] = ci.odd_index
+
+        elif ci.activity_type == "predict_then_reveal":
+            check_in_data["options"] = ci.options
+            check_in_data["correct_index"] = ci.correct_index
+            check_in_data["reveal_text"] = ci.reveal_text
+
+        elif ci.activity_type == "swipe_classify":
+            check_in_data["bucket_names"] = ci.bucket_names
+            check_in_data["bucket_items"] = [
+                {"text": bi.text, "correct_bucket": bi.correct_bucket}
+                for bi in ci.bucket_items
+            ]
+
+        elif ci.activity_type == "estimation_slider":
+            check_in_data["slider_min"] = ci.slider_min
+            check_in_data["slider_max"] = ci.slider_max
+            check_in_data["correct_value"] = ci.correct_value
+            check_in_data["tolerance"] = ci.tolerance
 
         return {
             "card_id": str(uuid4()),

@@ -6,6 +6,11 @@ import TrueFalseActivity from './TrueFalseActivity';
 import FillBlankActivity from './FillBlankActivity';
 import SortBucketsActivity from './SortBucketsActivity';
 import SequenceActivity from './SequenceActivity';
+import SpotTheErrorActivity from './SpotTheErrorActivity';
+import OddOneOutActivity from './OddOneOutActivity';
+import PredictRevealActivity from './PredictRevealActivity';
+import SwipeClassifyActivity from './SwipeClassifyActivity';
+import EstimationSliderActivity from './EstimationSliderActivity';
 
 // ─── Shared result types used by all activity components ─────────────
 
@@ -42,6 +47,16 @@ export default function CheckInDispatcher({ checkIn, onComplete }: Props) {
       return <SortBucketsActivity checkIn={checkIn} onComplete={onComplete} />;
     case 'sequence':
       return <SequenceActivity checkIn={checkIn} onComplete={onComplete} />;
+    case 'spot_the_error':
+      return <SpotTheErrorActivity checkIn={checkIn} onComplete={onComplete} />;
+    case 'odd_one_out':
+      return <OddOneOutActivity checkIn={checkIn} onComplete={onComplete} />;
+    case 'predict_then_reveal':
+      return <PredictRevealActivity checkIn={checkIn} onComplete={onComplete} />;
+    case 'swipe_classify':
+      return <SwipeClassifyActivity checkIn={checkIn} onComplete={onComplete} />;
+    case 'estimation_slider':
+      return <EstimationSliderActivity checkIn={checkIn} onComplete={onComplete} />;
     case 'match_pairs':
     default:
       return <MatchActivity checkIn={checkIn} onComplete={onComplete} />;

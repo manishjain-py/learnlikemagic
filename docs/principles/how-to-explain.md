@@ -35,22 +35,26 @@ Good analogies make abstract concepts tangible. Bad analogies create misconcepti
 
 Attention spans are measured in seconds, not minutes. Each card should be readable in 15-30 seconds. If an explanation needs 12 cards, that's fine — 12 short cards are better than 4 long ones. Brevity is clarity.
 
-## 8. Build Progressively — No Leaps
+## 8. Don't Linger — Students Want to Do, Not Read
+
+Every explanation card exists in a sequence where the student is waiting for their next chance to interact. Keep cards tight. If a concept can be taught in 3 cards instead of 5, use 3 — the check-in card that follows is where real engagement lives. Explanations set up interaction; they're not the main event.
+
+## 9. Build Progressively — No Leaps
 
 Each card should feel like a small, natural step from the previous one. If a student understands cards 1-3, card 4 should feel obvious. If it doesn't, there's a missing card in between. The test: *"Could a student guess what's coming next?"*
 
-## 9. Anticipate Misconceptions
+## 10. Anticipate Misconceptions
 
 For every concept, there's a common wrong way to think about it. Address it directly: *"You might think 1/4 is bigger than 1/2 because 4 is bigger than 2 — but actually, the more parts you split something into, the smaller each part gets."* Don't wait for confusion; prevent it.
 
-## 10. End with Confidence, Not Complexity
+## 11. End with Confidence, Not Complexity
 
 The last card of an explanation should make the student feel "I understand this." Don't end with an edge case or a "but there's more." End with a clean summary or a satisfying example that ties everything together.
 
-## 11. Explain Like a Great Tutor, Not a Textbook
+## 12. Explain Like a Great Tutor, Not a Textbook
 
 Textbooks are reference material. Explanations are teaching moments. Use a warm, conversational tone. Address the student directly. Be encouraging without being patronizing. *"Let's figure this out together"* beats *"The student will now learn about..."*
 
-## 12. Design Each Variant as a Fresh Perspective
+## 13. Design Each Variant as a Fresh Perspective
 
 When creating multiple explanation variants for the same topic, each variant should feel like a different tutor teaching the same concept — not the same explanation reworded. Variant A might use pizza analogies, Variant B might use number lines and diagrams, Variant C might walk through a step-by-step procedure. A student who didn't understand Variant A should find Variant B genuinely different, not just rephrased.
