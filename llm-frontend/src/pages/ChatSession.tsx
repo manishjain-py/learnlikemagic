@@ -154,6 +154,7 @@ export default function ChatSession() {
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
   const [simplifyJustAdded, setSimplifyJustAdded] = useState(false);
+  const [preloadAnimateCards, setPreloadAnimateCards] = useState<Set<number>>(new Set());
   const [variantsShown, setVariantsShown] = useState(1);
 
   // Teach Me completion screen state (shown after card phase ends — summary + Practice CTA)
@@ -409,10 +410,15 @@ export default function ChatSession() {
         setCurrentSlideIdx(0);
         setCardPhaseState(locState.firstTurn.card_phase_state || null);
         setVariantsShown(1);
-        // Pre-reveal cards with saved simplifications (returning student)
+        // Pre-reveal cards with saved simplifications (returning student):
+        // original content + all-but-last simplification shown fully,
+        // last simplification gets typewriter animation
         const preRevealed = new Set<number>();
         cards.forEach((c: any, idx: number) => { if (c.simplifications?.length) preRevealed.add(idx); });
-        if (preRevealed.size > 0) setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
+        if (preRevealed.size > 0) {
+          setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
+          setPreloadAnimateCards(preRevealed);
+        }
       }
 
       setMessages([{
@@ -497,7 +503,10 @@ export default function ChatSession() {
             // Pre-reveal cards with saved simplifications (returning student / resume)
             const preRevealed = new Set<number>();
             replayCards.forEach((c: any, idx: number) => { if (c.simplifications?.length) preRevealed.add(idx); });
-            if (preRevealed.size > 0) setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
+            if (preRevealed.size > 0) {
+              setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
+              setPreloadAnimateCards(preRevealed);
+            }
 
             if (state.card_phase?.active) {
               // Card phase still in progress — restore card navigation state
@@ -1862,7 +1871,8 @@ export default function ChatSession() {
                           )}
                           {/* Inline simplification sections */}
                           {slide.simplifications?.map((simplification: any, sIdx: number) => {
-                            const isNew = sIdx === (slide.simplifications?.length || 0) - 1 && simplifyJustAdded;
+                            const isLast = sIdx === (slide.simplifications?.length || 0) - 1;
+                            const shouldAnimate = isLast && (simplifyJustAdded || preloadAnimateCards.has(i));
                             const separatorTexts = [
                               'Let me break this down',
                               'Even simpler',
@@ -1878,10 +1888,17 @@ export default function ChatSession() {
                                   <TypewriterMarkdown
                                     content={simplification.content || ''}
                                     title={simplification.title}
-                                    isActive={i === currentSlideIdx && isNew}
-                                    skipAnimation={!isNew}
+                                    isActive={i === currentSlideIdx && shouldAnimate}
+                                    skipAnimation={!shouldAnimate}
                                     audioLines={simplification.lines}
-                                    onRevealComplete={() => setSimplifyJustAdded(false)}
+                                    onRevealComplete={() => {
+                                      setSimplifyJustAdded(false);
+                                      setPreloadAnimateCards(prev => {
+                                        const next = new Set(prev);
+                                        next.delete(i);
+                                        return next;
+                                      });
+                                    }}
                                     onBlockStart={(audioText: string) => {
                                       if (audioText.trim()) prefetchAudio(audioText);
                                     }}
