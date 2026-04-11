@@ -65,11 +65,10 @@ HEAVY TYPES (~15-25 seconds, analyze/evaluate):
     correct_bucket is 0 or 1. At least 2 items per category.
     Best for: rapid binary classification — same depth as sort_buckets but faster pacing.
 
-11. estimation_slider — Student drags a slider to estimate a number. Correct if within tolerance range.
-    Fields: instruction (the estimation question), slider_min, slider_max, correct_value, tolerance (acceptable +/- range).
-    The range should be wide enough to require real thinking, not trivial.
-    Set tolerance to 1-2 for questions with exact answers, 3-5 only for genuine estimation where approximation is acceptable.
-    Best for: number sense, magnitude, measurement, approximate reasoning.
+11. tap_to_eliminate — Show 4-5 options. Student crosses out wrong answers one at a time until only the correct answer remains. Game-show elimination feel.
+    Fields: instruction (the question — MUST start with "Cross out the wrong answers!" followed by the actual question on a new line), options (4-5 choices), correct_index (0-based index of the ONE correct answer).
+    The instruction MUST clearly tell the student to eliminate wrong answers, not pick the right one.
+    Best for: questions with plausible distractors, process of elimination, deeper evaluation.
 
 PAIRING RULES:
 1. Generate check-ins in PAIRS. Each pair = one LIGHT type + one HEAVY type, in that order.

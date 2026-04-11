@@ -5,7 +5,7 @@ concept boundaries → validates → inserts into cards_json.
 
 Supports 11 activity types: pick_one, true_false, fill_blank, match_pairs,
 sort_buckets, sequence, spot_the_error, odd_one_out, predict_then_reveal,
-swipe_classify, estimation_slider. Check-ins are generated in light+heavy pairs.
+swipe_classify, tap_to_eliminate. Check-ins are generated in light+heavy pairs.
 
 Fully decoupled from explanation generation — runs after explanations (and
 optionally visuals) exist. Reads/writes same topic_explanations table.
@@ -34,13 +34,13 @@ _CHECK_IN_PROMPT = (_PROMPTS_DIR / "check_in_generation.txt").read_text()
 
 ACTIVITY_TYPES = (
     "pick_one", "true_false", "fill_blank", "match_pairs", "sort_buckets", "sequence",
-    "spot_the_error", "odd_one_out", "predict_then_reveal", "swipe_classify", "estimation_slider",
+    "spot_the_error", "odd_one_out", "predict_then_reveal", "swipe_classify", "tap_to_eliminate",
 )
 
 # Light types (~5-10s, recall/understand) — used as first in a pair
 LIGHT_TYPES = {"pick_one", "true_false", "fill_blank", "odd_one_out"}
 # Heavy types (~15-25s, analyze/evaluate) — used as second in a pair
-HEAVY_TYPES = {"match_pairs", "sort_buckets", "sequence", "spot_the_error", "swipe_classify", "estimation_slider", "predict_then_reveal"}
+HEAVY_TYPES = {"match_pairs", "sort_buckets", "sequence", "spot_the_error", "swipe_classify", "tap_to_eliminate", "predict_then_reveal"}
 
 
 class MatchPairOutput(BaseModel):
@@ -93,11 +93,7 @@ class CheckInDecision(BaseModel):
     # predict_then_reveal (also uses options + correct_index)
     reveal_text: str = Field(default="", description="Explanation shown after student predicts")
 
-    # estimation_slider
-    slider_min: int = Field(default=0, description="Minimum slider value")
-    slider_max: int = Field(default=100, description="Maximum slider value")
-    correct_value: int = Field(default=0, description="Correct answer on the slider")
-    tolerance: int = Field(default=5, description="Acceptable range +/- from correct_value")
+    # tap_to_eliminate (uses options + correct_index, but with 4-5 options)
 
 
 class CheckInGenerationOutput(BaseModel):
@@ -131,8 +127,9 @@ MAX_ERROR_STEPS = 5
 MIN_ODD_ITEMS = 3
 MAX_ODD_ITEMS = 4
 
-# estimation_slider
-MIN_SLIDER_RANGE = 10  # slider_max - slider_min must be at least this
+# tap_to_eliminate
+MIN_ELIMINATE_OPTIONS = 4
+MAX_ELIMINATE_OPTIONS = 5
 
 # swipe_classify (reuses bucket constants)
 MIN_SWIPE_ITEMS = 4
@@ -561,16 +558,16 @@ class CheckInEnrichmentService:
                 logger.warning(f"{label}: all items in one category, dropping")
                 return False
 
-        elif at == "estimation_slider":
-            slider_range = ci.slider_max - ci.slider_min
-            if slider_range < MIN_SLIDER_RANGE:
-                logger.warning(f"{label}: slider range too small ({slider_range}), dropping")
+        elif at == "tap_to_eliminate":
+            if len(ci.options) < MIN_ELIMINATE_OPTIONS or len(ci.options) > MAX_ELIMINATE_OPTIONS:
+                logger.warning(f"{label}: {len(ci.options)} options (need {MIN_ELIMINATE_OPTIONS}-{MAX_ELIMINATE_OPTIONS}), dropping")
                 return False
-            if ci.correct_value < ci.slider_min or ci.correct_value > ci.slider_max:
-                logger.warning(f"{label}: correct_value {ci.correct_value} outside slider range, dropping")
+            if ci.correct_index < 0 or ci.correct_index >= len(ci.options):
+                logger.warning(f"{label}: correct_index {ci.correct_index} out of range, dropping")
                 return False
-            if ci.tolerance < 0 or ci.tolerance > slider_range:
-                logger.warning(f"{label}: tolerance {ci.tolerance} invalid, dropping")
+            opts_lower = [o.strip().lower() for o in ci.options]
+            if len(set(opts_lower)) != len(opts_lower):
+                logger.warning(f"{label}: duplicate options, dropping")
                 return False
 
         return True
@@ -650,11 +647,9 @@ class CheckInEnrichmentService:
                 for bi in ci.bucket_items
             ]
 
-        elif ci.activity_type == "estimation_slider":
-            check_in_data["slider_min"] = ci.slider_min
-            check_in_data["slider_max"] = ci.slider_max
-            check_in_data["correct_value"] = ci.correct_value
-            check_in_data["tolerance"] = ci.tolerance
+        elif ci.activity_type == "tap_to_eliminate":
+            check_in_data["options"] = ci.options
+            check_in_data["correct_index"] = ci.correct_index
 
         return {
             "card_id": str(uuid4()),

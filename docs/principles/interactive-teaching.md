@@ -75,7 +75,7 @@ A **pair** of check-ins after every 2-3 content cards. Each pair = one **light**
 - **spot_the_error** (~15s): Tap the wrong step in a 3-5 step worked solution. Best for math procedures, grammar.
 - **predict_then_reveal** (~20s): Pick a prediction from 2-3 options, then see the answer with explanation. Best for estimation, surprising results.
 - **swipe_classify** (~20s): Cards appear one at a time, swipe/tap to sort into 2 categories (4-8 items). Best for rapid binary classification.
-- **estimation_slider** (~15s): Drag slider to estimate a number, correct if within tolerance. Best for number sense, magnitude.
+- **tap_to_eliminate** (~15s): Show 4-5 options, cross out wrong answers one by one until only the correct one remains. Game-show elimination feel.
 
 ### Variety Rules
 - Never two consecutive check-ins of the same type (within or across pairs).

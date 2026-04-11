@@ -32,7 +32,7 @@ class CheckInActivity(BaseModel):
     """Interactive check-in activity embedded in a check-in card.
     Supports 11 types: pick_one, true_false, fill_blank, match_pairs, sort_buckets,
     sequence, spot_the_error, odd_one_out, predict_then_reveal, swipe_classify,
-    estimation_slider.
+    tap_to_eliminate.
     """
     activity_type: str = "match_pairs"
     instruction: str
@@ -69,11 +69,7 @@ class CheckInActivity(BaseModel):
     # predict_then_reveal (uses options + correct_index for predictions)
     reveal_text: Optional[str] = None
 
-    # estimation_slider
-    slider_min: Optional[int] = None
-    slider_max: Optional[int] = None
-    correct_value: Optional[int] = None
-    tolerance: Optional[int] = None
+    # tap_to_eliminate (uses options + correct_index, with 4-5 options)
 
 
 class ExplanationLine(BaseModel):

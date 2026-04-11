@@ -10,7 +10,7 @@ import SpotTheErrorActivity from './SpotTheErrorActivity';
 import OddOneOutActivity from './OddOneOutActivity';
 import PredictRevealActivity from './PredictRevealActivity';
 import SwipeClassifyActivity from './SwipeClassifyActivity';
-import EstimationSliderActivity from './EstimationSliderActivity';
+import TapToEliminateActivity from './TapToEliminateActivity';
 
 // ─── Shared result types used by all activity components ─────────────
 
@@ -55,8 +55,8 @@ export default function CheckInDispatcher({ checkIn, onComplete }: Props) {
       return <PredictRevealActivity checkIn={checkIn} onComplete={onComplete} />;
     case 'swipe_classify':
       return <SwipeClassifyActivity checkIn={checkIn} onComplete={onComplete} />;
-    case 'estimation_slider':
-      return <EstimationSliderActivity checkIn={checkIn} onComplete={onComplete} />;
+    case 'tap_to_eliminate':
+      return <TapToEliminateActivity checkIn={checkIn} onComplete={onComplete} />;
     case 'match_pairs':
     default:
       return <MatchActivity checkIn={checkIn} onComplete={onComplete} />;
