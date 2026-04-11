@@ -404,10 +404,15 @@ export default function ChatSession() {
       // Check for card phase (pre-computed explanations)
       if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
         setSessionPhase('card_phase');
-        setExplanationCards(annotateCards(locState.firstTurn.explanation_cards));
+        const cards = annotateCards(locState.firstTurn.explanation_cards);
+        setExplanationCards(cards);
         setCurrentSlideIdx(0);
         setCardPhaseState(locState.firstTurn.card_phase_state || null);
         setVariantsShown(1);
+        // Pre-reveal cards with saved simplifications (returning student)
+        const preRevealed = new Set<number>();
+        cards.forEach((c: any, idx: number) => { if (c.simplifications?.length) preRevealed.add(idx); });
+        if (preRevealed.size > 0) setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
       }
 
       setMessages([{
@@ -487,7 +492,12 @@ export default function ChatSession() {
 
           // Hydrate card phase — active or completed
           if (state._replay_explanation_cards) {
-            setExplanationCards(annotateCards(state._replay_explanation_cards));
+            const replayCards = annotateCards(state._replay_explanation_cards);
+            setExplanationCards(replayCards);
+            // Pre-reveal cards with saved simplifications (returning student / resume)
+            const preRevealed = new Set<number>();
+            replayCards.forEach((c: any, idx: number) => { if (c.simplifications?.length) preRevealed.add(idx); });
+            if (preRevealed.size > 0) setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
 
             if (state.card_phase?.active) {
               // Card phase still in progress — restore card navigation state
