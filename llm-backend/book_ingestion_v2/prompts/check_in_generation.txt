@@ -68,6 +68,7 @@ HEAVY TYPES (~15-25 seconds, analyze/evaluate):
 11. estimation_slider — Student drags a slider to estimate a number. Correct if within tolerance range.
     Fields: instruction (the estimation question), slider_min, slider_max, correct_value, tolerance (acceptable +/- range).
     The range should be wide enough to require real thinking, not trivial.
+    Set tolerance to 1-2 for questions with exact answers, 3-5 only for genuine estimation where approximation is acceptable.
     Best for: number sense, magnitude, measurement, approximate reasoning.
 
 PAIRING RULES:

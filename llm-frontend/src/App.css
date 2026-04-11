@@ -3893,6 +3893,7 @@ body {
   border-radius: 4px;
   background: #E5E7EB;
   outline: none;
+  touch-action: none;
 }
 
 .estimation-slider::-webkit-slider-thumb {

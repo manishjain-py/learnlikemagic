@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { CheckInActivity, synthesizeSpeech } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
 
@@ -22,13 +22,27 @@ export default function EstimationSliderActivity({ checkIn, onComplete }: Props)
   const min = checkIn.slider_min ?? 0;
   const max = checkIn.slider_max ?? 100;
   const correct = checkIn.correct_value ?? 50;
-  const tolerance = checkIn.tolerance ?? 5;
+  const tolerance = checkIn.tolerance ?? 2;
 
   const midpoint = Math.round((min + max) / 2);
   const [value, setValue] = useState(midpoint);
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [hintShown, setHintShown] = useState(false);
+
+  const handleComplete = useCallback(() => {
+    onComplete({
+      wrongCount: isCorrect ? 0 : 1,
+      hintsShown: hintShown ? 1 : 0,
+      autoRevealed: 0,
+      confusedPairs: isCorrect ? [] : [{
+        left: checkIn.instruction,
+        right: String(correct),
+        wrongCount: 1,
+        wrongPicks: [String(value)],
+      }],
+    });
+  }, [isCorrect, hintShown, checkIn.instruction, correct, value, onComplete]);
 
   const handleSubmit = useCallback(() => {
     if (submitted) return;
@@ -45,29 +59,10 @@ export default function EstimationSliderActivity({ checkIn, onComplete }: Props)
     }
   }, [submitted, value, correct, tolerance, checkIn]);
 
-  const handleRetry = useCallback(() => {
-    setSubmitted(false);
-    setIsCorrect(false);
-  }, []);
-
-  const handleComplete = useCallback(() => {
-    onComplete({
-      wrongCount: isCorrect ? 0 : 1,
-      hintsShown: hintShown ? 1 : 0,
-      autoRevealed: 0,
-      confusedPairs: isCorrect ? [] : [{
-        left: checkIn.instruction,
-        right: String(correct),
-        wrongCount: 1,
-        wrongPicks: [String(value)],
-      }],
-    });
-  }, [isCorrect, hintShown, checkIn.instruction, correct, value, onComplete]);
-
-  // After reveal of correct answer, auto-complete
-  const handleAccept = useCallback(() => {
-    handleComplete();
-  }, [handleComplete]);
+  // Auto-complete after submit (no extra buttons)
+  useEffect(() => {
+    if (submitted) handleComplete();
+  }, [submitted, handleComplete]);
 
   return (
     <div className="checkin-activity">
@@ -97,22 +92,14 @@ export default function EstimationSliderActivity({ checkIn, onComplete }: Props)
       )}
 
       {submitted && !isCorrect && (
-        <>
-          <div className="checkin-hint">
-            {checkIn.hint} The answer is {correct}.
-          </div>
-          <button className="checkin-continue-btn" onClick={handleAccept} type="button">
-            Got it!
-          </button>
-        </>
+        <div className="checkin-hint">
+          {checkIn.hint} The answer is {correct}.
+        </div>
       )}
 
       {submitted && isCorrect && (
         <div className="checkin-success">
           <div className="checkin-success-message">{checkIn.success_message}</div>
-          <button className="checkin-continue-btn" onClick={handleComplete} type="button">
-            Continue
-          </button>
         </div>
       )}
     </div>

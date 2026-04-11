@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { CheckInActivity, synthesizeSpeech } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
 
@@ -26,18 +26,6 @@ export default function PredictRevealActivity({ checkIn, onComplete }: Props) {
   const [revealed, setRevealed] = useState(false);
   const [wasCorrect, setWasCorrect] = useState(false);
 
-  const handlePick = useCallback((idx: number) => {
-    if (selectedIdx !== null) return;
-    setSelectedIdx(idx);
-    const correct = idx === correctIdx;
-    setWasCorrect(correct);
-    // Short pause then reveal
-    setTimeout(() => {
-      setRevealed(true);
-      playTTS(correct ? checkIn.success_message : checkIn.reveal_text || checkIn.success_message);
-    }, 600);
-  }, [selectedIdx, correctIdx, checkIn]);
-
   const handleComplete = useCallback(() => {
     onComplete({
       wrongCount: wasCorrect ? 0 : 1,
@@ -51,6 +39,23 @@ export default function PredictRevealActivity({ checkIn, onComplete }: Props) {
       }],
     });
   }, [wasCorrect, checkIn.instruction, options, correctIdx, selectedIdx, onComplete]);
+
+  const handlePick = useCallback((idx: number) => {
+    if (selectedIdx !== null) return;
+    setSelectedIdx(idx);
+    const correct = idx === correctIdx;
+    setWasCorrect(correct);
+    // Short pause then reveal
+    setTimeout(() => {
+      setRevealed(true);
+      playTTS(correct ? checkIn.success_message : checkIn.reveal_text || checkIn.success_message);
+    }, 600);
+  }, [selectedIdx, correctIdx, checkIn]);
+
+  // Auto-complete when revealed (no extra buttons)
+  useEffect(() => {
+    if (revealed) handleComplete();
+  }, [revealed, handleComplete]);
 
   return (
     <div className="checkin-activity">
@@ -80,9 +85,6 @@ export default function PredictRevealActivity({ checkIn, onComplete }: Props) {
           <div className={wasCorrect ? 'checkin-success-message' : 'predict-reveal-text'}>
             {wasCorrect ? checkIn.success_message : checkIn.reveal_text}
           </div>
-          <button className="checkin-continue-btn" onClick={handleComplete} type="button">
-            Got it!
-          </button>
         </div>
       )}
     </div>
