@@ -29,8 +29,18 @@ CRITICAL RULES:
    - Container: `new PIXI.Container()`
 9. Always add created display objects to `app.stage` via `app.stage.addChild(...)`.
 10. For colors use hex numbers like 0xff0000, not strings.
-11. Keep code concise but visually clear and educational.
-12. Use kid-friendly colors and large readable text for educational content."""
+11. Keep code under 4000 characters. Simple and correct beats complex and fragile.
+
+## Learning Clarity Rules (NON-NEGOTIABLE)
+
+- All text labels: fontSize >= 20. Key numbers/values: fontSize >= 28.
+- High contrast only. Dark text on light bg OR light text on dark bg.
+- Maximum 5 distinct visual groups on screen.
+- Max 10 words of text visible at any moment.
+- Use color to encode MEANING (red group, blue group), not decoration.
+- No decorative animation — every movement must teach something.
+- Large, well-spaced elements — no overlapping, no clutter.
+- One clear focal point — the student should instantly see what to look at."""
 
 
 class PixiCodeGenerator:

@@ -287,14 +287,7 @@ Return a single simplified explanation card as JSON:
   - "display": one sentence of the simplified explanation (markdown OK)
   - "audio": TTS-friendly spoken version of that sentence (pure words, no symbols/markdown, Roman script only)
   One idea per line. Keep each line under 15 words. This is how the student will see the content revealed one line at a time.
-- visual_prompt: A description of a helpful visual diagram or animation for this card. The visual must SIMPLIFY, not complicate. Rules for the visual:
-  - Maximum 4-5 objects on screen. Fewer is better.
-  - Large, well-spaced elements — no overlapping, no clutter.
-  - Big, readable labels (short words only).
-  - One clear focal point — the student should instantly see what to look at.
-  - Use bright, distinct colors with high contrast (no pastels or similar shades).
-  - Think "children's picture book", not "textbook diagram".
-  Be specific about objects, layout, colors, labels, and any animation steps. Set to null ONLY if the card truly doesn't benefit from any visual.
+- visual_prompt: A description of a helpful visual for this card. Keep it simple — max 4-5 objects, no clutter, one clear focal point. Describe specific objects, layout, colors, and labels. Set to null ONLY if the card truly doesn't benefit from any visual.
 
 CRITICAL RULES:
 - Explain ONLY the same concept. Do NOT advance to new topics.
