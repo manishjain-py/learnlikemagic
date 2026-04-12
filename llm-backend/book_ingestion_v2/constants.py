@@ -30,6 +30,7 @@ class V2JobType(str, Enum):
     REFINALIZATION = "v2_refinalization"
     EXPLANATION_GENERATION = "v2_explanation_generation"
     VISUAL_ENRICHMENT = "v2_visual_enrichment"
+    AUDIO_GENERATION = "v2_audio_generation"
     REFRESHER_GENERATION = "v2_refresher_generation"
     CHECK_IN_ENRICHMENT = "v2_check_in_enrichment"
 

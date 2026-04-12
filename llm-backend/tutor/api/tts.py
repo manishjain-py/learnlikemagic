@@ -18,6 +18,26 @@ router = APIRouter(prefix="/text-to-speech", tags=["tts"])
 
 MAX_TEXT_LENGTH = 5000  # Google Cloud TTS limit
 
+# Reuse the gRPC client across requests — creating a new client per request
+# adds significant connection setup overhead under burst TTS load.
+_tts_client: texttospeech.TextToSpeechClient | None = None
+_tts_api_key: str | None = None
+
+
+def _get_tts_client() -> texttospeech.TextToSpeechClient:
+    global _tts_client, _tts_api_key
+    settings = get_settings()
+    api_key = settings.google_cloud_tts_api_key
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Google Cloud TTS API key not configured")
+    # Recreate client if API key changed (e.g. config reload)
+    if _tts_client is None or _tts_api_key != api_key:
+        _tts_client = texttospeech.TextToSpeechClient(
+            client_options=ClientOptions(api_key=api_key),
+        )
+        _tts_api_key = api_key
+    return _tts_client
+
 
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
@@ -30,16 +50,8 @@ async def text_to_speech(
     current_user=Depends(get_optional_user),
 ):
     """Convert text to speech using Google Cloud TTS API (Chirp 3 HD Kore)."""
-    settings = get_settings()
-
-    if not settings.google_cloud_tts_api_key:
-        raise HTTPException(status_code=500, detail="Google Cloud TTS API key not configured")
-
     try:
-        # Use API key auth (simpler than service account for single API)
-        client = texttospeech.TextToSpeechClient(
-            client_options=ClientOptions(api_key=settings.google_cloud_tts_api_key),
-        )
+        client = _get_tts_client()
 
         synthesis_input = texttospeech.SynthesisInput(text=request.text)
 

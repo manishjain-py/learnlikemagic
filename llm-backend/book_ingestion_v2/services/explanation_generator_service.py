@@ -35,6 +35,7 @@ class ExplanationLineOutput(BaseModel):
         "Skip content that only works visually (diagrams, tables). "
         "Warm, conversational tone."
     )
+    audio_url: Optional[str] = Field(default=None, description="S3 URL of pre-computed TTS audio (populated by AudioGenerationService)")
 
 
 class ExplanationCardOutput(BaseModel):
@@ -163,11 +164,22 @@ class ExplanationGeneratorService:
                     logger.warning(f"Variant {config['key']} skipped for {topic}: failed validation")
                     continue
 
+                cards_dicts = [_card_output_to_dict(c) for c in cards]
+
+                # Generate TTS audio and upload to S3 (best-effort — lines
+                # without audio_url fall back to real-time TTS on the frontend)
+                try:
+                    from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
+                    audio_svc = AudioGenerationService()
+                    audio_svc.generate_for_cards(cards_dicts, guideline.id, config["key"])
+                except Exception as audio_err:
+                    logger.warning(f"Audio generation failed for {topic}/{config['key']}, cards saved without audio: {audio_err}")
+
                 explanation = self.repo.upsert(
                     guideline_id=guideline.id,
                     variant_key=config["key"],
                     variant_label=config["label"],
-                    cards_json=[_card_output_to_dict(c) for c in cards],
+                    cards_json=cards_dicts,
                     summary_json=summary_json,
                     generator_model=self.llm.model_id,
                 )

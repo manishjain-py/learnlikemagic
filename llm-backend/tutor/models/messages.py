@@ -190,6 +190,7 @@ class ExplanationLineDTO(BaseModel):
     """Per-line display+audio pair for frontend rendering."""
     display: str
     audio: str
+    audio_url: Optional[str] = None  # S3 URL for pre-computed TTS MP3
 
 
 class ExplanationCardDTO(BaseModel):

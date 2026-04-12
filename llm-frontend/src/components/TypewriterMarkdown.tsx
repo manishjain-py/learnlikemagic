@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { debugLog } from '../debugLog';
 
 interface AudioLine {
   display: string;
   audio: string;
+  audio_url?: string;  // S3 URL for pre-computed TTS MP3
 }
 
 interface TypewriterMarkdownProps {
@@ -114,6 +116,8 @@ export default function TypewriterMarkdown({
   onBlockStart,
   onBlockTyped,
 }: TypewriterMarkdownProps) {
+  const _tag = `[TW ${(title || content).slice(0, 25)}]`;
+
   // When audioLines exist, each line is its own block (skip parseBlocks which
   // merges consecutive plain lines into one paragraph). This gives tight
   // line-by-line reveal + audio sync.
@@ -126,9 +130,12 @@ export default function TypewriterMarkdown({
       for (const line of audioLines) {
         b.push({ raw: line.display, type: 'paragraph' });
       }
+      debugLog(`${_tag} blocks built from audioLines: ${b.length} blocks (title=${!!title?.trim()}, audioLines=${audioLines.length})`);
       return b;
     }
-    return parseBlocks(title, content);
+    const parsed = parseBlocks(title, content);
+    debugLog(`${_tag} blocks built from parseBlocks: ${parsed.length} blocks`);
+    return parsed;
   }, [audioLines, title, content]);
 
   const fullMarkdown = useMemo(() => joinBlocks(blocks), [blocks]);
@@ -160,11 +167,15 @@ export default function TypewriterMarkdown({
   const completedRef = useRef(false);
   const revealIdx = useRef(0);
 
-  // Stable refs for callbacks to avoid re-triggering effects
+  // Stable refs for callbacks to avoid re-triggering effects.
+  // Inline arrow functions from the parent change identity every render.
+  // Using refs keeps effect dependency arrays stable.
   const onBlockStartRef = useRef(onBlockStart);
   onBlockStartRef.current = onBlockStart;
   const onBlockTypedRef = useRef(onBlockTyped);
   onBlockTypedRef.current = onBlockTyped;
+  const onRevealCompleteRef = useRef(onRevealComplete);
+  onRevealCompleteRef.current = onRevealComplete;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -176,12 +187,13 @@ export default function TypewriterMarkdown({
     clearTimer();
     cursorRef.current?.remove();
     setCompleted(true);
-    onRevealComplete?.();
-  }, [clearTimer, onRevealComplete]);
+    onRevealCompleteRef.current?.();
+  }, [clearTimer]);
 
   // Start when first activated
   useEffect(() => {
     if (isActive && !started && !skipAnimation && !completedRef.current) {
+      debugLog(`${_tag} START — isActive=${isActive}, skipAnimation=${skipAnimation}, blocks=${blocks.length}`);
       setStarted(true);
     }
   }, [isActive, started, skipAnimation]);
@@ -189,17 +201,25 @@ export default function TypewriterMarkdown({
   // Skip or lose focus → complete immediately
   useEffect(() => {
     if (started && !completedRef.current && (skipAnimation || !isActive)) {
+      debugLog(`${_tag} COMPLETE-ALL — skipAnimation=${skipAnimation}, isActive=${isActive}`);
       completeAll();
     }
   }, [started, skipAnimation, isActive, completeAll]);
 
   // Wrap text nodes after ReactMarkdown renders each new block
   useEffect(() => {
-    if (!started || completedRef.current || activeIdx >= blocks.length) return;
+    if (!started || completedRef.current || activeIdx >= blocks.length) {
+      debugLog(`${_tag} WRAP skip — started=${started}, completed=${completedRef.current}, activeIdx=${activeIdx}, blocks=${blocks.length}`);
+      return;
+    }
 
     const el = contentRef.current;
-    if (!el) return;
+    if (!el) {
+      debugLog(`${_tag} WRAP skip — contentRef is null`);
+      return;
+    }
 
+    debugLog(`${_tag} WRAP begin — activeIdx=${activeIdx}, block="${blocks[activeIdx]?.raw.slice(0, 40)}"`);
     wordSpansRef.current = [];
     sentenceEnds.current.clear();
     revealIdx.current = 0;
@@ -207,7 +227,10 @@ export default function TypewriterMarkdown({
 
     let cancelled = false;
     requestAnimationFrame(() => {
-      if (cancelled || !contentRef.current) return;
+      if (cancelled || !contentRef.current) {
+        debugLog(`${_tag} WRAP rAF cancelled — cancelled=${cancelled}, ref=${!!contentRef.current}`);
+        return;
+      }
 
       const spans: HTMLSpanElement[] = [];
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -240,6 +263,7 @@ export default function TypewriterMarkdown({
       });
 
       wordSpansRef.current = spans;
+      debugLog(`${_tag} WRAP done — ${spans.length} word spans found for activeIdx=${activeIdx}`);
       setWrapped(true);
     });
 
@@ -248,7 +272,12 @@ export default function TypewriterMarkdown({
 
   // Typing: reveal words one by one
   useEffect(() => {
-    if (!started || completedRef.current || !wrapped || phase !== 'typing' || !isActive) return;
+    if (!started || completedRef.current || !wrapped || phase !== 'typing' || !isActive) {
+      if (phase === 'typing' && started && wrapped) {
+        debugLog(`${_tag} TYPING skip — completed=${completedRef.current}, isActive=${isActive}`);
+      }
+      return;
+    }
 
     const spans = wordSpansRef.current;
     const total = spans.length;
@@ -256,9 +285,14 @@ export default function TypewriterMarkdown({
     // Notify parent that this block is starting (for audio pre-fetch).
     // Use LLM-generated audio text when available, fall back to raw block text.
     const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
+    debugLog(`${_tag} TYPING start — activeIdx=${activeIdx}/${blocks.length}, words=${total}, audioText="${audioText?.slice(0, 40)}..."`);
     onBlockStartRef.current?.(audioText, activeIdx);
 
-    if (total === 0) { setPhase('speaking'); return; }
+    if (total === 0) {
+      debugLog(`${_tag} TYPING → SPEAKING (0 words, skipping straight to audio)`);
+      setPhase('speaking');
+      return;
+    }
 
     // Create cursor element if it doesn't exist
     if (!cursorRef.current) {
@@ -274,6 +308,7 @@ export default function TypewriterMarkdown({
       if (idx >= total) {
         cursor.remove();
         cursorRef.current = null;
+        debugLog(`${_tag} TYPING done → SPEAKING — all ${total} words revealed for activeIdx=${activeIdx}`);
         setPhase('speaking');
         return;
       }
@@ -301,24 +336,35 @@ export default function TypewriterMarkdown({
     if (onBlockTypedRef.current) {
       let cancelled = false;
       const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
-      // Safety: if onBlockTyped never resolves (e.g. audio hangs), force-advance after 35s
+      debugLog(`${_tag} SPEAKING — calling onBlockTyped for activeIdx=${activeIdx}, audioText="${audioText?.slice(0, 40)}..."`);
+      const speakStart = Date.now();
+      // Safety: if onBlockTyped never resolves (e.g. audio hangs), force-advance.
+      // 15s > playLineAudio's 12s safety timeout, so playLineAudio resolves first
+      // in the normal degraded case. This is the outer failsafe.
       const safetyTimer = setTimeout(() => {
         if (!cancelled && !completedRef.current) {
-          console.warn('TypewriterMarkdown: speaking safety timeout — forcing transition');
+          debugLog(`${_tag} SPEAKING SAFETY TIMEOUT (15s) — forcing transition for activeIdx=${activeIdx}`);
           setPhase('transitioning');
         }
-      }, 35_000);
+      }, 15_000);
       onBlockTypedRef.current(audioText, activeIdx)
         .then(() => {
           clearTimeout(safetyTimer);
+          debugLog(`${_tag} SPEAKING → TRANSITIONING (resolved in ${Date.now() - speakStart}ms) activeIdx=${activeIdx}, cancelled=${cancelled}`);
           if (!cancelled && !completedRef.current) setPhase('transitioning');
         })
-        .catch(() => {
+        .catch((err) => {
           clearTimeout(safetyTimer);
+          debugLog(`${_tag} SPEAKING → TRANSITIONING (rejected in ${Date.now() - speakStart}ms) activeIdx=${activeIdx} — ${err}`);
           if (!cancelled && !completedRef.current) setPhase('transitioning');
         });
-      return () => { cancelled = true; clearTimeout(safetyTimer); };
+      return () => {
+        debugLog(`${_tag} SPEAKING cleanup — cancelled=true for activeIdx=${activeIdx}`);
+        cancelled = true;
+        clearTimeout(safetyTimer);
+      };
     } else {
+      debugLog(`${_tag} SPEAKING — no onBlockTyped callback, holding for ${HOLD_DURATION}ms`);
       // Fallback: hold for HOLD_DURATION when no audio callback
       timerRef.current = setTimeout(() => setPhase('transitioning'), HOLD_DURATION);
       return clearTimer;
@@ -329,11 +375,14 @@ export default function TypewriterMarkdown({
   useEffect(() => {
     if (phase !== 'transitioning' || !started || completedRef.current) return;
 
+    debugLog(`${_tag} TRANSITIONING — activeIdx=${activeIdx}, next=${activeIdx + 1}/${blocks.length}`);
     timerRef.current = setTimeout(() => {
       const next = activeIdx + 1;
       if (next >= blocks.length) {
+        debugLog(`${_tag} TRANSITIONING → COMPLETE (all blocks done)`);
         completeAll();
       } else {
+        debugLog(`${_tag} TRANSITIONING → TYPING (advancing to block ${next})`);
         setActiveIdx(next);
         setPhase('typing');
         setWrapped(false);

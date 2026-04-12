@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation, useOutletContext } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import { debugLog } from '../debugLog';
 import {
   submitStep,
   getSummary,
@@ -57,7 +58,7 @@ interface Slide {
   questionFormat?: QuestionFormat | null;
   studentResponse?: string | null;
   audioText?: string | null;
-  audioLines?: { display: string; audio: string }[];  // Per-line audio from LLM
+  audioLines?: { display: string; audio: string; audio_url?: string }[];  // Per-line audio from LLM
   checkIn?: CheckInActivity | null;
   simplifications?: ExplanationCard['simplifications'];
 }
@@ -336,6 +337,42 @@ export default function ChatSession() {
     if (slide && (slide.type === 'message' || slide.type === 'check_in')) {
       playTeacherAudio(slide.audioText || slide.content, slide.id);
     }
+  }, [currentSlideIdx, sessionPhase, carouselSlides]);
+
+  // Pre-fetch all TTS audio for the current explanation card in batches.
+  // Fires when the slide changes so audio is cached before the typewriter
+  // reaches each line. Batches of 3 with 300ms gaps avoid flooding the
+  // TTS endpoint. Also pre-fetches the next slide's first few lines.
+  useEffect(() => {
+    if (sessionPhase !== 'card_phase') return;
+    const slide = carouselSlides[currentSlideIdx];
+    if (!slide?.audioLines?.length) return;
+
+    const BATCH_SIZE = 3;
+    const BATCH_DELAY = 300;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    slide.audioLines.forEach((line, i) => {
+      if (!line.audio?.trim()) return;
+      const batchIdx = Math.floor(i / BATCH_SIZE);
+      if (batchIdx === 0) {
+        prefetchAudio(line.audio, line.audio_url);
+      } else {
+        timers.push(setTimeout(() => prefetchAudio(line.audio, line.audio_url), batchIdx * BATCH_DELAY));
+      }
+    });
+
+    // Look-ahead: also prefetch next slide's first few lines for smoother transition
+    const nextSlide = carouselSlides[currentSlideIdx + 1];
+    if (nextSlide?.audioLines?.length) {
+      const nextDelay = Math.ceil(slide.audioLines.length / BATCH_SIZE) * BATCH_DELAY + 500;
+      nextSlide.audioLines.slice(0, BATCH_SIZE).forEach((line, i) => {
+        if (!line.audio?.trim()) return;
+        timers.push(setTimeout(() => prefetchAudio(line.audio, line.audio_url), nextDelay + i * 100));
+      });
+    }
+
+    return () => timers.forEach(clearTimeout);
   }, [currentSlideIdx, sessionPhase, carouselSlides]);
 
   const hydrateExamState = (state: any) => {
@@ -966,68 +1003,122 @@ export default function ChatSession() {
     });
   };
 
-  const prefetchAudio = (text: string): Promise<Blob> => {
-    const key = text;
-    if (audioCacheRef.current.has(key)) return audioCacheRef.current.get(key)!;
+  const prefetchAudio = (text: string, audioUrl?: string): Promise<Blob> => {
+    const key = audioUrl || text;
+    const short = text.slice(0, 35);
+    if (audioCacheRef.current.has(key)) {
+      debugLog(`[AUDIO] prefetch HIT "${short}…" (cache size=${audioCacheRef.current.size})`);
+      return audioCacheRef.current.get(key)!;
+    }
     // Cap cache at 30 entries to limit memory on mobile devices
     if (audioCacheRef.current.size >= 30) {
       const oldest = audioCacheRef.current.keys().next().value;
       if (oldest !== undefined) audioCacheRef.current.delete(oldest);
     }
-    const promise = synthesizeSpeech(text, audioLang).catch(err => {
-      audioCacheRef.current.delete(key);
-      throw err;
-    });
+    const fetchStart = Date.now();
+    let promise: Promise<Blob>;
+    if (audioUrl) {
+      // Pre-computed audio on S3 — fast CDN download
+      debugLog(`[AUDIO] prefetch S3 "${short}…" — ${audioUrl.slice(-40)} (cache size=${audioCacheRef.current.size})`);
+      promise = fetch(audioUrl)
+        .then(res => {
+          if (!res.ok) throw new Error(`S3 fetch ${res.status}`);
+          return res.blob();
+        })
+        .then(blob => {
+          debugLog(`[AUDIO] prefetch S3 OK "${short}…" — ${blob.size} bytes in ${Date.now() - fetchStart}ms`);
+          return blob;
+        })
+        .catch(err => {
+          debugLog(`[AUDIO] prefetch S3 FAIL "${short}…" — ${err.message}, falling back to TTS`);
+          audioCacheRef.current.delete(key);
+          // Fall back to real-time TTS
+          return synthesizeSpeech(text, audioLang);
+        });
+    } else {
+      // No pre-computed audio — use real-time TTS
+      debugLog(`[AUDIO] prefetch TTS "${short}…" — fetching (cache size=${audioCacheRef.current.size})`);
+      promise = synthesizeSpeech(text, audioLang)
+        .then(blob => {
+          debugLog(`[AUDIO] prefetch TTS OK "${short}…" — ${blob.size} bytes in ${Date.now() - fetchStart}ms`);
+          return blob;
+        })
+        .catch(err => {
+          debugLog(`[AUDIO] prefetch TTS FAIL "${short}…" — ${err.message} after ${Date.now() - fetchStart}ms`);
+          audioCacheRef.current.delete(key);
+          throw err;
+        });
+    }
     audioCacheRef.current.set(key, promise);
     return promise;
   };
 
-  const playLineAudio = async (text: string): Promise<void> => {
-    if (!text.trim()) return;
+  const playLineAudio = async (text: string, audioUrl?: string): Promise<void> => {
+    const short = text.slice(0, 35);
+    if (!text.trim()) {
+      debugLog(`[AUDIO] playLineAudio SKIP — empty text`);
+      return;
+    }
+    debugLog(`[AUDIO] playLineAudio START "${short}…"`);
+    const t0 = Date.now();
     const audio = getOrCreateAudio();
+    // Null handlers BEFORE pausing so stale onpause/onstalled from a
+    // previous play can't fire and interfere.
+    audio.onended = null;
+    audio.onerror = null;
+    audio.onpause = null;
+    audio.onstalled = null;
     audio.pause();
     if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
     try {
-      const blob = await prefetchAudio(text);
+      const blob = await prefetchAudio(text, audioUrl);
+      debugLog(`[AUDIO] playLineAudio GOT BLOB "${short}…" — ${blob.size} bytes, fetched in ${Date.now() - t0}ms`);
       const url = URL.createObjectURL(blob);
       audio.src = url;
       return new Promise<void>((resolve) => {
         let resolved = false;
-        const done = () => {
+        const done = (reason: string) => {
           if (resolved) return;
           resolved = true;
           clearTimeout(safetyTimeout);
           audio.onended = null;
           audio.onerror = null;
-          audio.onpause = null;
-          audio.onstalled = null;
           setPlayingSlideId(null);
           URL.revokeObjectURL(url);
+          debugLog(`[AUDIO] playLineAudio DONE "${short}…" — reason=${reason}, total=${Date.now() - t0}ms`);
           resolve();
         };
-        // Safety timeout: if audio doesn't finish within 30s, move on.
-        // Prevents animation freeze when mobile browser audio session degrades.
+        // Safety timeout — 12s is generous for a single TTS line (typically 3-8s)
+        // but short enough that the student doesn't wait forever on failure.
         const safetyTimeout = setTimeout(() => {
-          console.warn('playLineAudio: safety timeout — audio did not finish in 30s');
-          done();
-        }, 30_000);
-        audio.onended = done;
-        audio.onerror = done;
-        // Catch silent stalls: browser may pause/stall audio after many plays
-        audio.onpause = () => {
-          // Only resolve if WE didn't pause it (i.e. no new playLineAudio call)
-          if (audio.src === url) done();
-        };
-        audio.onstalled = () => {
-          console.warn('playLineAudio: audio stalled');
-          done();
+          debugLog(`[AUDIO] playLineAudio SAFETY TIMEOUT "${short}…" — 12s elapsed`);
+          done('safety-timeout');
+        }, 12_000);
+        // Only two legitimate termination events:
+        // - onended: audio finished playing normally
+        // - onerror: audio failed to decode/play
+        // Removed onstalled (means "loading slowly", browser can recover — not terminal)
+        // Removed onpause (mobile browsers fire spurious pause events)
+        audio.onended = () => done('ended');
+        audio.onerror = () => {
+          debugLog(`[AUDIO] playLineAudio ERROR event "${short}…" — error=${audio.error?.message || 'unknown'}`);
+          done('error');
         };
         audio.play()
-          .then(() => setPlayingSlideId(carouselSlides[currentSlideIdx]?.id ?? null))
-          .catch(() => done());
+          .then(() => {
+            debugLog(`[AUDIO] playLineAudio PLAYING "${short}…" — duration=${audio.duration?.toFixed(1)}s`);
+            setPlayingSlideId(carouselSlides[currentSlideIdx]?.id ?? null);
+          })
+          .catch((err) => {
+            debugLog(`[AUDIO] playLineAudio PLAY REJECTED "${short}…" — ${err}`);
+            done('play-rejected');
+          });
       });
     } catch (err) {
-      console.error('Line TTS failed:', err);
+      // TTS fetch failed (network timeout, server error, etc.)
+      // Hold briefly so the typed-out line is still readable before advancing.
+      debugLog(`[AUDIO] playLineAudio FETCH FAILED "${short}…" after ${Date.now() - t0}ms — ${err}`);
+      await new Promise(r => setTimeout(r, 2000));
     }
   };
 
@@ -1854,12 +1945,19 @@ export default function ChatSession() {
                               skipAnimation={revealedSlides.has(i) || typewriterSkip.has(i) || sessionPhase !== 'card_phase'}
                               audioLines={slide.audioLines}
                               onRevealComplete={() => setRevealedSlides(prev => new Set(prev).add(i))}
-                              onBlockStart={(audioText) => {
-                                if (audioText.trim()) prefetchAudio(audioText);
+                              onBlockStart={(audioText: string, blockIdx: number) => {
+                                const offset = slide.title?.trim() ? 1 : 0;
+                                const curLine = slide.audioLines?.[blockIdx - offset];
+                                if (audioText.trim()) prefetchAudio(audioText, curLine?.audio_url);
+                                // Look-ahead: prefetch next line so audio is ready before typing finishes
+                                const nextLine = slide.audioLines?.[blockIdx - offset + 1];
+                                if (nextLine?.audio?.trim()) prefetchAudio(nextLine.audio, nextLine.audio_url);
                               }}
-                              onBlockTyped={async (audioText) => {
+                              onBlockTyped={async (audioText: string, blockIdx: number) => {
                                 if (!audioText.trim()) return;
-                                await playLineAudio(audioText);
+                                const offset = slide.title?.trim() ? 1 : 0;
+                                const line = slide.audioLines?.[blockIdx - offset];
+                                await playLineAudio(audioText, line?.audio_url);
                               }}
                             />
                           </div>
@@ -1899,12 +1997,19 @@ export default function ChatSession() {
                                         return next;
                                       });
                                     }}
-                                    onBlockStart={(audioText: string) => {
-                                      if (audioText.trim()) prefetchAudio(audioText);
+                                    onBlockStart={(audioText: string, blockIdx: number) => {
+                                      const offset = simplification.title?.trim() ? 1 : 0;
+                                      const curLine = simplification.lines?.[blockIdx - offset];
+                                      if (audioText.trim()) prefetchAudio(audioText, curLine?.audio_url);
+                                      // Look-ahead: prefetch next line
+                                      const nextLine = simplification.lines?.[blockIdx - offset + 1];
+                                      if (nextLine?.audio?.trim()) prefetchAudio(nextLine.audio, nextLine.audio_url);
                                     }}
-                                    onBlockTyped={async (audioText: string) => {
+                                    onBlockTyped={async (audioText: string, blockIdx: number) => {
                                       if (!audioText.trim()) return;
-                                      await playLineAudio(audioText);
+                                      const offset = simplification.title?.trim() ? 1 : 0;
+                                      const line = simplification.lines?.[blockIdx - offset];
+                                      await playLineAudio(audioText, line?.audio_url);
                                     }}
                                   />
                                 </div>
