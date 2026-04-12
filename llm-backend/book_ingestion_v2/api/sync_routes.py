@@ -468,6 +468,145 @@ def generate_visuals(
         )
 
 
+@router.post("/generate-audio", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_audio(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
+    db: Session = Depends(get_db),
+):
+    """Generate pre-computed TTS audio for explanation card lines and upload to S3.
+
+    Runs as a background job. Requires explanations to already exist.
+    Idempotent — skips lines that already have audio_url.
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            total_items = 1
+            lock_chapter_id = guideline_id
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=lock_chapter_id,
+            job_type=V2JobType.AUDIO_GENERATION.value,
+            total_items=total_items,
+        )
+
+        run_in_background_v2(
+            _run_audio_generation, job_id, book_id,
+            chapter_id or "", guideline_id or "",
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Audio generation failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+def _run_audio_generation(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "",
+):
+    """Background task for TTS audio generation and S3 upload."""
+    from shared.models.entities import TeachingGuideline, TopicExplanation
+    from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+    from sqlalchemy.orm import attributes
+
+    job_service = ChapterJobService(db)
+    audio_svc = AudioGenerationService()
+
+    try:
+        # Build list of guidelines to process
+        if guideline_id:
+            guidelines = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).all()
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                from shared.repositories.chapter_repository import ChapterRepository
+                chapter = ChapterRepository(db).get_by_id(chapter_id)
+                if chapter:
+                    chapter_key = f"chapter-{chapter.chapter_number}"
+                    query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            guidelines = query.all()
+
+        completed = 0
+        failed = 0
+
+        for guideline in guidelines:
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(job_id, current_item=topic, completed=completed, failed=failed)
+
+            # Get all explanation variants for this guideline
+            explanations = db.query(TopicExplanation).filter(
+                TopicExplanation.guideline_id == guideline.id,
+            ).all()
+
+            for explanation in explanations:
+                try:
+                    updated_cards = audio_svc.generate_for_topic_explanation(explanation)
+                    if updated_cards is not None:
+                        # Persist updated cards_json with audio_urls back to DB
+                        explanation.cards_json = updated_cards
+                        attributes.flag_modified(explanation, "cards_json")
+                        db.commit()
+                except Exception as e:
+                    logger.error(f"Audio generation failed for {guideline.id}/{explanation.variant_key}: {e}")
+                    db.rollback()
+                    failed += 1
+
+            completed += 1
+
+        job_service.complete_job(job_id, detail=f"Audio generated for {completed} topics, {failed} failures")
+
+    except Exception as e:
+        logger.error(f"Audio generation job {job_id} failed: {e}")
+        job_service.fail_job(job_id, error=str(e))
+
+
 def _run_explanation_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
     guideline_id: str = "", force_str: str = "False",

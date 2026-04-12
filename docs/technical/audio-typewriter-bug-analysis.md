@@ -157,3 +157,17 @@ The remaining 5-10% are edge cases like phone calls interrupting audio session, 
 4. Test on mobile Safari (iPhone) and mobile Chrome (Android) — these are where the bug manifests
 5. Test with poor network (throttle to 3G) to verify prefetch resilience
 6. Test interrupting mid-card (lock screen, notification) and returning — verify recovery
+
+---
+
+## Post-Mortem: Real Root Cause (2026-04-12)
+
+**The analysis above was wrong about the primary cause.** Adding debug logging and monitoring a live session revealed:
+
+- TTS API requests take **10-22 seconds** per line (Google Cloud TTS under concurrent load)
+- Many requests hit the 15s `AbortController` timeout and fail entirely
+- The `onstalled`/`onpause` handlers were a secondary issue at best — the real problem was that audio simply wasn't arriving in time
+
+**Resolution:** Pre-computed audio stored on S3 (`docs/feature-development/pre-computed-audio/PRD.md`). Audio is generated offline during the explanation pipeline, uploaded to S3, and served via direct HTTPS download (~300-900ms) instead of real-time TTS API calls (10-22s). Lines without pre-computed audio fall back to real-time TTS.
+
+The `onstalled`/`onpause` handler fixes and safety timeout changes from the original analysis are still in the code as defense-in-depth for the TTS fallback path, but they are no longer the primary fix.
