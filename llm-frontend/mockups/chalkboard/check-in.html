@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LearnLikeMagic — Check-in (Chalkboard)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  .ci-question {
+    font-family: var(--font-hand);
+    font-size: var(--fs-2xl);
+    color: var(--chalk-white);
+    margin: 0 0 var(--sp-2);
+    line-height: 1.15;
+  }
+  .ci-instr {
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    color: var(--chalk-white-dim);
+    letter-spacing: 0.06em;
+    margin-bottom: var(--sp-5);
+  }
+
+  .option-label {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(244,244,239,0.4);
+    color: var(--chalk-white);
+    font-family: var(--font-hand);
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    text-align: center;
+    line-height: 26px;
+    margin-right: var(--sp-3);
+  }
+  .option-btn--correct .option-label {
+    background: var(--chalk-mint);
+    color: var(--board-green-deep);
+    border-color: var(--chalk-mint);
+  }
+
+  .ci-feedback {
+    font-family: var(--font-hand);
+    font-size: var(--fs-xl);
+    color: var(--chalk-mint);
+    text-align: center;
+    margin-top: var(--sp-4);
+    text-shadow: 0 0 4px rgba(142, 218, 206, 0.35);
+  }
+
+  .progress-chalkmarks {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: var(--sp-4);
+  }
+  .tick {
+    width: 18px; height: 18px;
+    border-radius: 3px;
+    background: rgba(244,244,239,0.12);
+    position: relative;
+  }
+  .tick--done {
+    background: var(--chalk-mint);
+    box-shadow: 0 0 6px rgba(142,218,206,0.4);
+  }
+  .tick--done::after {
+    content: '✓';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--board-green-deep);
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .tick--current {
+    outline: 1.5px solid var(--chalk-gold);
+    outline-offset: 2px;
+    background: rgba(244,199,108,0.2);
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="chalk-roughen">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7"/>
+      <feDisplacementMap in="SourceGraphic" scale="2"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="wall">
+<div class="viewport">
+
+  <div class="frame">
+    <div class="frame-nails"></div>
+    <div class="board" style="min-height: 560px;">
+
+      <!-- Doodles -->
+      <svg class="doodle doodle--tl" width="40" height="40" viewBox="0 0 64 64" style="opacity:0.15;">
+        <path d="M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z"
+              stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      </svg>
+      <svg class="doodle doodle--br" width="50" height="24" viewBox="0 0 120 60" style="opacity:0.14;">
+        <path d="M6 30 L90 6 L110 12 L26 36 Z M90 6 L110 12" stroke="currentColor" stroke-width="1.6" fill="none"/>
+      </svg>
+
+      <!-- Check-in pill -->
+      <span class="card-type" style="--chalk-gold: #8EDACE;">
+        <style>.card-type::before{background: var(--chalk-mint)!important; box-shadow: 0 0 6px rgba(142,218,206,0.5)!important;}</style>
+        CHECK-IN · QUESTION 3 OF 5
+      </span>
+
+      <!-- Progress chalk-ticks -->
+      <div class="progress-chalkmarks" style="margin-top: var(--sp-3);">
+        <span class="tick tick--done"></span>
+        <span class="tick tick--done"></span>
+        <span class="tick tick--current"></span>
+        <span class="tick"></span>
+        <span class="tick"></span>
+      </div>
+
+      <!-- Question -->
+      <h1 class="ci-question">10 hundreds make how many?</h1>
+      <p class="ci-instr">PICK THE RIGHT ANSWER</p>
+
+      <!-- Options -->
+      <button class="option-btn">
+        <span class="option-label">A</span>
+        1 ten
+      </button>
+
+      <button class="option-btn">
+        <span class="option-label">B</span>
+        100 ones
+      </button>
+
+      <button class="option-btn option-btn--correct">
+        <span class="option-label">C</span>
+        1 thousand
+        <span class="chalk-circle"></span>
+      </button>
+
+      <button class="option-btn">
+        <span class="option-label">D</span>
+        10 tens
+      </button>
+
+      <!-- Feedback -->
+      <p class="ci-feedback">✨ You got it! Great job, Riya.</p>
+
+      <div class="nav-row" style="margin-top: var(--sp-5);">
+        <button class="pill pill--primary pill--lg" style="max-width: 220px;">Keep going →</button>
+      </div>
+
+    </div>
+
+    <div class="chalk-tray">
+      <span class="chalk chalk--coral"></span>
+      <span class="chalk chalk--gold"></span>
+      <span class="chalk chalk--pink"></span>
+      <span class="chalk chalk--mint"></span>
+      <span class="chalk chalk--sky"></span>
+      <span class="chalk chalk--lavender"></span>
+      <span class="eraser"></span>
+    </div>
+  </div>
+
+  <p style="text-align:center;font-family:var(--font-body);font-size:var(--fs-xs);color:var(--ink-mute);margin-top:var(--sp-3);">
+    Check-in (pick_one) · correct-answer selected state · 3 of 5 progress
+  </p>
+</div>
+</div>
+</body>
+</html>

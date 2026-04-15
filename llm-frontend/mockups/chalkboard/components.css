@@ -1,0 +1,505 @@
+/* ==========================================================================
+   Chalkboard — Shared Components
+   Wood frames, chalkboard surfaces, chalk tray, chalk text, pill buttons,
+   parchment inset, chalk doodles.
+   ========================================================================== */
+
+/* ── Wood frame wrapping the chalkboard ──────────────────────────────────── */
+.frame {
+  position: relative;
+  padding: 14px;
+  border-radius: var(--r-lg);
+  background:
+    /* End-grain highlight at top & bottom */
+    linear-gradient(180deg,
+      rgba(255, 220, 170, 0.25) 0%,
+      transparent 12%,
+      transparent 88%,
+      rgba(30, 15, 0, 0.25) 100%),
+    /* Wood grain — fine vertical streaks */
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.06) 0px,
+      rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px,
+      transparent 5px,
+      rgba(255, 255, 255, 0.05) 5px,
+      rgba(255, 255, 255, 0.05) 6px,
+      transparent 6px,
+      transparent 12px),
+    /* Base wood color */
+    linear-gradient(180deg, var(--wood-light) 0%, var(--wood-mid) 50%, var(--wood-dark) 100%);
+  box-shadow: var(--shadow-frame);
+}
+
+/* Subtle nail-heads in the four frame corners */
+.frame::before, .frame::after {
+  content: '';
+  position: absolute;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #DAB177, var(--wood-deep));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+.frame::before { top: 8px; left: 8px; box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.4), 380px 0 0 -2.5px #DAB177, 380px 0 0 -2.4px rgba(0,0,0,0); }
+.frame::after  { bottom: 8px; left: 8px; box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.4); }
+
+/* Four corner nails using multiple shadow stacks — simpler approach */
+.frame-nails {
+  position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+}
+.frame-nails::before, .frame-nails::after {
+  content: '';
+  position: absolute;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #DAB177, var(--wood-deep));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+.frame-nails::before { top: 8px; right: 8px; }
+.frame-nails::after  { bottom: 8px; right: 8px; }
+
+
+/* ── The chalkboard surface ──────────────────────────────────────────────── */
+.board {
+  position: relative;
+  padding: var(--sp-5) var(--sp-5) var(--sp-6);
+  border-radius: var(--r-md);
+  min-height: 540px;
+  background:
+    /* Vignette — darker corners */
+    radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.35) 100%),
+    /* Chalk smudges (scattered subtle ghosts) */
+    radial-gradient(circle at 18% 22%, rgba(244, 244, 239, 0.05) 0, transparent 18%),
+    radial-gradient(circle at 82% 78%, rgba(244, 244, 239, 0.04) 0, transparent 15%),
+    radial-gradient(circle at 58% 30%, rgba(244, 244, 239, 0.03) 0, transparent 20%),
+    /* Base board color */
+    linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-inset-board);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Subject-theme overrides */
+.board--science { background-color: var(--board-navy);
+  background:
+    radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.4) 100%),
+    radial-gradient(circle at 18% 22%, rgba(244, 244, 239, 0.05) 0, transparent 18%),
+    linear-gradient(180deg, #24355E 0%, var(--board-navy) 100%);
+}
+.board--english { background-color: var(--board-brick);
+  background:
+    radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.4) 100%),
+    linear-gradient(180deg, #7E3E3E 0%, var(--board-brick) 100%);
+}
+.board--social  { background: linear-gradient(180deg, #9A7C32 0%, var(--board-ochre) 100%); }
+.board--hindi   { background: linear-gradient(180deg, #6C375D 0%, var(--board-plum) 100%); }
+
+
+/* ── Chalk tray (bottom shelf of the frame, holds chalk pieces) ──────────── */
+.chalk-tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-top: -1px; /* Tuck into the bottom of the frame */
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  background:
+    linear-gradient(180deg,
+      rgba(0, 0, 0, 0.25) 0%,
+      transparent 6%,
+      transparent 100%),
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.05) 0px,
+      rgba(0, 0, 0, 0.05) 1px,
+      transparent 1px, transparent 6px),
+    linear-gradient(180deg, var(--wood-mid) 0%, var(--wood-dark) 100%);
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.4),
+    inset 0 -2px 4px rgba(255, 200, 140, 0.15);
+  position: relative;
+}
+
+.chalk {
+  width: 28px;
+  height: 11px;
+  border-radius: 3px;
+  background: currentColor;
+  box-shadow: var(--shadow-chalk-piece);
+  position: relative;
+  transform: rotate(-2deg);
+}
+.chalk:nth-child(even) { transform: rotate(1.5deg); }
+.chalk::after {
+  /* Chalk-tip highlight */
+  content: '';
+  position: absolute;
+  top: 1px; left: 2px; right: 2px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.chalk--coral    { color: var(--chalk-coral); }
+.chalk--gold     { color: var(--chalk-gold); }
+.chalk--pink     { color: var(--chalk-pink); }
+.chalk--yellow   { color: var(--chalk-yellow); }
+.chalk--mint     { color: var(--chalk-mint); }
+.chalk--sky      { color: var(--chalk-sky); }
+.chalk--lavender { color: var(--chalk-lavender); }
+
+.eraser {
+  margin-left: auto;
+  width: 42px; height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #5A7C9A 0%, #3E5B75 100%);
+  box-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+.eraser::before {
+  /* Felt pad on bottom of eraser */
+  content: '';
+  position: absolute;
+  left: 2px; right: 2px; bottom: -3px;
+  height: 4px;
+  background: #EFEAD6;
+  border-radius: 0 0 2px 2px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+
+/* ── Chalk text ──────────────────────────────────────────────────────────── */
+.chalk-text {
+  color: var(--chalk-white);
+  text-shadow:
+    0 0 1px rgba(244, 244, 239, 0.4),
+    0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+.card-type {
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--chalk-white-dim);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--sp-3);
+}
+.card-type::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--chalk-gold);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.5);
+}
+
+.chalk-heading {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: var(--fs-3xl);
+  line-height: 1.05;
+  color: var(--chalk-white);
+  margin: 0 0 var(--sp-4);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+  letter-spacing: 0.01em;
+}
+
+.chalk-heading--sm { font-size: var(--fs-2xl); }
+.chalk-heading--xl { font-size: var(--fs-4xl); }
+
+.chalk-body {
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  color: var(--chalk-white-soft);
+}
+.chalk-body p { margin: 0 0 var(--sp-3); }
+.chalk-body strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.5), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+.chalk-body em.chalk-accent { font-style: normal; color: var(--chalk-gold); font-weight: 700; }
+
+.chalk-caption {
+  font-family: var(--font-hand);
+  font-size: var(--fs-lg);
+  color: var(--chalk-white-soft);
+}
+
+
+/* ── Parchment inset (for formulas, worked examples) ─────────────────────── */
+.parchment {
+  background:
+    /* Subtle paper grain */
+    repeating-linear-gradient(90deg,
+      rgba(139, 105, 40, 0.025) 0px, rgba(139, 105, 40, 0.025) 1px,
+      transparent 1px, transparent 4px),
+    linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3) var(--sp-4);
+  margin: var(--sp-4) 0;
+  box-shadow: var(--shadow-parchment);
+  border: 1px solid var(--parchment-edge);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+.parchment pre { margin: 0; font-family: inherit; white-space: pre-wrap; }
+
+
+/* ── Help link ("I DIDN'T UNDERSTAND") ───────────────────────────────────── */
+.help-link {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--chalk-white);
+  text-transform: uppercase;
+  text-decoration: none;
+  border-bottom: 1.5px solid var(--chalk-white-dim);
+  padding-bottom: 2px;
+  margin: var(--sp-4) auto;
+}
+.help-link:hover { border-bottom-color: var(--chalk-white); }
+
+
+/* ── Pill buttons ────────────────────────────────────────────────────────── */
+.pill {
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 14px 28px;
+  border: 0;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  box-shadow: var(--shadow-pill);
+  text-transform: uppercase;
+  min-width: 110px;
+  text-align: center;
+}
+.pill:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+
+.pill--primary {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--action-primary) 100%);
+  color: white;
+}
+.pill--primary:hover { background: linear-gradient(180deg, #5768D8 0%, var(--action-primary-hover) 100%); }
+
+.pill--secondary {
+  background: var(--action-secondary);
+  color: var(--action-secondary-ink);
+}
+.pill--secondary:hover { background: #EEE2C1; }
+
+.pill--ghost {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1.5px solid var(--chalk-white-dim);
+  box-shadow: none;
+}
+.pill--ghost:hover { background: rgba(244, 244, 239, 0.2); }
+
+.pill--lg { padding: 16px 32px; font-size: var(--fs-lg); }
+.pill--sm { padding: 10px 20px; font-size: var(--fs-sm); }
+
+
+/* ── Navigation row at bottom of learning card ───────────────────────────── */
+.nav-row {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--sp-4);
+}
+.nav-row .pill { flex: 1; max-width: 160px; }
+
+
+/* ── Chalk doodle (decorative SVG positioner) ────────────────────────────── */
+.doodle {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.22;
+  color: var(--chalk-white);
+  z-index: 0;
+}
+.board > *:not(.doodle) { position: relative; z-index: 1; }
+
+.doodle--tl { top: 12px; left: 12px; }
+.doodle--tr { top: 16px; right: 12px; }
+.doodle--br { bottom: 16px; right: 18px; }
+.doodle--bl { bottom: 18px; left: 16px; }
+.doodle--mid-l { top: 45%; left: 6px; }
+.doodle--mid-r { top: 35%; right: 8px; }
+
+
+/* ── Subject badges / pills for subject-select screen ────────────────────── */
+.subject-spine {
+  display: block;
+  padding: 18px 20px;
+  margin-bottom: var(--sp-3);
+  border-radius: var(--r-md);
+  color: var(--chalk-white);
+  font-family: var(--font-hand);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.3),
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.subject-spine:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1.5px rgba(244, 244, 239, 0.4), 0 6px 0 rgba(0,0,0,0.25), 0 8px 14px rgba(0,0,0,0.3); }
+.subject-spine:active { transform: translateY(1px); box-shadow: inset 0 0 0 1.5px rgba(244, 244, 239, 0.3), 0 2px 0 rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.3); }
+
+.subject-spine--math    { background: linear-gradient(135deg, #3F5C4A 0%, var(--board-green) 100%); }
+.subject-spine--science { background: linear-gradient(135deg, #2A4070 0%, var(--board-navy) 100%); }
+.subject-spine--english { background: linear-gradient(135deg, #8A4A4A 0%, var(--board-brick) 100%); }
+.subject-spine--social  { background: linear-gradient(135deg, #A88640 0%, var(--board-ochre) 100%); }
+.subject-spine--hindi   { background: linear-gradient(135deg, #7A4568 0%, var(--board-plum) 100%); }
+
+.subject-spine-sub {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--chalk-white-dim);
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+}
+
+
+/* ── Learning-path item (chapter/topic list) ─────────────────────────────── */
+.path-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--sp-2);
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.18);
+  color: var(--chalk-white);
+  font-family: var(--font-hand);
+  font-size: var(--fs-xl);
+  text-decoration: none;
+  position: relative;
+}
+.path-item--current {
+  background: rgba(244, 199, 108, 0.12);
+  border: 1.5px solid var(--chalk-gold);
+  box-shadow: 0 0 0 4px rgba(244, 199, 108, 0.08), 0 0 16px rgba(244, 199, 108, 0.2);
+}
+.path-item--done {
+  background: rgba(142, 218, 206, 0.05);
+  border-color: rgba(142, 218, 206, 0.3);
+  text-decoration: line-through;
+  color: var(--chalk-white-dim);
+}
+.path-item--locked {
+  opacity: 0.4;
+  border-style: dotted;
+}
+
+.path-checkbox {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--chalk-white-dim);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--chalk-mint);
+}
+.path-item--done .path-checkbox { border-color: var(--chalk-mint); }
+.path-item--current .path-checkbox { border-color: var(--chalk-gold); }
+
+
+/* ── Option button (for check-ins) ───────────────────────────────────────── */
+.option-btn {
+  display: block;
+  width: 100%;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(244, 244, 239, 0.05);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+.option-btn:hover { background: rgba(244, 244, 239, 0.1); border-color: var(--chalk-white-dim); }
+.option-btn:active { transform: scale(0.98); }
+.option-btn--correct {
+  background: rgba(142, 218, 206, 0.18);
+  border: 1.5px solid var(--chalk-mint);
+  color: var(--chalk-white);
+}
+.option-btn--wrong {
+  background: rgba(244, 167, 160, 0.15);
+  border: 1.5px solid var(--chalk-coral);
+  color: var(--chalk-white);
+}
+
+/* Chalk-drawn circle around a selected option — decorative */
+.chalk-circle {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--chalk-gold);
+  border-radius: 24px / 60%;
+  pointer-events: none;
+  transform: rotate(-1.5deg);
+  filter: url(#chalk-roughen);
+}
+
+
+/* ── Confetti placeholder (decorative only in mockup) ────────────────────── */
+.confetti-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti-burst span {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  top: 50%; left: 50%;
+  opacity: 0.9;
+  transform: translate(-50%, -50%);
+}
+
+
+/* ── Utility ─────────────────────────────────────────────────────────────── */
+.text-center { text-align: center; }
+.mt-0 { margin-top: 0; }
+.mt-2 { margin-top: var(--sp-2); }
+.mt-3 { margin-top: var(--sp-3); }
+.mt-4 { margin-top: var(--sp-4); }
+.mt-5 { margin-top: var(--sp-5); }
+.mb-0 { margin-bottom: 0; }
+.mb-4 { margin-bottom: var(--sp-4); }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.gap-2 { gap: var(--sp-2); }
+.gap-3 { gap: var(--sp-3); }
+.gap-4 { gap: var(--sp-4); }

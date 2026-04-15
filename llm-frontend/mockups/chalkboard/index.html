@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chalkboard Mockups — LearnLikeMagic</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  body {
+    background: var(--wall-cream);
+    min-height: 100vh;
+    padding: var(--sp-6) var(--sp-4) var(--sp-8);
+  }
+  .page-head {
+    max-width: 1200px;
+    margin: 0 auto var(--sp-6);
+    text-align: center;
+  }
+  h1 {
+    font-family: var(--font-hand);
+    font-size: 3rem;
+    color: var(--ink-dark);
+    margin: 0 0 var(--sp-2);
+  }
+  .lede {
+    font-family: var(--font-body);
+    font-size: var(--fs-md);
+    color: var(--ink-mid);
+    max-width: 640px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-3);
+    margin: var(--sp-5) 0;
+  }
+  .tab-btn {
+    padding: 10px 20px;
+    border: 1.5px solid var(--wood-dark);
+    background: var(--parchment);
+    color: var(--ink-dark);
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn[aria-pressed="true"] {
+    background: var(--wood-dark);
+    color: var(--chalk-white);
+  }
+
+  .screens-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: var(--sp-5);
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .screen-card {
+    background: white;
+    border-radius: var(--r-md);
+    padding: var(--sp-4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+  }
+  .screen-label {
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--wood-dark);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 0 0 var(--sp-1);
+  }
+  .screen-title {
+    font-family: var(--font-hand);
+    font-size: var(--fs-2xl);
+    margin: 0 0 var(--sp-2);
+    color: var(--ink-dark);
+  }
+  .screen-desc {
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    color: var(--ink-mid);
+    line-height: 1.5;
+    margin: 0 0 var(--sp-3);
+  }
+  .screen-iframe {
+    width: 100%;
+    height: 760px;
+    border: 1px solid #E8DFCE;
+    border-radius: var(--r-sm);
+    background: #F6F0E1;
+  }
+  .screen-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--sp-3);
+  }
+  .screen-link {
+    font-family: var(--font-body);
+    font-weight: 600;
+    color: var(--action-primary);
+    text-decoration: none;
+    font-size: var(--fs-sm);
+  }
+  .screen-link:hover { text-decoration: underline; }
+
+  /* Single-screen mode */
+  .single-view { display: none; }
+  .single-view.active { display: block; }
+  .single-view iframe {
+    width: 100%; max-width: 440px;
+    height: 800px;
+    border: 1px solid #E8DFCE;
+    border-radius: var(--r-md);
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* Hide grid when single */
+  body[data-mode="single"] .screens-grid { display: none; }
+  body[data-mode="grid"] .single-view { display: none; }
+
+  .screen-selector {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+  }
+  .screen-selector button {
+    padding: 8px 16px;
+    border: 1.5px solid var(--wood-mid);
+    background: var(--parchment);
+    border-radius: var(--r-pill);
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    color: var(--ink-dark);
+    cursor: pointer;
+  }
+  .screen-selector button[aria-pressed="true"] {
+    background: var(--wood-mid);
+    color: white;
+  }
+</style>
+</head>
+<body data-mode="grid">
+
+<div class="page-head">
+  <h1>Chalkboard Mockups</h1>
+  <p class="lede">Six hero screens in the proposed chalkboard classroom aesthetic.
+     Review them as a grid (to scan) or one at a time (for detail).</p>
+
+  <div class="tabs">
+    <button class="tab-btn" aria-pressed="true" onclick="setMode('grid')">Grid view</button>
+    <button class="tab-btn" aria-pressed="false" onclick="setMode('single')">Single view</button>
+  </div>
+</div>
+
+<!-- Grid view -->
+<div class="screens-grid">
+
+  <div class="screen-card">
+    <p class="screen-label">01 · Auth</p>
+    <h2 class="screen-title">Login</h2>
+    <p class="screen-desc">Welcome screen with chalk logo + auth methods. Sets the tone for the whole app.</p>
+    <iframe class="screen-iframe" src="login.html" loading="lazy"></iframe>
+    <div class="screen-actions">
+      <span></span>
+      <a class="screen-link" href="login.html" target="_blank">Open full page →</a>
+    </div>
+  </div>
+
+  <div class="screen-card">
+    <p class="screen-label">02 · Selection</p>
+    <h2 class="screen-title">Subject Select</h2>
+    <p class="screen-desc">Picks the subject; each has its own chalkboard color (math=green, science=navy, etc.).</p>
+    <iframe class="screen-iframe" src="subject-select.html" loading="lazy"></iframe>
+    <div class="screen-actions">
+      <span></span>
+      <a class="screen-link" href="subject-select.html" target="_blank">Open full page →</a>
+    </div>
+  </div>
+
+  <div class="screen-card" style="grid-column: span 1;">
+    <p class="screen-label">03 · Learning (hero)</p>
+    <h2 class="screen-title">Explanation Card</h2>
+    <p class="screen-desc">The reference match — card-type label, bolded key terms, parchment inset, chalk tray, wood frame.</p>
+    <iframe class="screen-iframe" src="learning-card.html" loading="lazy"></iframe>
+    <div class="screen-actions">
+      <span style="font-family:var(--font-body);font-size:var(--fs-xs);color:var(--wood-dark);font-weight:600;">⭐ REFERENCE-MATCH</span>
+      <a class="screen-link" href="learning-card.html" target="_blank">Open full page →</a>
+    </div>
+  </div>
+
+  <div class="screen-card">
+    <p class="screen-label">04 · Check-in</p>
+    <h2 class="screen-title">Pick One (correct state)</h2>
+    <p class="screen-desc">Multiple-choice check-in with chalk-circle around correct answer, progress ticks, mint celebration.</p>
+    <iframe class="screen-iframe" src="check-in.html" loading="lazy"></iframe>
+    <div class="screen-actions">
+      <span></span>
+      <a class="screen-link" href="check-in.html" target="_blank">Open full page →</a>
+    </div>
+  </div>
+
+  <div class="screen-card">
+    <p class="screen-label">05 · Completion</p>
+    <h2 class="screen-title">Session Complete</h2>
+    <p class="screen-desc">Celebration moment — star rating, confetti, session stats, practice CTA.</p>
+    <iframe class="screen-iframe" src="session-complete.html" loading="lazy"></iframe>
+    <div class="screen-actions">
+      <span></span>
+      <a class="screen-link" href="session-complete.html" target="_blank">Open full page →</a>
+    </div>
+  </div>
+
+  <div class="screen-card">
+    <p class="screen-label">06 · Account</p>
+    <h2 class="screen-title">Profile</h2>
+    <p class="screen-desc">Parchment "pinned notes" on the chalkboard with washi-tape accents. Shows how paper content works.</p>
+    <iframe class="screen-iframe" src="profile.html" loading="lazy"></iframe>
+    <div class="screen-actions">
+      <span></span>
+      <a class="screen-link" href="profile.html" target="_blank">Open full page →</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- Single view -->
+<div class="single-view">
+  <div class="screen-selector">
+    <button aria-pressed="true"  onclick="setScreen('login.html', this)">Login</button>
+    <button aria-pressed="false" onclick="setScreen('subject-select.html', this)">Subject Select</button>
+    <button aria-pressed="false" onclick="setScreen('learning-card.html', this)">Learning Card ⭐</button>
+    <button aria-pressed="false" onclick="setScreen('check-in.html', this)">Check-in</button>
+    <button aria-pressed="false" onclick="setScreen('session-complete.html', this)">Complete</button>
+    <button aria-pressed="false" onclick="setScreen('profile.html', this)">Profile</button>
+  </div>
+  <iframe id="singleFrame" src="login.html"></iframe>
+</div>
+
+<script>
+  function setMode(mode) {
+    document.body.dataset.mode = mode;
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+      b.setAttribute('aria-pressed', (mode === 'grid' && i === 0) || (mode === 'single' && i === 1));
+    });
+  }
+  function setScreen(file, btn) {
+    document.getElementById('singleFrame').src = file;
+    document.querySelectorAll('.screen-selector button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+    btn.setAttribute('aria-pressed', 'true');
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LearnLikeMagic — Learning Card (Chalkboard)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  /* Screen-specific tweaks */
+  .lc-title { margin-top: 0; }
+  .lc-prompt { color: var(--chalk-gold); font-weight: 600; }
+  .lc-nav { margin-top: var(--sp-4); padding-top: var(--sp-4);
+            border-top: 1px dashed rgba(244,244,239,0.18); }
+  .mini-caption {
+    text-align: center;
+    font-family: var(--font-body);
+    font-size: var(--fs-xs);
+    color: var(--ink-mute);
+    margin-top: var(--sp-3);
+  }
+</style>
+</head>
+<body>
+<!-- SVG filter for chalk-rough texture (applied to decorative borders) -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="chalk-roughen">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3"/>
+      <feDisplacementMap in="SourceGraphic" scale="1.5"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="wall">
+<div class="viewport">
+
+  <div class="frame">
+    <div class="frame-nails"></div>
+
+    <div class="board">
+      <!-- Decorative chalk doodles -->
+      <svg class="doodle doodle--tr" width="56" height="56" viewBox="0 0 64 64" fill="none">
+        <!-- paper airplane -->
+        <path d="M6 34 L58 10 L40 58 L32 36 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
+        <path d="M32 36 L58 10" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+
+      <svg class="doodle doodle--mid-r" width="34" height="34" viewBox="0 0 64 64" fill="none" style="opacity:0.18;">
+        <!-- star -->
+        <path d="M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z"
+              stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+      </svg>
+
+      <svg class="doodle doodle--bl" width="60" height="28" viewBox="0 0 120 50" fill="none">
+        <!-- pencil -->
+        <path d="M6 30 L90 6 L110 12 L26 36 Z" stroke="currentColor" stroke-width="1.6" fill="none"/>
+        <path d="M90 6 L110 12 M100 9 L102 14" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M6 30 L14 44" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+
+      <!-- Scattered "10" handwriting -->
+      <div class="doodle" style="top: 8%; right: 18%; font-family: var(--font-hand); font-size: 2.2rem; opacity: 0.12;">10</div>
+      <div class="doodle" style="top: 38%; right: 8%; font-family: var(--font-hand); font-size: 1.8rem; opacity: 0.14;">10</div>
+      <div class="doodle" style="top: 26%; left: 68%; font-family: var(--font-hand); font-size: 1.4rem; opacity: 0.1;">10</div>
+
+      <!-- Card type pill -->
+      <span class="card-type">CONCEPT</span>
+
+      <!-- Heading -->
+      <h1 class="chalk-heading lc-title">The Pattern: Groups&nbsp;of&nbsp;10</h1>
+
+      <!-- Body -->
+      <div class="chalk-body">
+        <p>There is a nice pattern in numbers.</p>
+        <p><strong>10 ones</strong> make <strong>1 ten</strong>.</p>
+        <p><strong>10 tens</strong> make <strong>1 hundred</strong>.</p>
+        <p>Every time we collect 10, we move up!</p>
+        <p class="lc-prompt">So what do <strong>10 hundreds</strong> make?</p>
+      </div>
+
+      <!-- Parchment inset with the pattern -->
+      <div class="parchment">
+<pre>10 ones     →  1 ten
+10 tens     →  1 hundred
+10 hundreds →  ?</pre>
+      </div>
+
+      <!-- Help link + nav -->
+      <div class="text-center lc-nav">
+        <a href="#" class="help-link">I didn't understand</a>
+        <div class="nav-row">
+          <button class="pill pill--secondary">Back</button>
+          <button class="pill pill--primary">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chalk tray at the bottom of the frame -->
+    <div class="chalk-tray">
+      <span class="chalk chalk--coral"></span>
+      <span class="chalk chalk--gold"></span>
+      <span class="chalk chalk--pink"></span>
+      <span class="chalk chalk--yellow"></span>
+      <span class="chalk chalk--mint"></span>
+      <span class="chalk chalk--sky"></span>
+      <span class="eraser"></span>
+    </div>
+  </div>
+
+  <p class="mini-caption">Learning session · explanation card · Math (green board)</p>
+</div>
+</div>
+</body>
+</html>

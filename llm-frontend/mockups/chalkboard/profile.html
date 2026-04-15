@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LearnLikeMagic — Profile (Chalkboard)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  .profile-heading {
+    font-family: var(--font-hand);
+    font-size: var(--fs-3xl);
+    color: var(--chalk-white);
+    text-align: center;
+    margin: var(--sp-2) 0 var(--sp-4);
+    text-shadow: 0 0 1px rgba(244,244,239,0.4), 0 2px 0 rgba(0,0,0,0.3);
+  }
+
+  /* Parchment note card — for profile fields */
+  .note {
+    background:
+      repeating-linear-gradient(0deg,
+        transparent 0, transparent 25px,
+        rgba(139, 105, 40, 0.15) 25px, rgba(139, 105, 40, 0.15) 26px),
+      linear-gradient(180deg, var(--parchment) 0%, #ECE0BD 100%);
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-3);
+    border-radius: 4px;
+    box-shadow:
+      inset 0 0 0 1px rgba(139, 105, 40, 0.15),
+      0 4px 10px rgba(20, 14, 6, 0.35),
+      0 2px 3px rgba(20, 14, 6, 0.2);
+    position: relative;
+    transform: rotate(-0.3deg);
+  }
+  .note:nth-child(even) { transform: rotate(0.4deg); }
+
+  /* Washi tape at top of note */
+  .note::before {
+    content: '';
+    position: absolute;
+    top: -8px; left: 20%; right: 20%;
+    height: 18px;
+    background: linear-gradient(135deg,
+      rgba(244, 167, 160, 0.8) 0%,
+      rgba(244, 167, 160, 0.65) 50%,
+      rgba(244, 167, 160, 0.8) 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    clip-path: polygon(4% 0, 96% 0, 98% 100%, 2% 100%);
+  }
+  .note--tape-mint::before { background: linear-gradient(135deg, rgba(142, 218, 206, 0.8), rgba(142, 218, 206, 0.65), rgba(142, 218, 206, 0.8)); }
+  .note--tape-gold::before { background: linear-gradient(135deg, rgba(244, 199, 108, 0.8), rgba(244, 199, 108, 0.65), rgba(244, 199, 108, 0.8)); }
+  .note--tape-sky::before  { background: linear-gradient(135deg, rgba(141, 191, 229, 0.8), rgba(141, 191, 229, 0.65), rgba(141, 191, 229, 0.8)); }
+  .note--tape-lav::before  { background: linear-gradient(135deg, rgba(195, 168, 227, 0.8), rgba(195, 168, 227, 0.65), rgba(195, 168, 227, 0.8)); }
+
+  .note-label {
+    font-family: var(--font-body);
+    font-size: var(--fs-xs);
+    color: var(--ink-mute);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 0 0 4px;
+  }
+  .note-value {
+    font-family: var(--font-hand);
+    font-size: var(--fs-xl);
+    color: var(--ink-dark);
+    line-height: 1.1;
+    margin: 0;
+  }
+  .note-edit {
+    position: absolute;
+    right: 12px; bottom: 10px;
+    background: none; border: none;
+    color: var(--ink-mute);
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  .profile-avatar {
+    display: block;
+    width: 88px; height: 88px;
+    margin: var(--sp-3) auto;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 40%, var(--chalk-gold) 0%, #D8A444 100%);
+    position: relative;
+    box-shadow:
+      inset 0 -4px 8px rgba(0, 0, 0, 0.2),
+      0 4px 8px rgba(0, 0, 0, 0.25);
+  }
+  .profile-avatar::after {
+    content: 'R';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-hand);
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--board-green-deep);
+  }
+
+  .top-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--sp-3);
+  }
+  .icon-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 1.5px dashed rgba(244,244,239,0.3);
+    background: rgba(244,244,239,0.05);
+    color: var(--chalk-white);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+
+  .quick-stat {
+    display: flex;
+    justify-content: space-around;
+    padding: var(--sp-4) 0;
+    margin-bottom: var(--sp-4);
+    border-top: 1px dashed rgba(244,244,239,0.2);
+    border-bottom: 1px dashed rgba(244,244,239,0.2);
+  }
+  .qs-num { font-family: var(--font-hand); font-size: var(--fs-2xl); color: var(--chalk-gold); }
+  .qs-label { font-family: var(--font-body); font-size: var(--fs-xs); color: var(--chalk-white-dim); letter-spacing: 0.08em; display: block; }
+</style>
+</head>
+<body>
+
+<div class="wall">
+<div class="viewport">
+
+  <div class="frame">
+    <div class="frame-nails"></div>
+    <div class="board" style="min-height: 680px;">
+
+      <!-- Doodles -->
+      <svg class="doodle doodle--tr" width="36" height="36" viewBox="0 0 64 64" style="opacity:0.15;">
+        <g stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round">
+          <path d="M20 20 L20 34 M12 27 L28 27"/>
+          <path d="M44 42 L44 52 M39 47 L49 47"/>
+        </g>
+      </svg>
+
+      <!-- Top nav -->
+      <div class="top-nav">
+        <button class="icon-btn" title="Back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18 L9 12 L15 6"/>
+          </svg>
+        </button>
+        <span class="card-type" style="margin-bottom: 0;">MY PROFILE</span>
+        <button class="icon-btn" title="Log out">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 17 L21 12 L16 7 M21 12 L9 12 M13 4 L6 4 L6 20 L13 20"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Avatar initials -->
+      <div class="profile-avatar"></div>
+      <h1 class="profile-heading">Riya Sharma</h1>
+
+      <!-- Quick stats -->
+      <div class="quick-stat">
+        <div class="text-center">
+          <div class="qs-num">14</div>
+          <span class="qs-label">SESSIONS</span>
+        </div>
+        <div class="text-center">
+          <div class="qs-num">8</div>
+          <span class="qs-label">TOPICS</span>
+        </div>
+        <div class="text-center">
+          <div class="qs-num">32</div>
+          <span class="qs-label">⭐ STARS</span>
+        </div>
+      </div>
+
+      <!-- Pinned parchment notes -->
+      <div class="note">
+        <p class="note-label">Grade</p>
+        <p class="note-value">Class 4</p>
+        <button class="note-edit">Edit</button>
+      </div>
+
+      <div class="note note--tape-mint">
+        <p class="note-label">Board</p>
+        <p class="note-value">CBSE</p>
+        <button class="note-edit">Edit</button>
+      </div>
+
+      <div class="note note--tape-gold">
+        <p class="note-label">I like to learn about</p>
+        <p class="note-value">Space, animals, and puzzles</p>
+        <button class="note-edit">Edit</button>
+      </div>
+
+      <div class="note note--tape-sky">
+        <p class="note-label">Language</p>
+        <p class="note-value">English + Hindi</p>
+        <button class="note-edit">Edit</button>
+      </div>
+
+    </div>
+
+    <div class="chalk-tray">
+      <span class="chalk chalk--coral"></span>
+      <span class="chalk chalk--gold"></span>
+      <span class="chalk chalk--pink"></span>
+      <span class="chalk chalk--mint"></span>
+      <span class="chalk chalk--lavender"></span>
+      <span class="eraser"></span>
+    </div>
+  </div>
+
+  <p style="text-align:center;font-family:var(--font-body);font-size:var(--fs-xs);color:var(--ink-mute);margin-top:var(--sp-3);">
+    Profile · parchment "pinned notes" on chalkboard · washi-tape color variants
+  </p>
+</div>
+</div>
+</body>
+</html>
