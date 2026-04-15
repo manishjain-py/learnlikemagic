@@ -6241,3 +6241,744 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
     gap: 8px;
   }
 }
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 7: Profile + Enrichment + Report Issue
+   Scope: /profile, /profile/enrichment, /report-issue (all under AppShell
+   with chalkboard-active now extended to include these routes).
+   ========================================================================== */
+
+/* ── Profile page (/profile) ──────────────────────────────────────────── */
+
+/* Profile reuses auth-form + auth-field + auth-btn. Since AppShell's
+   .chalkboard-active is on `.app` (NOT on `.auth-page`), the .auth-page
+   prefixed rules from step 6 don't apply here. Re-scope auth-* styling
+   under .chalkboard-active for profile use. */
+
+.chalkboard-active .auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.chalkboard-active .auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chalkboard-active .auth-field label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+}
+.chalkboard-active .auth-field input,
+.chalkboard-active .auth-field select,
+.chalkboard-active .auth-field textarea {
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--chalk-white);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.chalkboard-active .auth-field input::placeholder,
+.chalkboard-active .auth-field textarea::placeholder {
+  color: var(--chalk-white-dim);
+}
+.chalkboard-active .auth-field input:focus,
+.chalkboard-active .auth-field select:focus,
+.chalkboard-active .auth-field textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+.chalkboard-active .auth-field input:disabled,
+.chalkboard-active .auth-field select:disabled,
+.chalkboard-active .auth-field textarea:disabled {
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--chalk-white-soft);
+  opacity: 0.85;
+}
+.chalkboard-active .auth-field select option {
+  /* option popups use OS styling; make text readable when dropdown opens */
+  background: var(--wood-dark);
+  color: var(--chalk-white);
+}
+
+.chalkboard-active .auth-btn {
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  text-align: center;
+}
+.chalkboard-active .auth-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.chalkboard-active .auth-btn-primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.chalkboard-active .auth-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.chalkboard-active .auth-btn-outline {
+  background: rgba(244, 244, 239, 0.05);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+}
+.chalkboard-active .auth-btn-outline:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .auth-btn-outline.selected {
+  background: rgba(244, 199, 108, 0.18);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .auth-success {
+  background: rgba(142, 218, 206, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-mint);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Profile-specific sections */
+.chalkboard-active .profile-header {
+  margin-bottom: 1rem;
+}
+.chalkboard-active .profile-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.chalkboard-active .profile-actions .auth-btn {
+  flex: 1;
+}
+.chalkboard-active .profile-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+}
+.chalkboard-active .profile-section h3 {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  color: var(--chalk-white);
+  margin-bottom: 0.5rem;
+}
+.chalkboard-active .profile-info {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white-dim);
+}
+
+
+/* ── Enrichment page (/profile/enrichment) ────────────────────────────── */
+
+.chalkboard-active .enrichment-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 1.5rem;
+  padding: 18px 20px;
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.35);
+  border-radius: var(--r-md);
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+.chalkboard-active .enrichment-cta:hover {
+  background: rgba(244, 199, 108, 0.14);
+  border-color: var(--chalk-gold);
+  transform: translateY(-1px);
+}
+.chalkboard-active .enrichment-cta-content h3 {
+  font-family: var(--font-hand);
+  color: var(--chalk-gold);
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.chalkboard-active .enrichment-cta-content p {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.4;
+}
+.chalkboard-active .enrichment-cta-arrow {
+  color: var(--chalk-gold);
+  font-size: 1.6rem;
+}
+
+/* Progress */
+.chalkboard-active .enrichment-progress {
+  margin: 1.25rem 0;
+}
+.chalkboard-active .enrichment-progress-bar {
+  height: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.chalkboard-active .enrichment-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FFCD7D 0%, var(--chalk-gold) 100%);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.4);
+  transition: width 0.3s ease;
+}
+.chalkboard-active .enrichment-progress-text {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--chalk-white-dim);
+  letter-spacing: 0.04em;
+}
+
+/* Migration banner */
+.chalkboard-active .enrichment-migration-banner {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-parchment);
+  margin: 16px 0;
+}
+.chalkboard-active .enrichment-migration-banner p {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin: 0 0 8px;
+  color: var(--ink-dark);
+}
+
+/* Sections (expandable) */
+.chalkboard-active .enrichment-section {
+  margin-bottom: 10px;
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.chalkboard-active .enrichment-section-open {
+  background: rgba(244, 244, 239, 0.07);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .enrichment-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: var(--chalk-white);
+}
+.chalkboard-active .enrichment-section-header:hover {
+  background: rgba(244, 244, 239, 0.05);
+}
+.chalkboard-active .enrichment-section-title {
+  flex: 1;
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--chalk-white);
+}
+.chalkboard-active .enrichment-section-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(244, 244, 239, 0.2);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+}
+.chalkboard-active .enrichment-section-dot-filled {
+  background: var(--chalk-mint);
+  border: 1.5px solid var(--chalk-mint);
+  box-shadow: 0 0 6px rgba(142, 218, 206, 0.4);
+}
+.chalkboard-active .enrichment-section-arrow {
+  color: var(--chalk-white-dim);
+  font-size: 1.1rem;
+  transition: transform 0.2s;
+}
+.chalkboard-active .enrichment-section-body {
+  padding: 4px 16px 16px;
+}
+.chalkboard-active .enrichment-section-helper {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+/* Save-all strip */
+.chalkboard-active .enrichment-save-all {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+}
+.chalkboard-active .enrichment-save-all-btn {
+  min-width: 140px;
+}
+.chalkboard-active .enrichment-save-msg {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.chalkboard-active .enrichment-save-success {
+  color: var(--chalk-mint);
+}
+.chalkboard-active .enrichment-save-error {
+  color: var(--chalk-coral);
+}
+
+/* Chips (tag-style options) */
+.chalkboard-active .enrichment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chalkboard-active .enrichment-chip {
+  padding: 8px 14px;
+  background: rgba(244, 244, 239, 0.06);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-pill);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+.chalkboard-active .enrichment-chip:hover {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .enrichment-chip-selected {
+  background: rgba(244, 199, 108, 0.22);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .enrichment-chip-selected:hover {
+  background: rgba(244, 199, 108, 0.28);
+}
+.chalkboard-active .enrichment-chip-add {
+  border-style: dotted;
+  opacity: 0.85;
+}
+.chalkboard-active .enrichment-chip-custom {
+  display: inline-flex;
+  align-items: center;
+}
+.chalkboard-active .enrichment-chip-custom input {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white);
+  outline: none;
+  min-width: 140px;
+}
+.chalkboard-active .enrichment-chip-custom input:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+}
+
+/* Tag input (open-answer tags) */
+.chalkboard-active .enrichment-tag-input {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chalkboard-active .enrichment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chalkboard-active .enrichment-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 6px 12px;
+  background: rgba(244, 199, 108, 0.18);
+  border: 1px solid var(--chalk-gold);
+  border-radius: var(--r-pill);
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+.chalkboard-active .enrichment-tag button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 1rem;
+  line-height: 1;
+  font-family: inherit;
+}
+.chalkboard-active .enrichment-tag button:hover {
+  color: #FFCD7D;
+}
+.chalkboard-active .enrichment-tag-input input {
+  padding: 10px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  outline: none;
+}
+.chalkboard-active .enrichment-tag-input input:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+}
+
+/* Char counter */
+.chalkboard-active .enrichment-char-count {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--chalk-white-dim);
+  display: block;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* Open textbox section */
+.chalkboard-active .enrichment-open-textbox {
+  margin-top: 1.5rem;
+  padding: 16px;
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-md);
+}
+.chalkboard-active .enrichment-open-textbox-title {
+  font-family: var(--font-hand);
+  font-size: 1.2rem;
+  color: var(--chalk-white);
+  margin: 0 0 6px;
+}
+.chalkboard-active .enrichment-open-textbox-helper {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white-soft);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.chalkboard-active .enrichment-open-textbox textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white);
+  outline: none;
+  resize: vertical;
+  min-height: 96px;
+  box-sizing: border-box;
+}
+.chalkboard-active .enrichment-open-textbox textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+
+/* Session preferences section */
+.chalkboard-active .enrichment-session-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+}
+.chalkboard-active .enrichment-session-title {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  color: var(--chalk-white);
+  margin: 0 0 0.75rem;
+}
+
+/* Personality card (AI-generated summary) */
+.chalkboard-active .enrichment-personality-card {
+  margin-top: 1.5rem;
+  padding: 18px 20px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-parchment);
+  color: var(--ink-dark);
+}
+.chalkboard-active .enrichment-personality-card h3 {
+  font-family: var(--font-hand);
+  font-size: 1.3rem;
+  color: var(--ink-dark);
+  margin: 0 0 10px;
+}
+.chalkboard-active .enrichment-personality-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chalkboard-active .enrichment-personality-field strong {
+  color: var(--ink-dark);
+  font-family: var(--font-body);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 2px;
+}
+.chalkboard-active .enrichment-personality-field p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+.chalkboard-active .enrichment-personality-updated {
+  color: var(--ink-mute);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  margin-top: 10px;
+}
+.chalkboard-active .enrichment-personality-generating {
+  text-align: center;
+}
+.chalkboard-active .enrichment-personality-generating p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+}
+.chalkboard-active .enrichment-personality-failed h3 {
+  color: var(--action-primary);
+}
+.chalkboard-active .enrichment-personality-failed p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+}
+.chalkboard-active .enrichment-personality-empty {
+  color: var(--ink-mid);
+  text-align: center;
+}
+.chalkboard-active .enrichment-personality-empty p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+  margin: 0;
+}
+
+
+/* ── Report Issue page (/report-issue) ────────────────────────────────── */
+.chalkboard-active .report-issue-container {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.chalkboard-active .report-issue-heading {
+  font-family: var(--font-hand);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0 0 6px;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .report-issue-subtitle {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+.chalkboard-active .report-issue-error {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+.chalkboard-active .report-issue-card {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-md);
+  padding: 20px;
+}
+.chalkboard-active .report-issue-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+  margin-bottom: 8px;
+}
+.chalkboard-active .report-issue-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  min-height: 110px;
+}
+.chalkboard-active .report-issue-textarea::placeholder {
+  color: var(--chalk-white-dim);
+}
+.chalkboard-active .report-issue-textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+.chalkboard-active .report-issue-tools {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .report-issue-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(244, 244, 239, 0.06);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-pill);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chalkboard-active .report-issue-tool-btn:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .report-issue-tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chalkboard-active .report-issue-tool-btn--recording {
+  background: rgba(244, 167, 160, 0.15);
+  border: 1.5px solid var(--chalk-coral);
+  color: var(--chalk-coral);
+}
+.chalkboard-active .report-issue-file-input {
+  display: none;
+}
+.chalkboard-active .report-issue-previews {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.chalkboard-active .report-issue-preview {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+.chalkboard-active .report-issue-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(244, 244, 239, 0.35);
+}
+.chalkboard-active .report-issue-preview-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--wood-dark);
+  border: 1px solid var(--chalk-white-dim);
+  color: var(--chalk-white);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: inherit;
+}
+.chalkboard-active .report-issue-preview-remove:hover {
+  background: rgba(244, 167, 160, 0.2);
+  border-color: var(--chalk-coral);
+  color: var(--chalk-coral);
+}
+.chalkboard-active .report-issue-submit-btn {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px 20px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.chalkboard-active .report-issue-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.chalkboard-active .report-issue-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalkboard-active .report-issue-done {
+  text-align: center;
+  padding: 36px 24px;
+}
+.chalkboard-active .report-issue-done-check {
+  font-size: 48px;
+  color: var(--chalk-mint);
+  margin-bottom: 16px;
+  text-shadow: 0 0 10px rgba(142, 218, 206, 0.4);
+}
+.chalkboard-active .report-issue-done-title {
+  font-family: var(--font-hand);
+  font-size: 1.75rem;
+  color: var(--chalk-white);
+  margin: 0 0 8px;
+}
+.chalkboard-active .report-issue-done-text {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  margin-bottom: 24px;
+}

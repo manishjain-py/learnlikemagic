@@ -10,13 +10,15 @@ export default function AppShell() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Chalkboard theme scope: selection (/learn/*), history (/history),
-  // and report card (/report-card). Profile/report-issue still on
-  // legacy styling until step 7.
+  // Chalkboard theme scope: all student-facing AppShell routes.
+  // Admin routes (/admin/*) are NOT wrapped by AppShell so they're
+  // unaffected.
   const isChalkboardRoute =
     location.pathname.startsWith('/learn') ||
     location.pathname.startsWith('/history') ||
-    location.pathname.startsWith('/report-card');
+    location.pathname.startsWith('/report-card') ||
+    location.pathname.startsWith('/profile') ||
+    location.pathname.startsWith('/report-issue');
 
   // Close menu on outside click
   useEffect(() => {
