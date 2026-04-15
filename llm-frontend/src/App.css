@@ -7123,3 +7123,300 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
     align-items: center;
   }
 }
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — POST-STEP-9 FOLLOW-UP
+   Skin the three remaining .summary-card branches inside ChatSession
+   (teach-me-complete, practice-complete, session-summary). These render
+   outside card_phase so .chalkboard-active isn't applied — style the
+   classes directly as self-contained chalk islands (same pattern as
+   .session-complete-card in step 5).
+   ========================================================================== */
+
+.summary-card {
+  position: relative;
+  padding: 24px 20px;
+  margin: 12px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  border: none;
+  border-top: none;
+  box-shadow: var(--shadow-board-inset), 0 6px 18px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  isolation: isolate;
+  overflow: hidden auto;
+  color: var(--chalk-white);
+}
+.summary-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 80% 75%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
+}
+.summary-card > * { position: relative; z-index: 1; }
+
+.summary-card h2 {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.85rem;
+  color: var(--chalk-gold);
+  margin: 0 0 16px;
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.summary-card p {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.summary-card p strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+}
+
+/* Inner chalk inset for concept lists / details */
+.summary-content {
+  position: relative;
+  text-align: left;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  margin: 0 auto 16px;
+  max-width: 520px;
+  box-shadow: none;
+  color: var(--chalk-white-soft);
+}
+.summary-content p { margin: 0 0 6px; color: var(--chalk-white-soft); }
+.summary-content p strong { color: var(--chalk-white); }
+.summary-content ul {
+  margin: 6px 0 0 20px;
+  padding: 0;
+  color: var(--chalk-white-soft);
+}
+.summary-content li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+/* Concept chip grid + chip style */
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.summary-chip {
+  display: inline-block;
+  background: rgba(142, 218, 206, 0.18);
+  border: 1px dashed rgba(142, 218, 206, 0.5);
+  color: var(--chalk-mint);
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* Message + meta text under the h2 in completion cards */
+.summary-card-message {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white-soft);
+  line-height: 1.5;
+  margin: 12px 0;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.summary-card-meta {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--chalk-white-dim);
+  margin: 6px 0 14px;
+}
+
+/* Primary CTA — parchment pill */
+.restart-button {
+  padding: 12px 24px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  transition: transform 0.12s ease, background 0.12s ease;
+  min-width: 160px;
+}
+.restart-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.restart-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Secondary ghost button: any .restart-button that uses the inline
+   `background: white; color: #667eea; border: 2px solid #667eea` gets
+   overridden here. We target the secondary role via attribute-free
+   cascade — same specificity + defined later means our rule wins over
+   the component-side class; but inline style still wins, so we also
+   null those in the JSX (done in a follow-up JSX edit). For safety,
+   support both shapes: */
+.summary-card .restart-button + .restart-button,
+.summary-card .restart-button.restart-button--ghost {
+  background: rgba(244, 244, 239, 0.08);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  box-shadow: none;
+}
+.summary-card .restart-button + .restart-button:hover:not(:disabled),
+.summary-card .restart-button.restart-button--ghost:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+  transform: none;
+}
+
+/* Practice-complete extra copy */
+.summary-card [data-testid="practice-complete"] p,
+.summary-card[data-testid="practice-complete"] p {
+  color: var(--chalk-white-soft);
+}
+
+/* Exam-summary score block + per-question cards (in showSummary branch) */
+.summary-card .exam-summary-score {
+  text-align: center;
+  margin: 12px 0 16px;
+  padding: 16px;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+}
+.summary-card .exam-summary-score-value {
+  font-family: var(--font-hand);
+  font-size: 2.4rem;
+  font-weight: 700;
+  /* score color set inline based on pct — let it win */
+  text-shadow: 0 0 2px currentColor;
+}
+.summary-card .exam-summary-score-pct {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--chalk-white-soft);
+  margin-top: 4px;
+}
+
+.summary-card .exam-summary-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.summary-card .exam-summary-question {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.summary-card .exam-summary-q-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.summary-card .exam-summary-q-num {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--chalk-gold);
+}
+.summary-card .exam-summary-q-text {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--chalk-white);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.summary-card .exam-summary-q-answer {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--chalk-white-soft);
+  margin: 3px 0;
+  line-height: 1.5;
+}
+.summary-card .exam-summary-q-answer strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+}
+.summary-card .exam-summary-q-rationale {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-style: normal;
+  line-height: 1.5;
+  box-shadow: var(--shadow-parchment);
+}
+
+.summary-card .exam-summary-next {
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.35);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  text-align: left;
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.summary-card .exam-summary-next strong {
+  color: var(--chalk-gold);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+.summary-card .exam-summary-next ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--chalk-white-soft);
+}
+
+/* Practice-start error + generic error under the CTA */
+.summary-card .restart-button-error {
+  font-family: var(--font-body);
+  color: var(--chalk-coral);
+  font-size: 0.85rem;
+  margin: 8px 0;
+}
+
+/* Button stacking — the three branches have multiple buttons in a row;
+   give them breathing room */
+.summary-card .restart-button + .restart-button {
+  margin-top: 10px;
+  display: inline-block;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .summary-card {
+    margin: 10px;
+    padding: 20px 16px;
+  }
+  .summary-card h2 { font-size: 1.55rem; }
+  .summary-card .exam-summary-score-value { font-size: 2rem; }
+}
