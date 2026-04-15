@@ -70,7 +70,9 @@
       "Bash(git pull origin main)",
       "Bash(npx vite build)",
       "Bash(npx vitest run)",
-      "Bash(./venv/bin/uvicorn main:app:*)"
+      "Bash(./venv/bin/uvicorn main:app:*)",
+      "Bash(grep -E \"\\\\.py$|\\\\.txt$\")",
+      "mcp__d12a28b9-4e20-4451-8abb-7d0a9307199a__gmail_create_draft"
     ],
     "deny": [],
     "ask": []

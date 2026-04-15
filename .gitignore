@@ -51,6 +51,7 @@ Thumbs.db
 # Evaluation runs (generated output)
 llm-backend/autoresearch/tutor_teaching_quality/evaluation/runs/
 llm-backend/autoresearch/book_ingestion_quality/evaluation/runs/
+llm-backend/autoresearch/explanation_quality/evaluation/runs/
 
 # Docs copied into backend during Docker build
 llm-backend/docs/
