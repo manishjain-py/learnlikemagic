@@ -4019,3 +4019,303 @@ body {
 .strikethrough {
   text-decoration: line-through;
 }
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 2: Learning card (explanation slides)
+   Scope: everything under .app.chalkboard-active, which the component
+   adds when sessionPhase === 'card_phase'. Non-card-phase routes and
+   the admin UI are untouched. Incremental — check-in slides keep their
+   current styling until step 3.
+   Mockup reference: llm-frontend/mockups/chalkboard/learning-card.html
+   ========================================================================== */
+
+/* ── App shell becomes wood-toned ───────────────────────────────────────── */
+body:has(.app.chalkboard-active) { background: var(--wall-cream); }
+.app.chalkboard-active {
+  background: var(--wood-dark);
+  box-shadow: 0 0 28px rgba(20, 14, 6, 0.4);
+}
+
+/* ── Top nav on wood ─────────────────────────────────────────────────────── */
+.chalkboard-active .nav-bar {
+  background: linear-gradient(180deg, var(--wood-mid) 0%, var(--wood-deep) 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 -1px 0 rgba(255, 200, 140, 0.12);
+  color: var(--chalk-white);
+}
+.chalkboard-active .nav-home-btn,
+.chalkboard-active .nav-user-btn { color: var(--chalk-white); }
+.chalkboard-active .nav-home-btn:hover,
+.chalkboard-active .nav-user-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.chalkboard-active .nav-center { color: var(--chalk-white); }
+.chalkboard-active .nav-breadcrumb { color: var(--chalk-white); }
+.chalkboard-active .nav-breadcrumb-sep { color: var(--chalk-white-dim); }
+.chalkboard-active .nav-dropdown { background: #FBF6E8; }
+
+/* ── Progress bar on wood ────────────────────────────────────────────────── */
+.chalkboard-active .progress-bar {
+  background: var(--wood-dark);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .progress-info { color: var(--chalk-white-soft); }
+.chalkboard-active .progress-track { background: rgba(0, 0, 0, 0.35); }
+.chalkboard-active .progress-fill {
+  background: linear-gradient(90deg, #FFCD7D 0%, var(--chalk-gold) 100%);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.4);
+}
+
+/* ── Focus carousel = chalkboard surface ─────────────────────────────────── */
+.chalkboard-active .focus-carousel {
+  position: relative;
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  isolation: isolate;
+}
+/* Vignette + chalk smudges overlay */
+.chalkboard-active .focus-carousel::before {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.4) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 80% 78%, rgba(244, 244, 239, 0.03) 0, transparent 15%),
+    radial-gradient(circle at 58% 35%, rgba(244, 244, 239, 0.025) 0, transparent 20%);
+  box-shadow: var(--shadow-board-inset);
+}
+/* Subtle chalk doodles (star, paper airplane, pencil) */
+.chalkboard-active .focus-carousel::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.22;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 64 64' fill='none'><path d='M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z' stroke='%23F4F4EF' stroke-width='2' fill='none' stroke-linejoin='round'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 64 64' fill='none'><path d='M6 34 L58 10 L40 58 L32 36 Z M32 36 L58 10' stroke='%23F4F4EF' stroke-width='1.6' fill='none' stroke-linejoin='round'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='30' viewBox='0 0 120 50' fill='none'><path d='M6 30 L90 6 L110 12 L26 36 Z M90 6 L110 12' stroke='%23F4F4EF' stroke-width='1.6' fill='none'/></svg>");
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: calc(100% - 18px) 18px, 18px 20px, 22px calc(100% - 96px);
+}
+
+/* Slide content layered above overlays */
+.chalkboard-active .focus-track-container { position: relative; z-index: 1; }
+.chalkboard-active .focus-counter { color: var(--chalk-white-soft); }
+
+/* Audio button — chalk style */
+.chalkboard-active .focus-audio-btn {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1px solid rgba(244, 244, 239, 0.25);
+}
+.chalkboard-active .focus-audio-btn:hover { background: rgba(244, 244, 239, 0.18); }
+.chalkboard-active .focus-audio-btn.playing {
+  background: var(--chalk-gold);
+  color: var(--board-green-deep);
+  border-color: var(--chalk-gold);
+}
+
+/* ── Card-type label (CONCEPT / EXAMPLE / …) ─────────────────────────────── */
+.chalkboard-active .explanation-card-type {
+  font-family: var(--font-body);
+  color: var(--chalk-white-dim);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chalkboard-active .explanation-card-type::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--chalk-gold);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.55);
+}
+.chalkboard-active .explanation-card-type > span {
+  color: inherit;
+  font-family: inherit;
+}
+
+/* ── Explanation body text — chalk ───────────────────────────────────────── */
+.chalkboard-active .focus-tutor-msg {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+.chalkboard-active .focus-tutor-msg strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.5), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Headings in handwritten font */
+.chalkboard-active .focus-tutor-msg h1,
+.chalkboard-active .focus-tutor-msg h2,
+.chalkboard-active .focus-tutor-msg h3,
+.chalkboard-active .tw-spotlight-content h1,
+.chalkboard-active .tw-spotlight-content h2,
+.chalkboard-active .tw-spotlight-content h3,
+.chalkboard-active .tw-spotlight-content h4 {
+  font-family: var(--font-hand);
+  color: var(--chalk-white);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Typewriter spotlight ink → chalk */
+.chalkboard-active .tw-spotlight-content {
+  color: var(--chalk-white-soft);
+}
+.chalkboard-active .tw-spotlight-content strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.5), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .tw-cursor { background: var(--chalk-gold); }
+
+/* ── Parchment inset for visuals/code blocks ─────────────────────────────── */
+.chalkboard-active .explanation-card-visual {
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(139, 105, 40, 0.03) 0px, rgba(139, 105, 40, 0.03) 1px,
+      transparent 1px, transparent 4px),
+    linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--cb-ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-parchment);
+  font-family: var(--font-mono);
+}
+
+/* ── Student / message bubbles (rare in card phase, but graceful) ────────── */
+.chalkboard-active .focus-student-msg {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1px dashed var(--chalk-white-dim);
+}
+.chalkboard-active .focus-student-label { color: var(--chalk-gold); }
+.chalkboard-active .focus-typing .typing-indicator span {
+  background: var(--chalk-white-soft);
+}
+
+/* ── Bottom nav = wood strip with chalk pill buttons ─────────────────────── */
+.chalkboard-active .explanation-nav {
+  position: relative;
+  background: linear-gradient(180deg, var(--wood-mid) 0%, var(--wood-dark) 100%);
+  border-top: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
+  color: var(--chalk-white);
+  padding: 14px 16px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  gap: 10px;
+}
+/* Wood grain texture */
+.chalkboard-active .explanation-nav::before {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg,
+    rgba(0, 0, 0, 0.05) 0px,
+    rgba(0, 0, 0, 0.05) 1px,
+    transparent 1px, transparent 6px);
+}
+.chalkboard-active .explanation-nav > * { position: relative; z-index: 1; }
+/* Chalk tray strip tucked under the buttons */
+.chalkboard-active .explanation-nav::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 12px;
+  /* Chalk-piece hint: short colored segments along the strip */
+  background:
+    linear-gradient(90deg,
+      transparent 8%, var(--chalk-coral) 8%, var(--chalk-coral) 14%,
+      transparent 14%, transparent 22%, var(--chalk-gold) 22%, var(--chalk-gold) 28%,
+      transparent 28%, transparent 36%, var(--chalk-mint) 36%, var(--chalk-mint) 42%,
+      transparent 42%, transparent 50%, var(--chalk-sky) 50%, var(--chalk-sky) 56%,
+      transparent 56%, transparent 64%, var(--chalk-lavender) 64%, var(--chalk-lavender) 70%,
+      transparent 70%, transparent 78%, var(--chalk-pink) 78%, var(--chalk-pink) 84%,
+      transparent 84%),
+    linear-gradient(180deg, #6E4A26 0%, #4A2F16 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 4px, 100% 100%;
+  background-position: center bottom 3px, center;
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.45),
+    inset 0 -1px 2px rgba(255, 200, 140, 0.15);
+  opacity: 0.85;
+}
+/* Reserve room for the chalk tray strip */
+.chalkboard-active .explanation-nav {
+  padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + 14px);
+}
+
+/* "I didn't understand" link style */
+.chalkboard-active .explanation-nav-btn.simplify {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--chalk-white-dim);
+  text-decoration: none;
+  padding: 4px 2px 2px;
+  width: auto;
+  margin: 0 auto 4px;
+  display: inline-block;
+  align-self: center;
+}
+.chalkboard-active .explanation-nav-btn.simplify:hover {
+  border-bottom-color: var(--chalk-white);
+  color: var(--chalk-white);
+}
+
+/* Back/Next pills */
+.chalkboard-active .explanation-nav-btn.primary,
+.chalkboard-active .explanation-nav-btn.secondary {
+  border-radius: var(--r-pill);
+  border-bottom: none;
+  box-shadow: var(--shadow-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 14px 24px;
+  min-width: 110px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.chalkboard-active .explanation-nav-btn.primary {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
+  color: white;
+}
+.chalkboard-active .explanation-nav-btn.primary:hover {
+  background: linear-gradient(180deg, #5768D8 0%, var(--cb-action-primary-hover) 100%);
+}
+.chalkboard-active .explanation-nav-btn.primary:active {
+  transform: translateY(1px);
+  margin-top: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .explanation-nav-btn.secondary {
+  background: var(--cb-action-secondary);
+  color: var(--cb-action-secondary-ink);
+}
+.chalkboard-active .explanation-nav-btn.secondary:hover { background: #EEE2C1; }
+.chalkboard-active .explanation-nav-btn.secondary:active {
+  transform: translateY(1px);
+  margin-top: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .explanation-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

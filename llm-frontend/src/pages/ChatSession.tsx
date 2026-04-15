@@ -1456,7 +1456,7 @@ export default function ChatSession() {
 
   return (
     <>
-      <div className="app">
+      <div className={`app${sessionPhase === 'card_phase' ? ' chalkboard-active' : ''}`}>
         <nav className="nav-bar">
           <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
