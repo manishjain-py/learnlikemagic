@@ -79,39 +79,26 @@ export default function TopicSelect() {
         <>
           {/* Chapter landing section */}
           {(chapterSummary || refresherTopic) && (
-            <div className="chapter-landing" style={{ marginBottom: '20px' }}>
+            <div className="chapter-landing">
               {chapterSummary && (
-                <div className="chapter-landing-section" style={{ marginBottom: '12px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#4a5568', marginBottom: '4px' }}>
-                    What you'll learn
-                  </div>
-                  <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>{chapterSummary}</p>
+                <div className="chapter-landing-section">
+                  <div className="chapter-landing-label">What you'll learn</div>
+                  <p className="chapter-landing-text">{chapterSummary}</p>
                 </div>
               )}
               {refresherTopic && refresherTopic.topic_summary && (
-                <div className="chapter-landing-section" style={{ marginBottom: '12px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#4a5568', marginBottom: '4px' }}>
-                    What you'll need
-                  </div>
-                  <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>{refresherTopic.topic_summary}</p>
+                <div className="chapter-landing-section">
+                  <div className="chapter-landing-label">What you'll need</div>
+                  <p className="chapter-landing-text">{refresherTopic.topic_summary}</p>
                 </div>
               )}
               {refresherTopic && (
                 <button
-                  className="selection-card"
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(135deg, #f6e05e 0%, #ecc94b 100%)',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '12px 16px',
-                    borderRadius: '10px',
-                    textAlign: 'left',
-                  }}
+                  className="get-ready-btn"
                   onClick={() => handleSelect(refresherTopic)}
                 >
-                  <strong style={{ color: '#744210' }}>Get Ready</strong>
-                  <span style={{ display: 'block', fontSize: '0.85rem', color: '#975a16', marginTop: '4px' }}>
+                  <strong>Get Ready</strong>
+                  <span className="get-ready-btn-sub">
                     Review prerequisites before starting
                   </span>
                 </button>
@@ -120,7 +107,7 @@ export default function TopicSelect() {
           )}
 
           {/* Regular topics */}
-          <h3 style={{ fontSize: '1rem', color: '#4a5568', marginBottom: '10px' }}>Topics</h3>
+          <h3>Topics</h3>
           <div className="learning-path" data-testid="topic-list">
             {regularTopics.map((t, idx) => {
               const status = getTopicStatus(t);

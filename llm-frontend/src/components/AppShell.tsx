@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import '../App.css';
 
 export default function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Chalkboard theme scope: selection screens (/learn/*). Other AppShell
+  // routes (profile/history/report-card/report-issue) get their chalkboard
+  // pass in later steps.
+  const isChalkboardRoute = location.pathname.startsWith('/learn');
 
   // Close menu on outside click
   useEffect(() => {
@@ -27,7 +33,7 @@ export default function AppShell() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${isChalkboardRoute ? ' chalkboard-active' : ''}`}>
       <nav className="nav-bar">
         <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

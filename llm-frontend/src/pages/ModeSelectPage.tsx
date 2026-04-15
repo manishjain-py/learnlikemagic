@@ -112,14 +112,7 @@ export default function ModeSelectPage() {
   return (
     <>
       {sessionError && (
-        <div style={{
-          background: '#fee2e2',
-          color: '#991b1b',
-          padding: '12px 16px',
-          borderRadius: '8px',
-          marginBottom: '16px',
-          fontSize: '0.9rem',
-        }}>
+        <div className="session-error-banner">
           {sessionError}
         </div>
       )}

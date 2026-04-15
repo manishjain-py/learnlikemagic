@@ -11,9 +11,9 @@ Single source of truth for the redesign. Update as work progresses.
 
 ## Status
 
-- **Current step:** 4 — selection screens (pending user QA of step 3)
-- **Last commit:** step 3 — 11 check-in activities chalkboard-skinned
-- **% complete:** ~40% (design + tokens + learning card + check-ins done)
+- **Current step:** 5 — completion + scorecard + history (pending user QA of step 4)
+- **Last commit:** step 4 — selection screens chalkboard-skinned
+- **% complete:** ~50% (design + tokens + learning card + check-ins + selection done)
 
 ---
 
@@ -25,8 +25,8 @@ Single source of truth for the redesign. Update as work progresses.
 | 1 | Tokens + font loads in `App.css` | ✅ | CSS vars + font links, zero visible change | done |
 | 2 | Learning card re-skin | ✅ | `ChatSession.tsx` explanation slides (hero) | done |
 | 3 | Check-in components | ✅ | 11 activities, shared `.checkin-*` batch | done |
-| 4 | Selection screens | ⬜ NEXT | Subject / chapter / topic / mode-select | ~½ day |
-| 5 | Completion + scorecard + history | ⬜ | Session complete, exam review, report card | ~½ day |
+| 4 | Selection screens | ✅ | Subject / chapter / topic / mode-select | done |
+| 5 | Completion + scorecard + history | ⬜ NEXT | Session complete, exam review, report card | ~½ day |
 | 6 | Auth + onboarding | ⬜ | Login/signup/OTP/onboarding wizard | ~½ day |
 | 7 | Profile + enrichment + report-issue | ⬜ | | ~½ day |
 | 8 | Icon / logo SVG pass | ⬜ | Chalk logo, nav icons, mode icons | ~½ day |
@@ -65,6 +65,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked
 - **2026-04-15** — Step 1 complete. Chalkboard tokens added to `App.css` (board/wood/chalk/parchment palettes, font vars, spacing, radius, shadows). Font preconnect + stylesheet added to `index.html` (Inter 400-700, Caveat 500-700, JetBrains Mono 400-500). Legacy indigo/purple palette untouched. Build clean, 7 tests pass, zero visible change. CSS +1.7KB, HTML +0.5KB.
 - **2026-04-15** — Step 2 complete. Added `chalkboard-active` class to `.app` when `sessionPhase === 'card_phase'` (single JSX change in `ChatSession.tsx:1459`). Added ~200 lines of CSS scoped under `.chalkboard-active` — chalkboard surface with vignette + SVG doodle overlays, chalk-white text, Caveat handwritten headings, parchment visual inset, wood-toned top nav + progress bar, wood bottom nav with chalk-tray strip and chalk pill Back/Next buttons. Interactive/exam phases untouched. Build clean, 7 tests pass, CSS +8.5KB. Awaiting visual QA.
 - **2026-04-15** — Step 3 complete. CSS-only — no JSX changes since `.chalkboard-active` was already applied. ~200 lines covering all 11 check-in activities (PickOne, TrueFalse, FillBlank, SortBuckets, Sequence, SpotError, OddOneOut, PredictReveal, SwipeClassify, TapToEliminate, Match). Uniform patterns: chalk-white options with dashed borders, mint glow on correct, coral + shake on wrong, gold ring on selected, parchment popup for fill-blank input, chalk pill continue buttons. Existing `match-shake` animation untouched. Build clean, 7 tests pass.
+- **2026-04-15** — Step 4 complete. `AppShell` now applies `chalkboard-active` to `.app` when `location.pathname.startsWith('/learn')` — scoping the theme to selection routes (subject/chapter/topic/mode) while leaving profile/history/report-card untouched until later steps. Added ~290 lines of CSS covering: selection-step chalkboard surface with vignette, hand-written chalk h2/h3, chalk-spine style on subject cards, chalk-ghost back button, gold/dim breadcrumb, dashed chalk-list rows for learning-path with mint/gold variants for completed/in-progress, parchment "Get Ready" button, mode-selection descriptions + resume cards with chalk shadow, past-exams list, session-error banner, parchment enrichment prompt, mobile tightening. Also cleaned up inline styles in `TopicSelect.tsx`, `ModeSelection.tsx`, `ModeSelectPage.tsx` — replaced `style={{ color: '#666' ... }}` etc. with semantic classes (`.mode-desc`, `.mode-card-sub`, `.mode-practiced-note`, `.chapter-landing-label`, `.chapter-landing-text`, `.get-ready-btn`, `.past-exams-toggle`, `.past-exam-row`, `.session-error-banner`). Note: resume-card gradients kept inline (they're the intent — vivid CTAs pop against chalkboard). ExamReviewPage also under `/learn` — inherits chalkboard bg + wood nav but inner content unstyled until step 5. Build clean, 7 tests pass, CSS 78.6KB.
 
 _(append a bullet per session or step completion)_
 
