@@ -546,6 +546,7 @@ def _run_audio_generation(
     guideline_id: str = "",
 ):
     """Background task for TTS audio generation and S3 upload."""
+    import json as _json
     from shared.models.entities import TeachingGuideline, TopicExplanation
     from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
@@ -575,36 +576,45 @@ def _run_audio_generation(
 
         completed = 0
         failed = 0
+        errors: list[str] = []
 
         for guideline in guidelines:
             topic = guideline.topic_title or guideline.topic
             job_service.update_progress(job_id, current_item=topic, completed=completed, failed=failed)
 
-            # Get all explanation variants for this guideline
             explanations = db.query(TopicExplanation).filter(
                 TopicExplanation.guideline_id == guideline.id,
             ).all()
 
+            topic_had_failure = False
             for explanation in explanations:
                 try:
                     updated_cards = audio_svc.generate_for_topic_explanation(explanation)
                     if updated_cards is not None:
-                        # Persist updated cards_json with audio_urls back to DB
                         explanation.cards_json = updated_cards
                         attributes.flag_modified(explanation, "cards_json")
                         db.commit()
                 except Exception as e:
                     logger.error(f"Audio generation failed for {guideline.id}/{explanation.variant_key}: {e}")
                     db.rollback()
-                    failed += 1
+                    topic_had_failure = True
+                    errors.append(f"{topic} ({explanation.variant_key}): {e}")
 
-            completed += 1
+            if topic_had_failure:
+                failed += 1
+            else:
+                completed += 1
 
-        job_service.complete_job(job_id, detail=f"Audio generated for {completed} topics, {failed} failures")
+        job_service.update_progress(
+            job_id, current_item=None, completed=completed, failed=failed,
+            detail=_json.dumps({"generated": completed, "failed": failed, "errors": errors[:10]}),
+        )
+        final_status = "completed" if failed == 0 else "completed_with_errors"
+        job_service.release_lock(job_id, status=final_status)
 
     except Exception as e:
         logger.error(f"Audio generation job {job_id} failed: {e}")
-        job_service.fail_job(job_id, error=str(e))
+        job_service.release_lock(job_id, status="failed", error=str(e))
 
 
 def _run_explanation_generation(

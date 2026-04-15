@@ -748,3 +748,19 @@ export async function getCheckInJobStatus(
     `/admin/v2/books/${bookId}/check-in-jobs/latest${qs}`
   );
 }
+
+// ===== Audio Generation =====
+
+export async function generateAudio(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/generate-audio${qs}`,
+    { method: 'POST' }
+  );
+}

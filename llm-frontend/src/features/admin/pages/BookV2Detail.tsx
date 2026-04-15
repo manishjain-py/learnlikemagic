@@ -8,6 +8,7 @@ import {
   getExplanationStatus, getTopicExplanations, deleteExplanations,
   bulkOcrRetry, bulkOcrRerun, generateRefresher,
   generateCheckIns, getCheckInJobStatus, getCheckInStatus,
+  generateAudio,
   TopicCheckInStatusV2,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
@@ -60,12 +61,14 @@ const BookV2Detail: React.FC = () => {
   const [ocrJobs, setOcrJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [checkInJobs, setCheckInJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [checkInStatus, setCheckInStatus] = useState<Record<string, TopicCheckInStatusV2[]>>({});
+  const [audioJobs, setAudioJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
   const explPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const topicExplPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const ocrPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const checkInPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const audioPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     if (id) loadBook(true);
@@ -75,6 +78,7 @@ const BookV2Detail: React.FC = () => {
       Object.values(topicExplPollingRef.current).forEach(clearInterval);
       Object.values(ocrPollingRef.current).forEach(clearInterval);
       Object.values(checkInPollingRef.current).forEach(clearInterval);
+      Object.values(audioPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
@@ -207,6 +211,22 @@ const BookV2Detail: React.FC = () => {
     };
     poll();
     checkInPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
+  const startAudioPolling = useCallback((chapterId: string) => {
+    if (!id || audioPollingRef.current[chapterId]) return;
+    const poll = async () => {
+      try {
+        const job = await getLatestJobV2(id!, chapterId, 'v2_audio_generation');
+        setAudioJobs(prev => ({ ...prev, [chapterId]: job }));
+        if (['completed', 'failed', 'completed_with_errors'].includes(job.status)) {
+          clearInterval(audioPollingRef.current[chapterId]);
+          delete audioPollingRef.current[chapterId];
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    audioPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
 
   const loadExplanationStatus = useCallback(async (chapterId: string) => {
@@ -373,6 +393,17 @@ const BookV2Detail: React.FC = () => {
       startCheckInPolling(ch.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Check-in enrichment failed');
+    }
+  };
+
+  const handleGenerateAudio = async (ch: ChapterResponseV2) => {
+    if (!id) return;
+    try {
+      const job = await generateAudio(id, { chapterId: ch.id });
+      setAudioJobs(prev => ({ ...prev, [ch.id]: job }));
+      startAudioPolling(ch.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Audio generation failed');
     }
   };
 
@@ -914,6 +945,12 @@ const BookV2Detail: React.FC = () => {
                                   {checkInJobs[ch.id].current_item || 'Starting...'}
                                 </span>
                               )}
+                              <button onClick={() => handleGenerateAudio(ch)} style={manageLinkStyle}>Audio</button>
+                              {audioJobs[ch.id] && ['pending', 'running'].includes(audioJobs[ch.id].status) && (
+                                <span style={{ fontSize: '11px', color: '#7C3AED' }}>
+                                  {audioJobs[ch.id].current_item || 'Starting...'}
+                                </span>
+                              )}
                             </>
                           )}
                         </div>
@@ -987,6 +1024,36 @@ const BookV2Detail: React.FC = () => {
                               {detail.errors.map((e, i) => <li key={i}>{e}</li>)}
                             </ul>
                           )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* Audio generation progress/result banner */}
+                  {audioJobs[ch.id] && (() => {
+                    const aj = audioJobs[ch.id];
+                    const isRunning = ['pending', 'running'].includes(aj.status);
+                    const isDone = ['completed', 'completed_with_errors', 'failed'].includes(aj.status);
+                    if (isRunning) return (
+                      <div style={{ marginTop: '12px', backgroundColor: '#EDE9FE', color: '#5B21B6', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                        Generating audio{aj.current_item ? `: ${aj.current_item}` : '...'}
+                        {aj.total_items ? ` (${aj.completed_items + aj.failed_items}/${aj.total_items})` : ''}
+                      </div>
+                    );
+                    if (isDone) {
+                      const hasErrors = aj.status === 'failed';
+                      return (
+                        <div style={{
+                          marginTop: '12px',
+                          backgroundColor: hasErrors ? '#FEE2E2' : '#EDE9FE',
+                          color: hasErrors ? '#991B1B' : '#5B21B6',
+                          padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                        }}>
+                          <button onClick={() => setAudioJobs(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                          {aj.status === 'failed' && aj.error_message
+                            ? `Audio generation failed: ${aj.error_message}`
+                            : `Audio: ${aj.completed_items} topics processed, ${aj.failed_items} failures.`}
                         </div>
                       );
                     }
