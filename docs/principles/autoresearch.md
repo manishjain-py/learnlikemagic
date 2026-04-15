@@ -37,24 +37,3 @@ Every change is a commit. Improvements advance the branch. Failures get reset. T
 ### 7. Guard Against Overfitting
 
 A prompt tuned for "fractions with Riya" might fail on "geometry with a different student." Periodically validate against multiple topics and personas to ensure the prompt generalizes — not just memorizes one scenario.
-
-## Architecture (Karpathy → Ours)
-
-| Karpathy | Ours | Role |
-|----------|------|------|
-| `train.py` | `tutor/prompts/master_tutor_prompts.py` | The thing the agent modifies |
-| `prepare.py` | `evaluation/` pipeline | Fixed evaluation (read-only) |
-| `program.md` | `program.md` | Human-written agent instructions |
-| val_bpb (lower = better) | 5-dimension avg score (higher = better) | The metric |
-| 5 min training run | ~5-8 min simulated session + LLM judge | One experiment cycle |
-| `results.tsv` | `results.tsv` | Experiment log |
-| `analysis.ipynb` | Email reports | Human reviews results |
-
-## What We Added Beyond Karpathy's
-
-- **Multi-run averaging** — run 3x and average to reduce variance (~0.6 → ~0.35)
-- **Quick mode** — 12-turn runs for speculative ideas before committing to full evaluation
-- **Email reports** — per-iteration HTML reports with scores, conversation, prompt diff
-- **Rich evaluation** — 5 teaching dimensions with problem analysis, not just a single number
-- **Strategy guide** — phased approach (early: fix basics, mid: target patterns, advanced: creative shifts)
-- **Student simulator** — programmatic correct/incorrect enforcement via dice roll, not just LLM roleplay
