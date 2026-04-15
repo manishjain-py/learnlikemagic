@@ -10,10 +10,13 @@ export default function AppShell() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Chalkboard theme scope: selection screens (/learn/*). Other AppShell
-  // routes (profile/history/report-card/report-issue) get their chalkboard
-  // pass in later steps.
-  const isChalkboardRoute = location.pathname.startsWith('/learn');
+  // Chalkboard theme scope: selection (/learn/*), history (/history),
+  // and report card (/report-card). Profile/report-issue still on
+  // legacy styling until step 7.
+  const isChalkboardRoute =
+    location.pathname.startsWith('/learn') ||
+    location.pathname.startsWith('/history') ||
+    location.pathname.startsWith('/report-card');
 
   // Close menu on outside click
   useEffect(() => {

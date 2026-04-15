@@ -5047,3 +5047,658 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
     font-size: 1.75rem;
   }
 }
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 5: Completion + scorecard + history
+   Scope:
+     - ChatSession session-complete-card (standalone chalk card in chat)
+     - /history (SessionHistoryPage) under AppShell.chalkboard-active
+     - /report-card (ReportCardPage) under AppShell.chalkboard-active
+     - /learn/.../exam-review/:id (ExamReviewPage) under AppShell.chalkboard-active
+   ========================================================================== */
+
+/* ── Session-complete card (chalkboard island inside ChatSession) ─────── */
+.session-complete-card {
+  position: relative;
+  margin: 16px;
+  padding: 24px 20px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-board-inset), 0 6px 18px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  isolation: isolate;
+  overflow: hidden;
+}
+.session-complete-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 80% 75%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
+}
+.session-complete-card > * { position: relative; z-index: 1; }
+
+.session-complete-title {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.85rem;
+  color: var(--chalk-gold);
+  margin: 0 0 12px;
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.session-complete-label {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+  margin: 0 0 10px;
+}
+
+.session-complete-concepts { margin-bottom: 18px; }
+
+.session-complete-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.session-complete-chip {
+  display: inline-block;
+  background: rgba(142, 218, 206, 0.15);
+  border: 1px dashed rgba(142, 218, 206, 0.5);
+  color: var(--chalk-mint);
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.session-complete-prompt {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--chalk-white-soft);
+  margin: 0 0 16px;
+}
+
+.session-complete-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.session-complete-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.session-complete-btn--primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.session-complete-btn--primary:hover {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.session-complete-btn--ghost {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+}
+.session-complete-btn--ghost:hover {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+}
+
+.session-complete-summary-wrap {
+  text-align: center;
+  padding: 16px;
+}
+.session-complete-summary-wrap .session-complete-btn {
+  display: inline-block;
+  width: auto;
+  min-width: 220px;
+}
+
+
+/* ── AppShell shared overrides for /history + /report-card ───────────── */
+.chalkboard-active .page-title {
+  font-family: var(--font-hand);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0 0 8px;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .page-subtitle {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+.chalkboard-active .page-loading {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+
+.chalkboard-active .page-empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  border-radius: var(--r-md);
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+}
+.chalkboard-active .page-empty-state-icon {
+  font-size: 2.5rem;
+  opacity: 0.7;
+  margin-bottom: 1rem;
+}
+.chalkboard-active .page-empty-state-title {
+  color: var(--chalk-white);
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.chalkboard-active .page-empty-state-desc {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+
+.chalkboard-active .content-back-link {
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  background: none;
+  border: none;
+  font-weight: 600;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.chalkboard-active .content-back-link:hover {
+  text-decoration: underline;
+}
+
+/* Auth-style buttons used in empty states */
+.chalkboard-active .auth-btn.auth-btn-primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  padding: 10px 22px;
+  cursor: pointer;
+}
+.chalkboard-active .auth-btn.auth-btn-primary:hover {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+.chalkboard-active .auth-link {
+  color: var(--chalk-gold);
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.chalkboard-active .auth-link:hover { text-decoration: underline; }
+.chalkboard-active .auth-link:disabled {
+  color: var(--chalk-white-dim);
+  cursor: default;
+}
+.chalkboard-active .auth-error {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+
+/* ── Session History page (/history) ──────────────────────────────────── */
+.chalkboard-active .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+.chalkboard-active .stat-card {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.25);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  text-align: center;
+}
+.chalkboard-active .stat-value {
+  display: block;
+  font-family: var(--font-hand);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--chalk-gold);
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4);
+}
+.chalkboard-active .stat-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--chalk-white-dim);
+  margin-top: 2px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chalkboard-active .mode-filter-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .mode-filter-btn {
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  background: rgba(244, 244, 239, 0.05);
+  color: var(--chalk-white-soft);
+}
+.chalkboard-active .mode-filter-btn:hover {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+}
+.chalkboard-active .mode-filter-btn--active {
+  border: 1.5px solid var(--chalk-gold);
+  background: rgba(244, 199, 108, 0.15);
+  color: var(--chalk-gold);
+}
+
+.chalkboard-active .session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chalkboard-active .session-card {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chalkboard-active .session-card:hover {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .session-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .session-topic {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--chalk-white);
+}
+.chalkboard-active .session-mastery {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.chalkboard-active .session-card-meta {
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--chalk-white-dim);
+  flex-wrap: wrap;
+}
+.chalkboard-active .session-subject {
+  background: rgba(244, 199, 108, 0.15);
+  color: var(--chalk-gold);
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+.chalkboard-active .mode-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chalkboard-active .pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white-soft);
+}
+
+
+/* ── Report Card page (/report-card) ──────────────────────────────────── */
+.chalkboard-active .reportcard-stats-line {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--chalk-white-soft);
+  margin-bottom: 1.5rem;
+}
+
+.chalkboard-active .reportcard-section {
+  margin-bottom: 1.5rem;
+}
+.chalkboard-active .reportcard-section-title {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--chalk-white-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+
+.chalkboard-active .reportcard-subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.chalkboard-active .reportcard-subject-card {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #3F5C4A 0%, var(--board-green) 100%);
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--chalk-white);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.chalkboard-active .reportcard-subject-card:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #4A6C57 0%, #2F4A3C 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.4),
+    0 6px 0 rgba(0, 0, 0, 0.25),
+    0 8px 14px rgba(0, 0, 0, 0.3);
+}
+
+.chalkboard-active .reportcard-subject-name {
+  font-family: var(--font-hand);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .reportcard-subject-meta {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--chalk-white-dim);
+}
+
+/* Chapter section = chalk row card */
+.chalkboard-active .reportcard-chapter-section {
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.chalkboard-active .reportcard-chapter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.chalkboard-active .reportcard-chapter-name {
+  font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: var(--chalk-white);
+}
+
+.chalkboard-active .reportcard-topic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chalkboard-active .reportcard-topic-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--chalk-white);
+}
+.chalkboard-active .reportcard-topic-name {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white);
+  font-weight: 500;
+}
+.chalkboard-active .reportcard-topic-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chalkboard-active .reportcard-coverage {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--chalk-gold);
+}
+.chalkboard-active .reportcard-exam-score {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--chalk-mint);
+  background: rgba(142, 218, 206, 0.15);
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+}
+.chalkboard-active .reportcard-topic-detail {
+  padding: 6px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .reportcard-topic-meta {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--chalk-white-dim);
+}
+
+/* Coverage bar in chalk */
+.chalkboard-active .coverage-bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.chalkboard-active .coverage-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #FFCD7D 0%, var(--chalk-gold) 100%);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.4);
+  transition: width 0.3s ease;
+}
+
+/* Practice again = chalk pill secondary */
+.chalkboard-active .practice-again-btn {
+  padding: 8px 18px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  margin-top: 4px;
+}
+.chalkboard-active .practice-again-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+.chalkboard-active .practice-again-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalkboard-active .reportcard-subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+
+/* ── Exam Review page ─────────────────────────────────────────────────── */
+.chalkboard-active .exam-review-date {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--chalk-white-dim);
+  margin-bottom: 16px;
+}
+.chalkboard-active .exam-review-score {
+  text-align: center;
+  margin: 16px 0 24px;
+  padding: 20px;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-md);
+}
+.chalkboard-active .exam-review-score-value {
+  font-family: var(--font-hand);
+  font-size: 2.8rem;
+  font-weight: 700;
+  /* inline `style` color in JSX keeps semantic red/amber/green — let it win */
+  text-shadow: 0 0 2px currentColor;
+}
+.chalkboard-active .exam-review-score-pct {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white-soft);
+  margin-top: 4px;
+}
+.chalkboard-active .exam-review-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.chalkboard-active .exam-review-question {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+}
+.chalkboard-active .exam-review-question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.chalkboard-active .exam-review-question-num {
+  font-family: var(--font-hand);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--chalk-gold);
+}
+.chalkboard-active .exam-review-question-score {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.9rem;
+  /* inline style color wins */
+}
+.chalkboard-active .exam-review-question-text {
+  font-family: var(--font-body);
+  color: var(--chalk-white);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.chalkboard-active .exam-review-answer {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  font-size: 0.88rem;
+  margin: 4px 0;
+  line-height: 1.5;
+}
+.chalkboard-active .exam-review-answer strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+}
+.chalkboard-active .exam-review-rationale {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-parchment);
+}
+.chalkboard-active .exam-review-next-steps {
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.35);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .exam-review-next-steps strong {
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+.chalkboard-active .exam-review-next-steps ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--chalk-white-soft);
+}
+.chalkboard-active .exam-review-next-steps li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}

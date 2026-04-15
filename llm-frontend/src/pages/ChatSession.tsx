@@ -2240,57 +2240,34 @@ export default function ChatSession() {
               ) : null;
               })()}
               {isComplete && sessionMode === 'teach_me' && summary && (
-                <div className="session-complete-card" style={{
-                  margin: '16px',
-                  padding: '20px',
-                  background: '#f0fdf4',
-                  borderRadius: '16px',
-                  border: '1px solid #bbf7d0',
-                  textAlign: 'center',
-                }}>
-                  <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: '#166534' }}>
-                    Well done!
-                  </h3>
+                <div className="session-complete-card">
+                  <h3 className="session-complete-title">Well done!</h3>
                   {summary.concepts_taught && summary.concepts_taught.length > 0 && (
-                    <div style={{ marginBottom: '16px' }}>
-                      <p style={{ fontSize: '0.85rem', color: '#4a5568', margin: '0 0 8px' }}>You covered:</p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+                    <div className="session-complete-concepts">
+                      <p className="session-complete-label">You covered:</p>
+                      <div className="session-complete-chips">
                         {summary.concepts_taught.map((c, i) => (
-                          <span key={i} style={{
-                            display: 'inline-block',
-                            background: '#dcfce7',
-                            borderRadius: '12px',
-                            padding: '4px 12px',
-                            fontSize: '0.82rem',
-                            color: '#166534',
-                          }}>{c}</span>
+                          <span key={i} className="session-complete-chip">{c}</span>
                         ))}
                       </div>
                     </div>
                   )}
-                  <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 16px' }}>
+                  <p className="session-complete-prompt">
                     What would you like to do next?
                   </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="session-complete-actions">
                     <button
-                      className="action-button primary"
+                      className="session-complete-btn session-complete-btn--primary"
                       onClick={handleBack}
-                      style={{ width: '100%' }}
                     >
                       Continue Practicing
                     </button>
                     <button
-                      className="action-button"
+                      className="session-complete-btn session-complete-btn--ghost"
                       onClick={() => navigate(subject && chapter
                         ? `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`
                         : '/learn'
                       )}
-                      style={{
-                        width: '100%',
-                        background: 'white',
-                        color: '#667eea',
-                        border: '2px solid #667eea',
-                      }}
                     >
                       Explore More Topics
                     </button>
@@ -2298,9 +2275,9 @@ export default function ChatSession() {
                 </div>
               )}
               {isComplete && sessionMode !== 'teach_me' && (
-                <div style={{ textAlign: 'center', padding: '16px' }}>
+                <div className="session-complete-summary-wrap">
                   <button
-                    className="action-button primary"
+                    className="session-complete-btn session-complete-btn--primary"
                     onClick={() => setShowSummary(true)}
                   >
                     View Session Summary
