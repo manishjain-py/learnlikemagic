@@ -17,6 +17,99 @@
   --content-max-width: 600px;
   --font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+
+  /* ─────────────────────────────────────────────────────────────────────
+     Chalkboard redesign tokens (added 2026-04-15)
+     See docs/feature-development/kid-friendly-ui-redesign/design-brief.md
+     Pulled from mockups at llm-frontend/mockups/chalkboard/tokens.css.
+     Coexists with the legacy indigo/purple palette above during
+     incremental migration. Nothing references these yet — components
+     migrate screen by screen starting with ChatSession explanation cards.
+     ───────────────────────────────────────────────────────────────────── */
+
+  /* Chalkboard surfaces (one per subject) */
+  --board-green:       #2F4A3C;  /* math / default */
+  --board-green-deep:  #243B30;
+  --board-navy:        #1B2A4E;  /* science */
+  --board-brick:       #6B3030;  /* english */
+  --board-ochre:       #8B6F2B;  /* social studies */
+  --board-plum:        #5B2D4E;  /* hindi / regional */
+
+  /* Wood frame */
+  --wood-light:        #A06A3A;
+  --wood-mid:          #8B5A2B;
+  --wood-dark:         #6B4220;
+  --wood-deep:         #4B2D14;
+
+  /* Wall / paper surfaces (outside the chalkboard card) */
+  --wall-cream:        #E8DFCE;
+  --wall-warm:         #EFE6D3;
+  --parchment:         #F4EBD0;
+  --parchment-edge:    #D9C9A4;
+
+  /* Chalk palette (text + accents) */
+  --chalk-white:       #F4F4EF;
+  --chalk-white-soft:  rgba(244, 244, 239, 0.85);
+  --chalk-white-dim:   rgba(244, 244, 239, 0.55);
+  --chalk-coral:       #F4A7A0;
+  --chalk-gold:        #F4C76C;
+  --chalk-pink:        #F0B5C8;
+  --chalk-yellow:      #F2E27D;
+  --chalk-mint:        #8EDACE;
+  --chalk-sky:         #8DBFE5;
+  --chalk-lavender:    #C3A8E3;
+
+  /* Action colors (pill buttons) */
+  --cb-action-primary:        #5B6FE0;
+  --cb-action-primary-hover:  #4858C5;
+  --cb-action-secondary:      #F4EBD0;
+  --cb-action-secondary-ink:  #2B2B2B;
+
+  /* Ink (for parchment / light surfaces) */
+  --cb-ink-dark:  #1F1F1F;
+  --cb-ink-mid:   #3A3A3A;
+  --cb-ink-mute:  #6B6B6B;
+
+  /* Typography — loaded via <link> in index.html, font-display: swap */
+  --font-body:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  --font-hand:   'Caveat', 'Architects Daughter', cursive;
+  --font-mono:   'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Spacing scale (4px grid) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Radius (shorter alias-set for chalkboard components; legacy --radius-* still valid) */
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   20px;
+  --r-pill: 999px;
+
+  /* Shadows (chalkboard-specific) */
+  --shadow-frame:
+    0 12px 28px rgba(20, 14, 6, 0.35),
+    0 2px 4px rgba(20, 14, 6, 0.25),
+    inset 0 1px 0 rgba(255, 240, 200, 0.25),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-board-inset:
+    inset 0 0 60px rgba(0, 0, 0, 0.35),
+    inset 0 0 2px rgba(0, 0, 0, 0.5);
+  --shadow-chalk-piece:
+    0 2px 3px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  --shadow-pill:
+    0 4px 10px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --shadow-parchment:
+    inset 0 0 0 1px rgba(139, 105, 40, 0.2),
+    inset 0 2px 4px rgba(139, 105, 40, 0.15),
+    0 2px 6px rgba(20, 14, 6, 0.45);
 }
 
 * {

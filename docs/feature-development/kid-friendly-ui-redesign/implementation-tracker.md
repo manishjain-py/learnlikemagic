@@ -11,9 +11,9 @@ Single source of truth for the redesign. Update as work progresses.
 
 ## Status
 
-- **Current step:** 1 — tokens + font loads (not started)
-- **Last commit:** `326d087 design: chalkboard UI redesign brief + 6 hero screen mockups`
-- **% complete:** ~10% (design phase done, 0% implementation)
+- **Current step:** 2 — learning card re-skin (not started)
+- **Last commit:** step 1 done — tokens + font loads landed
+- **% complete:** ~15% (design + tokens done, 0% visible UI migrated)
 
 ---
 
@@ -22,8 +22,8 @@ Single source of truth for the redesign. Update as work progresses.
 | # | Step | Status | Scope | Est |
 |---|---|---|---|---|
 | 0 | Design brief + mockups | ✅ | 6 hero screens, direction picked | — |
-| 1 | Tokens + font loads in `App.css` | ⬜ NEXT | CSS vars + font links, zero visible change | ~30 min |
-| 2 | Learning card re-skin | ⬜ | `ChatSession.tsx` explanation slides (hero) | ~3–5 hrs |
+| 1 | Tokens + font loads in `App.css` | ✅ | CSS vars + font links, zero visible change | done |
+| 2 | Learning card re-skin | ⬜ NEXT | `ChatSession.tsx` explanation slides (hero) | ~3–5 hrs |
 | 3 | Check-in components | ⬜ | 11 activities, shared `.checkin-*` batch | ~1 day |
 | 4 | Selection screens | ⬜ | Subject / chapter / topic / mode-select | ~½ day |
 | 5 | Completion + scorecard + history | ⬜ | Session complete, exam review, report card | ~½ day |
@@ -62,6 +62,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked
 ## Progress log
 
 - **2026-04-15** — Design brief written. Direction A (Chalkboard) picked. Mockups built and approved by user. Ready to implement.
+- **2026-04-15** — Step 1 complete. Chalkboard tokens added to `App.css` (board/wood/chalk/parchment palettes, font vars, spacing, radius, shadows). Font preconnect + stylesheet added to `index.html` (Inter 400-700, Caveat 500-700, JetBrains Mono 400-500). Legacy indigo/purple palette untouched. Build clean, 7 tests pass, zero visible change. CSS +1.7KB, HTML +0.5KB.
 
 _(append a bullet per session or step completion)_
 
