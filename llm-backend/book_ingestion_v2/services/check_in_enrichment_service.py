@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _CHECK_IN_PROMPT = (_PROMPTS_DIR / "check_in_generation.txt").read_text()
+_CHECK_IN_REVIEW_PROMPT = (_PROMPTS_DIR / "check_in_review_refine.txt").read_text()
 
 # ─── Pydantic models for structured LLM output ───────────────────────────
 
@@ -139,6 +140,9 @@ MAX_SWIPE_ITEMS = 8
 PAIR_SIZE = 2  # Max check-ins at same insert position
 MIN_GAP_BETWEEN_PAIRS = 2  # Min content-card gap between different insert positions
 
+# Review-refine — number of accuracy-review passes after initial generation
+DEFAULT_REVIEW_ROUNDS = 1
+
 
 class CheckInEnrichmentService:
     """Enriches explanation cards with interactive check-in activities.
@@ -171,10 +175,19 @@ class CheckInEnrichmentService:
         self,
         guideline: TeachingGuideline,
         force: bool = False,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
         variant_keys: Optional[list[str]] = None,
         heartbeat_fn: Optional[callable] = None,
     ) -> dict:
         """Enrich all variants for a guideline with check-in cards.
+
+        Args:
+            guideline: The teaching guideline whose variants to enrich.
+            force: If True, regenerate even when check-ins already exist.
+            review_rounds: Number of accuracy review-refine passes after the
+                initial generation call. 0 disables the reviewer entirely.
+            variant_keys: Optional explicit list of variant keys to enrich.
+            heartbeat_fn: Optional callback for progress reporting.
 
         Returns: {"enriched": int, "skipped": int, "failed": int, "errors": [str]}
         """
@@ -195,7 +208,9 @@ class CheckInEnrichmentService:
             try:
                 if heartbeat_fn:
                     heartbeat_fn()
-                enriched = self._enrich_variant(explanation, guideline, force=force)
+                enriched = self._enrich_variant(
+                    explanation, guideline, force=force, review_rounds=review_rounds,
+                )
                 self._refresh_db_session()
                 if enriched:
                     result["enriched"] += 1
@@ -213,10 +228,15 @@ class CheckInEnrichmentService:
         book_id: str,
         chapter_id: Optional[str] = None,
         force: bool = False,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
         job_service=None,
         job_id: Optional[str] = None,
     ) -> dict:
-        """Enrich all guidelines in a chapter (or book) with check-in cards."""
+        """Enrich all guidelines in a chapter (or book) with check-in cards.
+
+        `review_rounds` controls how many accuracy review-refine passes run
+        after initial generation for each variant (0 disables the reviewer).
+        """
         query = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.book_id == book_id,
             TeachingGuideline.review_status == "APPROVED",
@@ -246,7 +266,9 @@ class CheckInEnrichmentService:
                     job_id, current_item=t,
                     completed=totals["enriched"], failed=totals["failed"],
                 )
-            result = self.enrich_guideline(guideline, force=force, heartbeat_fn=hb)
+            result = self.enrich_guideline(
+                guideline, force=force, review_rounds=review_rounds, heartbeat_fn=hb,
+            )
             totals["enriched"] += result["enriched"]
             totals["skipped"] += result["skipped"]
             totals["failed"] += result["failed"]
@@ -297,6 +319,7 @@ class CheckInEnrichmentService:
         explanation: TopicExplanation,
         guideline: TeachingGuideline,
         force: bool = False,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
     ) -> bool:
         """Enrich a single variant with check-in cards. Returns True if enriched."""
         cards = explanation.cards_json
@@ -324,7 +347,27 @@ class CheckInEnrichmentService:
             logger.warning(f"No check-ins generated for {topic} variant {explanation.variant_key}")
             return False
 
-        # Validate
+        # Review-refine rounds (accuracy-only). Fail-open: if a round errors, keep
+        # the prior output and continue — structural validation runs after.
+        for round_num in range(1, review_rounds + 1):
+            logger.info(
+                f"Check-in review-refine round {round_num}/{review_rounds} "
+                f"for {topic} variant {explanation.variant_key}"
+            )
+            refined = self._review_and_refine_check_ins(
+                output.check_ins, explanation_cards, guideline,
+            )
+            self._refresh_db_session()
+            if refined and refined.check_ins:
+                output = refined
+            else:
+                logger.warning(
+                    f"Review round {round_num} returned no usable output; "
+                    f"keeping prior check-ins for {topic} variant {explanation.variant_key}"
+                )
+                break
+
+        # Validate (runs on post-refine output)
         valid_check_ins = self._validate_check_ins(output.check_ins, explanation_cards)
         if not valid_check_ins:
             logger.warning(f"All check-ins failed validation for {topic} variant {explanation.variant_key}")
@@ -395,6 +438,61 @@ class CheckInEnrichmentService:
             return CheckInGenerationOutput.model_validate(parsed)
         except (LLMServiceError, json.JSONDecodeError, Exception) as e:
             logger.error(f"Check-in generation failed for {topic}: {e}")
+            return None
+
+    def _review_and_refine_check_ins(
+        self,
+        check_ins: list[CheckInDecision],
+        explanation_cards: list[dict],
+        guideline: TeachingGuideline,
+    ) -> Optional[CheckInGenerationOutput]:
+        """LLM review pass: verify accuracy of every check-in, rewrite in place.
+
+        Narrow scope: factual correctness only — marked correct answers, bucket
+        assignments, sequence order, pair matches, flagged errors. Does NOT
+        rewrite for tone, clarity, distractor quality, or cognitive level.
+        Returns None on error — caller preserves prior output.
+        """
+        topic = guideline.topic_title or guideline.topic
+        subject = guideline.subject or "Mathematics"
+        grade = str(guideline.grade) if guideline.grade else "3"
+
+        cards_for_prompt = [
+            {k: v for k, v in c.items() if k in ("card_idx", "card_type", "title", "content")}
+            for c in explanation_cards
+        ]
+        cards_json = json.dumps(cards_for_prompt, indent=2)
+        check_ins_json = json.dumps([ci.model_dump() for ci in check_ins], indent=2)
+
+        prompt = _CHECK_IN_REVIEW_PROMPT.replace(
+            "{grade}", grade,
+        ).replace(
+            "{topic_title}", topic,
+        ).replace(
+            "{subject}", subject,
+        ).replace(
+            "{guideline_text}", guideline.guideline or guideline.description or "",
+        ).replace(
+            "{explanation_cards_json}", cards_json,
+        ).replace(
+            "{check_ins_json}", check_ins_json,
+        ).replace(
+            "{output_schema}", json.dumps(
+                CheckInGenerationOutput.model_json_schema(), indent=2,
+            ),
+        )
+
+        try:
+            response = self.llm.call(
+                prompt=prompt,
+                reasoning_effort="medium",
+                json_schema=self._generation_schema,
+                schema_name="CheckInGenerationOutput",
+            )
+            parsed = self.llm.parse_json_response(response["output_text"])
+            return CheckInGenerationOutput.model_validate(parsed)
+        except (LLMServiceError, json.JSONDecodeError, Exception) as e:
+            logger.error(f"Check-in review-refine failed for {topic}: {e}")
             return None
 
     def _validate_check_ins(
