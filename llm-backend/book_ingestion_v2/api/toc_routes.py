@@ -64,7 +64,11 @@ def extract_toc_from_images(
             image_data_list.append(data)
 
         # Extract TOC
-        service = TOCExtractionService(llm_service=llm_service, ocr_model=config["model_id"])
+        service = TOCExtractionService(
+            llm_service=llm_service,
+            ocr_provider=config["provider"],
+            ocr_model=config["model_id"],
+        )
         chapters, raw_ocr_text = service.extract(
             book_id=book_id,
             image_data_list=image_data_list,

@@ -230,6 +230,133 @@ class ClaudeCodeAdapter:
             f"Last error: {last_error}"
         )
 
+    def call_vision_sync(
+        self,
+        prompt: str,
+        image_path: str,
+        max_turns: int = 5,
+        reasoning_effort: str = "low",
+    ) -> str:
+        """Vision call: ask Claude Code to Read an image from disk and return plain text.
+
+        The CLI's Read tool returns image files as multimodal content, which
+        lets Claude "see" the image within the same turn. We use max_turns>=2
+        because turn 1 is the Read tool call and turn 2 is the text response.
+
+        Args:
+            prompt: Instructions for what to extract from the image.
+            image_path: Absolute path to the image file on disk.
+            max_turns: Agent iterations to allow (default 5, minimum useful is 2).
+            reasoning_effort: low/medium/high/xhigh — OCR usually needs only "low".
+
+        Returns:
+            Raw text response from Claude (no JSON parsing).
+        """
+        self._ensure_cli_available()
+
+        full_prompt = (
+            f"Read the image at this absolute path: {image_path}\n\n"
+            f"Instructions for what to extract:\n{prompt}\n\n"
+            f"Respond with ONLY the extracted content. No preamble, no commentary, "
+            f"no markdown fences — just the text."
+        )
+
+        logger.info(json.dumps({
+            "step": "LLM_CALL_VISION",
+            "status": "starting",
+            "model": "claude-code",
+            "params": {
+                "image_path": image_path,
+                "prompt_length": len(full_prompt),
+                "max_turns": max_turns,
+                "reasoning_effort": reasoning_effort,
+            }
+        }))
+
+        effort_map = {"low": "low", "medium": "medium", "high": "high", "xhigh": "max"}
+        cli_effort = effort_map.get(reasoning_effort, "low")
+
+        cmd = [
+            "claude",
+            "-p",
+            "--output-format", "json",
+            "--dangerously-skip-permissions",
+            "--no-session-persistence",
+            "--max-turns", str(max_turns),
+            "--model", "claude-opus-4-6",
+            "--effort", cli_effort,
+        ]
+
+        clean_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
+        last_error = None
+        for attempt in range(self.max_retries):
+            start_time = time.time()
+            try:
+                result = subprocess.run(
+                    cmd,
+                    input=full_prompt,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                    env=clean_env,
+                )
+            except subprocess.TimeoutExpired:
+                raise ClaudeCodeError(
+                    f"Claude Code CLI (vision) timed out after {self.timeout}s"
+                )
+
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            if result.returncode != 0:
+                error_msg = result.stderr[:500]
+                if self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
+                    wait = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"Retryable vision CLI error, waiting {wait}s (attempt {attempt + 1}/{self.max_retries})")
+                    time.sleep(wait)
+                    continue
+                raise ClaudeCodeError(
+                    f"Claude Code CLI (vision) exited with code {result.returncode}: {error_msg}"
+                )
+
+            try:
+                cli_output = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                raise ClaudeCodeError(
+                    f"Failed to parse Claude Code vision output as JSON: "
+                    f"{result.stdout[:500]}"
+                )
+
+            if cli_output.get("is_error"):
+                error_msg = cli_output.get("result", "unknown error")
+                if self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
+                    wait = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(f"Retryable vision error, waiting {wait}s (attempt {attempt + 1}/{self.max_retries}): {error_msg}")
+                    time.sleep(wait)
+                    last_error = error_msg
+                    continue
+                raise ClaudeCodeError(f"Claude Code (vision) returned error: {error_msg}")
+
+            response_text = cli_output.get("result", "")
+
+            logger.info(json.dumps({
+                "step": "LLM_CALL_VISION",
+                "status": "complete",
+                "model": "claude-code",
+                "output": {"response_length": len(response_text)},
+                "duration_ms": duration_ms,
+                "cost_usd": cli_output.get("total_cost_usd"),
+                "num_turns": cli_output.get("num_turns"),
+                "attempt": attempt + 1,
+            }))
+
+            return response_text
+
+        raise ClaudeCodeError(
+            f"Claude Code CLI (vision) failed after {self.max_retries} attempts. "
+            f"Last error: {last_error}"
+        )
+
     def _build_prompt(
         self,
         prompt: str,

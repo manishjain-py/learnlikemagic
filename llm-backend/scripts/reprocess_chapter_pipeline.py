@@ -102,7 +102,10 @@ def step1_regenerate_ocr(book_id: str, chapter_id: str):
 
         # Get OCR model from config
         config = LLMConfigService(db).get_config(LLM_CONFIG_KEY)
-        ocr_service = get_ocr_service(model=config["model_id"])
+        ocr_service = get_ocr_service(
+            provider=config["provider"],
+            model=config["model_id"],
+        )
 
         chapter = chapter_repo.get_by_id(chapter_id)
         pages = page_repo.get_by_chapter_id(chapter_id)

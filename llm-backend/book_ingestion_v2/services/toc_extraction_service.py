@@ -31,9 +31,9 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 class TOCExtractionService:
     """Extracts structured TOC from page images using OCR + LLM."""
 
-    def __init__(self, llm_service: LLMService, ocr_model: str):
+    def __init__(self, llm_service: LLMService, ocr_provider: str, ocr_model: str):
         self.llm_service = llm_service
-        self.ocr_service = OCRService(model=ocr_model)
+        self.ocr_service = OCRService(provider=ocr_provider, model=ocr_model)
         self.s3_client = get_s3_client()
 
     def extract(

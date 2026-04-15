@@ -43,7 +43,10 @@ class ChapterPageService:
         self.s3_client = get_s3_client()
 
         ocr_config = LLMConfigService(db).get_config("ocr")
-        self.ocr_service = get_ocr_service(model=ocr_config["model_id"])
+        self.ocr_service = get_ocr_service(
+            provider=ocr_config["provider"],
+            model=ocr_config["model_id"],
+        )
 
     def upload_page(
         self,
@@ -316,7 +319,10 @@ class ChapterPageService:
 
         # Re-init OCR service in this session
         ocr_config = LLMConfigService(db).get_config("ocr")
-        self.ocr_service = get_ocr_service(model=ocr_config["model_id"])
+        self.ocr_service = get_ocr_service(
+            provider=ocr_config["provider"],
+            model=ocr_config["model_id"],
+        )
 
         job_service = ChapterJobService(db)
         chapter = self.chapter_repo.get_by_id(chapter_id)
