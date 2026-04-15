@@ -11,9 +11,9 @@ Single source of truth for the redesign. Update as work progresses.
 
 ## Status
 
-- **Current step:** 3 — check-in components (pending user QA of step 2)
-- **Last commit:** step 2 — learning card chalkboard skin landed, awaiting visual review
-- **% complete:** ~25% (design + tokens + learning card skinned)
+- **Current step:** 4 — selection screens (pending user QA of step 3)
+- **Last commit:** step 3 — 11 check-in activities chalkboard-skinned
+- **% complete:** ~40% (design + tokens + learning card + check-ins done)
 
 ---
 
@@ -24,8 +24,8 @@ Single source of truth for the redesign. Update as work progresses.
 | 0 | Design brief + mockups | ✅ | 6 hero screens, direction picked | — |
 | 1 | Tokens + font loads in `App.css` | ✅ | CSS vars + font links, zero visible change | done |
 | 2 | Learning card re-skin | ✅ | `ChatSession.tsx` explanation slides (hero) | done |
-| 3 | Check-in components | ⬜ NEXT | 11 activities, shared `.checkin-*` batch | ~1 day |
-| 4 | Selection screens | ⬜ | Subject / chapter / topic / mode-select | ~½ day |
+| 3 | Check-in components | ✅ | 11 activities, shared `.checkin-*` batch | done |
+| 4 | Selection screens | ⬜ NEXT | Subject / chapter / topic / mode-select | ~½ day |
 | 5 | Completion + scorecard + history | ⬜ | Session complete, exam review, report card | ~½ day |
 | 6 | Auth + onboarding | ⬜ | Login/signup/OTP/onboarding wizard | ~½ day |
 | 7 | Profile + enrichment + report-issue | ⬜ | | ~½ day |
@@ -64,6 +64,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked
 - **2026-04-15** — Design brief written. Direction A (Chalkboard) picked. Mockups built and approved by user. Ready to implement.
 - **2026-04-15** — Step 1 complete. Chalkboard tokens added to `App.css` (board/wood/chalk/parchment palettes, font vars, spacing, radius, shadows). Font preconnect + stylesheet added to `index.html` (Inter 400-700, Caveat 500-700, JetBrains Mono 400-500). Legacy indigo/purple palette untouched. Build clean, 7 tests pass, zero visible change. CSS +1.7KB, HTML +0.5KB.
 - **2026-04-15** — Step 2 complete. Added `chalkboard-active` class to `.app` when `sessionPhase === 'card_phase'` (single JSX change in `ChatSession.tsx:1459`). Added ~200 lines of CSS scoped under `.chalkboard-active` — chalkboard surface with vignette + SVG doodle overlays, chalk-white text, Caveat handwritten headings, parchment visual inset, wood-toned top nav + progress bar, wood bottom nav with chalk-tray strip and chalk pill Back/Next buttons. Interactive/exam phases untouched. Build clean, 7 tests pass, CSS +8.5KB. Awaiting visual QA.
+- **2026-04-15** — Step 3 complete. CSS-only — no JSX changes since `.chalkboard-active` was already applied. ~200 lines covering all 11 check-in activities (PickOne, TrueFalse, FillBlank, SortBuckets, Sequence, SpotError, OddOneOut, PredictReveal, SwipeClassify, TapToEliminate, Match). Uniform patterns: chalk-white options with dashed borders, mint glow on correct, coral + shake on wrong, gold ring on selected, parchment popup for fill-blank input, chalk pill continue buttons. Existing `match-shake` animation untouched. Build clean, 7 tests pass.
 
 _(append a bullet per session or step completion)_
 

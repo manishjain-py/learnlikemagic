@@ -4319,3 +4319,291 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   cursor: not-allowed;
 }
 
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 3: Check-in activities
+   All 11 check-in formats get chalk styling on the existing chalkboard surface.
+   Scoped under .chalkboard-active (already added in step 2 on card_phase).
+   Covers: PickOne, TrueFalse, FillBlank, SortBuckets, Sequence, SpotError,
+   OddOneOut, PredictReveal, SwipeClassify, TapToEliminate, MatchPairs.
+   ========================================================================== */
+
+/* ── Shared surfaces: instruction / hint / success message ───────────────── */
+.chalkboard-active .checkin-instruction,
+.chalkboard-active .match-instruction {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.35), 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .checkin-hint,
+.chalkboard-active .match-hint {
+  color: var(--chalk-gold);
+  background: rgba(244, 199, 108, 0.1);
+  border: 1px dashed rgba(244, 199, 108, 0.45);
+}
+.chalkboard-active .checkin-success-message,
+.chalkboard-active .match-success-message {
+  color: var(--chalk-white);
+  background: rgba(142, 218, 206, 0.15);
+  border: 1px solid var(--chalk-mint);
+  text-shadow: 0 0 4px rgba(142, 218, 206, 0.35);
+}
+.chalkboard-active .checkin-continue-btn,
+.chalkboard-active .match-continue-btn {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 14px 32px;
+}
+.chalkboard-active .checkin-continue-btn:hover,
+.chalkboard-active .match-continue-btn:hover {
+  background: linear-gradient(180deg, #5768D8 0%, var(--cb-action-primary-hover) 100%);
+}
+
+/* ── Generic option / item buttons across all activities ─────────────────── */
+.chalkboard-active .checkin-option-btn,
+.chalkboard-active .tf-btn,
+.chalkboard-active .sort-item,
+.chalkboard-active .seq-item,
+.chalkboard-active .error-step,
+.chalkboard-active .odd-item,
+.chalkboard-active .predict-option,
+.chalkboard-active .eliminate-option,
+.chalkboard-active .match-item,
+.chalkboard-active .swipe-btn {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .checkin-option-btn:hover:not(:disabled),
+.chalkboard-active .tf-btn:hover:not(:disabled),
+.chalkboard-active .sort-item:hover:not(:disabled),
+.chalkboard-active .seq-item:hover:not(:disabled),
+.chalkboard-active .error-step:hover:not(:disabled),
+.chalkboard-active .odd-item:hover:not(:disabled),
+.chalkboard-active .predict-option:hover:not(:disabled),
+.chalkboard-active .eliminate-option:hover:not(:disabled),
+.chalkboard-active .match-item:hover:not(:disabled),
+.chalkboard-active .swipe-btn:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+  border-style: solid;
+}
+
+/* Correct / matched state — mint glow */
+.chalkboard-active .checkin-option-btn.correct,
+.chalkboard-active .tf-btn.correct,
+.chalkboard-active .error-step.correct,
+.chalkboard-active .odd-item.correct,
+.chalkboard-active .predict-option.correct,
+.chalkboard-active .eliminate-option.correct,
+.chalkboard-active .match-item.matched {
+  background: rgba(142, 218, 206, 0.18);
+  border: 1.5px solid var(--chalk-mint);
+  color: var(--chalk-white);
+  box-shadow: 0 0 14px rgba(142, 218, 206, 0.3);
+}
+
+/* Selected (picked but not yet verified) — gold */
+.chalkboard-active .match-item.selected,
+.chalkboard-active .sort-item.selected,
+.chalkboard-active .predict-option.selected {
+  background: rgba(244, 199, 108, 0.12);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-white);
+  box-shadow: 0 0 0 2px rgba(244, 199, 108, 0.15);
+}
+
+/* Wrong state — coral; keep the existing match-shake animation */
+.chalkboard-active .checkin-option-btn.wrong,
+.chalkboard-active .tf-btn.tf-wrong,
+.chalkboard-active .sort-bucket.wrong,
+.chalkboard-active .seq-item.wrong,
+.chalkboard-active .error-step.wrong,
+.chalkboard-active .odd-item.wrong,
+.chalkboard-active .predict-option.wrong-pick,
+.chalkboard-active .eliminate-option.wrong,
+.chalkboard-active .match-item.wrong,
+.chalkboard-active .swipe-card.wrong {
+  background: rgba(244, 167, 160, 0.15);
+  border: 1.5px solid var(--chalk-coral);
+  color: var(--chalk-white);
+}
+
+/* TF's "here's the right answer" highlight on the un-picked button */
+.chalkboard-active .tf-btn.tf-right {
+  border: 1.5px solid var(--chalk-mint);
+}
+
+/* Auto-revealed (we gave up waiting) — gold/amber flavor */
+.chalkboard-active .match-item.auto-revealed,
+.chalkboard-active .sort-placed-item.auto-revealed {
+  background: rgba(244, 199, 108, 0.12);
+  border-color: var(--chalk-gold);
+  color: var(--chalk-white);
+}
+
+/* ── True/False statement ────────────────────────────────────────────────── */
+.chalkboard-active .tf-statement {
+  background: rgba(244, 244, 239, 0.06);
+  border: 1px solid rgba(244, 244, 239, 0.2);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+
+/* ── Fill-the-blank ──────────────────────────────────────────────────────── */
+.chalkboard-active .fill-sentence {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+.chalkboard-active .fill-blank-slot {
+  border-bottom-color: var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .fill-blank-slot.filled {
+  border-bottom-color: var(--chalk-mint);
+  color: var(--chalk-mint);
+}
+
+/* Fill-blank input modal — parchment popup on dimmed chalkboard */
+.chalkboard-active .iq-popup-overlay { background: rgba(0, 0, 0, 0.6); }
+.chalkboard-active .iq-popup {
+  background: var(--parchment);
+  border: 1px solid var(--parchment-edge);
+  color: var(--cb-ink-dark);
+  box-shadow: var(--shadow-parchment), 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+.chalkboard-active .iq-popup-label { color: var(--cb-ink-mid); }
+.chalkboard-active .iq-popup-input {
+  background: white;
+  border: 1px solid var(--parchment-edge);
+  color: var(--cb-ink-dark);
+  font-family: var(--font-body);
+}
+.chalkboard-active .iq-popup-input:focus {
+  border-color: var(--cb-action-primary);
+  box-shadow: 0 0 0 3px rgba(91, 111, 224, 0.2);
+}
+.chalkboard-active .iq-popup-done {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
+  border-radius: var(--r-pill);
+  color: white;
+  box-shadow: var(--shadow-pill);
+}
+
+/* ── Sort buckets ────────────────────────────────────────────────────────── */
+.chalkboard-active .sort-bucket {
+  background: rgba(244, 244, 239, 0.04);
+  border: 2px dashed rgba(244, 244, 239, 0.35);
+}
+.chalkboard-active .sort-bucket.active {
+  background: rgba(244, 199, 108, 0.1);
+  border-color: var(--chalk-gold);
+  border-style: solid;
+}
+.chalkboard-active .sort-bucket-label {
+  color: var(--chalk-white-soft);
+  border-bottom-color: rgba(244, 244, 239, 0.25);
+}
+.chalkboard-active .sort-placed-item {
+  background: rgba(142, 218, 206, 0.15);
+  color: var(--chalk-white);
+}
+
+/* ── Sequence slots ──────────────────────────────────────────────────────── */
+.chalkboard-active .seq-slot {
+  background: rgba(244, 244, 239, 0.04);
+  border: 2px dashed rgba(244, 244, 239, 0.3);
+}
+.chalkboard-active .seq-slot.next {
+  background: rgba(244, 199, 108, 0.1);
+  border-color: var(--chalk-gold);
+  border-style: solid;
+}
+.chalkboard-active .seq-slot.filled {
+  background: rgba(142, 218, 206, 0.15);
+  border-color: var(--chalk-mint);
+  border-style: solid;
+}
+.chalkboard-active .seq-slot-number {
+  background: rgba(244, 244, 239, 0.25);
+  color: var(--chalk-white);
+}
+.chalkboard-active .seq-slot.next .seq-slot-number {
+  background: var(--chalk-gold);
+  color: var(--board-green-deep);
+}
+.chalkboard-active .seq-slot.filled .seq-slot-number {
+  background: var(--chalk-mint);
+  color: var(--board-green-deep);
+}
+.chalkboard-active .seq-slot-value { color: var(--chalk-white); }
+
+/* ── Spot-the-error steps ────────────────────────────────────────────────── */
+.chalkboard-active .error-step-num {
+  background: rgba(244, 244, 239, 0.18);
+  color: var(--chalk-white);
+}
+.chalkboard-active .error-step.correct .error-step-num {
+  background: var(--chalk-mint);
+  color: var(--board-green-deep);
+}
+.chalkboard-active .error-step-text {
+  color: var(--chalk-white);
+  font-family: var(--font-mono);
+}
+
+/* ── Predict-then-reveal ─────────────────────────────────────────────────── */
+.chalkboard-active .predict-reveal {
+  background: rgba(244, 199, 108, 0.1);
+  border: 1px dashed var(--chalk-gold);
+  color: var(--chalk-white);
+}
+.chalkboard-active .predict-reveal-text {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+
+/* ── Swipe classify ──────────────────────────────────────────────────────── */
+.chalkboard-active .swipe-labels { color: var(--chalk-white); }
+.chalkboard-active .swipe-label-left,
+.chalkboard-active .swipe-label-right {
+  background: rgba(244, 244, 239, 0.06);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+}
+.chalkboard-active .swipe-card {
+  background: rgba(244, 244, 239, 0.1);
+  border: 1.5px solid rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .swipe-card-text { color: var(--chalk-white); }
+.chalkboard-active .swipe-card-counter { color: var(--chalk-white-dim); }
+.chalkboard-active .swipe-btn-left,
+.chalkboard-active .swipe-btn-right {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px solid var(--chalk-white-dim);
+  color: var(--chalk-white);
+}
+
+/* ── Tap-to-eliminate ────────────────────────────────────────────────────── */
+.chalkboard-active .eliminate-status {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .eliminate-option.eliminated {
+  background: rgba(244, 244, 239, 0.02);
+  border-style: dotted;
+  color: var(--chalk-white-dim);
+  opacity: 0.5;
+}
+.chalkboard-active .strikethrough {
+  text-decoration-color: var(--chalk-coral);
+  text-decoration-thickness: 2px;
+}
