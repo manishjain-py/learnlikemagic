@@ -112,7 +112,7 @@ export default function ModeSelectPage() {
   return (
     <>
       {sessionError && (
-        <div className="session-error-banner">
+        <div className="session-error-banner" role="alert" aria-live="assertive">
           {sessionError}
         </div>
       )}

@@ -49,8 +49,8 @@
 
   /* Chalk palette (text + accents) */
   --chalk-white:       #F4F4EF;
-  --chalk-white-soft:  rgba(244, 244, 239, 0.85);
-  --chalk-white-dim:   rgba(244, 244, 239, 0.55);
+  --chalk-white-soft:  rgba(244, 244, 239, 0.88);
+  --chalk-white-dim:   rgba(244, 244, 239, 0.68);
   --chalk-coral:       #F4A7A0;
   --chalk-gold:        #F4C76C;
   --chalk-pink:        #F0B5C8;
@@ -6981,4 +6981,145 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   font-family: var(--font-body);
   color: var(--chalk-white-soft);
   margin-bottom: 24px;
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 9: Polish + A11y
+   - Fix nav-center indigo gradient bug on chalkboard (text-fill reset)
+   - Keyboard-only focus ring (gold, 2px)
+   - prefers-reduced-motion fallback
+   - Mobile tightening at ≤480px
+   ========================================================================== */
+
+/* Nav title was indigo-gradient + background-clip:text + fill:transparent.
+   Step 2 set color but didn't clear the fill — on chalkboard the text was
+   effectively transparent. Reset both so chalk-white wins. */
+.chalkboard-active .nav-center {
+  background: none !important;
+  -webkit-text-fill-color: var(--chalk-white);
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--chalk-white);
+}
+.auth-page.chalkboard-active .nav-center {
+  -webkit-text-fill-color: var(--chalk-white);
+}
+
+/* ── Keyboard focus ring (gold chalk) ───────────────────────────────────── */
+.chalkboard-active button:focus-visible,
+.chalkboard-active a:focus-visible,
+.chalkboard-active input:focus-visible,
+.chalkboard-active select:focus-visible,
+.chalkboard-active textarea:focus-visible,
+.auth-page.chalkboard-active button:focus-visible,
+.auth-page.chalkboard-active a:focus-visible,
+.auth-page.chalkboard-active input:focus-visible,
+.auth-page.chalkboard-active select:focus-visible,
+.auth-page.chalkboard-active textarea:focus-visible {
+  outline: 2px solid var(--chalk-gold);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(244, 199, 108, 0.25);
+}
+/* Inputs already have an internal focus ring — keep outline-only, not a
+   double-box-shadow, to avoid the ring stacking on top of the input glow. */
+.chalkboard-active .auth-field input:focus-visible,
+.chalkboard-active .auth-field select:focus-visible,
+.chalkboard-active .auth-field textarea:focus-visible,
+.chalkboard-active .otp-input:focus-visible,
+.chalkboard-active .report-issue-textarea:focus-visible,
+.chalkboard-active .enrichment-open-textbox textarea:focus-visible,
+.auth-page.chalkboard-active .auth-field input:focus-visible,
+.auth-page.chalkboard-active .auth-field select:focus-visible,
+.auth-page.chalkboard-active .auth-field textarea:focus-visible,
+.auth-page.chalkboard-active .otp-input:focus-visible {
+  outline: none;
+  /* box-shadow from the base :focus rule already provides the glow */
+}
+
+/* ── Reduced motion support ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .chalkboard-active *,
+  .chalkboard-active *::before,
+  .chalkboard-active *::after,
+  .auth-page.chalkboard-active *,
+  .auth-page.chalkboard-active *::before,
+  .auth-page.chalkboard-active *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Hover transforms that translate/scale the element disappear — keep
+     visual feedback via colour change only. */
+  .chalkboard-active .selection-card:hover,
+  .chalkboard-active .reportcard-subject-card:hover,
+  .chalkboard-active .session-complete-btn--primary:hover,
+  .chalkboard-active .grade-btn.selected,
+  .auth-page.chalkboard-active .auth-btn-primary:hover,
+  .auth-page.chalkboard-active .grade-btn.selected {
+    transform: none !important;
+  }
+}
+
+/* ── Mobile tightening at ≤480px ────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Nav bar — reduce logo+title so we don't wrap */
+  .chalkboard-active .nav-center {
+    font-size: 0.85rem;
+    gap: 4px;
+  }
+  .chalkboard-active .nav-logo {
+    width: 22px;
+    height: 22px;
+  }
+  .chalkboard-active .nav-home-btn,
+  .chalkboard-active .nav-user-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Selection step — slightly tighter */
+  .chalkboard-active .app-content {
+    padding: 16px;
+  }
+
+  /* Stats grid — keep 2-up but tighten */
+  .chalkboard-active .stats-grid {
+    gap: 8px;
+  }
+  .chalkboard-active .stat-value {
+    font-size: 1.5rem;
+  }
+
+  /* Report card subject grid — one-up on mobile */
+  .chalkboard-active .reportcard-subject-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Exam review score — slightly smaller */
+  .chalkboard-active .exam-review-score-value {
+    font-size: 2.2rem;
+  }
+
+  /* Session complete card — tighter padding */
+  .session-complete-card {
+    margin: 12px;
+    padding: 20px 16px;
+  }
+  .session-complete-title {
+    font-size: 1.6rem;
+  }
+}
+
+/* Touch targets: ensure small chalkboard buttons hit 44x44 minimum */
+@media (pointer: coarse) {
+  .chalkboard-active .mode-filter-btn,
+  .chalkboard-active .past-exams-toggle,
+  .chalkboard-active .info-toggle,
+  .chalkboard-active .back-button {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
 }

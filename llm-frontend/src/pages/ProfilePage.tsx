@@ -68,7 +68,7 @@ export default function ProfilePage() {
     <div className="app-content-inner">
       <h2 className="page-title">Profile & Settings</h2>
 
-      {error && <div className="auth-error">{error}</div>}
+      {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
       {success && <div className="auth-success">{success}</div>}
 
       <form onSubmit={handleSave} className="auth-form">

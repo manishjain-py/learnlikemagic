@@ -11,9 +11,9 @@ Single source of truth for the redesign. Update as work progresses.
 
 ## Status
 
-- **Current step:** 9 — polish + QA (pending user QA of step 8)
-- **Last commit:** step 8 — chalk logo + favicon swap
-- **% complete:** ~92% (only polish/QA remains)
+- **Current step:** ✅ ALL 9 STEPS COMPLETE — ready for PR
+- **Last commit:** step 9 — polish (nav fix, A11y, reduced-motion, mobile)
+- **% complete:** 100% (awaiting final user QA before opening PR)
 
 ---
 
@@ -30,7 +30,7 @@ Single source of truth for the redesign. Update as work progresses.
 | 6 | Auth + onboarding | ✅ | Login/signup/OTP/onboarding wizard | done |
 | 7 | Profile + enrichment + report-issue | ✅ | | done |
 | 8 | Icon / logo SVG pass | ✅ | Chalk logo, nav icons, mode icons | done |
-| 9 | Polish + QA | ⬜ NEXT | Contrast, mobile, animation timing, A11y | ~½ day |
+| 9 | Polish + QA | ✅ | Contrast, mobile, animation timing, A11y | done |
 
 **Total estimate:** 3–4 weeks focused work. Each numbered step ends in a commit, and I pause for review before the next step.
 
@@ -70,8 +70,9 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked
 - **2026-04-15** — Step 6 complete. Added `chalkboard-active` class to every `.auth-page` root across all 9 auth pages (LoginPage, EmailLogin, EmailSignup, EmailVerify, PhoneLogin, OTPVerify, ForgotPassword, OAuthCallback, OnboardingFlow) — 11 total JSX spots touched via sed. Added ~440 lines of CSS scoped under `.auth-page.chalkboard-active`: (1) wood-toned room bg; (2) `.auth-container` redrawn as wood-framed chalkboard via ::before pseudo-element (matches the real-app frame + vignette aesthetic); (3) chalk-white title + subtitle in handwritten Caveat, body text in Inter; (4) dashed chalk inputs with gold focus ring + placeholder dim chalk; (5) parchment primary pill, mint phone pill, gold email pill, chalk-ghost Google pill, chalk-outlined "auth-btn-outline" selected → gold; (6) OTP 6-digit squares with hand-written digits and gold focus glow; (7) onboarding progress dots — dim → gold (active, pulse scale) → mint (completed); (8) grade-grid (12 grades) with chalk-outlined squares, gold glow on select; (9) board-list using auth-btn-outline styling; (10) mobile tightening under 480px. Only inline style kept: `{ marginTop: '16px' }` on resend buttons (harmless). Build clean, 7 tests pass, CSS 104.5KB (+12.4KB).
 - **2026-04-15** — Step 7 complete. Extended `AppShell` `chalkboard-active` to cover `/profile` and `/report-issue` — this completes the student-facing chalkboard skin (admin routes still excluded). Added ~500 lines of CSS. (1) **ProfilePage**: re-scoped `auth-form`, `auth-field`, `auth-btn`, `auth-success` under `.chalkboard-active` (step 6 scoped them under `.auth-page.chalkboard-active` which doesn't match AppShell mode); profile-section gets dashed chalk divider + handwritten h3; profile-info dim chalk; select dropdown option bg set to wood-dark for readable OS popup. (2) **EnrichmentPage**: gold parchment CTA card, gold→mint progress bar, parchment migration banner, expandable chalk sections with mint-dot filled indicator, chip system (dim chalk default, gold-filled selected), tag input with gold pill tags, parchment-inset personality card for AI summary, save-all strip with mint/coral status. (3) **ReportIssuePage**: fully refactored from inline styles to semantic classes (`.report-issue-*` — heading, subtitle, error, card, label, textarea, tools, tool-btn with recording variant, previews with remove buttons, submit-btn, done state with mint check). Build clean, 7 tests pass, CSS 120.4KB (+15.9KB).
 - **2026-04-15** — Step 8 complete. SVG-only change — no CSS delta. (1) **Nav-logo** (`AppShell.tsx`): ditched the indigo `logoGrad` linearGradient; redrew as chalk-outlined open book (`stroke="currentColor"` → inherits `--chalk-white` on chalkboard routes, legacy indigo nav if any) with gold wand + star (`#F4C76C`) crossing over. (2) **Auth-logo** (`LoginPage.tsx`): same chalk book + gold wand treatment, 72px scale. (3) **Favicon**: created `/public/chalk-logo.svg` (chalk book + gold wand on green-board tile — looks right at 16/32 px tab sizes) and updated `index.html` `<link rel="icon">` to point at it (previous `/vite.svg` didn't exist in repo — was 404'ing). Nav/dropdown stroke icons were already `currentColor` and inheriting chalk color correctly from step 5 — no change needed. Build clean, 7 tests pass, CSS 120.4KB (unchanged).
+- **2026-04-15** — Step 9 complete. Final polish pass. (1) **Nav-center gradient bug fix**: on chalkboard routes the "Learn Like Magic" title was rendering transparent because `.nav-center` used `-webkit-text-fill-color: transparent` with indigo gradient — step 2 set `color` but didn't clear the fill. Reset `background: none`, `text-fill-color: var(--chalk-white)`, and `background-clip: initial`. (2) **Contrast bumps**: `--chalk-white-soft` 0.85→0.88, `--chalk-white-dim` 0.55→0.68 (the dim value was failing AA for body text on board-green). (3) **Focus-visible ring**: 2px gold outline + soft 4px gold glow on all interactive elements (buttons/links/inputs) when keyboard-focused — mouse users see no extra ring. Inputs with their own internal focus glow get only the internal glow (no double ring). (4) **Reduced motion**: `@media (prefers-reduced-motion: reduce)` block disables animations/transitions globally and zeroes out hover-transform (translateY/scale) on chalk cards. (5) **Mobile ≤480px**: nav-logo 28→22px, nav buttons 36→32, stats-grid gap tighter, reportcard-subject-grid single-column, session-complete margin/padding tighter, exam score 2.8→2.2rem. (6) **Touch targets (pointer: coarse)**: small chalk buttons (mode-filter, past-exams-toggle, info-toggle, back-button) bumped to min 36px height. (7) **aria-live error banners**: `role="alert" aria-live="assertive"` added to all error banners (`.auth-error` × 10 files, `.report-issue-error`, `.session-error-banner`) via sed — screen readers now announce errors on render. Build clean, 7 tests pass, CSS 123.2KB (+2.8KB).
 
-_(append a bullet per session or step completion)_
+**Redesign complete — ready for PR review and merge to `main`.**
 
 ---
 

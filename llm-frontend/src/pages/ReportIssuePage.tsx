@@ -135,7 +135,7 @@ export default function ReportIssuePage() {
       </p>
 
       {error && (
-        <div className="report-issue-error">
+        <div className="report-issue-error" role="alert" aria-live="assertive">
           {error}
         </div>
       )}

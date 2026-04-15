@@ -43,7 +43,7 @@ export default function ExamReviewPage() {
   if (error || !data) {
     return (
       <div className="app-content-inner">
-        <div className="auth-error">{error || 'Failed to load exam review'}</div>
+        <div className="auth-error" role="alert" aria-live="assertive">{error || 'Failed to load exam review'}</div>
         <button onClick={handleBack} className="content-back-link">Go Back</button>
       </div>
     );
