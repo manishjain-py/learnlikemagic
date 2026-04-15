@@ -87,7 +87,7 @@ export default function EmailVerifyPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/signup/email')}>
           &larr; Back

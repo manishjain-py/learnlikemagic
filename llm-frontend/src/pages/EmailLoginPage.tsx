@@ -30,7 +30,7 @@ export default function EmailLoginPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/login')}>
           ← Back

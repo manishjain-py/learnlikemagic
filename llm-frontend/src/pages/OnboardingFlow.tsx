@@ -115,7 +115,7 @@ export default function OnboardingFlow() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container onboarding">
         {/* Progress dots */}
         <div className="onboarding-progress">

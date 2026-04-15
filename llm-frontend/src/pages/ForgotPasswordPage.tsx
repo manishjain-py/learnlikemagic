@@ -84,7 +84,7 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="auth-page">
+      <div className="auth-page chalkboard-active">
         <div className="auth-container">
           <h2 className="auth-title">Password reset!</h2>
           <p className="auth-subtitle">You can now log in with your new password.</p>
@@ -100,7 +100,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/login/email')}>
           ← Back

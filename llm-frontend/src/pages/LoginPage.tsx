@@ -12,7 +12,7 @@ export default function LoginPage() {
   const { loginWithGoogle } = useAuth();
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <div className="auth-logo">
           <svg className="auth-logo-icon" width="48" height="48" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">

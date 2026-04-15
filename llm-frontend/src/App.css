@@ -5702,3 +5702,542 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   margin-bottom: 4px;
   line-height: 1.5;
 }
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 6: Auth + onboarding
+   Scope: all 9 pages (LoginPage, EmailLogin, EmailSignup, EmailVerify,
+   PhoneLogin, OTPVerify, ForgotPassword, OAuthCallback, OnboardingFlow)
+   — all carry `className="auth-page chalkboard-active"` on their root.
+   ========================================================================== */
+
+/* Wall behind the auth-container: warm wood/cream room */
+.auth-page.chalkboard-active {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    /* subtle chalk dust vignette on the wall */
+    radial-gradient(ellipse at 50% 60%, rgba(0, 0, 0, 0.25) 0%, transparent 60%),
+    linear-gradient(180deg, #2B1F10 0%, var(--wood-dark) 60%, var(--wood-deep) 100%);
+}
+
+/* Auth container = wood-framed chalkboard */
+.auth-page.chalkboard-active .auth-container {
+  width: 100%;
+  max-width: 440px;
+  padding: 14px;
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg,
+      rgba(255, 220, 170, 0.25) 0%, transparent 12%,
+      transparent 88%, rgba(30, 15, 0, 0.25) 100%),
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.06) 0px, rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px, transparent 5px,
+      rgba(255, 255, 255, 0.05) 5px, rgba(255, 255, 255, 0.05) 6px,
+      transparent 6px, transparent 12px),
+    linear-gradient(180deg, var(--wood-light) 0%, var(--wood-mid) 50%, var(--wood-dark) 100%);
+  box-shadow: var(--shadow-frame);
+  position: relative;
+  box-sizing: border-box;
+}
+/* Inner board = the chalkboard surface we actually fill */
+.auth-page.chalkboard-active .auth-container::before {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.05) 0, transparent 18%),
+    radial-gradient(circle at 80% 78%, rgba(244, 244, 239, 0.04) 0, transparent 15%),
+    linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-board-inset);
+  pointer-events: none;
+  z-index: 0;
+}
+.auth-page.chalkboard-active .auth-container > * { position: relative; z-index: 1; }
+.auth-page.chalkboard-active .auth-container {
+  /* inner padding on top of the 14px frame padding */
+  padding: 14px;
+}
+.auth-page.chalkboard-active .auth-container > :first-child {
+  padding-top: 20px;
+}
+.auth-page.chalkboard-active .auth-container {
+  /* Stack the actual content inside the virtual board */
+}
+/* Add internal board padding for content */
+.auth-page.chalkboard-active .auth-logo,
+.auth-page.chalkboard-active .auth-title,
+.auth-page.chalkboard-active .auth-subtitle,
+.auth-page.chalkboard-active .auth-error,
+.auth-page.chalkboard-active .auth-success,
+.auth-page.chalkboard-active .auth-form,
+.auth-page.chalkboard-active .auth-buttons,
+.auth-page.chalkboard-active .auth-back-btn,
+.auth-page.chalkboard-active .auth-links,
+.auth-page.chalkboard-active .auth-footer,
+.auth-page.chalkboard-active .otp-container,
+.auth-page.chalkboard-active .onboarding-progress,
+.auth-page.chalkboard-active .onboarding-step,
+.auth-page.chalkboard-active .done-step {
+  margin-left: 18px;
+  margin-right: 18px;
+}
+.auth-page.chalkboard-active .auth-logo { margin-top: 14px; }
+
+/* Logo block */
+.auth-page.chalkboard-active .auth-logo {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.auth-page.chalkboard-active .auth-logo h1 {
+  font-family: var(--font-hand);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0.5rem 0 0.25rem;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.auth-page.chalkboard-active .auth-tagline {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+}
+.auth-page.chalkboard-active .auth-title {
+  font-family: var(--font-hand);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0 0 0.5rem;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.auth-page.chalkboard-active .auth-subtitle {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Back button (← Back) */
+.auth-page.chalkboard-active .auth-back-btn {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  margin: 14px 0 1rem;
+  align-self: flex-start;
+  display: inline-block;
+}
+.auth-page.chalkboard-active .auth-back-btn:hover {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+  color: var(--chalk-white);
+}
+
+/* Banners */
+.auth-page.chalkboard-active .auth-error {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+.auth-page.chalkboard-active .auth-success {
+  background: rgba(142, 218, 206, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-mint);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Forms */
+.auth-page.chalkboard-active .auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.auth-page.chalkboard-active .auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auth-page.chalkboard-active .auth-field label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-field input,
+.auth-page.chalkboard-active .auth-field select,
+.auth-page.chalkboard-active .auth-field textarea {
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--chalk-white);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.auth-page.chalkboard-active .auth-field input::placeholder,
+.auth-page.chalkboard-active .auth-field textarea::placeholder {
+  color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-field input:focus,
+.auth-page.chalkboard-active .auth-field select:focus,
+.auth-page.chalkboard-active .auth-field textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+.auth-page.chalkboard-active .auth-field input:disabled,
+.auth-page.chalkboard-active .auth-field select:disabled,
+.auth-page.chalkboard-active .auth-field textarea:disabled {
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--chalk-white-dim);
+}
+
+/* Password rules */
+.auth-page.chalkboard-active .password-rules {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.auth-page.chalkboard-active .password-rules li {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.auth-page.chalkboard-active .password-rules .rule-pass {
+  color: var(--chalk-mint);
+}
+.auth-page.chalkboard-active .password-rules .rule-fail {
+  color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .password-mismatch {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--chalk-coral);
+  margin-top: 4px;
+}
+
+/* Buttons */
+.auth-page.chalkboard-active .auth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.auth-page.chalkboard-active .auth-btn {
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  text-align: center;
+}
+.auth-page.chalkboard-active .auth-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Primary CTA = parchment pill */
+.auth-page.chalkboard-active .auth-btn-primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.auth-page.chalkboard-active .auth-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+
+/* Phone / Email / Google = chalk-ghost tinted pills */
+.auth-page.chalkboard-active .auth-btn-phone {
+  background: linear-gradient(180deg, rgba(142, 218, 206, 0.18) 0%, rgba(142, 218, 206, 0.08) 100%);
+  color: var(--chalk-mint);
+  border: 1.5px solid rgba(142, 218, 206, 0.5);
+}
+.auth-page.chalkboard-active .auth-btn-phone:hover:not(:disabled) {
+  background: rgba(142, 218, 206, 0.22);
+}
+.auth-page.chalkboard-active .auth-btn-email {
+  background: linear-gradient(180deg, rgba(244, 199, 108, 0.18) 0%, rgba(244, 199, 108, 0.08) 100%);
+  color: var(--chalk-gold);
+  border: 1.5px solid rgba(244, 199, 108, 0.5);
+}
+.auth-page.chalkboard-active .auth-btn-email:hover:not(:disabled) {
+  background: rgba(244, 199, 108, 0.22);
+}
+.auth-page.chalkboard-active .auth-btn-google {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.45);
+}
+.auth-page.chalkboard-active .auth-btn-google:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.18);
+  border-color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-btn-outline {
+  background: rgba(244, 244, 239, 0.05);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+}
+.auth-page.chalkboard-active .auth-btn-outline:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-btn-outline.selected {
+  background: rgba(244, 199, 108, 0.18);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.auth-page.chalkboard-active .auth-btn-danger {
+  background: rgba(244, 167, 160, 0.12);
+  color: var(--chalk-coral);
+  border: 1.5px solid var(--chalk-coral);
+}
+.auth-page.chalkboard-active .auth-btn-danger:hover:not(:disabled) {
+  background: rgba(244, 167, 160, 0.2);
+}
+
+/* Links */
+.auth-page.chalkboard-active .auth-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+.auth-page.chalkboard-active .auth-link {
+  background: none;
+  border: none;
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+}
+.auth-page.chalkboard-active .auth-link:hover {
+  text-decoration: underline;
+  color: #FFCD7D;
+}
+.auth-page.chalkboard-active .auth-link:disabled {
+  color: var(--chalk-white-dim);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* Footer */
+.auth-page.chalkboard-active .auth-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding-bottom: 14px;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--chalk-white-dim);
+}
+
+/* OTP 6-digit input — chalk-outlined squares */
+.auth-page.chalkboard-active .otp-container {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+.auth-page.chalkboard-active .otp-input {
+  width: 44px;
+  height: 56px;
+  text-align: center;
+  font-family: var(--font-hand);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.auth-page.chalkboard-active .otp-input:focus {
+  background: rgba(244, 244, 239, 0.15);
+  border: 1.5px solid var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+
+/* Onboarding progress dots */
+.auth-page.chalkboard-active .onboarding-progress {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 14px 0 2rem;
+}
+.auth-page.chalkboard-active .onboarding-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(244, 244, 239, 0.2);
+  transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+}
+.auth-page.chalkboard-active .onboarding-dot.active {
+  background: var(--chalk-gold);
+  transform: scale(1.3);
+  box-shadow: 0 0 8px rgba(244, 199, 108, 0.6);
+}
+.auth-page.chalkboard-active .onboarding-dot.completed {
+  background: var(--chalk-mint);
+}
+
+/* Onboarding step layout */
+.auth-page.chalkboard-active .onboarding-step {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.auth-page.chalkboard-active .onboarding-step .auth-title {
+  text-align: center;
+}
+.auth-page.chalkboard-active .onboarding-input {
+  text-align: center;
+  font-family: var(--font-hand);
+  font-size: 1.5rem;
+  padding: 14px;
+}
+.auth-page.chalkboard-active .onboarding-textarea {
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  resize: vertical;
+}
+
+/* Grade grid 1–12 */
+.auth-page.chalkboard-active .grade-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 1rem;
+}
+.auth-page.chalkboard-active .grade-btn {
+  padding: 16px 0;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  border-radius: var(--r-sm);
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s;
+}
+.auth-page.chalkboard-active .grade-btn:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .grade-btn.selected {
+  background: rgba(244, 199, 108, 0.2);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+  transform: scale(1.05);
+}
+.auth-page.chalkboard-active .grade-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Board list */
+.auth-page.chalkboard-active .board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+/* Done step */
+.auth-page.chalkboard-active .done-step {
+  padding: 2rem 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+.auth-page.chalkboard-active .done-step .auth-btn {
+  min-width: 220px;
+}
+
+/* Skip link inside onboarding */
+.auth-page.chalkboard-active .skip-btn {
+  margin-top: 8px;
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+/* Mobile tightening */
+@media (max-width: 480px) {
+  .auth-page.chalkboard-active {
+    padding: 0.75rem;
+  }
+  .auth-page.chalkboard-active .auth-container {
+    padding: 10px;
+  }
+  .auth-page.chalkboard-active .auth-container::before {
+    inset: 10px;
+  }
+  .auth-page.chalkboard-active .auth-logo,
+  .auth-page.chalkboard-active .auth-title,
+  .auth-page.chalkboard-active .auth-subtitle,
+  .auth-page.chalkboard-active .auth-error,
+  .auth-page.chalkboard-active .auth-success,
+  .auth-page.chalkboard-active .auth-form,
+  .auth-page.chalkboard-active .auth-buttons,
+  .auth-page.chalkboard-active .auth-back-btn,
+  .auth-page.chalkboard-active .auth-links,
+  .auth-page.chalkboard-active .auth-footer,
+  .auth-page.chalkboard-active .otp-container,
+  .auth-page.chalkboard-active .onboarding-progress,
+  .auth-page.chalkboard-active .onboarding-step,
+  .auth-page.chalkboard-active .done-step {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+  .auth-page.chalkboard-active .otp-input {
+    width: 38px;
+    height: 50px;
+    font-size: 1.5rem;
+  }
+  .auth-page.chalkboard-active .grade-grid {
+    gap: 8px;
+  }
+}
