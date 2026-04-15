@@ -332,6 +332,11 @@ export default function ChatSession() {
     if (prevSlideIdx.current === currentSlideIdx) return;
     prevSlideIdx.current = currentSlideIdx;
     if (sessionPhase !== 'card_phase') return;
+    // Stop prior card's audio and cancel any in-flight TTS fetches before
+    // (maybe) starting the new card's audio. stopAudio() bumps audioPlayVersion,
+    // which makes late-arriving prefetches in playLineAudio/playTeacherAudio
+    // discard themselves instead of playing over the new card.
+    stopAudio();
     const slide = carouselSlides[currentSlideIdx];
     // Auto-play for message and check_in slides; explanation slides use per-line typewriter audio
     if (slide && (slide.type === 'message' || slide.type === 'check_in')) {
@@ -1061,6 +1066,9 @@ export default function ChatSession() {
     }
     debugLog(`[AUDIO] playLineAudio START "${short}…"`);
     const t0 = Date.now();
+    // Claim this playback; if the user navigates (stopAudio bumps the version)
+    // while we're awaiting prefetchAudio, we discard the stale blob below.
+    const version = ++audioPlayVersion.current;
     const audio = getOrCreateAudio();
     // Null handlers BEFORE pausing so stale onpause/onstalled from a
     // previous play can't fire and interfere.
@@ -1072,6 +1080,10 @@ export default function ChatSession() {
     if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
     try {
       const blob = await prefetchAudio(text, audioUrl);
+      if (audioPlayVersion.current !== version) {
+        debugLog(`[AUDIO] playLineAudio DISCARD stale "${short}…" — navigation/stop bumped version`);
+        return;
+      }
       debugLog(`[AUDIO] playLineAudio GOT BLOB "${short}…" — ${blob.size} bytes, fetched in ${Date.now() - t0}ms`);
       const url = URL.createObjectURL(blob);
       audio.src = url;
