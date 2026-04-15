@@ -11,9 +11,9 @@ Single source of truth for the redesign. Update as work progresses.
 
 ## Status
 
-- **Current step:** 8 — icon / logo SVG pass (pending user QA of step 7)
-- **Last commit:** step 7 — profile + enrichment + report-issue chalkboard-skinned
-- **% complete:** ~82% (all student pages skinned; only icons/logo + polish/QA remain)
+- **Current step:** 9 — polish + QA (pending user QA of step 8)
+- **Last commit:** step 8 — chalk logo + favicon swap
+- **% complete:** ~92% (only polish/QA remains)
 
 ---
 
@@ -29,8 +29,8 @@ Single source of truth for the redesign. Update as work progresses.
 | 5 | Completion + scorecard + history | ✅ | Session complete, exam review, report card | done |
 | 6 | Auth + onboarding | ✅ | Login/signup/OTP/onboarding wizard | done |
 | 7 | Profile + enrichment + report-issue | ✅ | | done |
-| 8 | Icon / logo SVG pass | ⬜ NEXT | Chalk logo, nav icons, mode icons | ~½ day |
-| 9 | Polish + QA | ⬜ | Contrast, mobile, animation timing, A11y | ~½ day |
+| 8 | Icon / logo SVG pass | ✅ | Chalk logo, nav icons, mode icons | done |
+| 9 | Polish + QA | ⬜ NEXT | Contrast, mobile, animation timing, A11y | ~½ day |
 
 **Total estimate:** 3–4 weeks focused work. Each numbered step ends in a commit, and I pause for review before the next step.
 
@@ -69,6 +69,7 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked
 - **2026-04-15** — Step 5 complete. Extended `AppShell` `chalkboard-active` scope to include `/history` and `/report-card` (exam review was already under `/learn`). Added ~450 lines of CSS for: (1) **session-complete-card** — standalone chalkboard island inside `ChatSession` with gold "Well done!" heading, mint chalk chips for concepts, parchment primary button + chalk-ghost secondary; (2) **SessionHistoryPage** — chalk stat cards, chalk-pill mode filter with gold-active state, dashed chalk session rows with hand-written topic titles + gold subject tags; (3) **ReportCardPage** — chalk-spine subject cards matching SubjectSelect pattern, dashed chapter sections, gold coverage bars, mint exam-score pills, parchment "Practice Again" button; (4) **ExamReviewPage** — chalk question cards, parchment-inset rationale, gold next-steps callout; (5) shared page-level chalkboard overrides for `page-title`, `page-empty-state`, `content-back-link`, `auth-btn`, `auth-link`, `auth-error`. Also cleaned 10+ inline `style={{...}}` blocks in `ChatSession.tsx` session-complete — replaced with semantic classes (`.session-complete-title`, `.session-complete-chips`, `.session-complete-btn--primary/ghost`). Inline exam-review score colors kept (they encode semantic pass/fail via red/amber/green). Build clean, 7 tests pass, CSS 92.1KB (+13.5KB).
 - **2026-04-15** — Step 6 complete. Added `chalkboard-active` class to every `.auth-page` root across all 9 auth pages (LoginPage, EmailLogin, EmailSignup, EmailVerify, PhoneLogin, OTPVerify, ForgotPassword, OAuthCallback, OnboardingFlow) — 11 total JSX spots touched via sed. Added ~440 lines of CSS scoped under `.auth-page.chalkboard-active`: (1) wood-toned room bg; (2) `.auth-container` redrawn as wood-framed chalkboard via ::before pseudo-element (matches the real-app frame + vignette aesthetic); (3) chalk-white title + subtitle in handwritten Caveat, body text in Inter; (4) dashed chalk inputs with gold focus ring + placeholder dim chalk; (5) parchment primary pill, mint phone pill, gold email pill, chalk-ghost Google pill, chalk-outlined "auth-btn-outline" selected → gold; (6) OTP 6-digit squares with hand-written digits and gold focus glow; (7) onboarding progress dots — dim → gold (active, pulse scale) → mint (completed); (8) grade-grid (12 grades) with chalk-outlined squares, gold glow on select; (9) board-list using auth-btn-outline styling; (10) mobile tightening under 480px. Only inline style kept: `{ marginTop: '16px' }` on resend buttons (harmless). Build clean, 7 tests pass, CSS 104.5KB (+12.4KB).
 - **2026-04-15** — Step 7 complete. Extended `AppShell` `chalkboard-active` to cover `/profile` and `/report-issue` — this completes the student-facing chalkboard skin (admin routes still excluded). Added ~500 lines of CSS. (1) **ProfilePage**: re-scoped `auth-form`, `auth-field`, `auth-btn`, `auth-success` under `.chalkboard-active` (step 6 scoped them under `.auth-page.chalkboard-active` which doesn't match AppShell mode); profile-section gets dashed chalk divider + handwritten h3; profile-info dim chalk; select dropdown option bg set to wood-dark for readable OS popup. (2) **EnrichmentPage**: gold parchment CTA card, gold→mint progress bar, parchment migration banner, expandable chalk sections with mint-dot filled indicator, chip system (dim chalk default, gold-filled selected), tag input with gold pill tags, parchment-inset personality card for AI summary, save-all strip with mint/coral status. (3) **ReportIssuePage**: fully refactored from inline styles to semantic classes (`.report-issue-*` — heading, subtitle, error, card, label, textarea, tools, tool-btn with recording variant, previews with remove buttons, submit-btn, done state with mint check). Build clean, 7 tests pass, CSS 120.4KB (+15.9KB).
+- **2026-04-15** — Step 8 complete. SVG-only change — no CSS delta. (1) **Nav-logo** (`AppShell.tsx`): ditched the indigo `logoGrad` linearGradient; redrew as chalk-outlined open book (`stroke="currentColor"` → inherits `--chalk-white` on chalkboard routes, legacy indigo nav if any) with gold wand + star (`#F4C76C`) crossing over. (2) **Auth-logo** (`LoginPage.tsx`): same chalk book + gold wand treatment, 72px scale. (3) **Favicon**: created `/public/chalk-logo.svg` (chalk book + gold wand on green-board tile — looks right at 16/32 px tab sizes) and updated `index.html` `<link rel="icon">` to point at it (previous `/vite.svg` didn't exist in repo — was 404'ing). Nav/dropdown stroke icons were already `currentColor` and inheriting chalk color correctly from step 5 — no change needed. Build clean, 7 tests pass, CSS 120.4KB (unchanged).
 
 _(append a bullet per session or step completion)_
 
