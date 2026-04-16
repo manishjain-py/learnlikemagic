@@ -84,7 +84,7 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="auth-page">
+      <div className="auth-page chalkboard-active">
         <div className="auth-container">
           <h2 className="auth-title">Password reset!</h2>
           <p className="auth-subtitle">You can now log in with your new password.</p>
@@ -100,7 +100,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/login/email')}>
           ← Back
@@ -111,7 +111,7 @@ export default function ForgotPasswordPage() {
             <h2 className="auth-title">Forgot your password?</h2>
             <p className="auth-subtitle">Enter your email and we'll send a reset code</p>
 
-            {error && <div className="auth-error">{error}</div>}
+            {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
             <form onSubmit={handleSendCode} className="auth-form">
               <div className="auth-field">
@@ -137,7 +137,7 @@ export default function ForgotPasswordPage() {
             <h2 className="auth-title">Check your email</h2>
             <p className="auth-subtitle">Enter the code we sent to {email}</p>
 
-            {error && <div className="auth-error">{error}</div>}
+            {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
             <form onSubmit={handleResetPassword} className="auth-form">
               <div className="auth-field">

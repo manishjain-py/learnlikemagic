@@ -84,7 +84,7 @@ export default function OTPVerifyPage() {
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/login/phone')}>
           ← Back
@@ -93,7 +93,7 @@ export default function OTPVerifyPage() {
         <h2 className="auth-title">Enter the code</h2>
         <p className="auth-subtitle">We sent a 6-digit code to {phone}</p>
 
-        {error && <div className="auth-error">{error}</div>}
+        {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
         <div className="otp-container">
           {otp.map((digit, index) => (

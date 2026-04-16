@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LearnLikeMagic — Session Complete (Chalkboard)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  .sc-wrap { text-align: center; padding-top: var(--sp-4); }
+  .sc-title {
+    font-family: var(--font-hand);
+    font-size: 3rem;
+    color: var(--chalk-white);
+    margin: var(--sp-3) 0 0;
+    line-height: 1;
+    text-shadow: 0 0 1px rgba(244,244,239,0.4), 0 2px 0 rgba(0,0,0,0.3);
+  }
+  .sc-sub {
+    font-family: var(--font-body);
+    font-size: var(--fs-md);
+    color: var(--chalk-white-soft);
+    margin: var(--sp-3) 0 var(--sp-5);
+    line-height: 1.5;
+  }
+  .sc-stars {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-3);
+    margin: var(--sp-4) 0 var(--sp-5);
+  }
+  .sc-star {
+    display: inline-block;
+    width: 48px; height: 48px;
+    color: var(--chalk-gold);
+    filter: drop-shadow(0 0 6px rgba(244,199,108,0.5));
+  }
+  .sc-star--empty { color: var(--chalk-white-dim); filter: none; }
+
+  .sc-stats {
+    display: flex;
+    justify-content: space-around;
+    padding: var(--sp-4) 0;
+    margin: 0 auto var(--sp-4);
+    border-top: 1px dashed rgba(244,244,239,0.2);
+    border-bottom: 1px dashed rgba(244,244,239,0.2);
+  }
+  .sc-stat {
+    text-align: center;
+  }
+  .sc-stat-num {
+    font-family: var(--font-hand);
+    font-size: var(--fs-3xl);
+    color: var(--chalk-gold);
+    display: block;
+    line-height: 1;
+  }
+  .sc-stat-label {
+    font-family: var(--font-body);
+    font-size: var(--fs-xs);
+    color: var(--chalk-white-dim);
+    letter-spacing: 0.12em;
+    margin-top: 4px;
+    display: block;
+  }
+
+  /* Confetti spread across the board */
+  .confetti {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .conf {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    transform: rotate(20deg);
+  }
+  .conf--coral { background: var(--chalk-coral); }
+  .conf--gold { background: var(--chalk-gold); }
+  .conf--mint { background: var(--chalk-mint); }
+  .conf--sky  { background: var(--chalk-sky); }
+  .conf--pink { background: var(--chalk-pink); }
+  .conf--lav  { background: var(--chalk-lavender); }
+
+  .sc-cta-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
+    align-items: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="wall">
+<div class="viewport">
+
+  <div class="frame">
+    <div class="frame-nails"></div>
+    <div class="board" style="min-height: 620px;">
+
+      <!-- Confetti -->
+      <div class="confetti">
+        <span class="conf conf--coral" style="top: 10%; left: 12%; transform: rotate(18deg);"></span>
+        <span class="conf conf--gold"  style="top: 8%;  left: 80%; transform: rotate(-14deg);"></span>
+        <span class="conf conf--mint"  style="top: 22%; left: 30%; transform: rotate(45deg);"></span>
+        <span class="conf conf--sky"   style="top: 18%; left: 65%; transform: rotate(-30deg);"></span>
+        <span class="conf conf--pink"  style="top: 28%; left: 88%; transform: rotate(10deg);"></span>
+        <span class="conf conf--lav"   style="top: 40%; left: 8%;  transform: rotate(-45deg);"></span>
+        <span class="conf conf--gold"  style="top: 58%; left: 92%; transform: rotate(20deg);"></span>
+        <span class="conf conf--coral" style="top: 72%; left: 14%; transform: rotate(-20deg);"></span>
+        <span class="conf conf--mint"  style="top: 80%; left: 78%; transform: rotate(35deg);"></span>
+        <span class="conf conf--sky"   style="top: 85%; left: 45%; transform: rotate(-10deg);"></span>
+        <span class="conf conf--pink"  style="top: 48%; left: 68%; transform: rotate(25deg);"></span>
+        <span class="conf conf--lav"   style="top: 52%; left: 38%; transform: rotate(-35deg);"></span>
+      </div>
+
+      <div class="sc-wrap">
+        <span class="card-type" style="justify-content: center;">SESSION COMPLETE</span>
+
+        <!-- Trophy / shining star -->
+        <svg width="96" height="96" viewBox="0 0 96 96" style="margin-top: var(--sp-3); filter: drop-shadow(0 0 12px rgba(244,199,108,0.4));">
+          <!-- Big star -->
+          <path d="M48 6 L58 34 L90 36 L66 56 L74 88 L48 70 L22 88 L30 56 L6 36 L38 34 Z"
+                fill="none" stroke="#F4C76C" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M48 20 L54 38 L72 39 L58 50 L62 68 L48 58 L34 68 L38 50 L24 39 L42 38 Z"
+                fill="#F4C76C" opacity="0.6"/>
+        </svg>
+
+        <h1 class="sc-title">Great job, Riya!</h1>
+        <p class="sc-sub">You mastered <strong style="color:var(--chalk-white);">Groups of 10</strong>.<br/>That was a big step in place value. ✨</p>
+
+        <!-- Star rating -->
+        <div class="sc-stars">
+          <svg class="sc-star" viewBox="0 0 64 64">
+            <path d="M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z"
+                  fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <svg class="sc-star" viewBox="0 0 64 64">
+            <path d="M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z"
+                  fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <svg class="sc-star sc-star--empty" viewBox="0 0 64 64">
+            <path d="M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z"
+                  fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <!-- Session stats -->
+        <div class="sc-stats">
+          <div class="sc-stat">
+            <span class="sc-stat-num">7</span>
+            <span class="sc-stat-label">CONCEPTS</span>
+          </div>
+          <div class="sc-stat">
+            <span class="sc-stat-num">4/5</span>
+            <span class="sc-stat-label">CHECK-INS</span>
+          </div>
+          <div class="sc-stat">
+            <span class="sc-stat-num">12m</span>
+            <span class="sc-stat-label">TIME</span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="sc-cta-stack">
+          <button class="pill pill--primary pill--lg" style="min-width: 240px;">Practice this topic →</button>
+          <button class="pill pill--ghost" style="min-width: 240px;">Choose next topic</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="chalk-tray">
+      <span class="chalk chalk--coral"></span>
+      <span class="chalk chalk--gold"></span>
+      <span class="chalk chalk--pink"></span>
+      <span class="chalk chalk--yellow"></span>
+      <span class="chalk chalk--mint"></span>
+      <span class="chalk chalk--sky"></span>
+      <span class="eraser"></span>
+    </div>
+  </div>
+
+  <p style="text-align:center;font-family:var(--font-body);font-size:var(--fs-xs);color:var(--ink-mute);margin-top:var(--sp-3);">
+    Session complete · 2-of-3 stars · confetti on · practice CTA
+  </p>
+</div>
+</div>
+</body>
+</html>

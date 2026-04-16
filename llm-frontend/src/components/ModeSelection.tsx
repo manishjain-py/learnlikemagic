@@ -77,19 +77,19 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
         ← Back
       </button>
       <h2>{topic.topic}</h2>
-      <p style={{ color: '#666', marginBottom: '20px' }}>What would you like to do?</p>
+      <p className="mode-desc">What would you like to do?</p>
 
       {creatingMode ? (
-        <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-          <div className="typing-indicator" style={{ justifyContent: 'center', marginBottom: '16px' }}>
+        <div className="mode-loading">
+          <div className="typing-indicator" style={{ justifyContent: 'center' }}>
             <span></span>
             <span></span>
             <span></span>
           </div>
-          <p style={{ fontSize: '1.1rem', fontWeight: 500, color: '#4a5568' }}>
+          <p className="mode-loading-title">
             {MODE_LOADING_MESSAGES[creatingMode]}
           </p>
-          <p style={{ fontSize: '0.85rem', color: '#999', marginTop: '8px' }}>
+          <p className="mode-loading-sub">
             This may take a moment
           </p>
         </div>
@@ -104,13 +104,12 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
               onClick={() => onResume(incompleteExam.session_id, 'exam')}
               style={{
                 background: 'linear-gradient(135deg, #ed8936 0%, #dd6b20 100%)',
-                color: 'white',
                 marginBottom: '10px',
                 width: '100%',
               }}
             >
               <strong>Resume Exam</strong>
-              <span style={{ display: 'block', fontSize: '0.85rem', marginTop: '4px' }}>
+              <span className="mode-card-sub">
                 {incompleteExam.exam_answered != null && incompleteExam.exam_total != null
                   ? `${incompleteExam.exam_answered}/${incompleteExam.exam_total} answered`
                   : 'In progress'} — continue your exam
@@ -126,17 +125,16 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
                   onClick={() => onResume(incompleteTeachMe.session_id, 'teach_me')}
                   style={{
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: 'white',
                   }}
                 >
                   <strong>Continue Lesson</strong>
-                  <span style={{ display: 'block', fontSize: '0.85rem', marginTop: '4px' }}>
+                  <span className="mode-card-sub">
                     {incompleteTeachMe.coverage != null ? `${incompleteTeachMe.coverage.toFixed(0)}% covered` : 'In progress'} — pick up where you left off
                   </span>
                 </button>
                 <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
                   <strong>Start Fresh</strong>
-                  <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                  <span className="mode-card-sub">
                     Start a new lesson from scratch
                   </span>
                 </button>
@@ -144,7 +142,7 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
             ) : (
               <button className="selection-card" data-testid="mode-teach-me" onClick={() => onSelectMode('teach_me')}>
                 <strong>{isRefresher ? 'Get Ready' : 'Teach Me'}</strong>
-                <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                <span className="mode-card-sub">
                   {isRefresher ? 'Review the prerequisites for this chapter' : 'Learn this topic step by step'}
                 </span>
               </button>
@@ -155,11 +153,10 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
                 onClick={() => onResume(incompletePractice.session_id, 'practice')}
                 style={{
                   background: 'linear-gradient(135deg, #38a169 0%, #2f855a 100%)',
-                  color: 'white',
                 }}
               >
                 <strong>Resume Practice</strong>
-                <span style={{ display: 'block', fontSize: '0.85rem', marginTop: '4px' }}>
+                <span className="mode-card-sub">
                   {incompletePractice.practice_questions_answered ?? 0} question(s) answered — pick up where you left off
                 </span>
               </button>
@@ -167,11 +164,11 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
             {!isRefresher && !incompletePractice && (
               <button className="selection-card" data-testid="mode-practice" onClick={() => onSelectMode('practice')}>
                 <strong>Let's Practice</strong>
-                <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                <span className="mode-card-sub">
                   Practice what you learned
                 </span>
                 {lastPracticed && (
-                  <span style={{ display: 'block', fontSize: '0.8rem', color: '#38a169', marginTop: '2px', fontWeight: 500 }}>
+                  <span className="mode-practiced-note">
                     Practiced {formatRelativeDate(lastPracticed)}
                   </span>
                 )}
@@ -180,7 +177,7 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
             {!isRefresher && (
               <button className="selection-card" data-testid="mode-clarify-doubts" onClick={() => onSelectMode('clarify_doubts')}>
                 <strong>Clarify Doubts</strong>
-                <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                <span className="mode-card-sub">
                   Ask me anything about this topic
                 </span>
               </button>
@@ -188,7 +185,7 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
             {!isRefresher && !incompleteExam && (
               <button className="selection-card" data-testid="mode-exam" onClick={() => onSelectMode('exam')}>
                 <strong>Take Exam</strong>
-                <span style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                <span className="mode-card-sub">
                   Formal test with a score
                 </span>
               </button>
@@ -197,51 +194,32 @@ function ModeSelection({ topic, onSelectMode, onResume, onBack, onViewExamReview
 
           {/* Past exams section */}
           {completedExams.length > 0 && (
-            <div style={{ marginTop: '20px' }}>
+            <div className="past-exams-section">
               <button
+                className="past-exams-toggle"
                 onClick={() => setShowPastExams(!showPastExams)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#667eea',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
               >
                 {showPastExams ? '\u25BC' : '\u25B6'} Past Exams ({completedExams.length})
               </button>
               {showPastExams && (
-                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="past-exams-list">
                   {completedExams.map((exam) => {
                     const score = exam.exam_score ?? 0;
                     const total = exam.exam_total ?? 0;
                     const pct = total > 0 ? (score / total) * 100 : 0;
-                    const scoreColor = pct >= 70 ? '#38a169' : pct >= 40 ? '#dd6b20' : '#e53e3e';
+                    const scoreTier = pct >= 70 ? 'high' : pct >= 40 ? 'mid' : 'low';
                     return (
                       <button
                         key={exam.session_id}
+                        className="past-exam-row"
                         onClick={() => onViewExamReview(exam.session_id)}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '10px 14px',
-                          background: '#fafafa',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          width: '100%',
-                          textAlign: 'left',
-                        }}
                       >
-                        <span style={{ fontSize: '0.85rem', color: '#4a5568' }}>
+                        <span className="past-exam-date">
                           {exam.created_at
                             ? new Date(exam.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
                             : 'Exam'}
                         </span>
-                        <span style={{ fontWeight: 700, color: scoreColor, fontSize: '0.9rem' }}>
+                        <span className={`past-exam-score past-exam-score--${scoreTier}`}>
                           {score % 1 === 0 ? score.toFixed(0) : score.toFixed(1)}/{total} ({pct.toFixed(0)}%)
                         </span>
                       </button>

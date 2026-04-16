@@ -1456,7 +1456,7 @@ export default function ChatSession() {
 
   return (
     <>
-      <div className="app">
+      <div className={`app${sessionPhase === 'card_phase' ? ' chalkboard-active' : ''}`}>
         <nav className="nav-bar">
           <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1573,32 +1573,25 @@ export default function ChatSession() {
 
         <div className="chat-container" data-testid="chat-container">
           {teachMeComplete ? (
-            <div className="summary-card" data-testid="teach-me-complete" style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="summary-card" data-testid="teach-me-complete">
               <h2>Nice work!</h2>
               {teachMeConceptsCovered.length > 0 && (
                 <div className="summary-content">
                   <p>You've covered:</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                  <div className="summary-chips">
                     {teachMeConceptsCovered.map((c, i) => (
-                      <span key={i} style={{
-                        display: 'inline-block',
-                        background: '#dcfce7',
-                        borderRadius: '12px',
-                        padding: '4px 12px',
-                        fontSize: '0.85rem',
-                        color: '#166534',
-                      }}>{c}</span>
+                      <span key={i} className="summary-chip">{c}</span>
                     ))}
                   </div>
                 </div>
               )}
               {teachMeCompletionMessage && (
-                <p style={{ marginTop: '16px', fontSize: '1rem', color: '#2d3748' }}>
+                <p className="summary-card-message">
                   {teachMeCompletionMessage}
                 </p>
               )}
               {practiceStartError && (
-                <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginTop: '8px' }}>
+                <p className="restart-button-error">
                   {practiceStartError}
                 </p>
               )}
@@ -1607,40 +1600,27 @@ export default function ChatSession() {
                 disabled={creatingPractice}
                 className="restart-button"
                 data-testid="start-practice-cta"
-                style={{
-                  marginTop: '20px',
-                  fontSize: '1.1rem',
-                  padding: '14px 24px',
-                  fontWeight: 700,
-                }}
               >
                 {creatingPractice ? 'Setting up practice...' : "Let's Practice — put it to work!"}
               </button>
               <button
                 onClick={handleDoneForNow}
                 disabled={creatingPractice}
-                className="restart-button"
-                style={{
-                  marginTop: '10px',
-                  background: 'white',
-                  color: '#667eea',
-                  border: '2px solid #667eea',
-                  fontSize: '0.9rem',
-                }}
+                className="restart-button restart-button--ghost"
               >
                 I'm done for now
               </button>
             </div>
           ) : practiceComplete ? (
-            <div className="summary-card" data-testid="practice-complete" style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="summary-card" data-testid="practice-complete">
               <h2>Great practice session!</h2>
               {practiceSummary && (
-                <p style={{ marginTop: '12px', fontSize: '1rem', color: '#2d3748' }}>
+                <p className="summary-card-message">
                   {practiceSummary}
                 </p>
               )}
               {practiceQuestionsAnswered > 0 && (
-                <p style={{ marginTop: '8px', fontSize: '0.85rem', color: '#718096' }}>
+                <p className="summary-card-meta">
                   You answered {practiceQuestionsAnswered} question{practiceQuestionsAnswered === 1 ? '' : 's'}.
                 </p>
               )}
@@ -1648,46 +1628,27 @@ export default function ChatSession() {
                 onClick={handleStartExamFromPractice}
                 className="restart-button"
                 data-testid="start-exam-cta"
-                style={{
-                  marginTop: '20px',
-                  fontSize: '1.05rem',
-                  padding: '14px 24px',
-                  fontWeight: 700,
-                }}
               >
                 Make it official — take the exam
               </button>
               <button
                 onClick={handleDoneForNow}
-                className="restart-button"
-                style={{
-                  marginTop: '10px',
-                  background: 'white',
-                  color: '#667eea',
-                  border: '2px solid #667eea',
-                  fontSize: '0.9rem',
-                }}
+                className="restart-button restart-button--ghost"
               >
                 I'm done for now
               </button>
             </div>
           ) : showSummary ? (
-            <div className="summary-card" data-testid="session-summary" style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="summary-card" data-testid="session-summary">
               {sessionMode === 'clarify_doubts' ? (
                 <>
                   <h2>Doubts Session Complete!</h2>
                   {conceptsDiscussed.length > 0 && (
                     <div className="summary-content">
                       <p><strong>Concepts Discussed:</strong></p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                      <div className="summary-chips">
                         {conceptsDiscussed.map((c, i) => (
-                          <span key={i} style={{
-                            display: 'inline-block',
-                            background: '#e2e8f0',
-                            borderRadius: '12px',
-                            padding: '4px 12px',
-                            fontSize: '0.85rem',
-                          }}>{c}</span>
+                          <span key={i} className="summary-chip">{c}</span>
                         ))}
                       </div>
                     </div>
@@ -1701,35 +1662,38 @@ export default function ChatSession() {
                   {sessionMode === 'exam' && examFeedback ? (
                     <>
                       <h2>Exam Complete!</h2>
-                      <div style={{ textAlign: 'center', margin: '12px 0 16px' }}>
-                        <div style={{ fontSize: '2rem', fontWeight: 700, color: examFeedback.percentage >= 70 ? '#38a169' : examFeedback.percentage >= 40 ? '#dd6b20' : '#e53e3e' }}>
+                      <div className="exam-summary-score">
+                        <div
+                          className="exam-summary-score-value"
+                          style={{ color: examFeedback.percentage >= 70 ? '#8EDACE' : examFeedback.percentage >= 40 ? '#F4C76C' : '#F4A7A0' }}
+                        >
                           {examFeedback.score % 1 === 0 ? examFeedback.score.toFixed(0) : examFeedback.score.toFixed(1)}/{examFeedback.total}
                         </div>
-                        <div style={{ fontSize: '0.9rem', color: '#718096' }}>{examFeedback.percentage.toFixed(1)}%</div>
+                        <div className="exam-summary-score-pct">{examFeedback.percentage.toFixed(1)}%</div>
                       </div>
                       {examResults.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                        <div className="exam-summary-questions">
                           {examResults.map((r) => {
-                            const scoreColor = (r.score ?? 0) >= 0.8 ? '#38a169' : (r.score ?? 0) >= 0.2 ? '#dd6b20' : '#e53e3e';
+                            const scoreColor = (r.score ?? 0) >= 0.8 ? '#8EDACE' : (r.score ?? 0) >= 0.2 ? '#F4C76C' : '#F4A7A0';
                             return (
-                              <div key={r.question_idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#fafafa' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Q{r.question_idx + 1}</span>
+                              <div key={r.question_idx} className="exam-summary-question">
+                                <div className="exam-summary-q-head">
+                                  <span className="exam-summary-q-num">Q{r.question_idx + 1}</span>
                                   <span style={{ fontWeight: 700, color: scoreColor, fontSize: '0.9rem' }}>
                                     {r.score != null ? (r.score % 1 === 0 ? r.score.toFixed(0) : r.score.toFixed(1)) : '?'}/1
                                   </span>
                                 </div>
-                                <p style={{ fontSize: '0.85rem', color: '#2d3748', marginBottom: '6px' }}>{r.question_text}</p>
-                                <div style={{ fontSize: '0.8rem', color: '#4a5568', marginBottom: '4px' }}>
+                                <p className="exam-summary-q-text">{r.question_text}</p>
+                                <div className="exam-summary-q-answer">
                                   <strong>Your answer:</strong> {r.student_answer || '(no answer)'}
                                 </div>
                                 {r.expected_answer && (
-                                  <div style={{ fontSize: '0.8rem', color: '#4a5568', marginBottom: '4px' }}>
+                                  <div className="exam-summary-q-answer">
                                     <strong>Expected:</strong> {r.expected_answer}
                                   </div>
                                 )}
                                 {r.marks_rationale && (
-                                  <div style={{ fontSize: '0.8rem', color: '#718096', fontStyle: 'italic', borderTop: '1px solid #e2e8f0', paddingTop: '6px', marginTop: '6px' }}>
+                                  <div className="exam-summary-q-rationale">
                                     {r.marks_rationale}
                                   </div>
                                 )}
@@ -1739,7 +1703,7 @@ export default function ChatSession() {
                         </div>
                       )}
                       {summary && summary.suggestions.length > 0 && (
-                        <div style={{ marginBottom: '12px' }}>
+                        <div className="exam-summary-next">
                           <strong>Next Steps:</strong>
                           <ul>
                             {summary.suggestions.map((s, i) => (
@@ -1755,16 +1719,9 @@ export default function ChatSession() {
                       {summary && summary.concepts_taught && summary.concepts_taught.length > 0 && (
                         <div className="summary-content">
                           <p>You covered:</p>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                          <div className="summary-chips">
                             {summary.concepts_taught.map((c, i) => (
-                              <span key={i} style={{
-                                display: 'inline-block',
-                                background: '#dcfce7',
-                                borderRadius: '12px',
-                                padding: '4px 12px',
-                                fontSize: '0.85rem',
-                                color: '#166534',
-                              }}>{c}</span>
+                              <span key={i} className="summary-chip">{c}</span>
                             ))}
                           </div>
                         </div>
@@ -1779,8 +1736,7 @@ export default function ChatSession() {
                       ? `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`
                       : '/learn'
                     )}
-                    className="restart-button"
-                    style={{ marginTop: '10px', background: 'white', color: '#667eea', border: '2px solid #667eea' }}
+                    className="restart-button restart-button--ghost"
                   >
                     Explore More Topics
                   </button>
@@ -2240,57 +2196,34 @@ export default function ChatSession() {
               ) : null;
               })()}
               {isComplete && sessionMode === 'teach_me' && summary && (
-                <div className="session-complete-card" style={{
-                  margin: '16px',
-                  padding: '20px',
-                  background: '#f0fdf4',
-                  borderRadius: '16px',
-                  border: '1px solid #bbf7d0',
-                  textAlign: 'center',
-                }}>
-                  <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: '#166534' }}>
-                    Well done!
-                  </h3>
+                <div className="session-complete-card">
+                  <h3 className="session-complete-title">Well done!</h3>
                   {summary.concepts_taught && summary.concepts_taught.length > 0 && (
-                    <div style={{ marginBottom: '16px' }}>
-                      <p style={{ fontSize: '0.85rem', color: '#4a5568', margin: '0 0 8px' }}>You covered:</p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+                    <div className="session-complete-concepts">
+                      <p className="session-complete-label">You covered:</p>
+                      <div className="session-complete-chips">
                         {summary.concepts_taught.map((c, i) => (
-                          <span key={i} style={{
-                            display: 'inline-block',
-                            background: '#dcfce7',
-                            borderRadius: '12px',
-                            padding: '4px 12px',
-                            fontSize: '0.82rem',
-                            color: '#166534',
-                          }}>{c}</span>
+                          <span key={i} className="session-complete-chip">{c}</span>
                         ))}
                       </div>
                     </div>
                   )}
-                  <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 16px' }}>
+                  <p className="session-complete-prompt">
                     What would you like to do next?
                   </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="session-complete-actions">
                     <button
-                      className="action-button primary"
+                      className="session-complete-btn session-complete-btn--primary"
                       onClick={handleBack}
-                      style={{ width: '100%' }}
                     >
                       Continue Practicing
                     </button>
                     <button
-                      className="action-button"
+                      className="session-complete-btn session-complete-btn--ghost"
                       onClick={() => navigate(subject && chapter
                         ? `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}`
                         : '/learn'
                       )}
-                      style={{
-                        width: '100%',
-                        background: 'white',
-                        color: '#667eea',
-                        border: '2px solid #667eea',
-                      }}
                     >
                       Explore More Topics
                     </button>
@@ -2298,9 +2231,9 @@ export default function ChatSession() {
                 </div>
               )}
               {isComplete && sessionMode !== 'teach_me' && (
-                <div style={{ textAlign: 'center', padding: '16px' }}>
+                <div className="session-complete-summary-wrap">
                   <button
-                    className="action-button primary"
+                    className="session-complete-btn session-complete-btn--primary"
                     onClick={() => setShowSummary(true)}
                   >
                     View Session Summary

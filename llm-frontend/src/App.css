@@ -17,6 +17,99 @@
   --content-max-width: 600px;
   --font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+
+  /* ─────────────────────────────────────────────────────────────────────
+     Chalkboard redesign tokens (added 2026-04-15)
+     See docs/feature-development/kid-friendly-ui-redesign/design-brief.md
+     Pulled from mockups at llm-frontend/mockups/chalkboard/tokens.css.
+     Coexists with the legacy indigo/purple palette above during
+     incremental migration. Nothing references these yet — components
+     migrate screen by screen starting with ChatSession explanation cards.
+     ───────────────────────────────────────────────────────────────────── */
+
+  /* Chalkboard surfaces (one per subject) */
+  --board-green:       #2F4A3C;  /* math / default */
+  --board-green-deep:  #243B30;
+  --board-navy:        #1B2A4E;  /* science */
+  --board-brick:       #6B3030;  /* english */
+  --board-ochre:       #8B6F2B;  /* social studies */
+  --board-plum:        #5B2D4E;  /* hindi / regional */
+
+  /* Wood frame */
+  --wood-light:        #A06A3A;
+  --wood-mid:          #8B5A2B;
+  --wood-dark:         #6B4220;
+  --wood-deep:         #4B2D14;
+
+  /* Wall / paper surfaces (outside the chalkboard card) */
+  --wall-cream:        #E8DFCE;
+  --wall-warm:         #EFE6D3;
+  --parchment:         #F4EBD0;
+  --parchment-edge:    #D9C9A4;
+
+  /* Chalk palette (text + accents) */
+  --chalk-white:       #F4F4EF;
+  --chalk-white-soft:  rgba(244, 244, 239, 0.88);
+  --chalk-white-dim:   rgba(244, 244, 239, 0.68);
+  --chalk-coral:       #F4A7A0;
+  --chalk-gold:        #F4C76C;
+  --chalk-pink:        #F0B5C8;
+  --chalk-yellow:      #F2E27D;
+  --chalk-mint:        #8EDACE;
+  --chalk-sky:         #8DBFE5;
+  --chalk-lavender:    #C3A8E3;
+
+  /* Action colors (pill buttons) */
+  --cb-action-primary:        #5B6FE0;
+  --cb-action-primary-hover:  #4858C5;
+  --cb-action-secondary:      #F4EBD0;
+  --cb-action-secondary-ink:  #2B2B2B;
+
+  /* Ink (for parchment / light surfaces) */
+  --cb-ink-dark:  #1F1F1F;
+  --cb-ink-mid:   #3A3A3A;
+  --cb-ink-mute:  #6B6B6B;
+
+  /* Typography — loaded via <link> in index.html, font-display: swap */
+  --font-body:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  --font-hand:   'Caveat', 'Architects Daughter', cursive;
+  --font-mono:   'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Spacing scale (4px grid) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Radius (shorter alias-set for chalkboard components; legacy --radius-* still valid) */
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   20px;
+  --r-pill: 999px;
+
+  /* Shadows (chalkboard-specific) */
+  --shadow-frame:
+    0 12px 28px rgba(20, 14, 6, 0.35),
+    0 2px 4px rgba(20, 14, 6, 0.25),
+    inset 0 1px 0 rgba(255, 240, 200, 0.25),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-board-inset:
+    inset 0 0 60px rgba(0, 0, 0, 0.35),
+    inset 0 0 2px rgba(0, 0, 0, 0.5);
+  --shadow-chalk-piece:
+    0 2px 3px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  --shadow-pill:
+    0 4px 10px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --shadow-parchment:
+    inset 0 0 0 1px rgba(139, 105, 40, 0.2),
+    inset 0 2px 4px rgba(139, 105, 40, 0.15),
+    0 2px 6px rgba(20, 14, 6, 0.45);
 }
 
 * {
@@ -3925,4 +4018,3405 @@ body {
 
 .strikethrough {
   text-decoration: line-through;
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 2: Learning card (explanation slides)
+   Scope: everything under .app.chalkboard-active, which the component
+   adds when sessionPhase === 'card_phase'. Non-card-phase routes and
+   the admin UI are untouched. Incremental — check-in slides keep their
+   current styling until step 3.
+   Mockup reference: llm-frontend/mockups/chalkboard/learning-card.html
+   ========================================================================== */
+
+/* ── App shell becomes wood-toned ───────────────────────────────────────── */
+body:has(.app.chalkboard-active) { background: var(--wall-cream); }
+.app.chalkboard-active {
+  background: var(--wood-dark);
+  box-shadow: 0 0 28px rgba(20, 14, 6, 0.4);
+}
+
+/* ── Top nav on wood ─────────────────────────────────────────────────────── */
+.chalkboard-active .nav-bar {
+  background: linear-gradient(180deg, var(--wood-mid) 0%, var(--wood-deep) 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 -1px 0 rgba(255, 200, 140, 0.12);
+  color: var(--chalk-white);
+}
+.chalkboard-active .nav-home-btn,
+.chalkboard-active .nav-user-btn { color: var(--chalk-white); }
+.chalkboard-active .nav-home-btn:hover,
+.chalkboard-active .nav-user-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.chalkboard-active .nav-center { color: var(--chalk-white); }
+.chalkboard-active .nav-breadcrumb { color: var(--chalk-white); }
+.chalkboard-active .nav-breadcrumb-sep { color: var(--chalk-white-dim); }
+.chalkboard-active .nav-dropdown { background: #FBF6E8; }
+
+/* ── Progress bar on wood ────────────────────────────────────────────────── */
+.chalkboard-active .progress-bar {
+  background: var(--wood-dark);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .progress-info { color: var(--chalk-white-soft); }
+.chalkboard-active .progress-track { background: rgba(0, 0, 0, 0.35); }
+.chalkboard-active .progress-fill {
+  background: linear-gradient(90deg, #FFCD7D 0%, var(--chalk-gold) 100%);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.4);
+}
+
+/* ── Focus carousel = chalkboard surface ─────────────────────────────────── */
+.chalkboard-active .focus-carousel {
+  position: relative;
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  isolation: isolate;
+}
+/* Vignette + chalk smudges overlay */
+.chalkboard-active .focus-carousel::before {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.4) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 80% 78%, rgba(244, 244, 239, 0.03) 0, transparent 15%),
+    radial-gradient(circle at 58% 35%, rgba(244, 244, 239, 0.025) 0, transparent 20%);
+  box-shadow: var(--shadow-board-inset);
+}
+/* Subtle chalk doodles (star, paper airplane, pencil) */
+.chalkboard-active .focus-carousel::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.22;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 64 64' fill='none'><path d='M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z' stroke='%23F4F4EF' stroke-width='2' fill='none' stroke-linejoin='round'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 64 64' fill='none'><path d='M6 34 L58 10 L40 58 L32 36 Z M32 36 L58 10' stroke='%23F4F4EF' stroke-width='1.6' fill='none' stroke-linejoin='round'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='30' viewBox='0 0 120 50' fill='none'><path d='M6 30 L90 6 L110 12 L26 36 Z M90 6 L110 12' stroke='%23F4F4EF' stroke-width='1.6' fill='none'/></svg>");
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: calc(100% - 18px) 18px, 18px 20px, 22px calc(100% - 96px);
+}
+
+/* Slide content layered above overlays */
+.chalkboard-active .focus-track-container { position: relative; z-index: 1; }
+.chalkboard-active .focus-counter { color: var(--chalk-white-soft); }
+
+/* Audio button — chalk style */
+.chalkboard-active .focus-audio-btn {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1px solid rgba(244, 244, 239, 0.25);
+}
+.chalkboard-active .focus-audio-btn:hover { background: rgba(244, 244, 239, 0.18); }
+.chalkboard-active .focus-audio-btn.playing {
+  background: var(--chalk-gold);
+  color: var(--board-green-deep);
+  border-color: var(--chalk-gold);
+}
+
+/* ── Card-type label (CONCEPT / EXAMPLE / …) ─────────────────────────────── */
+.chalkboard-active .explanation-card-type {
+  font-family: var(--font-body);
+  color: var(--chalk-white-dim);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chalkboard-active .explanation-card-type::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--chalk-gold);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.55);
+}
+.chalkboard-active .explanation-card-type > span {
+  color: inherit;
+  font-family: inherit;
+}
+
+/* ── Explanation body text — chalk ───────────────────────────────────────── */
+.chalkboard-active .focus-tutor-msg {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+.chalkboard-active .focus-tutor-msg strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.5), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Headings in handwritten font */
+.chalkboard-active .focus-tutor-msg h1,
+.chalkboard-active .focus-tutor-msg h2,
+.chalkboard-active .focus-tutor-msg h3,
+.chalkboard-active .tw-spotlight-content h1,
+.chalkboard-active .tw-spotlight-content h2,
+.chalkboard-active .tw-spotlight-content h3,
+.chalkboard-active .tw-spotlight-content h4 {
+  font-family: var(--font-hand);
+  color: var(--chalk-white);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Typewriter spotlight ink → chalk */
+.chalkboard-active .tw-spotlight-content {
+  color: var(--chalk-white-soft);
+}
+.chalkboard-active .tw-spotlight-content strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.5), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .tw-cursor { background: var(--chalk-gold); }
+
+/* ── Parchment inset for visuals/code blocks ─────────────────────────────── */
+.chalkboard-active .explanation-card-visual {
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(139, 105, 40, 0.03) 0px, rgba(139, 105, 40, 0.03) 1px,
+      transparent 1px, transparent 4px),
+    linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--cb-ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-parchment);
+  font-family: var(--font-mono);
+}
+
+/* ── Student / message bubbles (rare in card phase, but graceful) ────────── */
+.chalkboard-active .focus-student-msg {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1px dashed var(--chalk-white-dim);
+}
+.chalkboard-active .focus-student-label { color: var(--chalk-gold); }
+.chalkboard-active .focus-typing .typing-indicator span {
+  background: var(--chalk-white-soft);
+}
+
+/* ── Bottom nav = wood strip with chalk pill buttons ─────────────────────── */
+.chalkboard-active .explanation-nav {
+  position: relative;
+  background: linear-gradient(180deg, var(--wood-mid) 0%, var(--wood-dark) 100%);
+  border-top: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
+  color: var(--chalk-white);
+  padding: 14px 16px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  gap: 10px;
+}
+/* Wood grain texture */
+.chalkboard-active .explanation-nav::before {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg,
+    rgba(0, 0, 0, 0.05) 0px,
+    rgba(0, 0, 0, 0.05) 1px,
+    transparent 1px, transparent 6px);
+}
+.chalkboard-active .explanation-nav > * { position: relative; z-index: 1; }
+/* Chalk tray strip tucked under the buttons */
+.chalkboard-active .explanation-nav::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 12px;
+  /* Chalk-piece hint: short colored segments along the strip */
+  background:
+    linear-gradient(90deg,
+      transparent 8%, var(--chalk-coral) 8%, var(--chalk-coral) 14%,
+      transparent 14%, transparent 22%, var(--chalk-gold) 22%, var(--chalk-gold) 28%,
+      transparent 28%, transparent 36%, var(--chalk-mint) 36%, var(--chalk-mint) 42%,
+      transparent 42%, transparent 50%, var(--chalk-sky) 50%, var(--chalk-sky) 56%,
+      transparent 56%, transparent 64%, var(--chalk-lavender) 64%, var(--chalk-lavender) 70%,
+      transparent 70%, transparent 78%, var(--chalk-pink) 78%, var(--chalk-pink) 84%,
+      transparent 84%),
+    linear-gradient(180deg, #6E4A26 0%, #4A2F16 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 4px, 100% 100%;
+  background-position: center bottom 3px, center;
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.45),
+    inset 0 -1px 2px rgba(255, 200, 140, 0.15);
+  opacity: 0.85;
+}
+/* Reserve room for the chalk tray strip */
+.chalkboard-active .explanation-nav {
+  padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + 14px);
+}
+
+/* "I didn't understand" link style */
+.chalkboard-active .explanation-nav-btn.simplify {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--chalk-white-dim);
+  text-decoration: none;
+  padding: 4px 2px 2px;
+  width: auto;
+  margin: 0 auto 4px;
+  display: inline-block;
+  align-self: center;
+}
+.chalkboard-active .explanation-nav-btn.simplify:hover {
+  border-bottom-color: var(--chalk-white);
+  color: var(--chalk-white);
+}
+
+/* Back/Next pills */
+.chalkboard-active .explanation-nav-btn.primary,
+.chalkboard-active .explanation-nav-btn.secondary {
+  border-radius: var(--r-pill);
+  border-bottom: none;
+  box-shadow: var(--shadow-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 14px 24px;
+  min-width: 110px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.chalkboard-active .explanation-nav-btn.primary {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
+  color: white;
+}
+.chalkboard-active .explanation-nav-btn.primary:hover {
+  background: linear-gradient(180deg, #5768D8 0%, var(--cb-action-primary-hover) 100%);
+}
+.chalkboard-active .explanation-nav-btn.primary:active {
+  transform: translateY(1px);
+  margin-top: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .explanation-nav-btn.secondary {
+  background: var(--cb-action-secondary);
+  color: var(--cb-action-secondary-ink);
+}
+.chalkboard-active .explanation-nav-btn.secondary:hover { background: #EEE2C1; }
+.chalkboard-active .explanation-nav-btn.secondary:active {
+  transform: translateY(1px);
+  margin-top: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .explanation-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 3: Check-in activities
+   All 11 check-in formats get chalk styling on the existing chalkboard surface.
+   Scoped under .chalkboard-active (already added in step 2 on card_phase).
+   Covers: PickOne, TrueFalse, FillBlank, SortBuckets, Sequence, SpotError,
+   OddOneOut, PredictReveal, SwipeClassify, TapToEliminate, MatchPairs.
+   ========================================================================== */
+
+/* ── Shared surfaces: instruction / hint / success message ───────────────── */
+.chalkboard-active .checkin-instruction,
+.chalkboard-active .match-instruction {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.35), 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .checkin-hint,
+.chalkboard-active .match-hint {
+  color: var(--chalk-gold);
+  background: rgba(244, 199, 108, 0.1);
+  border: 1px dashed rgba(244, 199, 108, 0.45);
+}
+.chalkboard-active .checkin-success-message,
+.chalkboard-active .match-success-message {
+  color: var(--chalk-white);
+  background: rgba(142, 218, 206, 0.15);
+  border: 1px solid var(--chalk-mint);
+  text-shadow: 0 0 4px rgba(142, 218, 206, 0.35);
+}
+.chalkboard-active .checkin-continue-btn,
+.chalkboard-active .match-continue-btn {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 14px 32px;
+}
+.chalkboard-active .checkin-continue-btn:hover,
+.chalkboard-active .match-continue-btn:hover {
+  background: linear-gradient(180deg, #5768D8 0%, var(--cb-action-primary-hover) 100%);
+}
+
+/* ── Generic option / item buttons across all activities ─────────────────── */
+.chalkboard-active .checkin-option-btn,
+.chalkboard-active .tf-btn,
+.chalkboard-active .sort-item,
+.chalkboard-active .seq-item,
+.chalkboard-active .error-step,
+.chalkboard-active .odd-item,
+.chalkboard-active .predict-option,
+.chalkboard-active .eliminate-option,
+.chalkboard-active .match-item,
+.chalkboard-active .swipe-btn {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .checkin-option-btn:hover:not(:disabled),
+.chalkboard-active .tf-btn:hover:not(:disabled),
+.chalkboard-active .sort-item:hover:not(:disabled),
+.chalkboard-active .seq-item:hover:not(:disabled),
+.chalkboard-active .error-step:hover:not(:disabled),
+.chalkboard-active .odd-item:hover:not(:disabled),
+.chalkboard-active .predict-option:hover:not(:disabled),
+.chalkboard-active .eliminate-option:hover:not(:disabled),
+.chalkboard-active .match-item:hover:not(:disabled),
+.chalkboard-active .swipe-btn:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+  border-style: solid;
+}
+
+/* Correct / matched state — mint glow */
+.chalkboard-active .checkin-option-btn.correct,
+.chalkboard-active .tf-btn.correct,
+.chalkboard-active .error-step.correct,
+.chalkboard-active .odd-item.correct,
+.chalkboard-active .predict-option.correct,
+.chalkboard-active .eliminate-option.correct,
+.chalkboard-active .match-item.matched {
+  background: rgba(142, 218, 206, 0.18);
+  border: 1.5px solid var(--chalk-mint);
+  color: var(--chalk-white);
+  box-shadow: 0 0 14px rgba(142, 218, 206, 0.3);
+}
+
+/* Selected (picked but not yet verified) — gold */
+.chalkboard-active .match-item.selected,
+.chalkboard-active .sort-item.selected,
+.chalkboard-active .predict-option.selected {
+  background: rgba(244, 199, 108, 0.12);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-white);
+  box-shadow: 0 0 0 2px rgba(244, 199, 108, 0.15);
+}
+
+/* Wrong state — coral; keep the existing match-shake animation */
+.chalkboard-active .checkin-option-btn.wrong,
+.chalkboard-active .tf-btn.tf-wrong,
+.chalkboard-active .sort-bucket.wrong,
+.chalkboard-active .seq-item.wrong,
+.chalkboard-active .error-step.wrong,
+.chalkboard-active .odd-item.wrong,
+.chalkboard-active .predict-option.wrong-pick,
+.chalkboard-active .eliminate-option.wrong,
+.chalkboard-active .match-item.wrong,
+.chalkboard-active .swipe-card.wrong {
+  background: rgba(244, 167, 160, 0.15);
+  border: 1.5px solid var(--chalk-coral);
+  color: var(--chalk-white);
+}
+
+/* TF's "here's the right answer" highlight on the un-picked button */
+.chalkboard-active .tf-btn.tf-right {
+  border: 1.5px solid var(--chalk-mint);
+}
+
+/* Auto-revealed (we gave up waiting) — gold/amber flavor */
+.chalkboard-active .match-item.auto-revealed,
+.chalkboard-active .sort-placed-item.auto-revealed {
+  background: rgba(244, 199, 108, 0.12);
+  border-color: var(--chalk-gold);
+  color: var(--chalk-white);
+}
+
+/* ── True/False statement ────────────────────────────────────────────────── */
+.chalkboard-active .tf-statement {
+  background: rgba(244, 244, 239, 0.06);
+  border: 1px solid rgba(244, 244, 239, 0.2);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+
+/* ── Fill-the-blank ──────────────────────────────────────────────────────── */
+.chalkboard-active .fill-sentence {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+.chalkboard-active .fill-blank-slot {
+  border-bottom-color: var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .fill-blank-slot.filled {
+  border-bottom-color: var(--chalk-mint);
+  color: var(--chalk-mint);
+}
+
+/* Fill-blank input modal — parchment popup on dimmed chalkboard */
+.chalkboard-active .iq-popup-overlay { background: rgba(0, 0, 0, 0.6); }
+.chalkboard-active .iq-popup {
+  background: var(--parchment);
+  border: 1px solid var(--parchment-edge);
+  color: var(--cb-ink-dark);
+  box-shadow: var(--shadow-parchment), 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+.chalkboard-active .iq-popup-label { color: var(--cb-ink-mid); }
+.chalkboard-active .iq-popup-input {
+  background: white;
+  border: 1px solid var(--parchment-edge);
+  color: var(--cb-ink-dark);
+  font-family: var(--font-body);
+}
+.chalkboard-active .iq-popup-input:focus {
+  border-color: var(--cb-action-primary);
+  box-shadow: 0 0 0 3px rgba(91, 111, 224, 0.2);
+}
+.chalkboard-active .iq-popup-done {
+  background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
+  border-radius: var(--r-pill);
+  color: white;
+  box-shadow: var(--shadow-pill);
+}
+
+/* ── Sort buckets ────────────────────────────────────────────────────────── */
+.chalkboard-active .sort-bucket {
+  background: rgba(244, 244, 239, 0.04);
+  border: 2px dashed rgba(244, 244, 239, 0.35);
+}
+.chalkboard-active .sort-bucket.active {
+  background: rgba(244, 199, 108, 0.1);
+  border-color: var(--chalk-gold);
+  border-style: solid;
+}
+.chalkboard-active .sort-bucket-label {
+  color: var(--chalk-white-soft);
+  border-bottom-color: rgba(244, 244, 239, 0.25);
+}
+.chalkboard-active .sort-placed-item {
+  background: rgba(142, 218, 206, 0.15);
+  color: var(--chalk-white);
+}
+
+/* ── Sequence slots ──────────────────────────────────────────────────────── */
+.chalkboard-active .seq-slot {
+  background: rgba(244, 244, 239, 0.04);
+  border: 2px dashed rgba(244, 244, 239, 0.3);
+}
+.chalkboard-active .seq-slot.next {
+  background: rgba(244, 199, 108, 0.1);
+  border-color: var(--chalk-gold);
+  border-style: solid;
+}
+.chalkboard-active .seq-slot.filled {
+  background: rgba(142, 218, 206, 0.15);
+  border-color: var(--chalk-mint);
+  border-style: solid;
+}
+.chalkboard-active .seq-slot-number {
+  background: rgba(244, 244, 239, 0.25);
+  color: var(--chalk-white);
+}
+.chalkboard-active .seq-slot.next .seq-slot-number {
+  background: var(--chalk-gold);
+  color: var(--board-green-deep);
+}
+.chalkboard-active .seq-slot.filled .seq-slot-number {
+  background: var(--chalk-mint);
+  color: var(--board-green-deep);
+}
+.chalkboard-active .seq-slot-value { color: var(--chalk-white); }
+
+/* ── Spot-the-error steps ────────────────────────────────────────────────── */
+.chalkboard-active .error-step-num {
+  background: rgba(244, 244, 239, 0.18);
+  color: var(--chalk-white);
+}
+.chalkboard-active .error-step.correct .error-step-num {
+  background: var(--chalk-mint);
+  color: var(--board-green-deep);
+}
+.chalkboard-active .error-step-text {
+  color: var(--chalk-white);
+  font-family: var(--font-mono);
+}
+
+/* ── Predict-then-reveal ─────────────────────────────────────────────────── */
+.chalkboard-active .predict-reveal {
+  background: rgba(244, 199, 108, 0.1);
+  border: 1px dashed var(--chalk-gold);
+  color: var(--chalk-white);
+}
+.chalkboard-active .predict-reveal-text {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+
+/* ── Swipe classify ──────────────────────────────────────────────────────── */
+.chalkboard-active .swipe-labels { color: var(--chalk-white); }
+.chalkboard-active .swipe-label-left,
+.chalkboard-active .swipe-label-right {
+  background: rgba(244, 244, 239, 0.06);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+}
+.chalkboard-active .swipe-card {
+  background: rgba(244, 244, 239, 0.1);
+  border: 1.5px solid rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .swipe-card-text { color: var(--chalk-white); }
+.chalkboard-active .swipe-card-counter { color: var(--chalk-white-dim); }
+.chalkboard-active .swipe-btn-left,
+.chalkboard-active .swipe-btn-right {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px solid var(--chalk-white-dim);
+  color: var(--chalk-white);
+}
+
+/* ── Tap-to-eliminate ────────────────────────────────────────────────────── */
+.chalkboard-active .eliminate-status {
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .eliminate-option.eliminated {
+  background: rgba(244, 244, 239, 0.02);
+  border-style: dotted;
+  color: var(--chalk-white-dim);
+  opacity: 0.5;
+}
+.chalkboard-active .strikethrough {
+  text-decoration-color: var(--chalk-coral);
+  text-decoration-thickness: 2px;
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 4: Selection screens (/learn/* routes)
+   Scope: SubjectSelect, ChapterSelect, TopicSelect, ModeSelectPage — all
+   under AppShell. Applies when .chalkboard-active is set on the shell
+   (driven by location.pathname.startsWith('/learn')).
+   Mockup: llm-frontend/mockups/chalkboard/subject-select.html
+   ========================================================================== */
+
+.chalkboard-active .app-content {
+  background: transparent;
+}
+
+/* Selection step container = chalkboard surface */
+.chalkboard-active .selection-step {
+  position: relative;
+  padding: var(--sp-5);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-board-inset);
+  isolation: isolate;
+  overflow: hidden;
+}
+.chalkboard-active .selection-step::before {
+  content: '';
+  position: absolute; inset: 0;
+  z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 18% 22%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 82% 78%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
+}
+.chalkboard-active .selection-step > * { position: relative; z-index: 1; }
+
+/* Handwritten chalk heading */
+.chalkboard-active .selection-step h2 {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 2rem;
+  line-height: 1.1;
+  color: var(--chalk-white);
+  margin: 0 0 var(--sp-4);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .selection-step h3 {
+  font-family: var(--font-hand);
+  color: var(--chalk-white);
+  font-size: 1.35rem;
+  margin: var(--sp-3) 0 var(--sp-2);
+  font-weight: 600;
+}
+.chalkboard-active .selection-step > p {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+
+/* Subject cards = chalk "textbook spines" */
+.chalkboard-active .selection-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-3);
+}
+.chalkboard-active .selection-card {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #3F5C4A 0%, var(--board-green) 100%);
+  border: none;
+  border-radius: var(--r-md);
+  color: var(--chalk-white);
+  font-family: var(--font-hand);
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .selection-card:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #4A6C57 0%, #2F4A3C 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.4),
+    0 6px 0 rgba(0, 0, 0, 0.25),
+    0 8px 14px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .selection-card:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.3),
+    0 2px 0 rgba(0, 0, 0, 0.25),
+    0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Back button = chalk ghost pill */
+.chalkboard-active .back-button {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--chalk-white);
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-pill);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.chalkboard-active .back-button:hover {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+}
+
+/* Breadcrumb */
+.chalkboard-active .breadcrumb {
+  color: var(--chalk-white-dim);
+  font-family: var(--font-body);
+}
+.chalkboard-active .breadcrumb-link {
+  color: var(--chalk-gold);
+  font-weight: 600;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.chalkboard-active .breadcrumb-link:hover { text-decoration: underline; }
+.chalkboard-active .breadcrumb-sep { color: var(--chalk-white-dim); }
+.chalkboard-active .breadcrumb-current {
+  color: var(--chalk-white);
+  font-weight: 600;
+}
+
+/* Learning path = vertical chalk list */
+.chalkboard-active .learning-path {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  background: transparent;
+}
+.chalkboard-active .learning-path-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: 14px 16px;
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chalkboard-active .learning-path-item:first-child,
+.chalkboard-active .learning-path-item:last-child,
+.chalkboard-active .learning-path-item:only-child {
+  border-radius: var(--r-sm);
+}
+.chalkboard-active .learning-path-item:hover {
+  background: rgba(244, 244, 239, 0.08);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .learning-path-item--completed {
+  background: rgba(142, 218, 206, 0.07);
+  border: 1px solid rgba(142, 218, 206, 0.3);
+}
+.chalkboard-active .learning-path-item--in_progress {
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.4);
+  box-shadow: 0 0 10px rgba(244, 199, 108, 0.12);
+}
+.chalkboard-active .learning-path-item--not_started {
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+}
+
+/* Step circles */
+.chalkboard-active .step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  font-weight: 700;
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  background: transparent;
+  color: var(--chalk-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chalkboard-active .step-circle--completed {
+  border: 1.5px solid var(--chalk-mint);
+  background: rgba(142, 218, 206, 0.2);
+  color: var(--chalk-mint);
+}
+.chalkboard-active .step-circle--in_progress {
+  border: 1.5px solid var(--chalk-gold);
+  background: rgba(244, 199, 108, 0.2);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .step-circle--not_started {
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  background: transparent;
+  color: var(--chalk-white-dim);
+}
+
+/* Path item text */
+.chalkboard-active .learning-path-title {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--chalk-white);
+  line-height: 1.2;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3);
+}
+.chalkboard-active .learning-path-summary {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+.chalkboard-active .learning-path-meta {
+  color: var(--chalk-white-dim);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+}
+.chalkboard-active .info-toggle {
+  color: var(--chalk-gold);
+  font-weight: 600;
+}
+.chalkboard-active .info-toggle:hover { text-decoration: underline; }
+.chalkboard-active .learning-path-arrow {
+  color: var(--chalk-white-dim);
+  font-size: 1.4rem;
+}
+
+/* TopicSelect chapter-landing intro sections (replaces inline styles) */
+.chalkboard-active .chapter-landing-section {
+  margin-bottom: var(--sp-3);
+}
+.chalkboard-active .chapter-landing-label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+  margin-bottom: 4px;
+}
+.chalkboard-active .chapter-landing-text {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Get Ready prerequisite button — parchment feel */
+.chalkboard-active .get-ready-btn {
+  display: block;
+  width: 100%;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  color: var(--ink-dark);
+  font-family: var(--font-body);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  font-size: 1rem;
+}
+.chalkboard-active .get-ready-btn:hover {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+.chalkboard-active .get-ready-btn-sub {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--ink-mute);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* Mode selection descriptions (replaces inline styles) */
+.chalkboard-active .mode-desc {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-4);
+}
+.chalkboard-active .mode-card-sub {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--chalk-white-dim);
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+  text-shadow: none;
+}
+.chalkboard-active .mode-practiced-note {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--chalk-mint);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* Resume cards keep their vivid gradient but match chalk button shadow */
+.chalkboard-active .selection-card.resume-card {
+  color: white;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.4),
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.chalkboard-active .selection-card.resume-card:hover {
+  background: inherit;
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.5),
+    0 6px 0 rgba(0, 0, 0, 0.25),
+    0 8px 14px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .selection-card.resume-card .mode-card-sub {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Mode-loading state */
+.chalkboard-active .mode-loading {
+  text-align: center;
+  padding: 32px 16px;
+}
+.chalkboard-active .mode-loading-title {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  margin: 16px 0 8px;
+}
+.chalkboard-active .mode-loading-sub {
+  font-size: 0.85rem;
+  color: var(--chalk-white-dim);
+  font-family: var(--font-body);
+  margin: 0;
+}
+.chalkboard-active .mode-loading .typing-indicator span {
+  background: var(--chalk-white);
+}
+
+/* Past exams toggle + list */
+.chalkboard-active .past-exams-section { margin-top: var(--sp-3); }
+.chalkboard-active .past-exams-toggle {
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.chalkboard-active .past-exams-toggle:hover { text-decoration: underline; }
+.chalkboard-active .past-exams-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chalkboard-active .past-exam-row {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  color: var(--chalk-white);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+.chalkboard-active .past-exam-row:hover {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .past-exam-date { color: var(--chalk-white-soft); }
+.chalkboard-active .past-exam-score { font-weight: 700; }
+.chalkboard-active .past-exam-score--high { color: var(--chalk-mint); }
+.chalkboard-active .past-exam-score--mid { color: var(--chalk-gold); }
+.chalkboard-active .past-exam-score--low { color: var(--chalk-coral); }
+
+/* Session error banner */
+.chalkboard-active .session-error-banner {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+/* Enrichment home prompt = parchment strip on chalkboard */
+.chalkboard-active .enrichment-home-prompt {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  border: 1px solid var(--parchment-edge);
+  color: var(--ink-dark);
+  box-shadow: var(--shadow-parchment);
+}
+.chalkboard-active .enrichment-home-dismiss {
+  color: var(--ink-mute);
+  background: rgba(0, 0, 0, 0.05);
+}
+.chalkboard-active .enrichment-home-dismiss:hover {
+  color: var(--ink-dark);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile tightening */
+@media (max-width: 600px) {
+  .chalkboard-active .selection-step {
+    padding: var(--sp-4) var(--sp-3);
+  }
+  .chalkboard-active .selection-card {
+    padding: 14px 16px;
+    font-size: 1.4rem;
+  }
+  .chalkboard-active .selection-step h2 {
+    font-size: 1.75rem;
+  }
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 5: Completion + scorecard + history
+   Scope:
+     - ChatSession session-complete-card (standalone chalk card in chat)
+     - /history (SessionHistoryPage) under AppShell.chalkboard-active
+     - /report-card (ReportCardPage) under AppShell.chalkboard-active
+     - /learn/.../exam-review/:id (ExamReviewPage) under AppShell.chalkboard-active
+   ========================================================================== */
+
+/* ── Session-complete card (chalkboard island inside ChatSession) ─────── */
+.session-complete-card {
+  position: relative;
+  margin: 16px;
+  padding: 24px 20px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-board-inset), 0 6px 18px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  isolation: isolate;
+  overflow: hidden;
+}
+.session-complete-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 80% 75%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
+}
+.session-complete-card > * { position: relative; z-index: 1; }
+
+.session-complete-title {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.85rem;
+  color: var(--chalk-gold);
+  margin: 0 0 12px;
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.session-complete-label {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+  margin: 0 0 10px;
+}
+
+.session-complete-concepts { margin-bottom: 18px; }
+
+.session-complete-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.session-complete-chip {
+  display: inline-block;
+  background: rgba(142, 218, 206, 0.15);
+  border: 1px dashed rgba(142, 218, 206, 0.5);
+  color: var(--chalk-mint);
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.session-complete-prompt {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--chalk-white-soft);
+  margin: 0 0 16px;
+}
+
+.session-complete-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.session-complete-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.session-complete-btn--primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.session-complete-btn--primary:hover {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.session-complete-btn--ghost {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+}
+.session-complete-btn--ghost:hover {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+}
+
+.session-complete-summary-wrap {
+  text-align: center;
+  padding: 16px;
+}
+.session-complete-summary-wrap .session-complete-btn {
+  display: inline-block;
+  width: auto;
+  min-width: 220px;
+}
+
+
+/* ── AppShell shared overrides for /history + /report-card ───────────── */
+.chalkboard-active .page-title {
+  font-family: var(--font-hand);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0 0 8px;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .page-subtitle {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+.chalkboard-active .page-loading {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+
+.chalkboard-active .page-empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  border-radius: var(--r-md);
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+}
+.chalkboard-active .page-empty-state-icon {
+  font-size: 2.5rem;
+  opacity: 0.7;
+  margin-bottom: 1rem;
+}
+.chalkboard-active .page-empty-state-title {
+  color: var(--chalk-white);
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.chalkboard-active .page-empty-state-desc {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+}
+
+.chalkboard-active .content-back-link {
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  background: none;
+  border: none;
+  font-weight: 600;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.chalkboard-active .content-back-link:hover {
+  text-decoration: underline;
+}
+
+/* Auth-style buttons used in empty states */
+.chalkboard-active .auth-btn.auth-btn-primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  padding: 10px 22px;
+  cursor: pointer;
+}
+.chalkboard-active .auth-btn.auth-btn-primary:hover {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+.chalkboard-active .auth-link {
+  color: var(--chalk-gold);
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.chalkboard-active .auth-link:hover { text-decoration: underline; }
+.chalkboard-active .auth-link:disabled {
+  color: var(--chalk-white-dim);
+  cursor: default;
+}
+.chalkboard-active .auth-error {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+
+/* ── Session History page (/history) ──────────────────────────────────── */
+.chalkboard-active .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+.chalkboard-active .stat-card {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.25);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  text-align: center;
+}
+.chalkboard-active .stat-value {
+  display: block;
+  font-family: var(--font-hand);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--chalk-gold);
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4);
+}
+.chalkboard-active .stat-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--chalk-white-dim);
+  margin-top: 2px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chalkboard-active .mode-filter-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .mode-filter-btn {
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  background: rgba(244, 244, 239, 0.05);
+  color: var(--chalk-white-soft);
+}
+.chalkboard-active .mode-filter-btn:hover {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+}
+.chalkboard-active .mode-filter-btn--active {
+  border: 1.5px solid var(--chalk-gold);
+  background: rgba(244, 199, 108, 0.15);
+  color: var(--chalk-gold);
+}
+
+.chalkboard-active .session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chalkboard-active .session-card {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chalkboard-active .session-card:hover {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .session-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .session-topic {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--chalk-white);
+}
+.chalkboard-active .session-mastery {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.chalkboard-active .session-card-meta {
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--chalk-white-dim);
+  flex-wrap: wrap;
+}
+.chalkboard-active .session-subject {
+  background: rgba(244, 199, 108, 0.15);
+  color: var(--chalk-gold);
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+.chalkboard-active .mode-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chalkboard-active .pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white-soft);
+}
+
+
+/* ── Report Card page (/report-card) ──────────────────────────────────── */
+.chalkboard-active .reportcard-stats-line {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--chalk-white-soft);
+  margin-bottom: 1.5rem;
+}
+
+.chalkboard-active .reportcard-section {
+  margin-bottom: 1.5rem;
+}
+.chalkboard-active .reportcard-section-title {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--chalk-white-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+
+.chalkboard-active .reportcard-subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.chalkboard-active .reportcard-subject-card {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #3F5C4A 0%, var(--board-green) 100%);
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--chalk-white);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.chalkboard-active .reportcard-subject-card:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #4A6C57 0%, #2F4A3C 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.4),
+    0 6px 0 rgba(0, 0, 0, 0.25),
+    0 8px 14px rgba(0, 0, 0, 0.3);
+}
+
+.chalkboard-active .reportcard-subject-name {
+  font-family: var(--font-hand);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.chalkboard-active .reportcard-subject-meta {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--chalk-white-dim);
+}
+
+/* Chapter section = chalk row card */
+.chalkboard-active .reportcard-chapter-section {
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.chalkboard-active .reportcard-chapter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.chalkboard-active .reportcard-chapter-name {
+  font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: var(--chalk-white);
+}
+
+.chalkboard-active .reportcard-topic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chalkboard-active .reportcard-topic-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--chalk-white);
+}
+.chalkboard-active .reportcard-topic-name {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white);
+  font-weight: 500;
+}
+.chalkboard-active .reportcard-topic-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chalkboard-active .reportcard-coverage {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--chalk-gold);
+}
+.chalkboard-active .reportcard-exam-score {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--chalk-mint);
+  background: rgba(142, 218, 206, 0.15);
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+}
+.chalkboard-active .reportcard-topic-detail {
+  padding: 6px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .reportcard-topic-meta {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--chalk-white-dim);
+}
+
+/* Coverage bar in chalk */
+.chalkboard-active .coverage-bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.chalkboard-active .coverage-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #FFCD7D 0%, var(--chalk-gold) 100%);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.4);
+  transition: width 0.3s ease;
+}
+
+/* Practice again = chalk pill secondary */
+.chalkboard-active .practice-again-btn {
+  padding: 8px 18px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  margin-top: 4px;
+}
+.chalkboard-active .practice-again-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+.chalkboard-active .practice-again-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalkboard-active .reportcard-subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+
+/* ── Exam Review page ─────────────────────────────────────────────────── */
+.chalkboard-active .exam-review-date {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--chalk-white-dim);
+  margin-bottom: 16px;
+}
+.chalkboard-active .exam-review-score {
+  text-align: center;
+  margin: 16px 0 24px;
+  padding: 20px;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-md);
+}
+.chalkboard-active .exam-review-score-value {
+  font-family: var(--font-hand);
+  font-size: 2.8rem;
+  font-weight: 700;
+  /* inline `style` color in JSX keeps semantic red/amber/green — let it win */
+  text-shadow: 0 0 2px currentColor;
+}
+.chalkboard-active .exam-review-score-pct {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white-soft);
+  margin-top: 4px;
+}
+.chalkboard-active .exam-review-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.chalkboard-active .exam-review-question {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+}
+.chalkboard-active .exam-review-question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.chalkboard-active .exam-review-question-num {
+  font-family: var(--font-hand);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--chalk-gold);
+}
+.chalkboard-active .exam-review-question-score {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.9rem;
+  /* inline style color wins */
+}
+.chalkboard-active .exam-review-question-text {
+  font-family: var(--font-body);
+  color: var(--chalk-white);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.chalkboard-active .exam-review-answer {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  font-size: 0.88rem;
+  margin: 4px 0;
+  line-height: 1.5;
+}
+.chalkboard-active .exam-review-answer strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+}
+.chalkboard-active .exam-review-rationale {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-parchment);
+}
+.chalkboard-active .exam-review-next-steps {
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.35);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.chalkboard-active .exam-review-next-steps strong {
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+.chalkboard-active .exam-review-next-steps ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--chalk-white-soft);
+}
+.chalkboard-active .exam-review-next-steps li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 6: Auth + onboarding
+   Scope: all 9 pages (LoginPage, EmailLogin, EmailSignup, EmailVerify,
+   PhoneLogin, OTPVerify, ForgotPassword, OAuthCallback, OnboardingFlow)
+   — all carry `className="auth-page chalkboard-active"` on their root.
+   ========================================================================== */
+
+/* Wall behind the auth-container: warm wood/cream room */
+.auth-page.chalkboard-active {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    /* subtle chalk dust vignette on the wall */
+    radial-gradient(ellipse at 50% 60%, rgba(0, 0, 0, 0.25) 0%, transparent 60%),
+    linear-gradient(180deg, #2B1F10 0%, var(--wood-dark) 60%, var(--wood-deep) 100%);
+}
+
+/* Auth container = wood-framed chalkboard */
+.auth-page.chalkboard-active .auth-container {
+  width: 100%;
+  max-width: 440px;
+  padding: 14px;
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg,
+      rgba(255, 220, 170, 0.25) 0%, transparent 12%,
+      transparent 88%, rgba(30, 15, 0, 0.25) 100%),
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.06) 0px, rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px, transparent 5px,
+      rgba(255, 255, 255, 0.05) 5px, rgba(255, 255, 255, 0.05) 6px,
+      transparent 6px, transparent 12px),
+    linear-gradient(180deg, var(--wood-light) 0%, var(--wood-mid) 50%, var(--wood-dark) 100%);
+  box-shadow: var(--shadow-frame);
+  position: relative;
+  box-sizing: border-box;
+}
+/* Inner board = the chalkboard surface we actually fill */
+.auth-page.chalkboard-active .auth-container::before {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.05) 0, transparent 18%),
+    radial-gradient(circle at 80% 78%, rgba(244, 244, 239, 0.04) 0, transparent 15%),
+    linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-board-inset);
+  pointer-events: none;
+  z-index: 0;
+}
+.auth-page.chalkboard-active .auth-container > * { position: relative; z-index: 1; }
+.auth-page.chalkboard-active .auth-container {
+  /* inner padding on top of the 14px frame padding */
+  padding: 14px;
+}
+.auth-page.chalkboard-active .auth-container > :first-child {
+  padding-top: 20px;
+}
+.auth-page.chalkboard-active .auth-container {
+  /* Stack the actual content inside the virtual board */
+}
+/* Add internal board padding for content */
+.auth-page.chalkboard-active .auth-logo,
+.auth-page.chalkboard-active .auth-title,
+.auth-page.chalkboard-active .auth-subtitle,
+.auth-page.chalkboard-active .auth-error,
+.auth-page.chalkboard-active .auth-success,
+.auth-page.chalkboard-active .auth-form,
+.auth-page.chalkboard-active .auth-buttons,
+.auth-page.chalkboard-active .auth-back-btn,
+.auth-page.chalkboard-active .auth-links,
+.auth-page.chalkboard-active .auth-footer,
+.auth-page.chalkboard-active .otp-container,
+.auth-page.chalkboard-active .onboarding-progress,
+.auth-page.chalkboard-active .onboarding-step,
+.auth-page.chalkboard-active .done-step {
+  margin-left: 18px;
+  margin-right: 18px;
+}
+.auth-page.chalkboard-active .auth-logo { margin-top: 14px; }
+
+/* Logo block */
+.auth-page.chalkboard-active .auth-logo {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.auth-page.chalkboard-active .auth-logo h1 {
+  font-family: var(--font-hand);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0.5rem 0 0.25rem;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.auth-page.chalkboard-active .auth-tagline {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+}
+.auth-page.chalkboard-active .auth-title {
+  font-family: var(--font-hand);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0 0 0.5rem;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.auth-page.chalkboard-active .auth-subtitle {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Back button (← Back) */
+.auth-page.chalkboard-active .auth-back-btn {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  margin: 14px 0 1rem;
+  align-self: flex-start;
+  display: inline-block;
+}
+.auth-page.chalkboard-active .auth-back-btn:hover {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+  color: var(--chalk-white);
+}
+
+/* Banners */
+.auth-page.chalkboard-active .auth-error {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+.auth-page.chalkboard-active .auth-success {
+  background: rgba(142, 218, 206, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-mint);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Forms */
+.auth-page.chalkboard-active .auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.auth-page.chalkboard-active .auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auth-page.chalkboard-active .auth-field label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-field input,
+.auth-page.chalkboard-active .auth-field select,
+.auth-page.chalkboard-active .auth-field textarea {
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--chalk-white);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.auth-page.chalkboard-active .auth-field input::placeholder,
+.auth-page.chalkboard-active .auth-field textarea::placeholder {
+  color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-field input:focus,
+.auth-page.chalkboard-active .auth-field select:focus,
+.auth-page.chalkboard-active .auth-field textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+.auth-page.chalkboard-active .auth-field input:disabled,
+.auth-page.chalkboard-active .auth-field select:disabled,
+.auth-page.chalkboard-active .auth-field textarea:disabled {
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--chalk-white-dim);
+}
+
+/* Password rules */
+.auth-page.chalkboard-active .password-rules {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.auth-page.chalkboard-active .password-rules li {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.auth-page.chalkboard-active .password-rules .rule-pass {
+  color: var(--chalk-mint);
+}
+.auth-page.chalkboard-active .password-rules .rule-fail {
+  color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .password-mismatch {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--chalk-coral);
+  margin-top: 4px;
+}
+
+/* Buttons */
+.auth-page.chalkboard-active .auth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.auth-page.chalkboard-active .auth-btn {
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  text-align: center;
+}
+.auth-page.chalkboard-active .auth-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Primary CTA = parchment pill */
+.auth-page.chalkboard-active .auth-btn-primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.auth-page.chalkboard-active .auth-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+
+/* Phone / Email / Google = chalk-ghost tinted pills */
+.auth-page.chalkboard-active .auth-btn-phone {
+  background: linear-gradient(180deg, rgba(142, 218, 206, 0.18) 0%, rgba(142, 218, 206, 0.08) 100%);
+  color: var(--chalk-mint);
+  border: 1.5px solid rgba(142, 218, 206, 0.5);
+}
+.auth-page.chalkboard-active .auth-btn-phone:hover:not(:disabled) {
+  background: rgba(142, 218, 206, 0.22);
+}
+.auth-page.chalkboard-active .auth-btn-email {
+  background: linear-gradient(180deg, rgba(244, 199, 108, 0.18) 0%, rgba(244, 199, 108, 0.08) 100%);
+  color: var(--chalk-gold);
+  border: 1.5px solid rgba(244, 199, 108, 0.5);
+}
+.auth-page.chalkboard-active .auth-btn-email:hover:not(:disabled) {
+  background: rgba(244, 199, 108, 0.22);
+}
+.auth-page.chalkboard-active .auth-btn-google {
+  background: rgba(244, 244, 239, 0.1);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.45);
+}
+.auth-page.chalkboard-active .auth-btn-google:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.18);
+  border-color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-btn-outline {
+  background: rgba(244, 244, 239, 0.05);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+}
+.auth-page.chalkboard-active .auth-btn-outline:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .auth-btn-outline.selected {
+  background: rgba(244, 199, 108, 0.18);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.auth-page.chalkboard-active .auth-btn-danger {
+  background: rgba(244, 167, 160, 0.12);
+  color: var(--chalk-coral);
+  border: 1.5px solid var(--chalk-coral);
+}
+.auth-page.chalkboard-active .auth-btn-danger:hover:not(:disabled) {
+  background: rgba(244, 167, 160, 0.2);
+}
+
+/* Links */
+.auth-page.chalkboard-active .auth-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+.auth-page.chalkboard-active .auth-link {
+  background: none;
+  border: none;
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+}
+.auth-page.chalkboard-active .auth-link:hover {
+  text-decoration: underline;
+  color: #FFCD7D;
+}
+.auth-page.chalkboard-active .auth-link:disabled {
+  color: var(--chalk-white-dim);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* Footer */
+.auth-page.chalkboard-active .auth-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding-bottom: 14px;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--chalk-white-dim);
+}
+
+/* OTP 6-digit input — chalk-outlined squares */
+.auth-page.chalkboard-active .otp-container {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+.auth-page.chalkboard-active .otp-input {
+  width: 44px;
+  height: 56px;
+  text-align: center;
+  font-family: var(--font-hand);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.auth-page.chalkboard-active .otp-input:focus {
+  background: rgba(244, 244, 239, 0.15);
+  border: 1.5px solid var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+
+/* Onboarding progress dots */
+.auth-page.chalkboard-active .onboarding-progress {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 14px 0 2rem;
+}
+.auth-page.chalkboard-active .onboarding-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(244, 244, 239, 0.2);
+  transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+}
+.auth-page.chalkboard-active .onboarding-dot.active {
+  background: var(--chalk-gold);
+  transform: scale(1.3);
+  box-shadow: 0 0 8px rgba(244, 199, 108, 0.6);
+}
+.auth-page.chalkboard-active .onboarding-dot.completed {
+  background: var(--chalk-mint);
+}
+
+/* Onboarding step layout */
+.auth-page.chalkboard-active .onboarding-step {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.auth-page.chalkboard-active .onboarding-step .auth-title {
+  text-align: center;
+}
+.auth-page.chalkboard-active .onboarding-input {
+  text-align: center;
+  font-family: var(--font-hand);
+  font-size: 1.5rem;
+  padding: 14px;
+}
+.auth-page.chalkboard-active .onboarding-textarea {
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  resize: vertical;
+}
+
+/* Grade grid 1–12 */
+.auth-page.chalkboard-active .grade-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 1rem;
+}
+.auth-page.chalkboard-active .grade-btn {
+  padding: 16px 0;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  border-radius: var(--r-sm);
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s;
+}
+.auth-page.chalkboard-active .grade-btn:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.auth-page.chalkboard-active .grade-btn.selected {
+  background: rgba(244, 199, 108, 0.2);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+  transform: scale(1.05);
+}
+.auth-page.chalkboard-active .grade-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Board list */
+.auth-page.chalkboard-active .board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+/* Done step */
+.auth-page.chalkboard-active .done-step {
+  padding: 2rem 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+.auth-page.chalkboard-active .done-step .auth-btn {
+  min-width: 220px;
+}
+
+/* Skip link inside onboarding */
+.auth-page.chalkboard-active .skip-btn {
+  margin-top: 8px;
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+/* Mobile tightening */
+@media (max-width: 480px) {
+  .auth-page.chalkboard-active {
+    padding: 0.75rem;
+  }
+  .auth-page.chalkboard-active .auth-container {
+    padding: 10px;
+  }
+  .auth-page.chalkboard-active .auth-container::before {
+    inset: 10px;
+  }
+  .auth-page.chalkboard-active .auth-logo,
+  .auth-page.chalkboard-active .auth-title,
+  .auth-page.chalkboard-active .auth-subtitle,
+  .auth-page.chalkboard-active .auth-error,
+  .auth-page.chalkboard-active .auth-success,
+  .auth-page.chalkboard-active .auth-form,
+  .auth-page.chalkboard-active .auth-buttons,
+  .auth-page.chalkboard-active .auth-back-btn,
+  .auth-page.chalkboard-active .auth-links,
+  .auth-page.chalkboard-active .auth-footer,
+  .auth-page.chalkboard-active .otp-container,
+  .auth-page.chalkboard-active .onboarding-progress,
+  .auth-page.chalkboard-active .onboarding-step,
+  .auth-page.chalkboard-active .done-step {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+  .auth-page.chalkboard-active .otp-input {
+    width: 38px;
+    height: 50px;
+    font-size: 1.5rem;
+  }
+  .auth-page.chalkboard-active .grade-grid {
+    gap: 8px;
+  }
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 7: Profile + Enrichment + Report Issue
+   Scope: /profile, /profile/enrichment, /report-issue (all under AppShell
+   with chalkboard-active now extended to include these routes).
+   ========================================================================== */
+
+/* ── Profile page (/profile) ──────────────────────────────────────────── */
+
+/* Profile reuses auth-form + auth-field + auth-btn. Since AppShell's
+   .chalkboard-active is on `.app` (NOT on `.auth-page`), the .auth-page
+   prefixed rules from step 6 don't apply here. Re-scope auth-* styling
+   under .chalkboard-active for profile use. */
+
+.chalkboard-active .auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.chalkboard-active .auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chalkboard-active .auth-field label {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+}
+.chalkboard-active .auth-field input,
+.chalkboard-active .auth-field select,
+.chalkboard-active .auth-field textarea {
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--chalk-white);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.chalkboard-active .auth-field input::placeholder,
+.chalkboard-active .auth-field textarea::placeholder {
+  color: var(--chalk-white-dim);
+}
+.chalkboard-active .auth-field input:focus,
+.chalkboard-active .auth-field select:focus,
+.chalkboard-active .auth-field textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+.chalkboard-active .auth-field input:disabled,
+.chalkboard-active .auth-field select:disabled,
+.chalkboard-active .auth-field textarea:disabled {
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--chalk-white-soft);
+  opacity: 0.85;
+}
+.chalkboard-active .auth-field select option {
+  /* option popups use OS styling; make text readable when dropdown opens */
+  background: var(--wood-dark);
+  color: var(--chalk-white);
+}
+
+.chalkboard-active .auth-btn {
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  text-align: center;
+}
+.chalkboard-active .auth-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.chalkboard-active .auth-btn-primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.chalkboard-active .auth-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.chalkboard-active .auth-btn-outline {
+  background: rgba(244, 244, 239, 0.05);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+}
+.chalkboard-active .auth-btn-outline:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.1);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .auth-btn-outline.selected {
+  background: rgba(244, 199, 108, 0.18);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .auth-success {
+  background: rgba(142, 218, 206, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-mint);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Profile-specific sections */
+.chalkboard-active .profile-header {
+  margin-bottom: 1rem;
+}
+.chalkboard-active .profile-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.chalkboard-active .profile-actions .auth-btn {
+  flex: 1;
+}
+.chalkboard-active .profile-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+}
+.chalkboard-active .profile-section h3 {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  color: var(--chalk-white);
+  margin-bottom: 0.5rem;
+}
+.chalkboard-active .profile-info {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white-dim);
+}
+
+
+/* ── Enrichment page (/profile/enrichment) ────────────────────────────── */
+
+.chalkboard-active .enrichment-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 1.5rem;
+  padding: 18px 20px;
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.35);
+  border-radius: var(--r-md);
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+.chalkboard-active .enrichment-cta:hover {
+  background: rgba(244, 199, 108, 0.14);
+  border-color: var(--chalk-gold);
+  transform: translateY(-1px);
+}
+.chalkboard-active .enrichment-cta-content h3 {
+  font-family: var(--font-hand);
+  color: var(--chalk-gold);
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.chalkboard-active .enrichment-cta-content p {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.4;
+}
+.chalkboard-active .enrichment-cta-arrow {
+  color: var(--chalk-gold);
+  font-size: 1.6rem;
+}
+
+/* Progress */
+.chalkboard-active .enrichment-progress {
+  margin: 1.25rem 0;
+}
+.chalkboard-active .enrichment-progress-bar {
+  height: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.chalkboard-active .enrichment-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FFCD7D 0%, var(--chalk-gold) 100%);
+  box-shadow: 0 0 6px rgba(244, 199, 108, 0.4);
+  transition: width 0.3s ease;
+}
+.chalkboard-active .enrichment-progress-text {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--chalk-white-dim);
+  letter-spacing: 0.04em;
+}
+
+/* Migration banner */
+.chalkboard-active .enrichment-migration-banner {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-parchment);
+  margin: 16px 0;
+}
+.chalkboard-active .enrichment-migration-banner p {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  margin: 0 0 8px;
+  color: var(--ink-dark);
+}
+
+/* Sections (expandable) */
+.chalkboard-active .enrichment-section {
+  margin-bottom: 10px;
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.chalkboard-active .enrichment-section-open {
+  background: rgba(244, 244, 239, 0.07);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .enrichment-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: var(--chalk-white);
+}
+.chalkboard-active .enrichment-section-header:hover {
+  background: rgba(244, 244, 239, 0.05);
+}
+.chalkboard-active .enrichment-section-title {
+  flex: 1;
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--chalk-white);
+}
+.chalkboard-active .enrichment-section-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(244, 244, 239, 0.2);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+}
+.chalkboard-active .enrichment-section-dot-filled {
+  background: var(--chalk-mint);
+  border: 1.5px solid var(--chalk-mint);
+  box-shadow: 0 0 6px rgba(142, 218, 206, 0.4);
+}
+.chalkboard-active .enrichment-section-arrow {
+  color: var(--chalk-white-dim);
+  font-size: 1.1rem;
+  transition: transform 0.2s;
+}
+.chalkboard-active .enrichment-section-body {
+  padding: 4px 16px 16px;
+}
+.chalkboard-active .enrichment-section-helper {
+  color: var(--chalk-white-soft);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+/* Save-all strip */
+.chalkboard-active .enrichment-save-all {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+}
+.chalkboard-active .enrichment-save-all-btn {
+  min-width: 140px;
+}
+.chalkboard-active .enrichment-save-msg {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.chalkboard-active .enrichment-save-success {
+  color: var(--chalk-mint);
+}
+.chalkboard-active .enrichment-save-error {
+  color: var(--chalk-coral);
+}
+
+/* Chips (tag-style options) */
+.chalkboard-active .enrichment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chalkboard-active .enrichment-chip {
+  padding: 8px 14px;
+  background: rgba(244, 244, 239, 0.06);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-pill);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+.chalkboard-active .enrichment-chip:hover {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .enrichment-chip-selected {
+  background: rgba(244, 199, 108, 0.22);
+  border: 1.5px solid var(--chalk-gold);
+  color: var(--chalk-gold);
+}
+.chalkboard-active .enrichment-chip-selected:hover {
+  background: rgba(244, 199, 108, 0.28);
+}
+.chalkboard-active .enrichment-chip-add {
+  border-style: dotted;
+  opacity: 0.85;
+}
+.chalkboard-active .enrichment-chip-custom {
+  display: inline-flex;
+  align-items: center;
+}
+.chalkboard-active .enrichment-chip-custom input {
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white);
+  outline: none;
+  min-width: 140px;
+}
+.chalkboard-active .enrichment-chip-custom input:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+}
+
+/* Tag input (open-answer tags) */
+.chalkboard-active .enrichment-tag-input {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chalkboard-active .enrichment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chalkboard-active .enrichment-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 6px 12px;
+  background: rgba(244, 199, 108, 0.18);
+  border: 1px solid var(--chalk-gold);
+  border-radius: var(--r-pill);
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+.chalkboard-active .enrichment-tag button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 1rem;
+  line-height: 1;
+  font-family: inherit;
+}
+.chalkboard-active .enrichment-tag button:hover {
+  color: #FFCD7D;
+}
+.chalkboard-active .enrichment-tag-input input {
+  padding: 10px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  outline: none;
+}
+.chalkboard-active .enrichment-tag-input input:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+}
+
+/* Char counter */
+.chalkboard-active .enrichment-char-count {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--chalk-white-dim);
+  display: block;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* Open textbox section */
+.chalkboard-active .enrichment-open-textbox {
+  margin-top: 1.5rem;
+  padding: 16px;
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-md);
+}
+.chalkboard-active .enrichment-open-textbox-title {
+  font-family: var(--font-hand);
+  font-size: 1.2rem;
+  color: var(--chalk-white);
+  margin: 0 0 6px;
+}
+.chalkboard-active .enrichment-open-textbox-helper {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--chalk-white-soft);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.chalkboard-active .enrichment-open-textbox textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white);
+  outline: none;
+  resize: vertical;
+  min-height: 96px;
+  box-sizing: border-box;
+}
+.chalkboard-active .enrichment-open-textbox textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+
+/* Session preferences section */
+.chalkboard-active .enrichment-session-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed rgba(244, 244, 239, 0.2);
+}
+.chalkboard-active .enrichment-session-title {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  color: var(--chalk-white);
+  margin: 0 0 0.75rem;
+}
+
+/* Personality card (AI-generated summary) */
+.chalkboard-active .enrichment-personality-card {
+  margin-top: 1.5rem;
+  padding: 18px 20px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-parchment);
+  color: var(--ink-dark);
+}
+.chalkboard-active .enrichment-personality-card h3 {
+  font-family: var(--font-hand);
+  font-size: 1.3rem;
+  color: var(--ink-dark);
+  margin: 0 0 10px;
+}
+.chalkboard-active .enrichment-personality-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chalkboard-active .enrichment-personality-field strong {
+  color: var(--ink-dark);
+  font-family: var(--font-body);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 2px;
+}
+.chalkboard-active .enrichment-personality-field p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+.chalkboard-active .enrichment-personality-updated {
+  color: var(--ink-mute);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  margin-top: 10px;
+}
+.chalkboard-active .enrichment-personality-generating {
+  text-align: center;
+}
+.chalkboard-active .enrichment-personality-generating p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+}
+.chalkboard-active .enrichment-personality-failed h3 {
+  color: var(--action-primary);
+}
+.chalkboard-active .enrichment-personality-failed p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+}
+.chalkboard-active .enrichment-personality-empty {
+  color: var(--ink-mid);
+  text-align: center;
+}
+.chalkboard-active .enrichment-personality-empty p {
+  color: var(--ink-mid);
+  font-family: var(--font-body);
+  margin: 0;
+}
+
+
+/* ── Report Issue page (/report-issue) ────────────────────────────────── */
+.chalkboard-active .report-issue-container {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.chalkboard-active .report-issue-heading {
+  font-family: var(--font-hand);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0 0 6px;
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .report-issue-subtitle {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+.chalkboard-active .report-issue-error {
+  background: rgba(244, 167, 160, 0.15);
+  color: var(--chalk-white);
+  border: 1px solid var(--chalk-coral);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  margin-bottom: 16px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+.chalkboard-active .report-issue-card {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-md);
+  padding: 20px;
+}
+.chalkboard-active .report-issue-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+  margin-bottom: 8px;
+}
+.chalkboard-active .report-issue-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(244, 244, 239, 0.08);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  min-height: 110px;
+}
+.chalkboard-active .report-issue-textarea::placeholder {
+  color: var(--chalk-white-dim);
+}
+.chalkboard-active .report-issue-textarea:focus {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-gold);
+  box-shadow: 0 0 0 3px rgba(244, 199, 108, 0.15);
+}
+.chalkboard-active .report-issue-tools {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.chalkboard-active .report-issue-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(244, 244, 239, 0.06);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  border-radius: var(--r-pill);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chalkboard-active .report-issue-tool-btn:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.12);
+  border-color: var(--chalk-white-dim);
+}
+.chalkboard-active .report-issue-tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chalkboard-active .report-issue-tool-btn--recording {
+  background: rgba(244, 167, 160, 0.15);
+  border: 1.5px solid var(--chalk-coral);
+  color: var(--chalk-coral);
+}
+.chalkboard-active .report-issue-file-input {
+  display: none;
+}
+.chalkboard-active .report-issue-previews {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.chalkboard-active .report-issue-preview {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+.chalkboard-active .report-issue-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(244, 244, 239, 0.35);
+}
+.chalkboard-active .report-issue-preview-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--wood-dark);
+  border: 1px solid var(--chalk-white-dim);
+  color: var(--chalk-white);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: inherit;
+}
+.chalkboard-active .report-issue-preview-remove:hover {
+  background: rgba(244, 167, 160, 0.2);
+  border-color: var(--chalk-coral);
+  color: var(--chalk-coral);
+}
+.chalkboard-active .report-issue-submit-btn {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px 20px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.chalkboard-active .report-issue-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.chalkboard-active .report-issue-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalkboard-active .report-issue-done {
+  text-align: center;
+  padding: 36px 24px;
+}
+.chalkboard-active .report-issue-done-check {
+  font-size: 48px;
+  color: var(--chalk-mint);
+  margin-bottom: 16px;
+  text-shadow: 0 0 10px rgba(142, 218, 206, 0.4);
+}
+.chalkboard-active .report-issue-done-title {
+  font-family: var(--font-hand);
+  font-size: 1.75rem;
+  color: var(--chalk-white);
+  margin: 0 0 8px;
+}
+.chalkboard-active .report-issue-done-text {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  margin-bottom: 24px;
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — STEP 9: Polish + A11y
+   - Fix nav-center indigo gradient bug on chalkboard (text-fill reset)
+   - Keyboard-only focus ring (gold, 2px)
+   - prefers-reduced-motion fallback
+   - Mobile tightening at ≤480px
+   ========================================================================== */
+
+/* Nav title was indigo-gradient + background-clip:text + fill:transparent.
+   Step 2 set color but didn't clear the fill — on chalkboard the text was
+   effectively transparent. Reset both so chalk-white wins. */
+.chalkboard-active .nav-center {
+  background: none !important;
+  -webkit-text-fill-color: var(--chalk-white);
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--chalk-white);
+}
+.auth-page.chalkboard-active .nav-center {
+  -webkit-text-fill-color: var(--chalk-white);
+}
+
+/* ── Keyboard focus ring (gold chalk) ───────────────────────────────────── */
+.chalkboard-active button:focus-visible,
+.chalkboard-active a:focus-visible,
+.chalkboard-active input:focus-visible,
+.chalkboard-active select:focus-visible,
+.chalkboard-active textarea:focus-visible,
+.auth-page.chalkboard-active button:focus-visible,
+.auth-page.chalkboard-active a:focus-visible,
+.auth-page.chalkboard-active input:focus-visible,
+.auth-page.chalkboard-active select:focus-visible,
+.auth-page.chalkboard-active textarea:focus-visible {
+  outline: 2px solid var(--chalk-gold);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(244, 199, 108, 0.25);
+}
+/* Inputs already have an internal focus ring — keep outline-only, not a
+   double-box-shadow, to avoid the ring stacking on top of the input glow. */
+.chalkboard-active .auth-field input:focus-visible,
+.chalkboard-active .auth-field select:focus-visible,
+.chalkboard-active .auth-field textarea:focus-visible,
+.chalkboard-active .otp-input:focus-visible,
+.chalkboard-active .report-issue-textarea:focus-visible,
+.chalkboard-active .enrichment-open-textbox textarea:focus-visible,
+.auth-page.chalkboard-active .auth-field input:focus-visible,
+.auth-page.chalkboard-active .auth-field select:focus-visible,
+.auth-page.chalkboard-active .auth-field textarea:focus-visible,
+.auth-page.chalkboard-active .otp-input:focus-visible {
+  outline: none;
+  /* box-shadow from the base :focus rule already provides the glow */
+}
+
+/* ── Reduced motion support ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .chalkboard-active *,
+  .chalkboard-active *::before,
+  .chalkboard-active *::after,
+  .auth-page.chalkboard-active *,
+  .auth-page.chalkboard-active *::before,
+  .auth-page.chalkboard-active *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Hover transforms that translate/scale the element disappear — keep
+     visual feedback via colour change only. */
+  .chalkboard-active .selection-card:hover,
+  .chalkboard-active .reportcard-subject-card:hover,
+  .chalkboard-active .session-complete-btn--primary:hover,
+  .chalkboard-active .grade-btn.selected,
+  .auth-page.chalkboard-active .auth-btn-primary:hover,
+  .auth-page.chalkboard-active .grade-btn.selected {
+    transform: none !important;
+  }
+}
+
+/* ── Mobile tightening at ≤480px ────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Nav bar — reduce logo+title so we don't wrap */
+  .chalkboard-active .nav-center {
+    font-size: 0.85rem;
+    gap: 4px;
+  }
+  .chalkboard-active .nav-logo {
+    width: 22px;
+    height: 22px;
+  }
+  .chalkboard-active .nav-home-btn,
+  .chalkboard-active .nav-user-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Selection step — slightly tighter */
+  .chalkboard-active .app-content {
+    padding: 16px;
+  }
+
+  /* Stats grid — keep 2-up but tighten */
+  .chalkboard-active .stats-grid {
+    gap: 8px;
+  }
+  .chalkboard-active .stat-value {
+    font-size: 1.5rem;
+  }
+
+  /* Report card subject grid — one-up on mobile */
+  .chalkboard-active .reportcard-subject-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Exam review score — slightly smaller */
+  .chalkboard-active .exam-review-score-value {
+    font-size: 2.2rem;
+  }
+
+  /* Session complete card — tighter padding */
+  .session-complete-card {
+    margin: 12px;
+    padding: 20px 16px;
+  }
+  .session-complete-title {
+    font-size: 1.6rem;
+  }
+}
+
+/* Touch targets: ensure small chalkboard buttons hit 44x44 minimum */
+@media (pointer: coarse) {
+  .chalkboard-active .mode-filter-btn,
+  .chalkboard-active .past-exams-toggle,
+  .chalkboard-active .info-toggle,
+  .chalkboard-active .back-button {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+
+/* ==========================================================================
+   CHALKBOARD REDESIGN — POST-STEP-9 FOLLOW-UP
+   Skin the three remaining .summary-card branches inside ChatSession
+   (teach-me-complete, practice-complete, session-summary). These render
+   outside card_phase so .chalkboard-active isn't applied — style the
+   classes directly as self-contained chalk islands (same pattern as
+   .session-complete-card in step 5).
+   ========================================================================== */
+
+.summary-card {
+  position: relative;
+  padding: 24px 20px;
+  margin: 12px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  border: none;
+  border-top: none;
+  box-shadow: var(--shadow-board-inset), 0 6px 18px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  isolation: isolate;
+  overflow: hidden auto;
+  color: var(--chalk-white);
+}
+.summary-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 20% 25%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 80% 75%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
+}
+.summary-card > * { position: relative; z-index: 1; }
+
+.summary-card h2 {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.85rem;
+  color: var(--chalk-gold);
+  margin: 0 0 16px;
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.summary-card p {
+  font-family: var(--font-body);
+  color: var(--chalk-white-soft);
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.summary-card p strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+}
+
+/* Inner chalk inset for concept lists / details */
+.summary-content {
+  position: relative;
+  text-align: left;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  margin: 0 auto 16px;
+  max-width: 520px;
+  box-shadow: none;
+  color: var(--chalk-white-soft);
+}
+.summary-content p { margin: 0 0 6px; color: var(--chalk-white-soft); }
+.summary-content p strong { color: var(--chalk-white); }
+.summary-content ul {
+  margin: 6px 0 0 20px;
+  padding: 0;
+  color: var(--chalk-white-soft);
+}
+.summary-content li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+/* Concept chip grid + chip style */
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.summary-chip {
+  display: inline-block;
+  background: rgba(142, 218, 206, 0.18);
+  border: 1px dashed rgba(142, 218, 206, 0.5);
+  color: var(--chalk-mint);
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* Message + meta text under the h2 in completion cards */
+.summary-card-message {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--chalk-white-soft);
+  line-height: 1.5;
+  margin: 12px 0;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.summary-card-meta {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--chalk-white-dim);
+  margin: 6px 0 14px;
+}
+
+/* Primary CTA — parchment pill */
+.restart-button {
+  padding: 12px 24px;
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-pill);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: var(--shadow-parchment);
+  transition: transform 0.12s ease, background 0.12s ease;
+  min-width: 160px;
+}
+.restart-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+  transform: translateY(-1px);
+}
+.restart-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Secondary ghost button: any .restart-button that uses the inline
+   `background: white; color: #667eea; border: 2px solid #667eea` gets
+   overridden here. We target the secondary role via attribute-free
+   cascade — same specificity + defined later means our rule wins over
+   the component-side class; but inline style still wins, so we also
+   null those in the JSX (done in a follow-up JSX edit). For safety,
+   support both shapes: */
+.summary-card .restart-button + .restart-button,
+.summary-card .restart-button.restart-button--ghost {
+  background: rgba(244, 244, 239, 0.08);
+  color: var(--chalk-white);
+  border: 1.5px dashed rgba(244, 244, 239, 0.35);
+  box-shadow: none;
+}
+.summary-card .restart-button + .restart-button:hover:not(:disabled),
+.summary-card .restart-button.restart-button--ghost:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.15);
+  border-color: var(--chalk-white-dim);
+  transform: none;
+}
+
+/* Practice-complete extra copy */
+.summary-card [data-testid="practice-complete"] p,
+.summary-card[data-testid="practice-complete"] p {
+  color: var(--chalk-white-soft);
+}
+
+/* Exam-summary score block + per-question cards (in showSummary branch) */
+.summary-card .exam-summary-score {
+  text-align: center;
+  margin: 12px 0 16px;
+  padding: 16px;
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+}
+.summary-card .exam-summary-score-value {
+  font-family: var(--font-hand);
+  font-size: 2.4rem;
+  font-weight: 700;
+  /* score color set inline based on pct — let it win */
+  text-shadow: 0 0 2px currentColor;
+}
+.summary-card .exam-summary-score-pct {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--chalk-white-soft);
+  margin-top: 4px;
+}
+
+.summary-card .exam-summary-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.summary-card .exam-summary-question {
+  background: rgba(244, 244, 239, 0.05);
+  border: 1px dashed rgba(244, 244, 239, 0.22);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.summary-card .exam-summary-q-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.summary-card .exam-summary-q-num {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--chalk-gold);
+}
+.summary-card .exam-summary-q-text {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--chalk-white);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.summary-card .exam-summary-q-answer {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--chalk-white-soft);
+  margin: 3px 0;
+  line-height: 1.5;
+}
+.summary-card .exam-summary-q-answer strong {
+  color: var(--chalk-white);
+  font-weight: 700;
+}
+.summary-card .exam-summary-q-rationale {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--ink-dark);
+  border: 1px solid var(--parchment-edge);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-style: normal;
+  line-height: 1.5;
+  box-shadow: var(--shadow-parchment);
+}
+
+.summary-card .exam-summary-next {
+  background: rgba(244, 199, 108, 0.08);
+  border: 1px solid rgba(244, 199, 108, 0.35);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  text-align: left;
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+}
+.summary-card .exam-summary-next strong {
+  color: var(--chalk-gold);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+.summary-card .exam-summary-next ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--chalk-white-soft);
+}
+
+/* Practice-start error + generic error under the CTA */
+.summary-card .restart-button-error {
+  font-family: var(--font-body);
+  color: var(--chalk-coral);
+  font-size: 0.85rem;
+  margin: 8px 0;
+}
+
+/* Button stacking — the three branches have multiple buttons in a row;
+   give them breathing room */
+.summary-card .restart-button + .restart-button {
+  margin-top: 10px;
+  display: inline-block;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .summary-card {
+    margin: 10px;
+    padding: 20px 16px;
+  }
+  .summary-card h2 { font-size: 1.55rem; }
+  .summary-card .exam-summary-score-value { font-size: 2rem; }
 }

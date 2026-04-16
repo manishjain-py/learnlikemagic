@@ -115,7 +115,7 @@ export default function OnboardingFlow() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container onboarding">
         {/* Progress dots */}
         <div className="onboarding-progress">
@@ -129,7 +129,7 @@ export default function OnboardingFlow() {
           ))}
         </div>
 
-        {error && <div className="auth-error">{error}</div>}
+        {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
         {step === 'name' && (
           <form onSubmit={handleNameSubmit} className="onboarding-step">

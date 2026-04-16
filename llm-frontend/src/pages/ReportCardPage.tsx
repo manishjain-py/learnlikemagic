@@ -219,7 +219,7 @@ export default function ReportCardPage() {
     return (
       <div className="app-content-inner">
         <h2 className="page-title">My Report Card</h2>
-        <div className="auth-error">{error}</div>
+        <div className="auth-error" role="alert" aria-live="assertive">{error}</div>
         <button className="auth-btn auth-btn-primary" onClick={fetchReportCard}>
           Retry
         </button>

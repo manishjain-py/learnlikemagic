@@ -37,7 +37,7 @@ export default function OAuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="auth-page">
+      <div className="auth-page chalkboard-active">
         <div className="auth-container">
           <h2 className="auth-title">Oops!</h2>
           <p className="auth-subtitle">{error}</p>
@@ -50,7 +50,7 @@ export default function OAuthCallbackPage() {
   }
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <h2 className="auth-title">Signing you in...</h2>
         <p className="auth-subtitle">Just a moment</p>

@@ -40,7 +40,7 @@ export default function PhoneLoginPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/login')}>
           ← Back
@@ -49,7 +49,7 @@ export default function PhoneLoginPage() {
         <h2 className="auth-title">What's your phone number?</h2>
         <p className="auth-subtitle">We'll send you a code to verify</p>
 
-        {error && <div className="auth-error">{error}</div>}
+        {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-field">

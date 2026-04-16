@@ -30,7 +30,7 @@ export default function EmailLoginPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page chalkboard-active">
       <div className="auth-container">
         <button className="auth-back-btn" onClick={() => navigate('/login')}>
           ← Back
@@ -39,7 +39,7 @@ export default function EmailLoginPage() {
         <h2 className="auth-title">Welcome back!</h2>
         <p className="auth-subtitle">Log in with your email</p>
 
-        {error && <div className="auth-error">{error}</div>}
+        {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-field">

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LearnLikeMagic — Login (Chalkboard)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  /* Logo block */
+  .brand {
+    text-align: center;
+    margin: var(--sp-6) 0 var(--sp-5);
+  }
+  .brand-logo {
+    display: inline-block;
+    color: var(--chalk-white);
+    filter: drop-shadow(0 0 1px rgba(244,244,239,0.4));
+  }
+  .brand-title {
+    font-family: var(--font-hand);
+    font-size: 2.6rem;
+    color: var(--chalk-white);
+    margin: var(--sp-3) 0 0;
+    line-height: 1;
+    text-shadow: 0 0 1px rgba(244,244,239,0.4), 0 2px 0 rgba(0,0,0,0.3);
+  }
+  .brand-tagline {
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    color: var(--chalk-white-dim);
+    letter-spacing: 0.08em;
+    margin-top: var(--sp-2);
+  }
+
+  .auth-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: 0 var(--sp-2) var(--sp-4);
+  }
+  .auth-btn {
+    padding: 14px 20px;
+    border-radius: var(--r-pill);
+    border: 1.5px dashed rgba(244,244,239,0.4);
+    background: rgba(244,244,239,0.06);
+    color: var(--chalk-white);
+    font-family: var(--font-body);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .auth-btn:hover { background: rgba(244,244,239,0.1); border-style: solid; }
+  .auth-btn--google { background: white; color: var(--ink-dark); border-color: white; }
+  .auth-btn--google:hover { background: #F8F8F8; }
+
+  .auth-divider {
+    display: flex; align-items: center; gap: var(--sp-3);
+    color: var(--chalk-white-dim);
+    font-family: var(--font-body);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.2em;
+    margin: var(--sp-2) 0;
+  }
+  .auth-divider::before, .auth-divider::after {
+    content: ''; flex: 1; height: 1px; background: rgba(244,244,239,0.2);
+  }
+
+  .auth-footer {
+    text-align: center;
+    color: var(--chalk-white-dim);
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    margin-top: var(--sp-4);
+  }
+  .auth-footer a { color: var(--chalk-white); text-decoration: underline; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="wand-grad" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#F4C76C"/><stop offset="1" stop-color="#F4A7A0"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="wall">
+<div class="viewport">
+
+  <div class="frame">
+    <div class="frame-nails"></div>
+    <div class="board" style="min-height: 620px;">
+
+      <!-- Scattered doodles -->
+      <svg class="doodle doodle--tl" width="30" height="30" viewBox="0 0 64 64" style="opacity:0.18;">
+        <path d="M32 4 L40 24 L62 26 L45 40 L50 60 L32 48 L14 60 L19 40 L2 26 L24 24 Z"
+              stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      </svg>
+      <svg class="doodle doodle--tr" width="44" height="44" viewBox="0 0 64 64" style="opacity:0.18;">
+        <!-- Sparkle cluster -->
+        <g stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round">
+          <path d="M16 16 L16 28 M10 22 L22 22"/>
+          <path d="M44 42 L44 52 M39 47 L49 47"/>
+          <path d="M46 14 L46 20 M43 17 L49 17"/>
+        </g>
+      </svg>
+      <svg class="doodle doodle--bl" width="54" height="54" viewBox="0 0 64 64" style="opacity:0.16;">
+        <!-- Swirl/spiral -->
+        <path d="M32 32 Q 42 22, 32 14 Q 12 14, 14 32 Q 14 52, 38 54 Q 58 54, 58 32"
+              stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      </svg>
+      <svg class="doodle doodle--br" width="40" height="40" viewBox="0 0 64 64" style="opacity:0.2;">
+        <path d="M32 8 L40 24 L58 26 L44 38 L48 56 L32 46 L16 56 L20 38 L6 26 L24 24 Z"
+              stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+      </svg>
+
+      <!-- Brand / logo -->
+      <div class="brand">
+        <svg class="brand-logo" width="72" height="72" viewBox="0 0 80 80" fill="none">
+          <!-- Open book (chalk outline) -->
+          <path d="M10 22 L40 18 L70 22 L70 60 L40 56 L10 60 Z"
+                stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+          <path d="M40 18 L40 56" stroke="currentColor" stroke-width="2"/>
+          <path d="M16 30 L34 27 M16 36 L34 33 M16 42 L34 39"
+                stroke="currentColor" stroke-width="1.2"/>
+          <path d="M46 27 L64 30 M46 33 L64 36 M46 39 L64 42"
+                stroke="currentColor" stroke-width="1.2"/>
+          <!-- Wand crossing over -->
+          <line x1="55" y1="10" x2="30" y2="38" stroke="url(#wand-grad)" stroke-width="3" stroke-linecap="round"/>
+          <!-- Star tip -->
+          <path d="M58 6 L61 12 L67 13 L62.5 17 L64 23 L58 20 L52 23 L53.5 17 L49 13 L55 12 Z"
+                fill="url(#wand-grad)"/>
+          <!-- Tiny sparkles -->
+          <circle cx="22" cy="14" r="1.5" fill="currentColor"/>
+          <circle cx="68" cy="52" r="1.5" fill="currentColor"/>
+          <circle cx="14" cy="48" r="1" fill="currentColor"/>
+        </svg>
+
+        <h1 class="brand-title">Learn Like Magic</h1>
+        <p class="brand-tagline">LET'S LEARN SOMETHING NEW</p>
+      </div>
+
+      <!-- Auth options -->
+      <div class="auth-stack">
+        <button class="auth-btn auth-btn--google">
+          <svg width="20" height="20" viewBox="0 0 18 18">
+            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.71H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+            <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+          </svg>
+          Continue with Google
+        </button>
+
+        <div class="auth-divider">OR</div>
+
+        <button class="auth-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="3" y="5" width="18" height="14" rx="2"/>
+            <path d="M3 7 L12 13 L21 7"/>
+          </svg>
+          Continue with Email
+        </button>
+
+        <button class="auth-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="6" y="2" width="12" height="20" rx="2"/>
+            <line x1="12" y1="18" x2="12" y2="18"/>
+          </svg>
+          Continue with Phone
+        </button>
+      </div>
+
+      <p class="auth-footer">
+        New here? <a href="#">Create an account</a>
+      </p>
+
+    </div>
+
+    <!-- Chalk tray -->
+    <div class="chalk-tray">
+      <span class="chalk chalk--coral"></span>
+      <span class="chalk chalk--gold"></span>
+      <span class="chalk chalk--mint"></span>
+      <span class="chalk chalk--sky"></span>
+      <span class="chalk chalk--lavender"></span>
+      <span class="eraser"></span>
+    </div>
+  </div>
+
+  <p style="text-align:center;font-family:var(--font-body);font-size:var(--fs-xs);color:var(--ink-mute);margin-top:var(--sp-3);">
+    Login · initial state
+  </p>
+</div>
+</div>
+</body>
+</html>
