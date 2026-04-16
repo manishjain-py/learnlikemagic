@@ -61,6 +61,7 @@ const BookV2Detail: React.FC = () => {
   const [ocrJobs, setOcrJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [checkInJobs, setCheckInJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [checkInStatus, setCheckInStatus] = useState<Record<string, TopicCheckInStatusV2[]>>({});
+  const [checkInReviewRounds, setCheckInReviewRounds] = useState<Record<string, number>>({});
   const [audioJobs, setAudioJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
@@ -388,7 +389,8 @@ const BookV2Detail: React.FC = () => {
   const handleGenerateCheckIns = async (ch: ChapterResponseV2, force = false) => {
     if (!id) return;
     try {
-      const job = await generateCheckIns(id, { chapterId: ch.id, force });
+      const reviewRounds = checkInReviewRounds[ch.id] ?? 1;
+      const job = await generateCheckIns(id, { chapterId: ch.id, force, reviewRounds });
       setCheckInJobs(prev => ({ ...prev, [ch.id]: job }));
       startCheckInPolling(ch.id);
     } catch (err) {
@@ -940,6 +942,28 @@ const BookV2Detail: React.FC = () => {
                               <button onClick={() => handleGenerateRefresher(ch)} style={manageLinkStyle}>Refresher</button>
                               <button onClick={() => window.open(`/admin/books-v2/${id}/visuals/${ch.id}`, '_blank')} style={manageLinkStyle}>Visuals</button>
                               <button onClick={() => handleGenerateCheckIns(ch)} style={manageLinkStyle}>Check-ins</button>
+                              <label
+                                title="Accuracy review-refine rounds after initial check-in generation (0 disables)"
+                                style={{ fontSize: '11px', color: '#6B7280', marginLeft: '-4px' }}
+                              >
+                                rounds:
+                                <select
+                                  value={checkInReviewRounds[ch.id] ?? 1}
+                                  onChange={e =>
+                                    setCheckInReviewRounds(prev => ({
+                                      ...prev, [ch.id]: Number(e.target.value),
+                                    }))
+                                  }
+                                  style={{
+                                    marginLeft: '4px', padding: '1px 4px', borderRadius: '4px',
+                                    border: '1px solid #D1D5DB', fontSize: '11px',
+                                  }}
+                                >
+                                  {[0, 1, 2, 3, 4, 5].map(n => (
+                                    <option key={n} value={n}>{n}</option>
+                                  ))}
+                                </select>
+                              </label>
                               {checkInJobs[ch.id] && ['pending', 'running'].includes(checkInJobs[ch.id].status) && (
                                 <span style={{ fontSize: '11px', color: '#5B21B6' }}>
                                   {checkInJobs[ch.id].current_item || 'Starting...'}

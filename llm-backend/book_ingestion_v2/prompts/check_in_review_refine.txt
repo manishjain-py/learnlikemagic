@@ -1,0 +1,72 @@
+You are reviewing check-in cards for FACTUAL ACCURACY before they reach a Grade {grade} student studying {subject} — specifically the topic "{topic_title}".
+
+Check-ins are short interactive activities inserted between explanation cards to verify understanding. Some of them may contain accuracy bugs — items categorised under the wrong label, a "correct" answer that is actually wrong, a "wrong" step that is actually correct, a sequence given in the wrong order, etc. Your job is to find those and fix them in place.
+
+TEACHING GUIDELINE (ground truth for what was taught):
+{guideline_text}
+
+EXPLANATION CARDS (what the student was just taught, for context):
+{explanation_cards_json}
+
+CHECK-IN CARDS TO REVIEW:
+{check_ins_json}
+
+═══════════════════════════════════════════════
+WHAT TO CHECK — ACCURACY ONLY
+═══════════════════════════════════════════════
+
+For EVERY check-in card, verify each of the following. Fix anything that is wrong.
+
+1. Every factual claim made in `instruction`, `statement`, `options`, `hint`, `success_message`, `reveal_text`, `pairs`, `sequence_items`, `bucket_items`, `error_steps`, `odd_items` is true and matches the teaching guideline.
+
+2. The marked correct answer is actually correct:
+   - `pick_one` / `fill_blank` / `predict_then_reveal` / `tap_to_eliminate` — `correct_index` points to the one option that is genuinely right.
+   - `true_false` — `correct_answer` matches whether the `statement` is true.
+   - `spot_the_error` — `error_index` points to the step that contains a real, specific error. Every OTHER step in `error_steps` must be CORRECT.
+   - `odd_one_out` — `odd_index` points to the item that genuinely does not belong; every other item shares a clear property.
+
+3. Every bucket assignment is correct:
+   - `sort_buckets` / `swipe_classify` — each item's `correct_bucket` (0 or 1) matches its `bucket_names[correct_bucket]` label. If the label says "3-DIGIT NUMBER", every item assigned to that bucket must actually have exactly 3 digits. If the label says "Even", every item assigned must actually be even. And so on.
+
+4. `sequence_items` is in the correct order as implied by the `instruction` (e.g., ascending, descending, chronological, procedural). The order given IS the correct order — not a shuffled list.
+
+5. `match_pairs` — each `pairs[i].left` genuinely matches `pairs[i].right` and no other right item is a better match. No ambiguous pairings.
+
+6. Numeric consistency — any numbers shown in options, items, steps, reveal_text, success_message are arithmetically correct (sums, products, place values, digit counts, comparisons).
+
+═══════════════════════════════════════════════
+WHAT NOT TO CHANGE
+═══════════════════════════════════════════════
+
+- DO NOT rewrite for tone, warmth, or friendliness.
+- DO NOT rewrite for clarity, word choice, or instruction style.
+- DO NOT rewrite for distractor plausibility or cognitive level.
+- DO NOT rewrite for vocabulary difficulty or grammar.
+- DO NOT add or remove check-ins.
+- DO NOT change `activity_type`, `insert_after_card_idx`, or `title` unless required to fix a factual error.
+- DO NOT reorder check-ins.
+
+If a card is factually correct, return it UNCHANGED. Only rewrite the specific field(s) that contain an accuracy error.
+
+═══════════════════════════════════════════════
+HOW TO FIX
+═══════════════════════════════════════════════
+
+When you find an accuracy bug, prefer the MINIMAL fix:
+
+- If one item in `bucket_items` is under the wrong bucket label → either change the item text so it genuinely matches the label, or flip its `correct_bucket`. Pick whichever is closer to the original intent.
+- If `correct_index` points to a wrong option → change `correct_index` to the actually correct option; if no option is correct, rewrite the MINIMAL number of options so one is correct.
+- If `sequence_items` is out of order → reorder the items.
+- If `error_steps[error_index]` is not actually an error → change `error_index` to the step that IS wrong, OR edit the step text so it genuinely contains the intended error.
+- If a `pair` is mismatched → fix either `left` or `right` to make the pair genuinely correct.
+- If `success_message` or `reveal_text` states a wrong fact → fix the fact.
+
+Preserve the surrounding structure. Do not delete fields. Do not change array lengths unless absolutely necessary to fix accuracy.
+
+═══════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════
+
+Return the full list of check-ins in the same order, with accuracy fixes applied. Respond with valid JSON only — no markdown fences, no explanation outside the JSON. Your response MUST conform to this schema:
+
+{output_schema}
