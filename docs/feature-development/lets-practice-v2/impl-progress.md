@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 3 of 16 steps complete. Backend foundation in place; ready to build the ingestion API (Step 4) next.
+**Status:** 4 of 16 steps complete. Backend ingestion API in place; ready to build the admin UI (Step 5) next.
 
 ---
 
@@ -40,11 +40,11 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 
 | # | Step | Status | Key files | Notes |
 |---|------|--------|-----------|-------|
-| 1 | Additive DB schema + LLM seeds | ✅ Done | `shared/models/entities.py`, `db.py` | `PracticeQuestion` + `PracticeAttempt` models added. `_apply_practice_tables()` creates partial unique index on `(user_id, guideline_id) WHERE status='in_progress'`. Seeded `practice_bank_generator` (openai/gpt-5.2) and `practice_grader` (openai/gpt-4o-mini) via `_ensure_llm_config`. **Exam columns untouched** — destructive cleanup is Step 12. |
+| 1 | Additive DB schema + LLM seeds | ✅ Done | `shared/models/entities.py`, `db.py` | `PracticeQuestion` + `PracticeAttempt` models added. `_apply_practice_tables()` creates partial unique index on `(user_id, guideline_id) WHERE status='in_progress'`. Seeded `practice_bank_generator` (claude_code/claude-opus-4-6 — admin/offline pipelines use claude_code per project rule, matches `check_in_enrichment`) and `practice_grader` (openai/gpt-4o-mini — runtime path uses openai) via `_ensure_llm_config`. **Exam columns untouched** — destructive cleanup is Step 12. |
 | 2 | Practice repositories | ✅ Done | `shared/repositories/practice_question_repository.py`, `shared/repositories/practice_attempt_repository.py`, `shared/repositories/__init__.py` | Both classes exported. Repos commit per-op; atomic SELECT FOR UPDATE + flip lives in Step 7 service. `list_recent_unread` returns both `graded` and `grading_failed` attempts (drives banner). `answers_json` uses string keys for JSON portability. |
 | 3 | Bank generator service + prompts | ✅ Done | `book_ingestion_v2/services/practice_bank_generator_service.py`, `book_ingestion_v2/prompts/practice_bank_generation.txt`, `book_ingestion_v2/prompts/practice_bank_review_refine.txt`, `book_ingestion_v2/constants.py` | `V2JobType.PRACTICE_BANK_GENERATION` enum added. Service mirrors `check_in_enrichment_service` pattern. Reuses `MatchPairOutput`, `BucketItemOutput`, and all format-specific min/max constants from check-in service. `_generate_and_refine_bank` runs initial generation → `review_rounds` refine passes → validate → up to 2 top-up attempts to reach `TARGET_BANK_SIZE=30`. Caps at `MAX_BANK_SIZE=40`. Validate drops: unknown format, empty text fields, FF overflow past 3, dupes by question_text. If final valid < 30 → skip insert + mark failed. |
-| 4 | Ingestion API endpoints | ⏳ Next | `book_ingestion_v2/api/sync_routes.py` (extend) | Mirror `generate_check_ins` / `get_latest_check_in_job`. New endpoints: `POST /admin/v2/books/{id}/generate-practice-banks`, `GET /admin/v2/books/{id}/practice-bank-jobs/latest`, `GET /admin/v2/books/{id}/practice-bank-status`, `GET /admin/v2/books/{id}/practice-banks/{guideline_id}`. Chapter-level lock via `ChapterJobService.acquire_lock` with `V2JobType.PRACTICE_BANK_GENERATION.value`. Background task `_run_practice_bank_generation` constructs `LLMService` via `LLMConfigService.get_config("practice_bank_generator")`. |
-| 5 | Admin UI bank viewer | Pending | `llm-frontend/src/features/admin/pages/PracticeBankAdmin.tsx` (new), `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` (extend), `llm-frontend/src/features/admin/api/adminApiV2.ts` (new endpoints) | Add "Practice Banks" section in BookV2Detail with per-topic status + generate button + viewer link. New page shows read-only list of 30-40 questions per topic — format, difficulty, correct answer, explanation. No regen-per-question, no analytics. |
+| 4 | Ingestion API endpoints | ✅ Done | `book_ingestion_v2/api/sync_routes.py`, `book_ingestion_v2/models/schemas.py` | 4 endpoints registered on the existing `/admin/v2/books/{book_id}` router — same scoping rules + lock pattern as check-in enrichment. Background task `_run_practice_bank_generation` fetches `practice_bank_generator` LLM config (fallback: `explanation_generator`), instantiates `PracticeBankGeneratorService`, calls `enrich_guideline` or `enrich_chapter`, then `release_lock`. New response schemas: `TopicPracticeBankStatus`, `ChapterPracticeBankStatusResponse`, `PracticeBankQuestionItem`, `PracticeBankDetailResponse`. |
+| 5 | Admin UI bank viewer | ⏳ Next | `llm-frontend/src/features/admin/pages/PracticeBankAdmin.tsx` (new), `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` (extend), `llm-frontend/src/features/admin/api/adminApiV2.ts` (new endpoints) | Add "Practice Banks" section in BookV2Detail with per-topic status + generate button + viewer link. New page shows read-only list of 30-40 questions per topic — format, difficulty, correct answer, explanation. No regen-per-question, no analytics. |
 | 6 | Grading service | Pending | `tutor/services/practice_grading_service.py` (new), `tutor/prompts/practice_grading.py` (new) | `grade_attempt(attempt_id)` entry-point for the bg worker. Deterministic structured grading. LLM for FF grading (JSON schema: `{score: float[0,1], rationale: str}`). LLM for per-pick rationale (one call per wrong/blank structured answer). `ThreadPoolExecutor(max_workers=10)` for parallel LLM calls. 3x retry with 10/20/40s backoff per call; final failure → `mark_grading_failed`. LLM config key: `practice_grader` (openai/gpt-4o-mini, reasoning_effort=none). |
 | 7 | Practice lifecycle service | Pending | `tutor/services/practice_service.py` (new), `tutor/models/practice.py` (new Pydantic DTOs) | `start_or_resume`: catch IntegrityError from partial unique index + re-read winner (idempotent). `_select_set`: 3E/5M/2H mix, **all FFs absorbed** (Q2: FF counts toward ≥4-format variety check), random pick with `_enforce_no_consecutive_same_format`. `_snapshot_question`: copy `question_json` + add `_id/_format/_difficulty/_concept_tag/_presentation_seed`. `submit`: `SELECT FOR UPDATE` → merge `final_answers_json` → flip status → commit → spawn worker. `save_answer`: raises `ConflictError` (→ HTTP 409) if status != `in_progress`. `redact_for_student`: strip `correct_index`/`correct_answer_bool`/`pairs` correctness/`expected_answer`/`grading_rubric`/`explanation_why` from snapshot before serving during the set (FR-26). |
 | 8 | Practice runtime REST API | Pending | `tutor/api/practice.py` (new), `main.py` (register router) | Endpoints per plan §4.1 table. `/practice/attempts/recent` polls every 30s from frontend banner. `POST /submit` body carries `final_answers_json` (kills the debounce race). Every endpoint does `attempt.user_id == current_user.id` ownership check mirroring `_check_session_ownership`. Register at `/practice` prefix. |
@@ -74,7 +74,7 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 
 ### LLM / ingestion
 - **Ingestion position:** after explanation generation (not just topic decomposition). Bank prompt consumes explanation cards for concept grounding. PRD wording will be corrected in Step 14.
-- **Bank generator LLM:** `practice_bank_generator` (openai/gpt-5.2, medium reasoning). One call per topic. Review-refine is correctness-scoped only (no tone rewrites).
+- **Bank generator LLM:** `practice_bank_generator` (claude_code/claude-opus-4-6, medium reasoning). One call per topic. Review-refine is correctness-scoped only (no tone rewrites). **Corrected from impl-plan's openai/gpt-5.2 seed** — admin/offline pipelines use claude_code per project rule (`CLAUDE.md` + memory `feedback_claude_code_provider.md`); openai/gpt-5.2 was inconsistent with every sibling ingestion component (check_in_enrichment, explanation_generator, book_ingestion_v2 all use claude_code). Runtime grader (`practice_grader`) stays on openai/gpt-4o-mini.
 - **Grader LLM:** `practice_grader` (openai/gpt-4o-mini, reasoning=none). One call per wrong answer for per-pick rationale (not batched — batch would leak cross-question context). Run in parallel via `ThreadPoolExecutor(max_workers=10)` → ~1s wall-clock.
 - **Fail-open on review-refine errors:** keep prior bank output, continue validate.
 - **FF count 0–3** at validate time. Purely procedural topics can legitimately have 0 FFs.
@@ -96,34 +96,41 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 
 ---
 
-## Next step briefing — Step 4
+## Next step briefing — Step 5
 
-**Goal:** Ingestion API endpoints for practice bank generation + admin viewer. Pure mirror of check-in enrichment endpoints.
+**Goal:** Admin UI for practice banks — surface status per topic, trigger generation, view the resulting questions.
 
 **Files to touch:**
-- `llm-backend/book_ingestion_v2/api/sync_routes.py` (extend — don't rewrite)
+- `llm-frontend/src/features/admin/api/adminApiV2.ts` (extend — add 4 new API client functions)
+- `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` (extend — add "Practice Banks" section mirroring Check-Ins section)
+- `llm-frontend/src/features/admin/pages/PracticeBankAdmin.tsx` (new — per-topic viewer)
+- Router registration for the new viewer route (check how `CheckInAdmin` / `ExplanationAdmin` pages are wired — likely in `App.tsx` or a feature router).
 
 **What to read first:**
-- `sync_routes.py` lines ~1100–1320 (the check-in enrichment endpoints and `_run_check_in_enrichment` background task). This is the template to copy.
+- `llm-frontend/src/features/admin/api/adminApiV2.ts` — existing `generateCheckIns`, `getCheckInJobsLatest`, `getCheckInStatus` functions. Copy the shape.
+- `llm-frontend/src/features/admin/pages/BookV2Detail.tsx` — find the "Check-Ins" section (button + per-topic status table). Mirror under a new "Practice Banks" heading.
+- Whatever admin page already exists for viewing check-in content per topic — the practice bank viewer follows the same layout (topic picker → list of cards/questions). Read-only. No regen-per-question, no analytics.
 
-**Endpoints to add:**
+**API functions to add in `adminApiV2.ts`:**
 
-| Method | Path | Mirrors |
-|--------|------|---------|
-| POST | `/admin/v2/books/{book_id}/generate-practice-banks?chapter_id&guideline_id&force&review_rounds` | `POST /generate-check-ins` |
-| GET | `/admin/v2/books/{book_id}/practice-bank-jobs/latest?chapter_id&guideline_id` | `GET /check-in-jobs/latest` |
-| GET | `/admin/v2/books/{book_id}/practice-bank-status?chapter_id` | `GET /check-in-status` (per-topic counts) |
-| GET | `/admin/v2/books/{book_id}/practice-banks/{guideline_id}` | NEW — returns the full bank for admin viewer |
+| Function | Backend endpoint |
+|----------|------------------|
+| `generatePracticeBanks(bookId, { chapterId?, guidelineId?, force?, reviewRounds? })` | `POST /admin/v2/books/{id}/generate-practice-banks` |
+| `getPracticeBankStatus(bookId, chapterId)` | `GET /admin/v2/books/{id}/practice-bank-status` |
+| `getPracticeBankJobsLatest(bookId, { chapterId?, guidelineId? })` | `GET /admin/v2/books/{id}/practice-bank-jobs/latest` |
+| `getPracticeBank(bookId, guidelineId)` | `GET /admin/v2/books/{id}/practice-banks/{guideline_id}` |
 
-**Background task:** `_run_practice_bank_generation(db, job_id, book_id, chapter_id, guideline_id, force_str, review_rounds_str)`. Construct `LLMService` via `LLMConfigService.get_config("practice_bank_generator")`. Catch on lookup failure and use `explanation_generator` as the fallback (match check-in pattern). Instantiate `PracticeBankGeneratorService(db, llm_service)`. Call `enrich_guideline` or `enrich_chapter` based on whether `guideline_id` was passed.
-
-**Lock:** `ChapterJobService.acquire_lock(chapter_id_or_guideline_id, V2JobType.PRACTICE_BANK_GENERATION.value)`.
+**UI behaviors:**
+- Per-topic row in BookV2Detail "Practice Banks" section: topic title, question count (or "–" if 0), "Generate" / "Regenerate" button, link to viewer.
+- `Generate` button posts with `force=false`; `Regenerate` posts with `force=true`. Both accept a `reviewRounds` number input (default 1).
+- Running job state surfaces via `getPracticeBankJobsLatest` polled every 2s while a job is `pending` / `running`.
+- PracticeBankAdmin viewer page: read-only table of all questions in the bank. Columns: format, difficulty, concept_tag, question_text (truncated), correct-answer summary, explanation_why. Expand-on-click row for full `question_json` pretty-print.
 
 **Success criteria:**
-- `curl -XPOST '<base>/admin/v2/books/<id>/generate-practice-banks?guideline_id=<gid>&review_rounds=1'` returns 202 with a job id.
-- Polling `/practice-bank-jobs/latest?guideline_id=<gid>` shows transitions pending → running → completed.
-- After completion, `GET /practice-banks/<gid>` returns the list of questions.
-- `_apply_practice_tables` migration already ran (Step 1); the `practice_questions` table is populated.
+- Admin can navigate to a V2 book's detail page, see a "Practice Banks" section with a row per approved topic.
+- Clicking "Generate" on a topic fires the POST and the row flips to a "running" indicator, then to a question count.
+- Clicking the topic link opens PracticeBankAdmin and renders all 30-40 questions.
+- `npm run typecheck` (or equivalent) is clean; no new ESLint errors.
 
 ---
 
@@ -154,8 +161,13 @@ Copy-paste this into a new chat:
 
 As of 2026-04-17 end-of-session:
 - Branch: `feat/lets-practice-v2` (local; not pushed)
-- Last commit before work started: `1649f03` (docs: add PRD for Let's Practice v2, PR #100)
-- Uncommitted additive changes touch the files in the Steps 1–3 rows of the tracker above.
-- `memory/2026-04-16.md` is untracked — unrelated to this branch, leave it.
+- Last commit on the branch: `fc4cdbd` (feat: let's practice v2 — additive backend foundation (steps 1-3))
+- Uncommitted additive changes:
+  - `book_ingestion_v2/api/sync_routes.py` — 4 endpoints + `_run_practice_bank_generation` background task.
+  - `book_ingestion_v2/models/schemas.py` — 4 new Pydantic response schemas.
+  - `db.py` — `practice_bank_generator` seed corrected to `claude_code/claude-opus-4-6` (was `openai/gpt-5.2` in Step 1's draft).
+- DB migration applied: both tables + partial unique index + both LLM config rows verified via SELECT.
+- End-to-end tested: POST returns 202 → job transitions pending→running→completed (4m 19s on claude_code/claude-opus-4-6 for one topic with 1 review round) → GET `/practice-banks/{gid}` returns 30 questions spanning all 12 formats (FF=2, TF=1, SB=2, OOO=2, TAP=3, SEQ=2, PICK=5, MP=3, FB=4, SPOT=2, PR=3, SC=1) and a sensible difficulty mix. Status endpoint returns the expected per-topic summary for the chapter (only 1 of 8 topics has explanations, so only that one has a bank).
+- Import-verified after every edit; 28 routes registered on the running uvicorn (`--reload` picks up changes automatically).
 
-Recommended next commit boundary: after Step 4 (first testable end-to-end slice — admin can generate a bank and view it).
+Recommended next commit boundary: now. The branch is in a clean additive state with verified end-to-end behavior. Then move to Step 5 (admin UI).

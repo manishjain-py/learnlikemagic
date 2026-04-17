@@ -747,8 +747,8 @@ def _apply_practice_tables(db_manager):
     _ensure_llm_config(
         db_manager,
         component_key="practice_bank_generator",
-        provider="openai",
-        model_id="gpt-5.2",
+        provider="claude_code",
+        model_id="claude-opus-4-6",
         description="Practice question bank generation + correctness review",
     )
     _ensure_llm_config(

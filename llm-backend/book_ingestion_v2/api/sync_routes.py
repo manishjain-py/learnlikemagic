@@ -24,6 +24,10 @@ from book_ingestion_v2.models.schemas import (
     TopicVisualStatus,
     ChapterCheckInStatusResponse,
     TopicCheckInStatus,
+    ChapterPracticeBankStatusResponse,
+    TopicPracticeBankStatus,
+    PracticeBankDetailResponse,
+    PracticeBankQuestionItem,
 )
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
@@ -1311,6 +1315,290 @@ def _run_check_in_enrichment(
 
         for error in result.get("errors", []):
             logger.warning(f"Check-in enrichment error: {error}")
+
+        final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+
+    job_service.release_lock(job_id, status=final_status)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Practice Bank Generation Endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/generate-practice-banks", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_practice_banks(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
+    force: bool = Query(False, description="Re-generate bank even if questions already exist"),
+    review_rounds: int = Query(1, ge=0, le=5, description="Correctness review-refine rounds after initial generation (0 disables)"),
+    db: Session = Depends(get_db),
+):
+    """Generate offline practice question banks for each approved topic.
+
+    Runs as a background job. Requires explanations to already exist (the
+    generator prompt consumes variant-A cards for concept grounding).
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    review_rounds controls the correctness review-refine loop (0-5, default 1).
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            total_items = 1
+            lock_chapter_id = guideline_id
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=lock_chapter_id,
+            job_type=V2JobType.PRACTICE_BANK_GENERATION.value,
+            total_items=total_items,
+        )
+
+        run_in_background_v2(
+            _run_practice_bank_generation, job_id, book_id,
+            chapter_id or "", guideline_id or "", str(force), str(review_rounds),
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Practice bank generation failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get("/practice-bank-status", response_model=ChapterPracticeBankStatusResponse)
+def get_practice_bank_status(
+    book_id: str,
+    chapter_id: str = Query(..., description="Chapter ID"),
+    db: Session = Depends(get_db),
+):
+    """Per-topic practice-bank question counts for a chapter."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.explanation_repository import ExplanationRepository
+    from shared.repositories.practice_question_repository import PracticeQuestionRepository
+
+    try:
+        chapter_repo = ChapterRepository(db)
+        chapter = chapter_repo.get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+        chapter_key = f"chapter-{chapter.chapter_number}"
+
+        guidelines = (
+            db.query(TeachingGuideline)
+            .filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.chapter_key == chapter_key,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            .order_by(TeachingGuideline.topic_sequence)
+            .all()
+        )
+
+        expl_repo = ExplanationRepository(db)
+        q_repo = PracticeQuestionRepository(db)
+        topics = []
+        for g in guidelines:
+            explanations = expl_repo.get_by_guideline_id(g.id)
+            topics.append(TopicPracticeBankStatus(
+                guideline_id=g.id,
+                topic_title=g.topic_title or g.topic,
+                topic_key=g.topic_key,
+                question_count=q_repo.count_by_guideline(g.id),
+                has_explanations=len(explanations) > 0,
+            ))
+
+        return ChapterPracticeBankStatusResponse(
+            chapter_id=chapter_id, chapter_key=chapter_key, topics=topics,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/practice-bank-jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_practice_bank_job(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None),
+    guideline_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Latest practice bank generation job for a topic, chapter, or book."""
+    try:
+        lock_chapter_id = guideline_id or chapter_id or book_id
+        job_service = ChapterJobService(db)
+        result = job_service.get_latest_job(
+            lock_chapter_id, job_type=V2JobType.PRACTICE_BANK_GENERATION.value,
+        )
+        if not result:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No practice bank generation jobs found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/practice-banks/{guideline_id}", response_model=PracticeBankDetailResponse)
+def get_practice_bank(
+    book_id: str,
+    guideline_id: str,
+    db: Session = Depends(get_db),
+):
+    """Full practice bank for a topic — admin viewer. Returns all questions."""
+    from shared.models.entities import TeachingGuideline
+    from shared.repositories.practice_question_repository import PracticeQuestionRepository
+
+    try:
+        guideline = db.query(TeachingGuideline).filter(
+            TeachingGuideline.id == guideline_id,
+            TeachingGuideline.book_id == book_id,
+        ).first()
+        if not guideline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Guideline {guideline_id} not found in book {book_id}",
+            )
+
+        repo = PracticeQuestionRepository(db)
+        questions = repo.list_by_guideline(guideline_id)
+
+        items = [
+            PracticeBankQuestionItem(
+                id=q.id,
+                format=q.format,
+                difficulty=q.difficulty,
+                concept_tag=q.concept_tag,
+                question_json=q.question_json or {},
+                generator_model=q.generator_model,
+                created_at=q.created_at,
+            )
+            for q in questions
+        ]
+
+        return PracticeBankDetailResponse(
+            guideline_id=guideline_id,
+            topic_title=guideline.topic_title or guideline.topic,
+            question_count=len(items),
+            questions=items,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+def _run_practice_bank_generation(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False", review_rounds_str: str = "1",
+):
+    """Background task for practice bank generation."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.practice_bank_generator_service import PracticeBankGeneratorService
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    force = force_str.lower() == "true"
+    try:
+        review_rounds = int(review_rounds_str)
+    except (TypeError, ValueError):
+        review_rounds = 1
+
+    settings = get_settings()
+
+    # LLM config — fallback to explanation_generator
+    llm_config_svc = LLMConfigService(db)
+    try:
+        config = llm_config_svc.get_config("practice_bank_generator")
+    except Exception:
+        config = llm_config_svc.get_config("explanation_generator")
+
+    llm_service = LLMService(
+        api_key=settings.openai_api_key,
+        provider=config["provider"],
+        model_id=config["model_id"],
+        gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+        anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+    )
+
+    job_service = ChapterJobService(db)
+    service = PracticeBankGeneratorService(db, llm_service)
+
+    if guideline_id:
+        guideline = db.query(TeachingGuideline).filter(
+            TeachingGuideline.id == guideline_id,
+        ).first()
+        if not guideline:
+            raise ValueError(f"Guideline {guideline_id} not found")
+
+        topic = guideline.topic_title or guideline.topic
+        job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
+
+        heartbeat_fn = lambda: job_service.update_progress(
+            job_id, current_item=topic, completed=0, failed=0,
+        )
+        result = service.enrich_guideline(
+            guideline, force=force, review_rounds=review_rounds, heartbeat_fn=heartbeat_fn,
+        )
+
+        job_service.update_progress(
+            job_id, current_item=None,
+            completed=result["generated"], failed=result["failed"],
+            detail=_json.dumps(result),
+        )
+        final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
+    else:
+        result = service.enrich_chapter(
+            book_id,
+            chapter_id=chapter_id or None,
+            force=force,
+            review_rounds=review_rounds,
+            job_service=job_service,
+            job_id=job_id,
+        )
+
+        for error in result.get("errors", []):
+            logger.warning(f"Practice bank generation error: {error}")
 
         final_status = "completed" if result["failed"] == 0 else "completed_with_errors"
 
