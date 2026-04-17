@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 6 of 16 steps complete. Backend ingestion + admin UI + grading service in place; next is the practice lifecycle service (Step 7).
+**Status:** 7 of 16 steps complete. Backend-complete for the practice path (ingestion → bank → attempt → grading) and admin UI is up. Next is the student-facing REST API (Step 8).
 
 ---
 
@@ -46,8 +46,8 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 | 4 | Ingestion API endpoints | ✅ Done | `book_ingestion_v2/api/sync_routes.py`, `book_ingestion_v2/models/schemas.py` | 4 endpoints registered on the existing `/admin/v2/books/{book_id}` router — same scoping rules + lock pattern as check-in enrichment. Background task `_run_practice_bank_generation` fetches `practice_bank_generator` LLM config (fallback: `explanation_generator`), instantiates `PracticeBankGeneratorService`, calls `enrich_guideline` or `enrich_chapter`, then `release_lock`. New response schemas: `TopicPracticeBankStatus`, `ChapterPracticeBankStatusResponse`, `PracticeBankQuestionItem`, `PracticeBankDetailResponse`. |
 | 5 | Admin UI bank viewer | ✅ Done | `llm-frontend/src/features/admin/pages/PracticeBankAdmin.tsx` (new), `BookV2Detail.tsx` (extend), `adminApiV2.ts` (+4 funcs), `App.tsx` (+1 route) | BookV2Detail mirrors the Check-ins integration (state, polling, handler, step badge, manage-link + rounds select + running chip + result banner). PracticeBankAdmin is read-only: per-topic list with question counts + Generate/Regenerate/View; View modal shows all questions with expand-on-click (Question / Correct / Why / Rubric / Raw JSON). Browser-tested on test_mathematics_2_2026 / Introducing Thousands — all 30 questions render cleanly. Known polish-later: for `true_false` / `match_pairs` the collapsed row shows generic `question_text` instead of the format-specific content. |
 | 6 | Grading service | ✅ Done | `tutor/services/practice_grading_service.py` (new), `tutor/prompts/practice_grading.py` (new) | `grade_attempt(attempt_id)` idempotent entry-point: bails if status != 'grading'. Three phases: (1) deterministic pass classifies structured vs free-form, enqueues LLM tasks for wrong/blank structured + all free-form; (2) `ThreadPoolExecutor(max_workers=10)` runs per-task LLM calls in parallel; (3) assemble `grading_json` + half-point-rounded `total_score` via `save_grading`. Unhandled errors → `mark_grading_failed`. Structured correctness handled for all 11 non-FF formats (pick_one/fill_blank/tap_to_eliminate/predict_then_reveal use `correct_index`; true_false uses `correct_answer_bool`; match_pairs compares dict; sort_buckets/swipe_classify compare list[int]; sequence compares list[str]; spot_the_error + odd_one_out use their own index fields). LLMService construction + `initial_retry_delay=10` passed-in at worker-spawn time (Step 7). Pydantic strict schemas: `FreeFormGradingOutput` (score float 0-1 + rationale) and `PickRationaleOutput` (rationale). 18/18 deterministic cases smoke-tested. `visual_explanation_code` slot pre-wired in `grading_json[q_idx]` as null for FR-43. |
-| 7 | Practice lifecycle service | ⏳ Next | `tutor/services/practice_service.py` (new), `tutor/models/practice.py` (new Pydantic DTOs) | `start_or_resume`: catch IntegrityError from partial unique index + re-read winner (idempotent). `_select_set`: 3E/5M/2H mix, **all FFs absorbed** (Q2: FF counts toward ≥4-format variety check), random pick with `_enforce_no_consecutive_same_format`. `_snapshot_question`: copy `question_json` + add `_id/_format/_difficulty/_concept_tag/_presentation_seed`. `submit`: `SELECT FOR UPDATE` → merge `final_answers_json` → flip status → commit → spawn worker. `save_answer`: raises `ConflictError` (→ HTTP 409) if status != `in_progress`. `redact_for_student`: strip `correct_index`/`correct_answer_bool`/`pairs` correctness/`expected_answer`/`grading_rubric`/`explanation_why` from snapshot before serving during the set (FR-26). |
-| 8 | Practice runtime REST API | Pending | `tutor/api/practice.py` (new), `main.py` (register router) | Endpoints per plan §4.1 table. `/practice/attempts/recent` polls every 30s from frontend banner. `POST /submit` body carries `final_answers_json` (kills the debounce race). Every endpoint does `attempt.user_id == current_user.id` ownership check mirroring `_check_session_ownership`. Register at `/practice` prefix. |
+| 7 | Practice lifecycle service | ✅ Done | `tutor/services/practice_service.py` (new), `tutor/models/practice.py` (new DTOs) | Public API: `start_or_resume`, `save_answer`, `submit`, `retry_grading`, `get_attempt`, `list_attempts`, `mark_viewed`, `list_recent_unread`. Custom exceptions (NotFound/Permission/Conflict/BankEmpty) map 1:1 to 404/403/409/409. `_select_set` delivers exactly 3E/5M/2H with fallback backfill; `_enforce_no_consecutive_same_format` greedy-reorders to eliminate dupes. `_snapshot_question` injects `_id/_format/_difficulty/_concept_tag/_presentation_seed` (random int). Submit is atomic (`SELECT FOR UPDATE` → merge → flip → commit) then spawns daemon thread with fresh DB session + `practice_grader` LLM config + `initial_retry_delay=10`. Redaction strips 7 correctness keys + flattens match_pairs into `pair_lefts/pair_rights` + strips `correct_bucket` from sort_buckets/swipe_classify. Full lifecycle smoke test passed end-to-end: start → save_answer → submit → 6s grading → AttemptResults with 3.0/10 half-point score + kid-friendly rationales. |
+| 8 | Practice runtime REST API | ⏳ Next | `tutor/api/practice.py` (new), `main.py` (register router) | Endpoints per plan §4.1 table. `/practice/attempts/recent` polls every 30s from frontend banner. `POST /submit` body carries `final_answers_json` (kills the debounce race). Every endpoint does `attempt.user_id == current_user.id` ownership check mirroring `_check_session_ownership`. Register at `/practice` prefix. |
 | 9a | Practice-capture component layer | Pending | `llm-frontend/src/components/practice/capture/*.tsx` (11 new), `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList}.tsx` (new shared primitives) | **Key refactor — not a trivial reuse.** Existing `*Activity.tsx` are correctness-driven, uncontrolled, side-effectful (auto-submit on correct, TTS, non-deterministic shuffle, multi-step internal state). New layer is pure controlled: `{ value, onChange, seed }` props. Deterministic shuffle via seed. No TTS. No correctness styling. Do NOT fork existing check-in components with a `mode` prop — build parallel components per plan §5.4.1 counter-option rejection. |
 | 9b | Frontend runtime pages | Pending | `llm-frontend/src/pages/Practice{Landing,Runner,Results,Review,History}Page.tsx` (5 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion,PracticeBanner}.tsx` (3 new), `llm-frontend/src/api.ts` (new funcs) | Runner: question-by-question + review screen + atomic submit (AbortController cancels in-flight debounced PATCH before calling submit). Results: fractional score (half-point rounded), Reteach / Practice-again / Review-my-picks. Banner: 30s poll of `/practice/attempts/recent`, pauses when `document.visibilityState != 'visible'`. Success banner → PracticeResultsPage. Failure banner → `POST /retry-grading`. |
 | 9c | AuthenticatedLayout + banner placement | Pending | `llm-frontend/src/App.tsx`, `llm-frontend/src/components/AuthenticatedLayout.tsx` (new) | AppShell currently wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`) are outside. New wrapper sits above both route groups (below ProtectedRoute/OnboardingGuard) so `PracticeBanner` fires mid-Teach-Me after a practice submit. Fixed-position top element, z-indexed above nav bars. |
@@ -96,7 +96,54 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 
 ---
 
-## Next step briefing — Step 7
+## Next step briefing — Step 8
+
+**Goal:** Practice runtime REST API — thin HTTP wrapper around `PracticeService` that serves the student app. REST only (no WebSocket). Every endpoint ownership-checks `attempt.user_id == current_user.id`.
+
+**Files to touch:**
+- `llm-backend/tutor/api/practice.py` (new)
+- `llm-backend/main.py` (register router)
+
+**What to read first:**
+- Any existing tutor API module for the auth pattern — `tutor/api/session.py` is the closest analogue. Look for the `current_user` dependency and the `_check_session_ownership` helper it mirrors.
+- `tutor/services/practice_service.py` — the service layer this API wraps.
+- `tutor/models/practice.py` — response DTOs (`Attempt`, `AttemptResults`, `AttemptSummary`).
+
+**Endpoints (per plan §4.1):**
+
+| Method | Path | Body / Query | Returns |
+|--------|------|-------------|---------|
+| POST | `/practice/start` | `{guideline_id: str}` | `Attempt` (200 or 201) |
+| GET | `/practice/attempts/{attempt_id}` | — | `Attempt` \| `AttemptResults` |
+| PATCH | `/practice/attempts/{attempt_id}/answer` | `{q_idx: int, answer: Any}` | `204 No Content` (debounced per-answer save) |
+| POST | `/practice/attempts/{attempt_id}/submit` | `{final_answers: Dict[str, Any]}` | `Attempt` (status='grading') |
+| POST | `/practice/attempts/{attempt_id}/retry-grading` | — | `204 No Content` |
+| POST | `/practice/attempts/{attempt_id}/mark-viewed` | — | `204 No Content` |
+| GET | `/practice/attempts/recent` | — | `list[AttemptSummary]` (banner poll, 30s interval) |
+| GET | `/practice/attempts/for-topic/{guideline_id}` | — | `list[AttemptSummary]` (history) |
+| GET | `/practice/availability/{guideline_id}` | — | `{available: bool, question_count: int}` (drives ModeSelectPage tile) |
+
+**Exception mapping (wrap every handler):**
+- `PracticeNotFoundError` → 404
+- `PracticePermissionError` → 403
+- `PracticeConflictError` → 409
+- `PracticeBankEmptyError` → 409 with detail `"no bank available for this topic"`
+
+**Wiring:**
+- Register at prefix `/practice` in `main.py`.
+- Each endpoint constructs `PracticeService(db)` — no shared singleton.
+- `current_user.id` is the ownership key; never trust a `user_id` sent in the body.
+
+**Success criteria:**
+- `curl -H 'Auth: ...' -XPOST /practice/start -d '{"guideline_id":"..."}'` returns 200 with a redacted `Attempt`.
+- Two parallel starts with the same user+topic return the same `attempt.id`.
+- `curl -XPATCH /practice/attempts/{id}/answer` on a submitted attempt returns 409.
+- `curl -XPOST /practice/attempts/{id}/submit` returns immediately (before grading finishes); polling the attempt transitions `grading → graded`.
+- Recent-attempts poll returns any `graded` or `grading_failed` attempt not yet `mark-viewed`'d.
+
+---
+
+## Superseded briefing — Step 7
 
 **Goal:** Practice lifecycle service — the piece that turns a bank into an attempt: set selection, snapshot, submit, save-answer, redact. This is the central backend service Step 8's REST API will call into.
 
