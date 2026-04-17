@@ -48,7 +48,6 @@ import ChapterSelect from './pages/ChapterSelect';
 import TopicSelect from './pages/TopicSelect';
 import ModeSelectPage from './pages/ModeSelectPage';
 import ChatSession from './pages/ChatSession';
-import ExamReviewPage from './pages/ExamReviewPage';
 
 // Admin pages
 import EvaluationDashboard from './features/admin/pages/EvaluationDashboard';
@@ -113,7 +112,6 @@ function App() {
               <Route path="/learn/:subject" element={<ChapterSelect />} />
               <Route path="/learn/:subject/:chapter" element={<TopicSelect />} />
               <Route path="/learn/:subject/:chapter/:topic" element={<ModeSelectPage />} />
-              <Route path="/learn/:subject/:chapter/:topic/exam-review/:sessionId" element={<ExamReviewPage />} />
 
               {/* Profile & settings */}
               <Route path="/profile" element={<ProfilePage />} />
@@ -135,9 +133,7 @@ function App() {
             {/* Chat session routes — OUTSIDE AppShell (own nav-bar) but still
                 inside AuthenticatedLayout so PracticeBanner fires here too. */}
             <Route path="/learn/:subject/:chapter/:topic/teach/:sessionId" element={<ChatSession />} />
-            <Route path="/learn/:subject/:chapter/:topic/exam/:sessionId" element={<ChatSession />} />
             <Route path="/learn/:subject/:chapter/:topic/clarify/:sessionId" element={<ChatSession />} />
-            <Route path="/learn/:subject/:chapter/:topic/practice/:sessionId" element={<ChatSession key="practice" />} />
 
             {/* Backward compat: old session URL */}
             <Route path="/session/:sessionId" element={<ChatSession />} />

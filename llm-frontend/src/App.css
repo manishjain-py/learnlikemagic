@@ -1219,88 +1219,6 @@ body {
   margin-left: 8px;
 }
 
-/* Exam Review classes */
-.exam-review-date {
-  font-size: 0.8rem;
-  color: #718096;
-  margin-bottom: 12px;
-}
-
-.exam-review-score {
-  text-align: center;
-  margin: 12px 0 16px;
-}
-
-.exam-review-score-value {
-  font-size: 2rem;
-  font-weight: 700;
-}
-
-.exam-review-score-pct {
-  font-size: 0.9rem;
-  color: #718096;
-}
-
-.exam-review-questions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.exam-review-question {
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 12px;
-  background: #fafafa;
-}
-
-.exam-review-question-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.exam-review-question-num {
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.exam-review-question-score {
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-
-.exam-review-question-text {
-  font-size: 0.85rem;
-  color: #2d3748;
-  margin-bottom: 6px;
-}
-
-.exam-review-answer {
-  font-size: 0.8rem;
-  color: #4a5568;
-  margin-bottom: 4px;
-}
-
-.exam-review-rationale {
-  font-size: 0.8rem;
-  color: #718096;
-  font-style: italic;
-  border-top: 1px solid var(--color-border);
-  padding-top: 6px;
-  margin-top: 6px;
-}
-
-.exam-review-next-steps {
-  margin-bottom: 12px;
-}
-
-.exam-review-next-steps ul {
-  padding-left: 1.5rem;
-}
-
 /* OTP Input */
 .otp-container {
   display: flex;
@@ -5073,7 +4991,6 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
      - ChatSession session-complete-card (standalone chalk card in chat)
      - /history (SessionHistoryPage) under AppShell.chalkboard-active
      - /report-card (ReportCardPage) under AppShell.chalkboard-active
-     - /learn/.../exam-review/:id (ExamReviewPage) under AppShell.chalkboard-active
    ========================================================================== */
 
 /* ── Session-complete card (chalkboard island inside ChatSession) ─────── */
@@ -5606,120 +5523,6 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   margin-bottom: 1rem;
 }
 
-
-/* ── Exam Review page ─────────────────────────────────────────────────── */
-.chalkboard-active .exam-review-date {
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  color: var(--chalk-white-dim);
-  margin-bottom: 16px;
-}
-.chalkboard-active .exam-review-score {
-  text-align: center;
-  margin: 16px 0 24px;
-  padding: 20px;
-  background: rgba(244, 244, 239, 0.05);
-  border: 1px dashed rgba(244, 244, 239, 0.22);
-  border-radius: var(--r-md);
-}
-.chalkboard-active .exam-review-score-value {
-  font-family: var(--font-hand);
-  font-size: 2.8rem;
-  font-weight: 700;
-  /* inline `style` color in JSX keeps semantic red/amber/green — let it win */
-  text-shadow: 0 0 2px currentColor;
-}
-.chalkboard-active .exam-review-score-pct {
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  color: var(--chalk-white-soft);
-  margin-top: 4px;
-}
-.chalkboard-active .exam-review-questions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-.chalkboard-active .exam-review-question {
-  background: rgba(244, 244, 239, 0.05);
-  border: 1px dashed rgba(244, 244, 239, 0.22);
-  border-radius: var(--r-sm);
-  padding: 14px 16px;
-}
-.chalkboard-active .exam-review-question-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.chalkboard-active .exam-review-question-num {
-  font-family: var(--font-hand);
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--chalk-gold);
-}
-.chalkboard-active .exam-review-question-score {
-  font-family: var(--font-body);
-  font-weight: 700;
-  font-size: 0.9rem;
-  /* inline style color wins */
-}
-.chalkboard-active .exam-review-question-text {
-  font-family: var(--font-body);
-  color: var(--chalk-white);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-.chalkboard-active .exam-review-answer {
-  font-family: var(--font-body);
-  color: var(--chalk-white-soft);
-  font-size: 0.88rem;
-  margin: 4px 0;
-  line-height: 1.5;
-}
-.chalkboard-active .exam-review-answer strong {
-  color: var(--chalk-white);
-  font-weight: 700;
-}
-.chalkboard-active .exam-review-rationale {
-  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
-  color: var(--ink-dark);
-  border: 1px solid var(--parchment-edge);
-  border-radius: var(--r-sm);
-  padding: 10px 14px;
-  margin-top: 10px;
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  box-shadow: var(--shadow-parchment);
-}
-.chalkboard-active .exam-review-next-steps {
-  background: rgba(244, 199, 108, 0.08);
-  border: 1px solid rgba(244, 199, 108, 0.35);
-  border-radius: var(--r-sm);
-  padding: 14px 16px;
-  color: var(--chalk-white);
-  font-family: var(--font-body);
-}
-.chalkboard-active .exam-review-next-steps strong {
-  color: var(--chalk-gold);
-  font-family: var(--font-body);
-  font-weight: 700;
-  display: block;
-  margin-bottom: 8px;
-  letter-spacing: 0.05em;
-}
-.chalkboard-active .exam-review-next-steps ul {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--chalk-white-soft);
-}
-.chalkboard-active .exam-review-next-steps li {
-  margin-bottom: 4px;
-  line-height: 1.5;
-}
 
 
 /* ==========================================================================
@@ -7113,11 +6916,6 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   /* Report card subject grid — one-up on mobile */
   .chalkboard-active .reportcard-subject-grid {
     grid-template-columns: 1fr;
-  }
-
-  /* Exam review score — slightly smaller */
-  .chalkboard-active .exam-review-score-value {
-    font-size: 2.2rem;
   }
 
   /* Session complete card — tighter padding */

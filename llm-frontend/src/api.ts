@@ -68,8 +68,7 @@ export interface Goal {
 export interface CreateSessionRequest {
   student: Student;
   goal: Goal;
-  mode?: 'teach_me' | 'clarify_doubts' | 'exam' | 'practice';
-  source_session_id?: string;  // For Teach Me → Practice handoff context
+  mode?: 'teach_me' | 'clarify_doubts';
 }
 
 export interface VisualExplanation {
@@ -194,32 +193,6 @@ export interface Turn {
   explanation_cards?: ExplanationCard[];
   session_phase?: 'card_phase' | 'interactive';
   card_phase_state?: CardPhaseDTO;
-  // Exam fields
-  exam_progress?: {
-    current_question: number;
-    total_questions: number;
-    answered_questions: number;
-  };
-  exam_feedback?: {
-    score: number;
-    total: number;
-    percentage: number;
-    strengths: string[];
-    weak_areas: string[];
-    patterns: string[];
-    next_steps: string[];
-  };
-  exam_results?: Array<{
-    question_idx: number;
-    question_text: string;
-    student_answer?: string | null;
-    result?: 'correct' | 'partial' | 'incorrect' | null;
-    score?: number;
-    marks_rationale?: string;
-    feedback?: string;
-    expected_answer?: string;
-  }>;
-  exam_questions?: Array<{ question_idx: number; question_text: string }>;
 }
 
 export interface CreateSessionResponse {
@@ -389,13 +362,10 @@ export interface ReportCardTopic {
   topic_key: string;
   guideline_id: string | null;
   coverage: number;
-  latest_exam_score: number | null;
-  latest_exam_total: number | null;
   latest_practice_score?: number | null;
   latest_practice_total?: number | null;
   practice_attempt_count?: number | null;
   last_studied: string | null;
-  last_practiced?: string | null;
 }
 
 export interface ReportCardChapter {
@@ -419,12 +389,11 @@ export interface TopicProgress {
   coverage: number;
   session_count: number;
   status: 'studied' | 'not_started';
-  last_practiced?: string | null;
 }
 
 export interface ResumableSession {
   session_id: string;
-  mode: 'teach_me' | 'practice';
+  mode: 'teach_me';
   coverage: number;
   current_step: number;
   total_steps: number;
@@ -435,18 +404,6 @@ export interface PauseSummary {
   coverage: number;
   concepts_covered: string[];
   message: string;
-}
-
-export interface ExamSummary {
-  score: number;
-  total: number;
-  percentage: number;
-  feedback?: {
-    strengths: string[];
-    weak_areas: string[];
-    patterns: string[];
-    next_steps: string[];
-  };
 }
 
 export async function getReportCard(): Promise<ReportCardResponse> {
@@ -487,24 +444,6 @@ export async function endClarifySession(sessionId: string): Promise<{ concepts_d
   return response.json();
 }
 
-export async function endExamEarly(sessionId: string): Promise<ExamSummary> {
-  const response = await apiFetch(`/sessions/${sessionId}/end-exam`, { method: 'POST' });
-  if (!response.ok) throw new Error(`Failed to end exam: ${response.statusText}`);
-  return response.json();
-}
-
-export interface EndPracticeResponse {
-  is_complete: boolean;
-  questions_answered: number;
-  message: string;
-}
-
-export async function endPracticeSession(sessionId: string): Promise<EndPracticeResponse> {
-  const response = await apiFetch(`/sessions/${sessionId}/end-practice`, { method: 'POST' });
-  if (!response.ok) throw new Error(`Failed to end practice session: ${response.statusText}`);
-  return response.json();
-}
-
 export async function getSessionReplay(sessionId: string): Promise<any> {
   const response = await apiFetch(`/sessions/${sessionId}/replay`);
   if (!response.ok) throw new Error(`Failed to fetch session replay: ${response.statusText}`);
@@ -512,7 +451,7 @@ export async function getSessionReplay(sessionId: string): Promise<any> {
 }
 
 // ──────────────────────────────────────────────
-// Guideline sessions & exam review
+// Guideline sessions
 // ──────────────────────────────────────────────
 
 export interface GuidelineSessionEntry {
@@ -520,32 +459,7 @@ export interface GuidelineSessionEntry {
   mode: string;
   created_at: string | null;
   is_complete: boolean;
-  exam_finished: boolean;
-  exam_score: number | null;
-  exam_total: number | null;
-  exam_answered: number | null;
   coverage: number | null;
-  practice_questions_answered?: number | null;
-}
-
-export interface ExamReviewQuestion {
-  question_idx: number;
-  question_text: string;
-  student_answer: string | null;
-  expected_answer: string;
-  result: string | null;
-  score: number;
-  marks_rationale: string;
-  feedback: string;
-  concept: string;
-  difficulty: string;
-}
-
-export interface ExamReviewResponse {
-  session_id: string;
-  created_at: string | null;
-  exam_feedback: { score: number; total: number; percentage: number; strengths?: string[]; weak_areas?: string[]; patterns?: string[]; next_steps?: string[] } | null;
-  questions: ExamReviewQuestion[];
 }
 
 export async function getGuidelineSessions(
@@ -561,12 +475,6 @@ export async function getGuidelineSessions(
   if (!response.ok) throw new Error(`Failed to fetch guideline sessions: ${response.statusText}`);
   const data = await response.json();
   return data.sessions;
-}
-
-export async function getExamReview(sessionId: string): Promise<ExamReviewResponse> {
-  const response = await apiFetch(`/sessions/${sessionId}/exam-review`);
-  if (!response.ok) throw new Error(`Failed to fetch exam review: ${response.statusText}`);
-  return response.json();
 }
 
 // ──────────────────────────────────────────────
@@ -871,7 +779,6 @@ export interface TutorWSCallbacks {
     mode: string;
     coverage: number;
     concepts_discussed: string[];
-    exam_progress: { current_question: number; total_questions: number; correct_so_far: number } | null;
     is_paused: boolean;
   }) => void;
   onTyping: () => void;

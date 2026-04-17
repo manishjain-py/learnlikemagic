@@ -1,7 +1,7 @@
 /**
  * ReportCardPage — Deterministic student report card.
  *
- * Shows coverage % and exam scores per topic. No AI-interpreted metrics.
+ * Shows coverage % and practice scores per topic. No AI-interpreted metrics.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -91,11 +91,6 @@ function ChapterSection({
                         {st.practice_attempt_count} attempt{st.practice_attempt_count === 1 ? '' : 's'}
                       </span>
                     )}
-                  </span>
-                )}
-                {st.latest_exam_score != null && st.latest_exam_total != null && (
-                  <span className="reportcard-exam-score">
-                    {st.latest_exam_score}/{st.latest_exam_total}
                   </span>
                 )}
               </span>
