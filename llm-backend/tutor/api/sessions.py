@@ -17,11 +17,8 @@ from shared.models import (
     TopicProgressResponse,
     ResumableSessionResponse,
     PauseSummary,
-    EndExamResponse,
     ReportCardResponse,
     GuidelineSessionsResponse,
-    ExamReviewResponse,
-    ExamReviewQuestion,
 )
 from tutor.services import SessionService, ReportCardService
 from tutor.models.agent_logs import get_agent_log_store
@@ -112,7 +109,7 @@ def get_report_card(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Get student report card with coverage and exam data."""
+    """Get student report card with coverage and practice data."""
     service = ReportCardService(db)
     return service.get_report_card(current_user.id)
 
@@ -133,7 +130,7 @@ def get_resumable_session(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Find a paused Teach Me or Practice session for the given topic."""
+    """Find a paused Teach Me session for the given topic."""
     from shared.models.entities import Session as SessionModel
 
     session = (
@@ -142,7 +139,7 @@ def get_resumable_session(
             SessionModel.user_id == current_user.id,
             SessionModel.guideline_id == guideline_id,
             SessionModel.is_paused == True,
-            SessionModel.mode.in_(["teach_me", "practice"]),
+            SessionModel.mode == "teach_me",
         )
         .order_by(SessionModel.updated_at.desc())
         .first()
@@ -181,53 +178,6 @@ def get_guideline_sessions(
         finished_only=finished_only,
     )
     return GuidelineSessionsResponse(sessions=sessions)
-
-
-@router.get("/{session_id}/exam-review", response_model=ExamReviewResponse)
-def get_exam_review(
-    session_id: str,
-    current_user=Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    """Get detailed exam review for a completed exam session."""
-    repo = SessionRepository(db)
-    session = repo.get_by_id(session_id)
-
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if session.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your session")
-
-    state = SessionState.model_validate_json(session.state_json)
-
-    if state.mode != "exam":
-        raise HTTPException(status_code=400, detail="Not an exam session")
-
-    if not state.exam_finished:
-        raise HTTPException(status_code=403, detail="Exam is not yet finished")
-
-    questions = [
-        ExamReviewQuestion(
-            question_idx=q.question_idx,
-            question_text=q.question_text,
-            student_answer=q.student_answer,
-            expected_answer=q.expected_answer,
-            result=q.result,
-            score=q.score,
-            marks_rationale=q.marks_rationale,
-            feedback=q.feedback,
-            concept=q.concept,
-            difficulty=q.difficulty,
-        )
-        for q in state.exam_questions
-    ]
-
-    return ExamReviewResponse(
-        session_id=session.id,
-        created_at=session.created_at.isoformat() if session.created_at else None,
-        exam_feedback=state.exam_feedback.model_dump() if state.exam_feedback else None,
-        questions=questions,
-    )
 
 
 @router.get("/{session_id}/replay")
@@ -346,17 +296,17 @@ def pause_session(
     current_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    """Pause a Teach Me or Practice session for later resumption."""
+    """Pause a Teach Me session for later resumption."""
     repo = SessionRepository(db)
     session_row = repo.get_by_id(session_id)
     if not session_row:
         raise HTTPException(status_code=404, detail="Session not found")
     _check_session_ownership(session_row, current_user)
 
-    if session_row.mode not in ("teach_me", "practice"):
+    if session_row.mode != "teach_me":
         raise HTTPException(
             status_code=400,
-            detail="Only Teach Me and Practice sessions can be paused",
+            detail="Only Teach Me sessions can be paused",
         )
 
     try:
@@ -414,64 +364,6 @@ def end_clarify_session(
         service = SessionService(db)
         result = service.end_clarify_session(session_id)
         return result
-    except LearnLikeMagicException as e:
-        raise e.to_http_exception()
-
-
-@router.post("/{session_id}/end-practice")
-def end_practice_session(
-    session_id: str,
-    current_user=Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    """End a Practice session early, marking it complete server-side."""
-    repo = SessionRepository(db)
-    session_row = repo.get_by_id(session_id)
-    if not session_row:
-        raise HTTPException(status_code=404, detail="Session not found")
-    _check_session_ownership(session_row, current_user)
-
-    if session_row.mode != "practice":
-        raise HTTPException(
-            status_code=400, detail="Only practice sessions can be ended via this endpoint"
-        )
-
-    session_state = SessionState.model_validate_json(session_row.state_json)
-    if session_state.practice_mastery_achieved:
-        raise HTTPException(status_code=400, detail="Session already ended")
-
-    try:
-        service = SessionService(db)
-        return service.end_practice_session(session_id)
-    except LearnLikeMagicException as e:
-        raise e.to_http_exception()
-
-
-@router.post("/{session_id}/end-exam", response_model=EndExamResponse)
-def end_exam_early(
-    session_id: str,
-    current_user=Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    """End an exam early and get results."""
-    repo = SessionRepository(db)
-    session_row = repo.get_by_id(session_id)
-    if not session_row:
-        raise HTTPException(status_code=404, detail="Session not found")
-    _check_session_ownership(session_row, current_user)
-
-    if session_row.mode != "exam":
-        raise HTTPException(status_code=400, detail="Not an exam session")
-
-    # Check if already finished before calling service
-    session_state = SessionState.model_validate_json(session_row.state_json)
-    if session_state.exam_finished:
-        raise HTTPException(status_code=400, detail="Exam already finished")
-
-    try:
-        service = SessionService(db)
-        result = service.end_exam(session_id)
-        return EndExamResponse(**result)
     except LearnLikeMagicException as e:
         raise e.to_http_exception()
 
@@ -558,9 +450,6 @@ def submit_feedback(
     if not session_row:
         raise HTTPException(status_code=404, detail="Session not found")
     _check_session_ownership(session_row, current_user)
-
-    if session_row.mode == "exam":
-        raise HTTPException(status_code=400, detail="Feedback not available in exam mode")
 
     if not request.feedback_text or not request.feedback_text.strip():
         raise HTTPException(status_code=400, detail="Feedback text is required")
@@ -800,11 +689,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             mode=session.mode,
             coverage=session.coverage_percentage,
             concepts_discussed=session.concepts_discussed,
-            exam_progress={
-                "current_question": session.exam_current_question_idx + 1,
-                "total_questions": len(session.exam_questions),
-                "correct_so_far": session.exam_total_correct,
-            } if session.mode == "exam" and session.exam_questions else None,
             is_paused=session.is_paused,
         )
         await websocket.send_json(create_state_update(state_dto).model_dump())
@@ -875,7 +759,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 ws_version, reloaded = _save_session_to_db(db, session_id, session, ws_version)
                 if reloaded:
-                    # CAS conflict: a REST endpoint (pause/end-exam) modified
+                    # CAS conflict: a REST endpoint (pause/end-clarify) modified
                     # the session concurrently. The turn's state changes are
                     # lost — notify the client instead of silently continuing.
                     session = reloaded
@@ -887,7 +771,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     )
                 else:
                     assistant_msg = create_assistant_response(result.response, audio_text=result.audio_text).model_dump()
-                    # For non-streamed paths (clarify/exam), visual is on the result
+                    # For non-streamed paths (clarify_doubts), visual is on the result
                     if result.visual_explanation:
                         assistant_msg["payload"]["visual_explanation"] = result.visual_explanation
                     if result.question_format:
@@ -913,11 +797,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     mode=session.mode,
                     coverage=session.coverage_percentage,
                     concepts_discussed=session.concepts_discussed,
-                    exam_progress={
-                        "current_question": session.exam_current_question_idx + 1,
-                        "total_questions": len(session.exam_questions),
-                        "correct_so_far": session.exam_total_correct,
-                    } if session.mode == "exam" and session.exam_questions else None,
                     is_paused=session.is_paused,
                 )
                 await websocket.send_json(create_state_update(state_dto).model_dump())
@@ -934,11 +813,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     mode=session.mode,
                     coverage=session.coverage_percentage,
                     concepts_discussed=session.concepts_discussed,
-                    exam_progress={
-                        "current_question": session.exam_current_question_idx + 1,
-                        "total_questions": len(session.exam_questions),
-                        "correct_so_far": session.exam_total_correct,
-                    } if session.mode == "exam" and session.exam_questions else None,
                     is_paused=session.is_paused,
                 )
                 await websocket.send_json(create_state_update(state_dto).model_dump())
@@ -984,9 +858,7 @@ def _save_session_to_db(
             step_idx=session.current_step,
             state_version=expected_version + 1,
             mode=session.mode,
-            is_paused=session.is_paused if session.mode in ("teach_me", "practice") else False,
-            exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
-            exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
+            is_paused=session.is_paused if session.mode == "teach_me" else False,
             updated_at=datetime.utcnow(),
         )
     )

@@ -9,8 +9,7 @@ class CreateSessionRequest(BaseModel):
     """Request to create a new learning session."""
     student: Student
     goal: Goal
-    mode: Literal["teach_me", "clarify_doubts", "exam", "practice"] = "teach_me"
-    source_session_id: Optional[str] = None  # For Teach Me → Practice handoff context
+    mode: Literal["teach_me", "clarify_doubts"] = "teach_me"
 
 
 class CreateSessionResponse(BaseModel):
@@ -89,14 +88,11 @@ class ReportCardTopic(BaseModel):
     topic: str
     topic_key: str
     guideline_id: Optional[str] = None
-    coverage: float                                 # 0-100%, from teach_me + practice combined
-    latest_exam_score: Optional[int] = None         # Legacy — removed in Step 13
-    latest_exam_total: Optional[int] = None         # Legacy — removed in Step 13
+    coverage: float                                 # 0-100% from teach_me sessions
     latest_practice_score: Optional[float] = None   # Half-point fractional X in X/Y
     latest_practice_total: Optional[int] = None     # Y in X/Y (usually 10)
     practice_attempt_count: Optional[int] = None    # # of graded attempts for this guideline
     last_studied: Optional[str] = None
-    last_practiced: Optional[str] = None            # Latest legacy practice session date
 
 
 class ReportCardChapter(BaseModel):
@@ -136,20 +132,11 @@ class PauseSummary(BaseModel):
     message: str
 
 
-class EndExamResponse(BaseModel):
-    """Response for POST /sessions/{id}/end-exam."""
-    score: float
-    total: int
-    percentage: float
-    feedback: Optional[dict] = None
-
-
 class TopicProgressEntry(BaseModel):
     """Progress for a single topic (used in topic selection indicators)."""
     coverage: float
     session_count: int
     status: str  # "studied" | "not_started"
-    last_practiced: Optional[str] = None  # Latest practice session date (3+ questions)
 
 
 class TopicProgressResponse(BaseModel):
@@ -163,39 +150,12 @@ class GuidelineSessionEntry(BaseModel):
     mode: str
     created_at: Optional[str] = None
     is_complete: bool
-    exam_finished: bool = False
-    exam_score: Optional[float] = None
-    exam_total: Optional[int] = None
-    exam_answered: Optional[int] = None
     coverage: Optional[float] = None
-    practice_questions_answered: Optional[int] = None
 
 
 class GuidelineSessionsResponse(BaseModel):
     """Response for GET /sessions/guideline/{guideline_id}."""
     sessions: list[GuidelineSessionEntry]
-
-
-class ExamReviewQuestion(BaseModel):
-    """A single exam question with full review details."""
-    question_idx: int
-    question_text: str
-    student_answer: Optional[str] = None
-    expected_answer: str
-    result: Optional[str] = None
-    score: float = 0.0
-    marks_rationale: str = ""
-    feedback: str = ""
-    concept: str = ""
-    difficulty: str = ""
-
-
-class ExamReviewResponse(BaseModel):
-    """Response for GET /sessions/{id}/exam-review."""
-    session_id: str
-    created_at: Optional[str] = None
-    exam_feedback: Optional[dict] = None
-    questions: list[ExamReviewQuestion]
 
 
 # Import GuidelineMetadata for forward reference

@@ -113,9 +113,6 @@ def _create_session(
     mastery_estimates=None,
     concepts_covered_set=None,
     mode="teach_me",
-    exam_finished=False,
-    exam_total_correct=0,
-    exam_questions=None,
     created_at=None,
     session_id=None,
 ):
@@ -124,8 +121,6 @@ def _create_session(
         mastery_estimates = {"concept_a": 0.8, "concept_b": 0.7}
     if concepts_covered_set is None:
         concepts_covered_set = []
-    if exam_questions is None:
-        exam_questions = []
     if created_at is None:
         created_at = datetime.utcnow()
     if session_id is None:
@@ -142,9 +137,6 @@ def _create_session(
         },
         "mastery_estimates": mastery_estimates,
         "concepts_covered_set": concepts_covered_set,
-        "exam_finished": exam_finished,
-        "exam_total_correct": exam_total_correct,
-        "exam_questions": exam_questions,
     }
 
     student_json = json.dumps({"id": user_id, "grade": 3})
@@ -358,151 +350,11 @@ class TestReportCardCoverage:
 
 
 # ===========================================================================
-# Exam Score
-# ===========================================================================
-
-class TestReportCardExamScore:
-    """Test latest exam score passthrough."""
-
-    def test_latest_exam_shown(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session)
-        now = datetime.utcnow()
-
-        # teach_me session first
-        _create_session(
-            db_session,
-            mode="teach_me",
-            mastery_estimates={"c1": 0.9},
-            concepts_covered_set=["c1"],
-            created_at=now - timedelta(days=2),
-        )
-        # exam session
-        _create_session(
-            db_session,
-            mode="exam",
-            mastery_estimates={},
-            concepts_covered_set=[],
-            exam_finished=True,
-            exam_total_correct=7,
-            exam_questions=[{} for _ in range(10)],
-            created_at=now,
-        )
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] == 7
-        assert topic["latest_exam_total"] == 10
-
-    def test_no_exam_returns_none(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session)
-        _create_session(
-            db_session,
-            mode="teach_me",
-            mastery_estimates={"c1": 0.9},
-            concepts_covered_set=["c1"],
-        )
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] is None
-        assert topic["latest_exam_total"] is None
-
-    def test_exam_updates_last_studied(self, db_session):
-        """Exam sessions should also update last_studied."""
-        _create_user(db_session)
-        _create_guideline(db_session)
-        now = datetime.utcnow()
-
-        _create_session(
-            db_session,
-            mode="teach_me",
-            mastery_estimates={"c1": 0.9},
-            concepts_covered_set=["c1"],
-            created_at=now - timedelta(days=5),
-        )
-        _create_session(
-            db_session,
-            mode="exam",
-            mastery_estimates={},
-            exam_finished=True,
-            exam_total_correct=8,
-            exam_questions=[{} for _ in range(10)],
-            created_at=now,
-        )
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["last_studied"] == now.isoformat()
-
-    def test_latest_exam_wins(self, db_session):
-        """When multiple exams exist, the latest one should be shown."""
-        _create_user(db_session)
-        _create_guideline(db_session)
-        now = datetime.utcnow()
-
-        _create_session(
-            db_session,
-            mode="exam",
-            mastery_estimates={},
-            exam_finished=True,
-            exam_total_correct=3,
-            exam_questions=[{} for _ in range(10)],
-            created_at=now - timedelta(days=1),
-        )
-        _create_session(
-            db_session,
-            mode="exam",
-            mastery_estimates={},
-            exam_finished=True,
-            exam_total_correct=8,
-            exam_questions=[{} for _ in range(10)],
-            created_at=now,
-        )
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] == 8
-        assert topic["latest_exam_total"] == 10
-
-
-# ===========================================================================
-# Practice Attempts (Step 11 — additive)
+# Practice Attempts
 # ===========================================================================
 
 class TestReportCardPracticeAttempts:
-    """Test practice-attempt merging into the report card (additive alongside exam)."""
-
-    def test_exam_only_topic_has_no_practice_fields(self, db_session):
-        _create_user(db_session)
-        _create_guideline(db_session)
-        _create_session(
-            db_session,
-            mode="exam",
-            mastery_estimates={},
-            exam_finished=True,
-            exam_total_correct=7,
-            exam_questions=[{} for _ in range(10)],
-        )
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] == 7
-        assert topic["latest_exam_total"] == 10
-        assert topic["latest_practice_score"] is None
-        assert topic["latest_practice_total"] is None
-        assert topic["practice_attempt_count"] is None
+    """Test practice-attempt merging into the report card."""
 
     def test_practice_only_topic_creates_row_with_practice_fields(self, db_session):
         """A topic with only a graded practice attempt (no sessions) still appears."""
@@ -522,19 +374,15 @@ class TestReportCardPracticeAttempts:
         assert topic["latest_practice_score"] == 7.5
         assert topic["latest_practice_total"] == 10
         assert topic["practice_attempt_count"] == 1
-        assert topic["latest_exam_score"] is None
-        assert topic["latest_exam_total"] is None
 
-    def test_topic_with_both_exam_and_practice_has_both(self, db_session):
+    def test_topic_with_teach_me_plus_practice(self, db_session):
         _create_user(db_session)
         _create_guideline(db_session)
         _create_session(
             db_session,
-            mode="exam",
-            mastery_estimates={},
-            exam_finished=True,
-            exam_total_correct=6,
-            exam_questions=[{} for _ in range(10)],
+            mode="teach_me",
+            mastery_estimates={"c1": 0.9},
+            concepts_covered_set=["c1"],
         )
         _create_practice_attempt(
             db_session,
@@ -547,8 +395,7 @@ class TestReportCardPracticeAttempts:
         result = service.get_report_card(USER_ID)
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] == 6
-        assert topic["latest_exam_total"] == 10
+        assert topic["coverage"] == 100.0
         assert topic["latest_practice_score"] == 8.0
         assert topic["latest_practice_total"] == 10
         assert topic["practice_attempt_count"] == 1
@@ -865,62 +712,6 @@ class TestReportCardResilience:
 
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["coverage"] == 0.0  # no plan concepts → 0%
-
-    def test_non_list_exam_questions_handled(self, db_session):
-        """exam_questions as a non-list should not crash."""
-        _create_user(db_session)
-        _create_guideline(db_session)
-        session = SessionModel(
-            id="bad-exam",
-            student_json="{}",
-            goal_json="{}",
-            state_json=json.dumps({
-                "mode": "exam",
-                "topic": {"topic_id": "g1", "topic_name": "Fractions - Comparing Fractions", "subject": "Mathematics"},
-                "mastery_estimates": {},
-                "exam_finished": True,
-                "exam_total_correct": 5,
-                "exam_questions": "not a list",
-            }),
-            mastery=0.5, step_idx=1, user_id=USER_ID,
-            subject="Mathematics", created_at=datetime.utcnow(),
-        )
-        db_session.add(session)
-        db_session.commit()
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] is None  # exam_total=0, so not recorded
-
-    def test_non_int_exam_total_correct_handled(self, db_session):
-        """exam_total_correct as a string should be handled gracefully."""
-        _create_user(db_session)
-        _create_guideline(db_session)
-        session = SessionModel(
-            id="bad-score",
-            student_json="{}",
-            goal_json="{}",
-            state_json=json.dumps({
-                "mode": "exam",
-                "topic": {"topic_id": "g1", "topic_name": "Fractions - Comparing Fractions", "subject": "Mathematics"},
-                "mastery_estimates": {},
-                "exam_finished": True,
-                "exam_total_correct": "not a number",
-                "exam_questions": [{}, {}, {}],
-            }),
-            mastery=0.5, step_idx=1, user_id=USER_ID,
-            subject="Mathematics", created_at=datetime.utcnow(),
-        )
-        db_session.add(session)
-        db_session.commit()
-
-        service = ReportCardService(db_session)
-        result = service.get_report_card(USER_ID)
-
-        topic = result["subjects"][0]["chapters"][0]["topics"][0]
-        assert topic["latest_exam_score"] == 0  # defaults to 0
 
     def test_topic_as_non_dict_skipped(self, db_session):
         """topic as a string instead of dict should be skipped."""

@@ -150,6 +150,9 @@ def migrate():
         # unique index + seeds practice_bank_generator / practice_grader LLM configs)
         _apply_practice_tables(db_manager)
 
+        # Destructive cleanup: drop legacy exam + chat-practice session data and columns
+        _cleanup_exam_and_old_practice_data(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -758,6 +761,47 @@ def _apply_practice_tables(db_manager):
         model_id="gpt-4o-mini",
         description="Practice free-form grading + per-pick wrong-answer rationale",
     )
+
+
+def _cleanup_exam_and_old_practice_data(db_manager):
+    """Step 12 destructive cleanup — rip out legacy exam + chat-practice data.
+
+    Runs the DELETE + DROP in a single transaction so the runtime never sees a
+    half-state where code has shipped without exam/practice handling but rows +
+    columns still reference it.
+
+    Idempotent: DROP uses IF EXISTS, DELETE is safe on empty state.
+    """
+    inspector = inspect(db_manager.engine)
+    if "sessions" not in inspector.get_table_names():
+        return
+
+    existing_cols = {c["name"] for c in inspector.get_columns("sessions")}
+    has_exam_cols = "exam_score" in existing_cols or "exam_total" in existing_cols
+
+    with db_manager.engine.begin() as conn:
+        # Events FK-reference sessions with ON DELETE RESTRICT. Clear child rows first.
+        events_deleted = conn.execute(text(
+            "DELETE FROM events WHERE session_id IN ("
+            "SELECT id FROM sessions WHERE mode IN ('exam', 'practice')"
+            ")"
+        )).rowcount
+        if events_deleted:
+            print(f"  ✓ Deleted {events_deleted} event row(s) for legacy sessions")
+
+        # session_feedback also FK-references sessions; SET NULL on delete per model.
+        # No action needed — PG handles the null-out automatically.
+
+        deleted = conn.execute(
+            text("DELETE FROM sessions WHERE mode IN ('exam', 'practice')")
+        ).rowcount
+        if deleted:
+            print(f"  ✓ Deleted {deleted} legacy exam/chat-practice session row(s)")
+
+        if has_exam_cols:
+            conn.execute(text("ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score"))
+            conn.execute(text("ALTER TABLE sessions DROP COLUMN IF EXISTS exam_total"))
+            print("  ✓ Dropped sessions.exam_score + sessions.exam_total columns")
 
 
 def _seed_llm_config(db_manager):

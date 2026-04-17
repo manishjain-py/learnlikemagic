@@ -73,19 +73,6 @@ class SessionService:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Refresher topics only support Teach Me mode")
 
-        # Guard: prevent duplicate incomplete exams for same user+guideline
-        if mode == "exam" and user_id and request.goal.guideline_id:
-            existing = self._find_incomplete_session(user_id, request.goal.guideline_id, "exam")
-            if existing:
-                from fastapi import HTTPException
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "message": "An incomplete exam already exists for this topic",
-                        "existing_session_id": existing,
-                    },
-                )
-
         # Build student context FIRST (needed for personalized plan generation)
         if user_id:
             student_context = self._build_student_context_from_profile(user_id, request)
@@ -118,16 +105,6 @@ class SessionService:
 
         # Convert DB guideline to new Topic model
         topic = convert_guideline_to_topic(guideline, study_plan_record, is_refresher=is_refresher)
-
-        # Practice mode has its own creation flow — context resolution + practice plan + dynamic welcome
-        if mode == "practice":
-            return self._create_practice_session(
-                request=request,
-                user_id=user_id,
-                guideline=guideline,
-                topic=topic,
-                student_context=student_context,
-            )
 
         # Create mode-specific session
         session = create_session(topic=topic, student_context=student_context, mode=mode)
@@ -238,21 +215,9 @@ class SessionService:
                 if first_step and first_step.type == "explain":
                     session.start_explanation(first_step.concept, first_step.step_id)
 
-            # For exam mode, generate questions before welcome
-            if mode == "exam":
-                from tutor.services.exam_service import ExamService
-                exam_svc = ExamService(self.llm_service)
-                session.exam_questions = exam_svc.generate_questions(session)
-                logger.info(f"Generated {len(session.exam_questions)} exam questions for session {session_id}")
-
             # Generate mode-specific welcome
             if mode == "clarify_doubts":
                 welcome, audio_text = asyncio.run(self.orchestrator.generate_clarify_welcome(session))
-            elif mode == "exam":
-                welcome, audio_text = asyncio.run(self.orchestrator.generate_exam_welcome(session))
-                if session.exam_questions:
-                    first_q = session.exam_questions[0]
-                    welcome = f"{welcome}\n\n**Question 1:** {first_q.question_text}"
             else:
                 welcome, audio_text = asyncio.run(self.orchestrator.generate_welcome_message(session))
 
@@ -262,16 +227,6 @@ class SessionService:
                 "hints": [],
                 "step_idx": session.current_step,
             }
-            if mode == "exam":
-                first_turn["exam_progress"] = {
-                    "current_question": 1,
-                    "total_questions": len(session.exam_questions),
-                    "answered_questions": 0,
-                }
-                first_turn["exam_questions"] = [
-                    {"question_idx": q.question_idx, "question_text": q.question_text}
-                    for q in session.exam_questions
-                ]
 
         # Steps 5-8 happen for BOTH paths (card phase and dynamic):
         session.add_message(create_teacher_message(welcome, audio_text=audio_text))
@@ -295,213 +250,6 @@ class SessionService:
                 response.past_discussions = past
 
         return response
-
-    def _create_practice_session(
-        self,
-        request: CreateSessionRequest,
-        user_id: Optional[str],
-        guideline,
-        topic,
-        student_context: StudentContext,
-    ) -> CreateSessionResponse:
-        """Create a Let's Practice session.
-
-        Flow:
-        1. Resolve practice context (explicit source, auto-attach, or cold start)
-        2. Generate a practice-focused study plan (question-heavy, no explain steps)
-        3. Replace topic.study_plan with the practice plan
-        4. Create SessionState with mode='practice' and seeded mastery
-        5. Generate dynamic practice welcome
-        6. Persist and return first turn
-        """
-        import asyncio
-
-        source_session_id = getattr(request, "source_session_id", None)
-        context_data = self._resolve_practice_context(
-            user_id, request.goal.guideline_id, source_session_id
-        )
-
-        # Generate a practice-specific plan. On failure, keep the existing plan
-        # from the topic so the session can still start (non-fatal fallback).
-        practice_plan = self._generate_practice_plan_for_session(
-            guideline=guideline,
-            student_context=student_context,
-            context_data=context_data,
-        )
-        if practice_plan is not None and practice_plan.steps:
-            topic.study_plan = practice_plan
-        else:
-            logger.warning(
-                "Practice plan generation failed — falling back to the existing "
-                "topic study plan for session creation."
-            )
-
-        # Create session with mode='practice' — create_session will seed mastery
-        session = create_session(topic=topic, student_context=student_context, mode="practice")
-        session_id = str(uuid4())
-        session.session_id = session_id
-        session.practice_source = context_data["source"]
-        session.source_session_id = context_data.get("source_session_id")
-
-        # Inject the explanation summary for post-Teach-Me practice sessions.
-        # The system prompt builder reads this and renders the explanation context section.
-        if context_data.get("explanation_summary"):
-            session.precomputed_explanation_summary = context_data["explanation_summary"]
-
-        logger.info(
-            f"Created practice session {session_id} for topic {topic.topic_name} "
-            f"source={context_data['source']} source_session_id={context_data.get('source_session_id')}"
-        )
-
-        # Generate dynamic practice welcome (skips card phase, straight to first question)
-        welcome, audio_text = asyncio.run(
-            self.orchestrator.generate_practice_welcome(session)
-        )
-        session.add_message(create_teacher_message(welcome, audio_text=audio_text))
-
-        first_turn = {
-            "message": welcome,
-            "audio_text": audio_text,
-            "hints": [],
-            "step_idx": session.current_step,
-            "session_phase": "interactive",  # practice skips card phase
-        }
-
-        self._persist_session(
-            session_id, session, request,
-            user_id=user_id,
-            subject=guideline.subject if guideline else None,
-        )
-
-        self.event_repo.log(
-            session_id=session_id,
-            node="welcome",
-            step_idx=session.current_step,
-            payload={
-                "action": "session_created",
-                "mode": "practice",
-                "practice_source": context_data["source"],
-            },
-        )
-
-        return CreateSessionResponse(
-            session_id=session_id,
-            first_turn=first_turn,
-            mode="practice",
-        )
-
-    def _resolve_practice_context(
-        self,
-        user_id: Optional[str],
-        guideline_id: str,
-        source_session_id: Optional[str] = None,
-    ) -> dict:
-        """Resolve context for a practice session (FR-19, FR-21, FR-22).
-
-        Priority:
-        1. Explicit source_session_id (from Teach Me CTA handoff)
-        2. Auto-detect most recent completed Teach Me session
-        3. Cold start (no context)
-
-        Reads all required data points directly from the source session's
-        CardPhaseState — no new storage needed.
-        """
-        source_state = None
-
-        if source_session_id:
-            # Explicit handoff from Teach Me CTA
-            db_row = self.session_repo.get_by_id(source_session_id)
-            if db_row:
-                try:
-                    source_state = SessionState.model_validate_json(db_row.state_json)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to load explicit source session {source_session_id}: {e}"
-                    )
-        elif user_id:
-            # Auto-attach from most recent completed Teach Me (FR-21)
-            source_state = self.session_repo.find_most_recent_completed_teach_me(
-                user_id, guideline_id
-            )
-
-        if source_state is None or source_state.card_phase is None:
-            # Truly cold start (FR-22)
-            return {
-                "source": "cold",
-                "source_session_id": None,
-                "explanation_summary": None,
-                "variants_shown": [],
-                "remedial_cards": {},
-                "check_in_struggles": [],
-            }
-
-        # Context attached — read everything from source session's CardPhaseState (FR-19)
-        return {
-            "source": "teach_me",
-            "source_session_id": source_state.session_id,
-            "explanation_summary": source_state.precomputed_explanation_summary,
-            "variants_shown": list(source_state.card_phase.variants_shown),
-            "remedial_cards": {
-                idx: [rc.model_dump() for rc in cards]
-                for idx, cards in source_state.card_phase.remedial_cards.items()
-            },
-            "check_in_struggles": [
-                evt.model_dump() for evt in source_state.card_phase.check_in_struggles
-            ],
-        }
-
-    def _generate_practice_plan_for_session(
-        self,
-        guideline,
-        student_context: StudentContext,
-        context_data: dict,
-    ):
-        """Generate a practice-focused study plan via StudyPlanGeneratorService.
-
-        Returns a tutor StudyPlan model, or None on failure (caller falls back).
-        """
-        try:
-            from shared.models.entities import TeachingGuideline as GuidelineEntity
-            from shared.services.llm_config_service import LLMConfigService
-            from shared.prompts import PromptLoader
-            from study_plans.services.generator_service import StudyPlanGeneratorService
-            from tutor.services.topic_adapter import convert_session_plan_to_study_plan
-
-            # Load the ORM entity (generator expects TeachingGuideline, not GuidelineResponse)
-            guideline_entity = (
-                self.db.query(GuidelineEntity)
-                .filter(GuidelineEntity.id == guideline.id)
-                .first()
-            )
-            if not guideline_entity:
-                logger.warning(f"Guideline entity not found for {guideline.id}")
-                return None
-
-            # Create LLM service with study_plan_generator config
-            settings = get_settings()
-            gen_config = LLMConfigService(self.db).get_config("study_plan_generator")
-            gen_llm = LLMService(
-                api_key=settings.openai_api_key,
-                provider=gen_config["provider"],
-                model_id=gen_config["model_id"],
-                gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
-                anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
-            )
-
-            generator = StudyPlanGeneratorService(gen_llm, PromptLoader)
-            is_cold_start = (context_data["source"] == "cold")
-            result = generator.generate_practice_plan(
-                guideline=guideline_entity,
-                student_context=student_context,
-                check_in_struggles=context_data.get("check_in_struggles"),
-                is_cold_start=is_cold_start,
-            )
-
-            return convert_session_plan_to_study_plan(result["plan"])
-
-        except Exception as e:
-            logger.error(f"Failed to generate practice plan: {e}", exc_info=True)
-            return None
 
     def process_step(self, session_id: str, request: StepRequest) -> StepResponse:
         """Process a student's answer using the new orchestrator."""
@@ -554,28 +302,6 @@ class SessionService:
             next_turn["visual_explanation"] = turn_result.visual_explanation
         if turn_result.question_format:
             next_turn["question_format"] = turn_result.question_format
-
-        if session.mode == "exam":
-            next_turn["exam_progress"] = {
-                "current_question": min(session.exam_current_question_idx + 1, len(session.exam_questions)),
-                "total_questions": len(session.exam_questions),
-                "answered_questions": session.exam_current_question_idx,
-            }
-            if session.exam_finished and session.exam_feedback:
-                next_turn["exam_feedback"] = session.exam_feedback.model_dump()
-                next_turn["exam_results"] = [
-                    {
-                        "question_idx": q.question_idx,
-                        "question_text": q.question_text,
-                        "student_answer": q.student_answer,
-                        "result": q.result,
-                        "score": q.score,
-                        "marks_rationale": q.marks_rationale,
-                        "feedback": q.feedback,
-                        "expected_answer": q.expected_answer,
-                    }
-                    for q in session.exam_questions
-                ]
 
         # Include clarify_doubts-specific data
         if session.mode == "clarify_doubts":
@@ -784,7 +510,7 @@ class SessionService:
             db_record.mastery = session.overall_mastery
             db_record.step_idx = session.current_step
             db_record.mode = session.mode
-            db_record.is_paused = session.is_paused if session.mode in ("teach_me", "practice") else False
+            db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
             db_record.updated_at = datetime.utcnow()
             self.db.commit()
 
@@ -808,9 +534,7 @@ class SessionService:
                 step_idx=session.current_step,
                 state_version=expected_version + 1,
                 mode=session.mode,
-                is_paused=session.is_paused if session.mode in ("teach_me", "practice") else False,
-                exam_score=session.exam_total_correct if session.mode == "exam" and session.exam_finished else None,
-                exam_total=len(session.exam_questions) if session.mode == "exam" and session.exam_finished else None,
+                is_paused=session.is_paused if session.mode == "teach_me" else False,
                 updated_at=datetime.utcnow(),
             )
         )
@@ -820,7 +544,7 @@ class SessionService:
         self.db.commit()
 
     def pause_session(self, session_id: str) -> dict:
-        """Pause a Teach Me or Practice session with version-safe persistence."""
+        """Pause a Teach Me session with version-safe persistence."""
         db_session = self.session_repo.get_by_id(session_id)
         if not db_session:
             raise SessionNotFoundException(session_id)
@@ -828,28 +552,16 @@ class SessionService:
 
         session = SessionState.model_validate_json(db_session.state_json)
 
-        if session.mode not in ("teach_me", "practice"):
+        if session.mode != "teach_me":
             from fastapi import HTTPException
             raise HTTPException(
                 status_code=400,
-                detail="Only Teach Me and Practice sessions can be paused",
+                detail="Only Teach Me sessions can be paused",
             )
 
         session.is_paused = True
         self._persist_session_state(session_id, session, expected_version)
 
-        # Mode-specific pause summary
-        if session.mode == "practice":
-            return {
-                "coverage": session.coverage_percentage,
-                "concepts_covered": list(session.concepts_covered_set),
-                "message": (
-                    f"Paused after {session.practice_questions_answered} question(s). "
-                    "You can pick up where you left off anytime."
-                ),
-            }
-
-        # teach_me
         return {
             "coverage": session.coverage_percentage,
             "concepts_covered": list(session.concepts_covered_set),
@@ -899,64 +611,6 @@ class SessionService:
         return {
             "concepts_discussed": session.concepts_discussed,
             "message": "Doubts session ended successfully.",
-        }
-
-    def end_practice_session(self, session_id: str) -> dict:
-        """End a practice session early (FR-16).
-
-        Marks the session complete by setting practice_mastery_achieved=True
-        so is_complete returns True and the session persists as finished.
-        """
-        db_session = self.session_repo.get_by_id(session_id)
-        if not db_session:
-            raise SessionNotFoundException(session_id)
-        expected_version = db_session.state_version or 1
-
-        session = SessionState.model_validate_json(db_session.state_json)
-
-        if session.mode != "practice":
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=400,
-                detail="Only practice sessions can be ended via this endpoint",
-            )
-
-        session.practice_mastery_achieved = True
-        session.is_paused = False
-
-        self._persist_session_state(session_id, session, expected_version)
-
-        return {
-            "is_complete": True,
-            "questions_answered": session.practice_questions_answered,
-            "message": (
-                f"Session ended. You answered {session.practice_questions_answered} "
-                f"question(s)."
-            ),
-        }
-
-    def end_exam(self, session_id: str) -> dict:
-        """End an exam early with version-safe persistence."""
-        from tutor.orchestration.orchestrator import TeacherOrchestrator
-
-        db_session = self.session_repo.get_by_id(session_id)
-        if not db_session:
-            raise SessionNotFoundException(session_id)
-        expected_version = db_session.state_version or 1
-
-        session = SessionState.model_validate_json(db_session.state_json)
-        session.exam_finished = True
-        session.exam_feedback = TeacherOrchestrator._build_exam_feedback(session)
-
-        self._persist_session_state(session_id, session, expected_version)
-
-        total = len(session.exam_questions)
-        total_score = round(sum(q.score for q in session.exam_questions), 1)
-        return {
-            "score": total_score,
-            "total": total,
-            "percentage": round(total_score / total * 100, 1) if total else 0.0,
-            "feedback": session.exam_feedback.model_dump() if session.exam_feedback else None,
         }
 
     def process_feedback(
@@ -1687,18 +1341,14 @@ class SessionService:
     def _find_incomplete_session(self, user_id: str, guideline_id: str, mode: str) -> Optional[str]:
         """Find an incomplete session with actual progress for user+guideline+mode.
 
-        Returns session_id or None. Skips orphaned sessions with zero progress
-        (e.g. exam with 0 answers, teach_me with 0% coverage) so they don't
-        block new session creation.
+        Returns session_id or None. Skips orphaned teach_me sessions with zero
+        coverage so they don't block new session creation.
         """
         sessions = self.session_repo.list_by_guideline(
             user_id=user_id, guideline_id=guideline_id, mode=mode,
         )
         for s in sessions:
             if s["is_complete"]:
-                continue
-            # Skip zero-progress orphaned sessions
-            if mode == "exam" and (s.get("exam_answered") or 0) == 0:
                 continue
             if mode == "teach_me" and (s.get("coverage") or 0) == 0:
                 continue

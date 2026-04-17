@@ -58,8 +58,6 @@ class Session(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     mode = Column(String, default='teach_me')
     is_paused = Column(Boolean, default=False)
-    exam_score = Column(Float, nullable=True)
-    exam_total = Column(Integer, nullable=True)
     guideline_id = Column(String, nullable=True)
     state_version = Column(Integer, default=1, nullable=False)
 

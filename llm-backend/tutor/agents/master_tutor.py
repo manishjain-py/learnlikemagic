@@ -28,11 +28,6 @@ from tutor.prompts.clarify_doubts_prompts import (
     CLARIFY_DOUBTS_SYSTEM_PROMPT,
     CLARIFY_DOUBTS_TURN_PROMPT,
 )
-from tutor.prompts.practice_prompts import (
-    PRACTICE_SYSTEM_PROMPT,
-    PRACTICE_TURN_PROMPT,
-    PRACTICE_WELCOME_PROMPT,
-)
 from tutor.prompts.templates import format_list_for_prompt
 from tutor.utils.prompt_utils import format_conversation_history
 
@@ -709,51 +704,6 @@ class MasterTutorAgent(BaseAgent):
                 audio_language_instruction=audio_language_instruction,
             )
 
-        if session.mode == "practice":
-            concepts = topic.study_plan.get_concepts()
-            concepts_list = "\n".join(f"- {c}" for c in concepts) if concepts else "None"
-            misconceptions_section = format_list_for_prompt(topic.guidelines.common_misconceptions)
-
-            # Build explanation context section: non-empty only when post-Teach-Me
-            if session.practice_source == "teach_me" and session.precomputed_explanation_summary:
-                explanation_context_section = (
-                    "### Previous Explanation Context (from Teach Me)\n"
-                    f"{session.precomputed_explanation_summary}\n"
-                )
-                card_reference_rule = (
-                    "Reference card analogies and examples as shared vocabulary "
-                    "(e.g., 'Remember the pizza slices from earlier?'). Use the SAME "
-                    "simple words the cards used — don't upgrade the vocabulary."
-                )
-                difficulty_start = "easy/medium"
-            else:
-                explanation_context_section = ""
-                card_reference_rule = (
-                    "Do NOT reference any cards or prior explanations — the student has "
-                    "not seen them (this is a cold-start practice session)."
-                )
-                difficulty_start = "medium"
-
-            return PRACTICE_SYSTEM_PROMPT.render(
-                grade=session.student_context.grade,
-                language_level=session.student_context.language_level,
-                preferred_examples=", ".join(session.student_context.preferred_examples),
-                personalization_block=personalization_block,
-                topic_name=topic.topic_name,
-                subject=topic.subject,
-                curriculum_scope=topic.guidelines.scope_boundary,
-                concepts_list=concepts_list,
-                common_misconceptions=misconceptions_section,
-                explanation_context_section=explanation_context_section,
-                card_reference_rule=card_reference_rule,
-                difficulty_start=difficulty_start,
-                min_questions=5,
-                max_questions=20,
-                questions_answered=session.practice_questions_answered,
-                response_language_instruction=response_language_instruction,
-                audio_language_instruction=audio_language_instruction,
-            )
-
         steps_lines = []
         for step in topic.study_plan.steps:
             if step.description:
@@ -830,8 +780,6 @@ class MasterTutorAgent(BaseAgent):
     def _build_turn_prompt(self, session: SessionState, context: AgentContext) -> str:
         if session.mode == "clarify_doubts":
             return self._build_clarify_turn_prompt(session, context)
-        if session.mode == "practice":
-            return self._build_practice_turn_prompt(session, context)
 
         current_step = session.current_step_data
 
@@ -909,22 +857,6 @@ class MasterTutorAgent(BaseAgent):
         else:
             awaiting_answer_section = ""
 
-        # Exam mode: inject exam question context with expected answer and scoring instructions
-        if session.mode == "exam" and session.exam_current_question_idx < len(session.exam_questions):
-            eq = session.exam_questions[session.exam_current_question_idx]
-            awaiting_answer_section = (
-                f"**EXAM EVALUATION — Question {eq.question_idx + 1}/{len(session.exam_questions)}:**\n"
-                f"Question: {eq.question_text}\n"
-                f"Expected answer: {eq.expected_answer}\n"
-                f"Concept: {eq.concept}\n"
-                f"Difficulty: {eq.difficulty}\n\n"
-                "Score the student's answer from 0.0 to 1.0. If the question has multiple parts, "
-                "award partial credit proportionally (e.g., 1 of 3 parts correct = ~0.3). "
-                "Set `answer_score` to the fractional score and `marks_rationale` to a brief "
-                "1-2 sentence justification explaining what the student got right/wrong and why "
-                "this score was awarded. Also set `answer_correct` based on whether the core answer is right."
-            )
-
         # Check for recent feedback in turn timeline
         recent_timeline = session.session_summary.turn_timeline[-3:] if session.session_summary.turn_timeline else []
         has_restart = any("[FEEDBACK-RESTART]" in entry for entry in recent_timeline)
@@ -982,108 +914,6 @@ class MasterTutorAgent(BaseAgent):
             conversation_history=conversation,
             student_message=context.student_message,
         )
-
-    def _build_practice_turn_prompt(self, session: SessionState, context: AgentContext) -> str:
-        """Build the per-turn prompt for practice mode."""
-        # Mastery summary
-        if session.mastery_estimates:
-            mastery_lines = [
-                f"  {concept}: {score:.1f}" for concept, score in session.mastery_estimates.items()
-            ]
-            mastery_formatted = "\n".join(mastery_lines)
-        else:
-            mastery_formatted = "  No data yet"
-
-        # Misconception summary
-        if session.misconceptions:
-            desc_counts: dict[str, int] = {}
-            for m in session.misconceptions:
-                desc_counts[m.description] = desc_counts.get(m.description, 0) + 1
-            recurring = [d for d, c in desc_counts.items() if c >= 2]
-            misconception_parts = [m.description for m in session.misconceptions]
-            misconceptions = ", ".join(misconception_parts)
-            if recurring:
-                misconceptions += (
-                    f"\n⚠️ RECURRING: {'; '.join(recurring)} — name it explicitly and target it."
-                )
-        else:
-            misconceptions = "None detected"
-
-        # Struggle summary (wrong attempts on current question)
-        if session.awaiting_response and session.last_question and session.last_question.wrong_attempts > 0:
-            q = session.last_question
-            attempt_num = q.wrong_attempts + 1
-            if q.wrong_attempts == 1:
-                strategy = "PROBING QUESTION — help them find the error."
-            elif q.wrong_attempts == 2:
-                strategy = "TARGETED HINT — point at the specific mistake."
-            else:
-                strategy = "EXPLAIN the concept directly and warmly, then ask again."
-
-            prev = ""
-            if q.previous_student_answers:
-                prev = f"\nPrevious wrong answers: {'; '.join(q.previous_student_answers[-3:])}"
-
-            struggle_summary = (
-                f"**Student is on attempt #{attempt_num} of this question:**\n"
-                f"Question: {q.question_text}\n"
-                f"Expected: {q.expected_answer}\n"
-                f"Concept: {q.concept}\n"
-                f"Strategy: {strategy}{prev}"
-            )
-            awaiting_answer_section = struggle_summary
-        else:
-            awaiting_answer_section = ""
-
-        conversation = format_conversation_history(session.conversation_history, max_turns=10)
-        if not conversation.strip():
-            conversation = "(No prior messages — this is the first turn)"
-
-        return PRACTICE_TURN_PROMPT.render(
-            questions_answered=session.practice_questions_answered,
-            mastery_formatted=mastery_formatted,
-            misconceptions=misconceptions,
-            struggle_summary="",  # reserved — struggle detail goes in awaiting_answer_section
-            conversation_history=conversation,
-            awaiting_answer_section=awaiting_answer_section,
-            student_message=context.student_message,
-        )
-
-    async def generate_practice_welcome(self, session: SessionState) -> TutorTurnOutput:
-        """Generate a practice-specific welcome message using PRACTICE_WELCOME_PROMPT.
-
-        Reuses the same structured TutorTurnOutput contract so the orchestrator path
-        is unchanged. Uses its own welcome prompt (not the explain-oriented master
-        tutor welcome) so the opening is question-first, not explanation-first.
-        """
-        system_prompt = self._build_system_prompt(session)
-        has_teach_me_context = session.practice_source == "teach_me"
-        if has_teach_me_context and session.precomputed_explanation_summary:
-            welcome_context_block = (
-                "The student just finished Teach Me. Here's what the cards covered:\n"
-                f"{session.precomputed_explanation_summary}\n\n"
-                "Reference a specific analogy or example from the cards in your welcome "
-                "(e.g., 'Remember the pizza slices?')."
-            )
-            difficulty_start = "easy/medium"
-        else:
-            welcome_context_block = (
-                "This is a cold-start practice session — no prior Teach Me context. "
-                "Dive straight in with a warm welcome and a first question."
-            )
-            difficulty_start = "medium"
-
-        welcome_prompt = PRACTICE_WELCOME_PROMPT.render(
-            topic_name=session.topic.topic_name if session.topic else "this topic",
-            welcome_context_block=welcome_context_block,
-            difficulty_start=difficulty_start,
-        )
-        combined = f"{system_prompt}\n\n---\n\n{welcome_prompt}"
-        output = await self._execute_with_prompt(combined)
-        # Practice welcome should never signal completion or advance
-        output.session_complete = False
-        output.advance_to_step = None
-        return output
 
     def _summarize_output(self, output: BaseModel) -> Dict[str, Any]:
         if isinstance(output, TutorTurnOutput):
