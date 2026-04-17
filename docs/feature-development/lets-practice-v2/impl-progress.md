@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 11 of 16 steps complete (counting 9a + 9b + 9c). Full student-facing drill flow is clickable end-to-end locally, chalkboard-themed, and a graded-set banner floats above AppShell + chat-session routes. Next is Step 10 — ModeSelectPage refactor (drop Exam tile, gate Let's Practice on bank availability, support `?autostart=teach_me`).
+**Status:** 12 of 16 steps complete (counting 9a + 9b + 9c). Mode-select page now drops the Exam tile, gates the Let's Practice tile on bank availability, and auto-triggers Teach Me when the URL carries `?autostart=teach_me` (from Results → Reteach). Full student loop — Learn → Practice → Results → Reteach — now threads the topic path end-to-end. Next is Step 11 — Scorecard additive (Practice section next to legacy Exam section; no destructive cleanup yet).
 
 ---
 
@@ -51,7 +51,7 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 | 9a | Practice-capture component layer | ✅ Done | `llm-frontend/src/components/practice/capture/*.tsx` (11 new + shared `types.ts`), `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList,seededShuffle}.tsx` (5 new shared) | All 11 capture components are controlled (`{ questionJson, value, onChange, seed, disabled }`), no correctness styling, no TTS, no auto-submit. Seed-stable presentation via `mulberry32` + Fisher-Yates — original indices are preserved as values so backend grading works. Per-format answer shapes match the backend: number for pick-style, boolean for true/false, `Record<string,string>` for match_pairs, `number[]` for bucket sorts, `string[]` for sequence. Fix along the way: added `reveal_text` to `REDACT_TOP_LEVEL_KEYS` in practice_service — it was leaking the predict_then_reveal answer in the redacted payload. `npm run build` passes clean. |
 | 9b | Frontend runtime pages + chalkboard restyle | ✅ Done | `llm-frontend/src/pages/Practice{Landing,Runner,Results}Page.tsx` (3 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion}.tsx` (2 new), `llm-frontend/src/api.ts` (9 funcs + 5 interfaces), `App.tsx` (3 routes), `App.css` (+819 lines practice block), `AppShell.tsx` (+/practice in `isChalkboardRoute`), 4 shared primitives + 11 captures + `types.ts` migrated from inline styles to `.practice-*` class names | Runner: question-by-question navigation + internal "Review my picks" screen + atomic submit. Debounced PATCH (600ms) with AbortController canceling in-flight requests before submit. Results: fractional score, per-question expandable breakdown that re-uses `QuestionRenderer` in `disabled` mode to show the student's answer, plus rationale chip + correct-answer summary on wrong picks. Retry grading on `grading_failed`. Reteach CTA deferred to Step 10's ModeSelect refactor. Review + History pages folded into Landing + Results for v1. Banner (30s poll) deferred to Step 9c. **Chalkboard restyle:** on first browser walkthrough the inline cyan/teal styling clashed with the rest of the app's chalkboard aesthetic (PR #99). Refactored to use existing chalkboard tokens — `.selection-step` page surfaces, handwritten `--font-hand` question text, parchment CTAs + free-form textarea, gold/mint/coral chalk states for selection/correct/wrong. `/practice/*` added to `AppShell.isChalkboardRoute` so the theme scope covers the new routes. `npm run build` clean — 1075 modules; verified in Chrome on a graded attempt. |
 | 9c | AuthenticatedLayout + PracticeBanner | ✅ Done | `llm-frontend/src/components/AuthenticatedLayout.tsx` (new), `llm-frontend/src/components/practice/PracticeBanner.tsx` (new), `llm-frontend/src/App.tsx` (route restructure), `App.css` (+100 lines banner CSS) | New `AuthenticatedLayout` sits below ProtectedRoute/OnboardingGuard and above both the AppShell route group AND the chat-session route group — collapsed the 5 chat-session route wrappers into a single shared parent. `PracticeBanner` fetches `/practice/attempts/recent` immediately on mount, then polls every 30s. Pauses polling when `document.visibilityState !== 'visible'` and resumes on return. Each attempt renders as a fixed-top banner: green/mint for `graded` (tap → results), amber for `grading_failed` (inline Retry button posts `/retry-grading`). Filters out the attempt whose results page the student is currently on, to avoid the 30s overlap window. `npm run build` clean — 1077 modules. Behavioral verification deferred (see §Testing backlog). |
-| 10 | ModeSelection refactor | Pending | `llm-frontend/src/components/ModeSelection.tsx`, `llm-frontend/src/pages/ModeSelectPage.tsx` | Delete Exam tile + `completedExams` / `incompleteExam` / `incompletePractice` state. Let's Practice tile has NO badges. `practiceAvailable` from new `getPracticeAvailability(guideline_id)` API in the page-load `Promise.all`; disable tile when no bank. Handle `?autostart=teach_me` query param (from PracticeResultsPage's Reteach). On autostart, invoke existing Teach Me entry handler then clear query via `navigate(..., {replace: true})`. |
+| 10 | ModeSelection refactor | ✅ Done | `llm-frontend/src/components/ModeSelection.tsx`, `llm-frontend/src/pages/ModeSelectPage.tsx`, `llm-frontend/src/pages/Practice{Landing,Runner,Results}Page.tsx`, `llm-frontend/src/App.css` | **ModeSelection**: narrowed `SelectableMode` to `'teach_me' \| 'clarify_doubts'`; dropped `completedExams`, `incompleteExam`, `incompletePractice`, `lastPracticed`, past-exams toggle + section, Exam tile, Resume-Exam + Resume-Practice cards, `onViewExamReview`, `formatRelativeDate`, `getTopicProgress` import. New props `onPractice: () => void` + `practiceAvailable: boolean`. Let's Practice tile is always rendered, `disabled` + "No practice bank for this topic yet" sub-label when `!practiceAvailable`. **ModeSelectPage**: added `availability` state fetched via `getPracticeAvailability(guidelineId)` in its own effect (runs once guidelineId resolves). Added `?autostart=teach_me` handler — one-shot useEffect gated by `autostartFiredRef`, fires `navigate(pathname, {replace:true})` to clear the query then `handleModeSelect('teach_me')`. `handlePractice` navigates to `/practice/:guidelineId` with full state `{topicTitle, subject, chapter, topic, topicKey}`. **Plumbing**: PracticeLandingPage + PracticeRunnerPage forward the same state bundle to downstream routes. PracticeResultsPage reads it to gate the Reteach CTA — visible only when `subject && chapter && topic` are in state (banner flow falls back to Practice again + Back to topic only). Reteach navigates to `/learn/:subject/:chapter/:topic?autostart=teach_me` with `{topicKey, guidelineId}` in state so ModeSelectPage skips the curriculum resolve fetch. **CSS**: added `.chalkboard-active .selection-card:disabled` (dim + grayscale + not-allowed cursor) and `flex-wrap: wrap` on `.practice-cta-row`. `npm run build` clean, 1077 modules. |
 | 11 | Scorecard additive | Pending | `tutor/services/report_card_service.py`, `shared/models/schemas.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `llm-frontend/src/api.ts` types | **Structural change, not a rename.** Current code reads exam stats from `state_json` via session iteration. New `_merge_practice_attempts_into_grouped(grouped, user_id)` issues SQL aggregate over `practice_attempts` (latest score via `array_agg ORDER BY graded_at DESC`, count, `MAX(graded_at)`). Response schema **additively** gets `latest_practice_score` (Optional[float]), `latest_practice_total` (Optional[int]), `practice_attempt_count` (Optional[int]). Legacy integer `latest_exam_score`/`latest_exam_total` kept until Step 13. Frontend: rename label "Exam scores" → "Practice scores", fractional render (e.g. "7.5/10"), pluralize attempts. |
 | 12 | Destructive cleanup (backend + DB) | Pending | Many — see plan §2 "Destructive" list | **SINGLE atomic deploy.** Delete `exam_service.py`, `exam_prompts.py`, `practice_prompts.py`, `tests/unit/test_exam_lifecycle.py`. Remove `session.mode == "exam"` and `"practice"` branches across orchestrator, session_service, master_tutor, session_state, report_card_service. Remove `/end-exam`, `/exam-review`, `/end-practice` endpoints + DTOs. Run `_cleanup_exam_and_old_practice_data()` inside single `with engine.begin():` transaction: `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` + `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score` + `exam_total`. **Grep-gate CI test** must return 0: ``grep -rE '(ExamService\|exam_prompts\|practice_prompts\|_process_practice_turn\|_process_exam_turn\|_build_practice_turn_prompt\|practice_questions_answered\|exam_questions\|ExamQuestion\|ExamFeedback\|end-practice\|end-exam\|exam-review)' llm-backend/ \| grep -v docs/ \| wc -l`` |
 | 13 | Destructive cleanup (frontend) | Pending | `llm-frontend/src/pages/ExamReviewPage.tsx` (delete), `App.tsx`, `api.ts`, `ReportCardPage.tsx` | Delete ExamReviewPage. Delete `/exam/:sessionId`, `/exam-review/:sessionId`, old `/practice/:sessionId` routes. Delete `ExamReviewResponse`, `ExamReviewQuestion`, `getExamReview` from api.ts. Remove legacy `latest_exam_score`/`latest_exam_total` reads from ReportCardPage. Grep-gate: ``grep -rE '(exam-review\|end-exam\|/exam/\|end-practice\|ExamReviewPage\|getExamReview)' llm-frontend/src`` must return 0. |
@@ -93,6 +93,10 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 - **Banner lives above AppShell AND chat-session routes** via new `<AuthenticatedLayout>` wrapper. AppShell-only mount would miss mid-Teach-Me banner firing.
 - **Poll, not push.** 30s `/recent` poll. Pause on `document.visibilityState != 'visible'`. No WebSocket / SSE for banner in v1.
 - **`visual_explanation_code` slot pre-wired** in `grading_json[q_idx]` as nullable. FR-43 Pixi on eval cards deferred but no migration needed when enabled later.
+- **Practice tile always rendered** outside refresher scope; availability toggles enabled + sub-label, not visibility. Keeps the affordance discoverable so students learn the drill surface exists even before a bank is ready.
+- **Autostart is a one-shot, ref-guarded `useEffect`.** Query cleared via `navigate(pathname, {replace:true})` BEFORE `handleModeSelect` fires so a session-creation error doesn't leave `?autostart` in the URL for a re-fire. A normal click can retry after clearing.
+- **Reteach CTA requires topic-path state.** Result pages opened via PracticeBanner lack `subject/chapter/topic` in state, so Reteach is hidden there — banner users rely on Practice-again + Back-to-topic. Avoids a backend round-trip to resolve guideline_id → topic path for a rare entry point.
+- **Topic-path state bundle** (`{topicTitle, subject, chapter, topic, topicKey}`) is forwarded by every practice-route navigate so downstream screens can build back-links and Reteach without re-fetching curriculum.
 
 ---
 
@@ -116,13 +120,52 @@ Happy-path static checks (TS build, single screenshot of graded results page) ar
 - [ ] `grading_failed` banner: force failure (e.g. invalid API key), verify amber banner with inline Retry button; click Retry → `/retry-grading` fires.
 - [ ] Chat-session routes (teach, clarify, legacy exam/practice/session) still load after route restructure.
 
+**Step 10 (ModeSelectPage + Reteach):**
+- [ ] Topic with no practice bank: Let's Practice tile visibly disabled (opacity + grayscale + cursor), sub-label reads "No practice bank for this topic yet", clicks no-op.
+- [ ] Topic with a bank: tile active, clicking navigates to `/practice/:guidelineId` and PracticeLandingPage shows the correct topic title.
+- [ ] Complete a set → results → tap "Reteach this topic" → lands on `/learn/…/topic?autostart=teach_me`, briefly shows Loading → auto-fires Teach Me session creation → routes to `/learn/…/teach/SESSION_ID`. Browser-back from the chat session lands on a clean ModeSelectPage URL (no `?autostart`).
+- [ ] Direct URL `/learn/s/c/t?autostart=teach_me` (fresh tab, no state) — page resolves guidelineId via curriculum fetch, then autostarts, and the URL is cleaned before the push to session URL.
+- [ ] Banner flow: tap banner → results page opens WITHOUT Reteach button (no subject/chapter/topic state); Practice-again and Back-to-topic still work.
+- [ ] No Exam tile anywhere in the normal topic flow; no past-exams toggle.
+- [ ] Resume Teach Me card still appears for an in-progress teach session with coverage > 0 and clicks into `/learn/…/teach/SESSION_ID`.
+
 **Longer-running integrity:**
 - [ ] Two-browser race: submit same topic from two tabs before first finishes — `SELECT FOR UPDATE` on submit + 409 on stale PATCH.
 - [ ] Bank regen mid-attempt: snapshot isolation holds (results render from snapshot, not live bank).
 
 ---
 
-## Next step briefing — Step 10
+## Next step briefing — Step 11
+
+**Goal:** Scorecard additive — the report card starts surfacing practice-attempt stats side-by-side with the legacy exam stats. **Additive only** — legacy `latest_exam_score` / `latest_exam_total` fields stay until the destructive cleanup pass in Step 13. Per plan §11.
+
+**Files to touch:**
+- `llm-backend/tutor/services/report_card_service.py` — add `_merge_practice_attempts_into_grouped(grouped, user_id)` that issues one SQL aggregate over `practice_attempts` grouped by `guideline_id`: latest score (via `array_agg(total_score ORDER BY graded_at DESC)[1]`), `COUNT(*)`, `MAX(graded_at)`. Merge into the existing grouped structure keyed by guideline.
+- `llm-backend/shared/models/schemas.py` (or wherever the report-card response model lives) — add `latest_practice_score: Optional[float]`, `latest_practice_total: Optional[int]`, `practice_attempt_count: Optional[int]`. Keep legacy exam fields.
+- `llm-frontend/src/api.ts` types — mirror the new fields on the report card entry type.
+- `llm-frontend/src/pages/ReportCardPage.tsx` — render the Practice scores section. Rename the label "Exam scores" → "Practice scores"; render fractionally (e.g. `"7.5/10"` not `"7/10"`); pluralize attempt count correctly.
+
+**What to read first:**
+- `report_card_service.py` — current flow reads exam stats from `sessions.state_json` via iteration. Understand where `grouped` is built so the merge hook lands in the right place.
+- `practice_attempts` schema in `shared/models/entities.py` (Step 1) — confirm `total_score` is a half-point float, `graded_at` is nullable, `status` enum includes `graded`.
+- `tests/unit/test_report_card_service.py` — existing coverage for exam aggregation; mirror the pattern for practice.
+- `ReportCardPage.tsx` — how existing exam scores render; copy-paste the JSX block and flip to practice fields.
+
+**Locked decisions (per plan):**
+- **Additive, not a rename.** Both exam stats and practice stats exist in the response until Step 13 drops the former.
+- Practice-attempt count and latest score come from `practice_attempts` — **never from `sessions.state_json`**. That table is frozen for practice-mode writes (Step 6 lifecycle writes here, not to sessions).
+- Half-point fractional display on the frontend. Backend stores half-point-rounded `total_score` already (Step 6); just `toFixed(1)` when the fractional part is nonzero, or drop the decimal cleanly.
+- Only `status == 'graded'` attempts count — `grading_failed` / `grading` / `in_progress` are excluded from stats.
+
+**Success criteria:**
+- `GET /report-card` (or whatever the endpoint is called) returns both legacy exam fields AND new practice fields per guideline.
+- ReportCardPage shows a Practice scores row per topic with a bank, displaying `latest_practice_score/latest_practice_total` + `practice_attempt_count` attempts.
+- Backend unit tests cover: (a) topic with only exam attempts, (b) topic with only practice attempts, (c) topic with both, (d) topic with a `grading_failed` attempt only (should not count).
+- `grep -rE 'latest_exam_score|latest_exam_total' llm-backend/ llm-frontend/src/` still returns matches (legacy fields preserved).
+
+---
+
+## Superseded briefing — Step 10
 
 **Goal:** ModeSelectPage refactor to (a) delete Exam tile (feature being replaced), (b) make the Let's Practice tile disabled when no bank exists, (c) handle `?autostart=teach_me` query param from PracticeResultsPage's Reteach CTA. Per plan §10.
 
@@ -130,23 +173,14 @@ Happy-path static checks (TS build, single screenshot of graded results page) ar
 - `llm-frontend/src/components/ModeSelection.tsx` — main tile UI + sessions/progress fetch.
 - `llm-frontend/src/pages/ModeSelectPage.tsx` — wrapper that fetches guideline info + hands to ModeSelection.
 
-**What to read first:**
-- Current `ModeSelection.tsx` — `sessions` state, `incompleteExam`, `incompletePractice`, `completedExams` local derivations. See the `setShowPastExams` toggle + past-exams rendering.
-- `ModeSelectPage.tsx` — URL param parsing + `createSession` flow. Note `SessionConflictError` 409 handling and how it routes to existing session.
-- `api.ts::getPracticeAvailability` (already built in Step 8). Returns `{ available, question_count }`.
-- `PracticeResultsPage` Reteach CTA — currently not wired. Plan §10 says: route to `/learn/.../topic?autostart=teach_me`. Need to add this in Results page.
+**What got built (2026-04-17):**
+- **ModeSelection.tsx**: narrowed `SelectableMode` to `'teach_me' | 'clarify_doubts'`. Removed `incompleteExam`, `completedExams`, `incompletePractice`, `lastPracticed`, `formatRelativeDate`, `showPastExams`, past-exams section, Exam tile, Resume-Exam card, Resume-Practice card, `onViewExamReview` prop, `getTopicProgress` call. Added `onPractice: () => void` and `practiceAvailable: boolean` props. Let's Practice tile is always rendered (outside refresher scope), `disabled` when `!practiceAvailable`, with sub-label toggling to "No practice bank for this topic yet".
+- **ModeSelectPage.tsx**: added `availability` state fetched via dedicated `useEffect` on `guidelineId`. Added `autostartFiredRef` + a one-shot `useEffect` that, after guidelineId resolves, parses `?autostart=teach_me`, calls `navigate(pathname, {replace:true})` to clear the query, and fires `handleModeSelect('teach_me')`. `handleViewExamReview` removed; `handlePractice` navigates to `/practice/:guidelineId` carrying `{topicTitle, subject, chapter, topic, topicKey}` in state.
+- **Practice flow plumbing**: PracticeLandingPage + PracticeRunnerPage now forward the same state bundle on every navigate (start/submit/history-row/attempt-redirect). PracticeResultsPage reads it to gate the new "Reteach this topic" CTA — rendered only when `subject && chapter && topic` are present (banner flow falls through to Practice-again + Back-to-topic only).
+- **Reteach CTA** (PracticeResultsPage): new button, navigates to `/learn/:subject/:chapter/:topic?autostart=teach_me` with `{topicKey, guidelineId}` in state so ModeSelectPage short-circuits the curriculum fetch.
+- **CSS**: added `.chalkboard-active .selection-card:disabled` (opacity 0.55 + grayscale 0.4 + not-allowed cursor + neutralized hover) and `flex-wrap: wrap` on `.practice-cta-row` for clean 3-button wrapping on narrow viewports.
 
-**Locked decisions (per plan):**
-- No badges on the Let's Practice tile — availability alone enables/disables it; past attempts live in Landing page, not inline.
-- Exam tile: delete entirely from UI. The server code + DB columns stay until Step 12.
-- Past-exams toggle: delete from UI (same logic — replaced by practice history at /practice/:guidelineId).
-- On autostart=teach_me query: invoke the existing Teach Me entry handler then `navigate(..., { replace: true })` to clear the query so a browser-back isn't broken.
-
-**Success criteria:**
-- Topic with no practice bank: Let's Practice tile rendered disabled with a "no bank yet" sub-label.
-- Topic with a bank: tile active; clicking navigates to `/practice/:guidelineId`.
-- Post-graded-set Reteach CTA → ModeSelectPage URL with `?autostart=teach_me` → session auto-creates and navigates.
-- No Exam tile anywhere.
+**Verification:** `npm run build` clean — 1077 modules. Runtime behavioral check (Reteach CTA firing, disabled tile, autostart param) deferred to the Testing backlog below.
 
 ---
 
@@ -418,10 +452,12 @@ As of 2026-04-17:
   - `dc17d4f` — runtime REST API (step 8)
   - `06c1423` — capture components (step 9a)
   - `48c745f` — runtime pages + chalkboard restyle (step 9b)
-  - (step 9c — AuthenticatedLayout + PracticeBanner — committed after this update)
+  - `633e1de` — AuthenticatedLayout + PracticeBanner (step 9c)
+  - (step 10 — ModeSelectPage refactor + Reteach CTA — committed after this update)
 - DB migration applied on local dev; claude_code/claude-opus-4-6 bank generation verified on one topic (30 questions, 12 formats).
-- Full student flow clickable end-to-end locally: landing → start → runner (Prev/Next + Review) → atomic submit → grading poll → graded results with fractional score + per-question rationales.
+- Full student flow clickable end-to-end locally: ModeSelectPage (gated Practice tile) → landing → start → runner (Prev/Next + Review) → atomic submit → grading poll → graded results with fractional score + per-question rationales → Reteach → autostarted Teach Me session.
 - Step 9b visual consistency: new practice pages fully styled with chalkboard tokens (`--board-green`, `--parchment`, `--chalk-*`, `--font-hand`) so they match the app's aesthetic from PR #99. `/practice/*` added to `AppShell.isChalkboardRoute`.
 - Step 9c: banner + AuthenticatedLayout wired; `npm run build` passes 1077 modules. Behavioral checks (poll cadence, visibility pause, mid-chat appearance, retry flow, route restructure regressions) queued in §Testing backlog.
+- Step 10: Exam tile + past-exams toggle + old chat-practice resume card + `lastPracticed` UX all removed from ModeSelection; practice tile now fully driven by `getPracticeAvailability`. `?autostart=teach_me` autostart is a one-shot `useEffect` guarded by a ref that clears the query via replace-navigate before firing `handleModeSelect`. Topic-path state threads from ModeSelectPage → Landing → Runner → Results so the Reteach CTA can build the session URL — banner-sourced results hide the Reteach button since state is absent. Build clean at 1077 modules after the refactor (no module count drift — all changes in place).
 
-Next step: 10 (ModeSelectPage refactor).
+Next step: 11 (Scorecard additive — practice stats alongside legacy exam stats).

@@ -10,12 +10,27 @@ import {
  * "Start Practice" button. Minimal v1 — Step 10's ModeSelectPage refactor
  * will likely fold this into the mode tile later.
  */
+interface PracticeFlowState {
+  topicTitle?: string;
+  subject?: string;
+  chapter?: string;
+  topic?: string;
+  topicKey?: string | null;
+}
+
 export default function PracticeLandingPage() {
   const { guidelineId } = useParams<{ guidelineId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const topicTitle = (location.state as { topicTitle?: string } | null)?.topicTitle
-    ?? 'Practice Set';
+  const flowState = (location.state as PracticeFlowState | null) ?? {};
+  const topicTitle = flowState.topicTitle ?? 'Practice Set';
+  const forwardState: PracticeFlowState = {
+    topicTitle: flowState.topicTitle,
+    subject: flowState.subject,
+    chapter: flowState.chapter,
+    topic: flowState.topic,
+    topicKey: flowState.topicKey,
+  };
 
   const [availability, setAvailability] = useState<PracticeAvailability | null>(null);
   const [history, setHistory] = useState<PracticeAttemptSummary[]>([]);
@@ -46,7 +61,7 @@ export default function PracticeLandingPage() {
       const route = attempt.status === 'in_progress'
         ? `/practice/attempts/${attempt.id}/run`
         : `/practice/attempts/${attempt.id}/results`;
-      navigate(route, { state: { topicTitle } });
+      navigate(route, { state: forwardState });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStarting(false);
@@ -89,7 +104,7 @@ export default function PracticeLandingPage() {
               <button
                 key={a.id}
                 className="practice-history-row"
-                onClick={() => navigate(`/practice/attempts/${a.id}/results`, { state: { topicTitle } })}
+                onClick={() => navigate(`/practice/attempts/${a.id}/results`, { state: forwardState })}
                 disabled={a.status === 'in_progress' || a.status === 'grading'}
               >
                 <StatusChip status={a.status} />

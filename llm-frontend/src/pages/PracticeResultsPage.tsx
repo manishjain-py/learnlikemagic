@@ -8,6 +8,14 @@ import {
 
 const POLL_INTERVAL_MS = 2000;
 
+interface PracticeFlowState {
+  topicTitle?: string;
+  subject?: string;
+  chapter?: string;
+  topic?: string;
+  topicKey?: string | null;
+}
+
 /**
  * Results + review of one attempt. Drives three states:
  *   - grading: spinner + 2s poll until the worker finishes
@@ -19,7 +27,9 @@ export default function PracticeResultsPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const topicTitle = (location.state as { topicTitle?: string } | null)?.topicTitle;
+  const flowState = (location.state as PracticeFlowState | null) ?? {};
+  const topicTitle = flowState.topicTitle;
+  const canReteach = Boolean(flowState.subject && flowState.chapter && flowState.topic);
 
   const [attempt, setAttempt] = useState<PracticeAttempt | PracticeAttemptResults | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +46,7 @@ export default function PracticeResultsPage() {
         const a = await getPracticeAttempt(attemptId);
         if (a.status === 'in_progress') {
           navigate(`/practice/attempts/${attemptId}/run`,
-            { replace: true, state: { topicTitle } });
+            { replace: true, state: flowState });
           return;
         }
         setAttempt(a);
@@ -87,12 +97,23 @@ export default function PracticeResultsPage() {
     }
   };
 
+  const handleReteach = () => {
+    if (!canReteach || !attempt) return;
+    const url = `/learn/${encodeURIComponent(flowState.subject!)}/${encodeURIComponent(flowState.chapter!)}/${encodeURIComponent(flowState.topic!)}?autostart=teach_me`;
+    navigate(url, {
+      state: {
+        topicKey: flowState.topicKey,
+        guidelineId: attempt.guideline_id,
+      },
+    });
+  };
+
   const handlePracticeAgain = async () => {
     if (!attempt) return;
     setPracticeAgainLoading(true);
     try {
       const fresh = await startPractice(attempt.guideline_id);
-      navigate(`/practice/attempts/${fresh.id}/run`, { state: { topicTitle } });
+      navigate(`/practice/attempts/${fresh.id}/run`, { state: flowState });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPracticeAgainLoading(false);
@@ -174,9 +195,17 @@ export default function PracticeResultsPage() {
         >
           {practiceAgainLoading ? 'Starting…' : 'Practice again'}
         </button>
+        {canReteach && (
+          <button
+            className="practice-nav-btn practice-nav-btn--ghost"
+            onClick={handleReteach}
+          >
+            Reteach this topic
+          </button>
+        )}
         <button
           className="practice-nav-btn practice-nav-btn--ghost"
-          onClick={() => navigate(`/practice/${results.guideline_id}`, { state: { topicTitle } })}
+          onClick={() => navigate(`/practice/${results.guideline_id}`, { state: flowState })}
         >
           Back to topic
         </button>

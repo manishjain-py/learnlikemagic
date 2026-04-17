@@ -22,11 +22,20 @@ const PATCH_DEBOUNCE_MS = 600;
  *
  * If the attempt is NOT in_progress on mount, redirect to /results.
  */
+interface PracticeFlowState {
+  topicTitle?: string;
+  subject?: string;
+  chapter?: string;
+  topic?: string;
+  topicKey?: string | null;
+}
+
 export default function PracticeRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const topicTitle = (location.state as { topicTitle?: string } | null)?.topicTitle;
+  const flowState = (location.state as PracticeFlowState | null) ?? {};
+  const topicTitle = flowState.topicTitle;
 
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
@@ -46,7 +55,7 @@ export default function PracticeRunnerPage() {
         const a = await getPracticeAttempt(attemptId);
         if (a.status !== 'in_progress') {
           navigate(`/practice/attempts/${attemptId}/results`,
-            { replace: true, state: { topicTitle } });
+            { replace: true, state: flowState });
           return;
         }
         setAttempt(a as PracticeAttempt);
@@ -89,7 +98,7 @@ export default function PracticeRunnerPage() {
     if (abortRef.current) abortRef.current.abort();
     try {
       await submitPractice(attemptId, answers);
-      navigate(`/practice/attempts/${attemptId}/results`, { state: { topicTitle } });
+      navigate(`/practice/attempts/${attemptId}/results`, { state: flowState });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);

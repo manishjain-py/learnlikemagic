@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import ModeSelection from '../components/ModeSelection';
 import {
   createSession,
   getCurriculum,
+  getPracticeAvailability,
+  PracticeAvailability,
   TopicInfo,
   SessionConflictError,
 } from '../api';
@@ -12,11 +14,9 @@ import { useStudentProfile } from '../hooks/useStudentProfile';
 const MODE_URL_SEGMENT: Record<string, string> = {
   teach_me: 'teach',
   clarify_doubts: 'clarify',
-  exam: 'exam',
-  practice: 'practice',
 };
 
-type SelectableMode = 'teach_me' | 'clarify_doubts' | 'exam' | 'practice';
+type SelectableMode = 'teach_me' | 'clarify_doubts';
 
 export default function ModeSelectPage() {
   const navigate = useNavigate();
@@ -31,10 +31,12 @@ export default function ModeSelectPage() {
     (location.state as any)?.topicKey || null,
   );
   const [loading, setLoading] = useState(!guidelineId);
+  const [availability, setAvailability] = useState<PracticeAvailability | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [creatingMode, setCreatingMode] = useState<SelectableMode | null>(null);
+  const autostartFiredRef = useRef(false);
 
-  // For deep links: if no guidelineId in location state, fetch it
+  // Deep-link fallback: resolve guidelineId from URL params if not in state.
   useEffect(() => {
     if (guidelineId || !subject || !chapter) return;
     getCurriculum({ country, board, grade, subject, chapter })
@@ -49,15 +51,14 @@ export default function ModeSelectPage() {
       .finally(() => setLoading(false));
   }, [guidelineId, country, board, grade, subject, chapter, topic]);
 
-  if (loading || !guidelineId) {
-    return (
-      <div className="selection-step">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  const topicInfo: TopicInfo = { topic: topic!, guideline_id: guidelineId, topic_key: resolvedTopicKey, topic_summary: null, topic_sequence: null };
+  // Fetch practice-bank availability once guidelineId is known — drives the
+  // Let's Practice tile's enabled state.
+  useEffect(() => {
+    if (!guidelineId) return;
+    getPracticeAvailability(guidelineId)
+      .then(setAvailability)
+      .catch(() => setAvailability({ available: false, question_count: 0 }));
+  }, [guidelineId]);
 
   const buildSessionUrl = (mode: string, sessionId: string) => {
     const seg = MODE_URL_SEGMENT[mode] || mode;
@@ -78,7 +79,7 @@ export default function ModeSelectPage() {
           chapter: chapter!,
           syllabus: `${board}-G${grade}`,
           learning_objectives: [`Learn ${topic}`],
-          guideline_id: guidelineId,
+          guideline_id: guidelineId!,
         },
         mode,
       });
@@ -87,7 +88,6 @@ export default function ModeSelectPage() {
       });
     } catch (error: any) {
       console.error('Failed to start session:', error);
-      // Handle 409 (duplicate active exam) — redirect to existing session
       if (error instanceof SessionConflictError) {
         navigate(buildSessionUrl(mode, error.existing_session_id));
         return;
@@ -97,12 +97,44 @@ export default function ModeSelectPage() {
     }
   };
 
+  // ?autostart=teach_me support — fired once after guidelineId is resolved,
+  // e.g. from the Reteach CTA on PracticeResultsPage. Clear the query via
+  // replace so a browser-back returns to a clean mode-select URL.
+  useEffect(() => {
+    if (autostartFiredRef.current) return;
+    if (!guidelineId) return;
+    const autostart = new URLSearchParams(location.search).get('autostart');
+    if (autostart !== 'teach_me') return;
+    autostartFiredRef.current = true;
+    navigate(location.pathname, { replace: true });
+    handleModeSelect('teach_me');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guidelineId, location.search]);
+
+  if (loading || !guidelineId) {
+    return (
+      <div className="selection-step">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  const topicInfo: TopicInfo = { topic: topic!, guideline_id: guidelineId, topic_key: resolvedTopicKey, topic_summary: null, topic_sequence: null };
+
   const handleResume = (sessionId: string, mode: string) => {
     navigate(buildSessionUrl(mode, sessionId));
   };
 
-  const handleViewExamReview = (sessionId: string) => {
-    navigate(`/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter!)}/${encodeURIComponent(topic!)}/exam-review/${sessionId}`);
+  const handlePractice = () => {
+    navigate(`/practice/${guidelineId}`, {
+      state: {
+        topicTitle: topic,
+        subject,
+        chapter,
+        topic,
+        topicKey: resolvedTopicKey,
+      },
+    });
   };
 
   const handleBack = () => {
@@ -121,7 +153,8 @@ export default function ModeSelectPage() {
         onSelectMode={handleModeSelect}
         onResume={handleResume}
         onBack={handleBack}
-        onViewExamReview={handleViewExamReview}
+        onPractice={handlePractice}
+        practiceAvailable={availability?.available ?? false}
         creatingMode={creatingMode}
       />
     </>
