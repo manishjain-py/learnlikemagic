@@ -8,17 +8,18 @@
 
 ## 1. Overview
 
-Let's Practice v2 replaces the existing Exam mode with an offline-first batch drill: a pre-generated question bank per topic, silent answering, one-tap submit, background LLM grading, per-question evaluation cards, and persistent attempt history.
+Let's Practice v2 replaces the existing Exam mode (and the older chat-based "practice" mode) with an offline-first batch drill: a pre-generated question bank per topic, silent answering, one-tap submit, background LLM grading, per-question evaluation cards, and persistent attempt history.
 
-Build order:
+Build order (additive first, destructive last):
 
-1. **Schema + repositories** — two new tables (`practice_questions`, `practice_attempts`).
-2. **Ingestion stage** — question-bank generator as a new last stage in the V2 pipeline, reusing the review/refine pattern from `check_in_enrichment_service`.
-3. **Runtime services** — set selection/locking, auto-save, submit, background grading (deterministic for structured formats; LLM for free-form and per-pick rationales).
+1. **Schema + repositories** — two new tables (`practice_questions`, `practice_attempts`). Self-contained attempts store a full question snapshot so bank regeneration can't orphan history.
+2. **Ingestion stage** — question-bank generator as a new last stage in the V2 pipeline (after explanation generation), reusing the review/refine pattern from `check_in_enrichment_service`.
+3. **Runtime services** — set selection/locking, auto-save, **atomic submit** (final answers + status flip in one transaction), background grading (deterministic for structured formats; LLM for free-form and per-pick rationales; ThreadPoolExecutor for per-call parallelism).
 4. **API** — new `/practice` router (REST only — no WebSocket, no agent turn loop).
-5. **Frontend** — new Practice landing, question-card renderer (reusing all 11 existing activity components), submit/review flow, results, banner, history.
-6. **Deletion** — remove Exam mode code + `practice_prompts.py` + exam review page + exam session paths.
-7. **Scorecard + docs cleanup.**
+5. **Frontend** — **new practice-capture component layer** (11 controlled components, hydrate-from-server, deterministic shuffle via seed). Landing, runner, review/submit flow, results, banner, history. `PracticeBanner` mounted in a new `<AuthenticatedLayout>` above both AppShell and chat-session routes so it fires regardless of where the student navigates post-submit.
+6. **Scorecard additive** — new practice-v2 aggregator populates new response fields; legacy exam fields preserved until Step 13.
+7. **Destructive deletion (single deploy)** — remove Exam mode + old chat-based Practice mode + `practice_prompts.py` + exam review page + exam/old-practice session paths; run `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` + drop exam columns in one transaction.
+8. **Docs cleanup.**
 
 Practice is deliberately **outside the chat-based tutor orchestrator**. It has no conversation, no streaming, no agent — it is REST CRUD plus a threaded grading worker. Treating it as a tutor mode would force it through machinery designed for turn-by-turn conversation.
 
@@ -83,23 +84,38 @@ Practice is deliberately **outside the chat-based tutor orchestrator**. It has n
 - `book_ingestion_v2/prompts/practice_bank_generation.txt` — bank generation prompt.
 - `book_ingestion_v2/prompts/practice_bank_review_refine.txt` — correctness-review prompt.
 
-**Modified backend files:**
-- `shared/models/entities.py` — add `PracticeQuestion`, `PracticeAttempt` models.
-- `db.py` — add migration hook `_apply_practice_tables()`; add LLM config seeds for `practice_bank_generator`, `practice_grader`; **delete** V1 `book_ingestion` config (already done) and remove exam-mode-specific code.
+**Modified backend files (additive — Steps 1–11):**
+- `shared/models/entities.py` — **add** `PracticeQuestion`, `PracticeAttempt` models. (No exam column removal in this step — see §3 "Migration plan" + Step 12.)
+- `db.py` — add migration hook `_apply_practice_tables()`; add LLM config seeds for `practice_bank_generator`, `practice_grader`.
 - `book_ingestion_v2/constants.py` — add `V2JobType.PRACTICE_BANK_GENERATION`.
 - `book_ingestion_v2/api/sync_routes.py` — add `POST /generate-practice-banks`, `GET /practice-bank-status`, `GET /practice-banks/{guideline_id}` (admin viewer).
-- `main.py` — register `practice` router; stop importing exam-specific pieces after deletion.
-- `tutor/api/sessions.py` — remove `/sessions/{id}/end-exam`, `/sessions/{id}/exam-review`, `ResumableSessionResponse` exam paths; remove exam references from `_save_session_to_db`.
-- `tutor/orchestration/orchestrator.py` — delete `_process_exam_turn`, `generate_exam_welcome`, `_build_exam_feedback`; remove `"exam"` from the mode dispatch.
-- `tutor/services/session_service.py` — delete exam branches in `create_new_session`, `_find_incomplete_session`, `end_exam`.
-- `tutor/services/report_card_service.py` — rename exam-score accumulator to practice-score; read from `practice_attempts` instead of `sessions`.
-- `tutor/models/session_state.py` — delete `ExamQuestion`, `ExamFeedback`, all `exam_*` fields on `SessionState`; simplify `is_complete` by removing the exam branch.
-- `tutor/models/messages.py` + `shared/models/schemas.py` — delete `EndExamResponse`, `ExamReviewResponse`, `ExamReviewQuestion`.
+- `main.py` — register `practice` router.
+- `shared/models/schemas.py` — **add** `PracticeAttempt` DTOs; change `ReportCardTopic.latest_exam_score` / `latest_exam_total` type from `Optional[int]` to `Optional[float]` and add `latest_practice_score` / `latest_practice_total` / `practice_attempt_count` fields (kept additive until the frontend migration is live).
 
-**Deleted backend files:**
+**Modified backend files (destructive — Step 12, same deploy as code removal):**
+- `shared/models/entities.py` — remove `Session.exam_score`, `Session.exam_total` columns.
+- `db.py` — add migration hook `_cleanup_exam_and_old_practice_data()` that runs **only in Step 12**: `DELETE FROM sessions WHERE mode IN ('exam', 'practice')`, `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score`, `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_total`. Wrap in a single `engine.begin()` transaction.
+- `main.py` — stop importing exam/old-practice pieces after deletion.
+- `tutor/api/sessions.py` — remove `/sessions/{id}/end-exam`, `/sessions/{id}/exam-review`, and **`/sessions/{id}/end-practice`** (old chat-based practice endpoint at line 421). Remove `_save_session_to_db`'s exam-mode write path.
+- `tutor/orchestration/orchestrator.py` — delete **exam** path: `_process_exam_turn`, `generate_exam_welcome`, `_build_exam_feedback`, and `"exam"` dispatch (line ~265, ~473). Delete **old practice** path: `_process_practice_turn` (line ~997), `"practice"` dispatch (line ~266).
+- `tutor/services/session_service.py` — delete exam branches (`create_new_session`, `_find_incomplete_session`, `end_exam` at line 938, lines 799–815 that write `exam_score`/`exam_total`). Delete **old-practice** branches (lines 122–130, 299–330, 842–931, `end_practice`-equivalent paths).
+- `tutor/services/report_card_service.py` — remove `mode == "exam"` and `mode == "practice"` branches (lines 85, 111, 263, 283 for old practice; 288–296 for exam). Replace with a new practice-v2 aggregator that pulls `latest_graded_attempt` + `attempt_count` from `PracticeAttemptRepository` keyed by `(user_id, guideline_id)` and merges into the grouped structure. **This is a query-path restructure, not a rename** — see §5.10.
+- `tutor/models/session_state.py` — delete `ExamQuestion`, `ExamFeedback`, all `exam_*` fields (line 224+), **`practice_questions_answered`** (line 231), and the `self.mode == "practice"` branch in `is_complete` (line 281).
+- `tutor/agents/master_tutor.py` — delete `_build_practice_turn_prompt` (line 986), `session.mode == "practice"` branches (lines 712, 833), and any `practice_questions_answered` reads (lines 752, 1043).
+- `tutor/models/messages.py` + `shared/models/schemas.py` — delete `EndExamResponse`, `ExamReviewResponse`, `ExamReviewQuestion`, `ResumableSessionResponse.exam_answered`, `ResumableSessionResponse.practice_questions_answered`. Remove the legacy integer `latest_exam_score` / `latest_exam_total` once frontend no longer reads them (Step 13 cleanup).
+
+**Deleted backend files (Step 12):**
 - `tutor/services/exam_service.py`
 - `tutor/prompts/exam_prompts.py`
 - `tutor/prompts/practice_prompts.py` (old teacher-in-the-loop prompts).
+- `tests/unit/test_exam_lifecycle.py` (tests the deleted exam lifecycle).
+- Any `tests/unit/test_practice*.py` that tests the old chat-based practice flow (grep for references to `_process_practice_turn` or `practice_prompts`).
+
+**Step 12 grep gate (CI-verifiable):**
+```
+grep -rE '(ExamService|exam_prompts|practice_prompts|_process_practice_turn|_process_exam_turn|_build_practice_turn_prompt|practice_questions_answered|exam_questions|ExamQuestion|ExamFeedback|end-practice|end-exam|exam-review)' llm-backend/ | grep -v docs/ | wc -l
+```
+must return `0` before Step 12 can be considered complete.
 
 **New frontend files:**
 - `llm-frontend/src/pages/PracticeLandingPage.tsx` — entry after tapping Let's Practice tile.
@@ -129,8 +145,8 @@ Practice is deliberately **outside the chat-based tutor orchestrator**. It has n
 
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
-| `practice_questions` | Offline question bank per topic (30–40 rows per guideline) | `id` (VARCHAR PK), `guideline_id` (VARCHAR FK, cascade), `format` (VARCHAR — one of 12), `difficulty` (VARCHAR — easy/medium/hard), `concept_tag` (VARCHAR), `question_json` (JSONB — format-specific payload + `correct_answer` + `explanation_why` + FF: `expected_answer`, `grading_rubric`), `generator_model` (VARCHAR), `created_at` (DATETIME) |
-| `practice_attempts` | One row per practice attempt (in-progress or submitted) | `id` (VARCHAR PK), `user_id` (VARCHAR FK, cascade), `guideline_id` (VARCHAR FK, cascade), `question_ids` (JSONB — ordered array of 10), `answers_json` (JSONB — `{q_idx: <answer>}` partial/final), `grading_json` (JSONB — `{q_idx: {score, correct, rationale, wrong_pick_explanation}}`), `total_score` (FLOAT, nullable), `total_possible` (INT, default 10), `status` (VARCHAR — `in_progress`, `grading`, `graded`, `grading_failed`), `grading_error` (TEXT, nullable), `grading_attempts` (INT, default 0), `results_viewed_at` (DATETIME, nullable), `created_at` (DATETIME), `submitted_at` (DATETIME, nullable), `graded_at` (DATETIME, nullable) |
+| `practice_questions` | Offline question bank per topic (30–40 rows per guideline). **Mutable** — regenerated when admin re-syncs. | `id` (VARCHAR PK), `guideline_id` (VARCHAR FK, cascade), `format` (VARCHAR — one of 12), `difficulty` (VARCHAR — easy/medium/hard), `concept_tag` (VARCHAR), `question_json` (JSONB — format-specific payload + `correct_answer` + `explanation_why` + FF: `expected_answer`, `grading_rubric`), `generator_model` (VARCHAR), `created_at` (DATETIME) |
+| `practice_attempts` | One row per practice attempt (in-progress or submitted). **Immutable snapshot** — never references the bank after creation. | `id` (VARCHAR PK), `user_id` (VARCHAR FK, cascade), `guideline_id` (VARCHAR FK, cascade), `question_ids` (JSONB — ordered array of 10; audit/analytics only, not used at render time), `questions_snapshot_json` (JSONB — full question payload copied from `practice_questions.question_json` at attempt creation, including `correct_answer`, `explanation_why`, options/pairs/etc., presentation order seed), `answers_json` (JSONB — `{q_idx: <answer>}` partial/final), `grading_json` (JSONB — `{q_idx: {score, correct, rationale, wrong_pick_explanation, visual_explanation_code}}`), `total_score` (FLOAT, nullable), `total_possible` (INT, default 10), `status` (VARCHAR — `in_progress`, `grading`, `graded`, `grading_failed`), `grading_error` (TEXT, nullable), `grading_attempts` (INT, default 0), `results_viewed_at` (DATETIME, nullable), `created_at` (DATETIME), `submitted_at` (DATETIME, nullable), `graded_at` (DATETIME, nullable) |
 
 ### Key indexes / constraints
 
@@ -148,25 +164,45 @@ teaching_guidelines ──1:N──► practice_attempts    (CASCADE delete)
 users               ──1:N──► practice_attempts    (CASCADE delete)
 ```
 
-### Migration plan (`db.py`)
+### Migration plan (`db.py`) — **split additive from destructive**
 
-1. `Base.metadata.create_all()` creates both tables (SQLAlchemy declarative models).
+The migration is intentionally split across two deploys. Step 1 ships **only additive** work so nothing in the live (exam + old-practice) runtime breaks. Destructive cleanup happens in Step 12 alongside the code that stops writing to those tables/columns.
+
+**Additive migration — Step 1 (safe to deploy before any code changes land):**
+1. `Base.metadata.create_all()` creates `practice_questions` + `practice_attempts` tables (SQLAlchemy declarative models). Existing `sessions.exam_score` / `sessions.exam_total` columns **remain** for now — live exam code still writes to them.
 2. New migration function `_apply_practice_tables(db_manager)`:
    - Idempotently create the partial unique index on `practice_attempts`.
    - Ensure `practice_bank_generator` and `practice_grader` rows exist in `llm_config` (via `_ensure_llm_config()` helper — existing pattern used for `explanation_generator`).
-3. New migration function `_cleanup_exam_data(db_manager)`:
-   - `DELETE FROM sessions WHERE mode = 'exam'` — discards all exam session history (FR-1).
-   - Drop columns `exam_score`, `exam_total` from `sessions` (no longer used after deletion).
-4. Update `_LLM_CONFIG_SEEDS` with two new rows:
+3. Update `_LLM_CONFIG_SEEDS` with two new rows:
 
 | Component Key | Provider | Model | Purpose |
 |---------------|----------|-------|---------|
 | `practice_bank_generator` | openai | gpt-5.2 | Practice question bank generation + correctness review (review/refine pattern) |
 | `practice_grader` | openai | gpt-4o-mini | Free-form grading + per-pick wrong-answer rationale. gpt-4o-mini for latency — grading runs 1× per wrong/blank answer per attempt (up to 10). Admin can override if quality is off. |
 
+**Destructive cleanup — Step 12 (same deploy as backend exam/old-practice removal):**
+New migration function `_cleanup_exam_and_old_practice_data(db_manager)`, guarded by an explicit `with engine.begin():` transaction:
+   - `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` — discards all exam + old-chat-practice session history (FR-1 + FR-2).
+   - `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score`
+   - `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_total`
+
+This ordering guarantees that between Step 1 and Step 12 deploys, the running app continues to find its exam columns and sessions rows. No half-state.
+
+### Self-contained attempts (decoupled from bank mutations)
+
+**Decision — snapshot the question payload into the attempt at creation.** `practice_attempts.questions_snapshot_json` stores the full `question_json` (including `correct_answer`, `explanation_why`, options/pairs/sequence items, FF expected_answer/rubric) at `start_or_resume` time. Rendering, grading, and review read **only from the snapshot**, never from `practice_questions`.
+
+Why: `PracticeQuestionRepository.delete_by_guideline()` + force-regeneration is an admin workflow (FR-50 observability + future re-ingestion). If attempts stored only FK `question_ids[]`, a bank regeneration would orphan every historical attempt — FR-44 ("stored forever") is meaningless if the rendered review is broken. The snapshot also stabilizes in-progress attempts against re-ingestion happening mid-attempt.
+
+Tradeoff: ~10 rows × (~1–3KB per question payload) = ~10–30KB per attempt row. At 1000 attempts/day × 30KB = ~30MB/day — negligible.
+
+**Decision — presentation order seed.** For components that randomize on mount (option order in `PickOneActivity`, pair order in `MatchActivity`, item order in `SortBuckets`), the snapshot includes a per-question `presentation_seed: int` generated at attempt creation. The frontend passes this seed to the component's shuffle logic so **resume shows the same layout** (FR-20: "same questions in the same order"). Without this, resume would shuffle differently and confuse the student.
+
+**Decision — `visual_explanation_code` slot.** `grading_json[q_idx]` includes an optional `visual_explanation_code` field (nullable string). v1 leaves it null (FR-43 Pixi on eval cards is deferred). Pre-allocating the slot avoids a later migration when FR-43 ships.
+
 **Decision — why a dedicated `practice_attempts` table (not reuse `sessions`):** Exam mode shoehorned a batch drill into `sessions` by storing `exam_questions[]` inside `state_json`. That forced every batch-drill concern through session serialization, the `state_version` CAS loop, and tutor-centric ownership checks. Let's Practice has no conversation history and no LLM turn — a purpose-built table is cleaner, smaller (no 100kb `state_json` per attempt), and makes "history of attempts" a trivial indexed query.
 
-**Decision — why `question_json` is JSONB (not per-format columns):** the 11 activity types already use heterogeneous per-activity fields in `check_in_enrichment_service.CheckInDecision` + `ExplanationRepository.CheckInActivity`. Reusing the same shape keeps the frontend `CheckInDispatcher` renderer unchanged and avoids a 30-column table. Pydantic `PracticeQuestionContent` (see §4) validates the JSON on write.
+**Decision — why `question_json` is JSONB (not per-format columns):** the 11 activity types already use heterogeneous per-activity fields in `check_in_enrichment_service.CheckInDecision` + `ExplanationRepository.CheckInActivity`. Reusing the same shape keeps the frontend renderer wiring familiar and avoids a 30-column table. Pydantic `PracticeQuestionContent` (see §4) validates the JSON on write.
 
 ---
 
@@ -181,14 +217,21 @@ Mount as a new router with prefix `/practice` in `main.py`.
 | Endpoint | Method | Path | Purpose |
 |----------|--------|------|---------|
 | `availability` | GET | `/practice/topics/{guideline_id}/availability` | `{has_bank, bank_size}` — used by topic list for greyed-out state (FR-5) |
-| `start_or_resume` | POST | `/practice/attempts` | Body `{guideline_id}`. Returns existing `in_progress` attempt if one exists (FR-33), else creates a new 10-question set. |
-| `get_attempt` | GET | `/practice/attempts/{attempt_id}` | Full attempt: questions + current answers + status + grading_json if graded. Used by PracticeRunner (resume), Results, and Review pages. |
-| `save_answer` | PATCH | `/practice/attempts/{attempt_id}/answer` | Body `{q_idx, answer}`. Idempotent auto-save as student moves through set. No-op once `status != in_progress`. |
-| `submit` | POST | `/practice/attempts/{attempt_id}/submit` | Flip status `in_progress → grading`, spawn background grading thread, return immediately. |
-| `retry_grading` | POST | `/practice/attempts/{attempt_id}/retry-grading` | Only valid when `status == grading_failed`. Re-enqueues grading. |
+| `start_or_resume` | POST | `/practice/attempts` | Body `{guideline_id}`. Returns existing `in_progress` attempt if one exists (FR-33), else creates a new 10-question set with `questions_snapshot_json` populated. Handles concurrent-tab race via catch-`IntegrityError`-and-reread (see "Concurrency" below). |
+| `get_attempt` | GET | `/practice/attempts/{attempt_id}` | Full attempt: snapshot questions + current answers + status + grading_json if graded. Used by PracticeRunner (resume), Results, and Review pages. |
+| `save_answer` | PATCH | `/practice/attempts/{attempt_id}/answer` | Body `{q_idx, answer}`. Idempotent auto-save as student moves through set. Returns 409 with `current_status` if `status != in_progress` (**not a silent no-op** — see "Debounce vs submit race" below). |
+| `submit` | POST | `/practice/attempts/{attempt_id}/submit` | **Body `{final_answers_json: {q_idx: <answer>}}`**. Persists final answers **and** flips status `in_progress → grading` in a single transaction (atomic — kills the debounce race). Spawns background grading worker after commit. Returns immediately. |
+| `retry_grading` | POST | `/practice/attempts/{attempt_id}/retry-grading` | Only valid when `status == grading_failed`. Resets `grading_error`, flips to `grading`, re-spawns worker. |
 | `list_attempts` | GET | `/practice/attempts?guideline_id=X` | History for a topic, newest first (FR-45). |
-| `recent_graded` | GET | `/practice/attempts/recent?since=<ts>` | Returns attempts where `graded_at IS NOT NULL AND results_viewed_at IS NULL` for the current user — drives the banner (FR-35). Polled every 30s by the banner component. |
-| `mark_viewed` | POST | `/practice/attempts/{attempt_id}/mark-viewed` | Sets `results_viewed_at` — clears banner for that attempt. |
+| `recent_unread` | GET | `/practice/attempts/recent` | Returns attempts where **`status IN ('graded', 'grading_failed') AND results_viewed_at IS NULL`** for the current user. Drives the banner (FR-35 success + FR-40 failure). Polled every 30s by the banner; pauses when `document.visibilityState != 'visible'`. |
+| `mark_viewed` | POST | `/practice/attempts/{attempt_id}/mark-viewed` | Sets `results_viewed_at` — clears banner for that attempt. Valid for both graded and grading_failed (tapping the failure banner to acknowledge is the same gesture as tapping results). |
+
+**Debounce vs submit race (resolution):** the frontend debounces `save_answer` at 500ms. A student could edit a Review-screen answer and tap Submit before the debounced PATCH fires. To avoid silent answer loss:
+1. `POST /submit` **carries the full final `answers_json`** in the body. The service merges it into `answers_json` before the status flip.
+2. Server-side, the transaction is: `SELECT … FOR UPDATE` on the attempt row → verify `status == in_progress` → merge `final_answers_json` → set `status = 'grading'` + `submitted_at = now()` → commit → spawn worker.
+3. The frontend `PracticeRunner` **cancels** any in-flight debounced PATCH before issuing the Submit (via AbortController), then calls Submit with the authoritative local state. If a stray late PATCH still arrives after commit, the server returns 409 (the client discards it).
+
+**Concurrency — start_or_resume race:** two tabs calling `POST /attempts` concurrently both see no `in_progress` row, both try to INSERT. The partial unique index rejects the second with IntegrityError. The service catches IntegrityError, re-reads the `in_progress` row (written by the winning tab), and returns it. Unit test: `test_practice_service_concurrent_start_is_idempotent`.
 
 **Ownership checks:** every endpoint verifies `attempt.user_id == current_user.id` before returning or mutating, mirroring `_check_session_ownership` in `tutor/api/sessions.py`.
 
@@ -281,12 +324,39 @@ class PracticeService:
         self.attempt_repo = PracticeAttemptRepository(db)
 
     def start_or_resume(self, user_id: str, guideline_id: str) -> PracticeAttempt:
-        """FR-15..FR-20, FR-33 — return in-progress attempt if any, else new set."""
+        """FR-15..FR-20, FR-33 — return in-progress attempt if any, else new set.
+        Handles concurrent-tab race: if the INSERT hits the partial unique index,
+        re-read and return the winner (idempotent).
+        """
         existing = self.attempt_repo.get_in_progress(user_id, guideline_id)
         if existing:
             return existing
-        questions = self._select_set(guideline_id)
-        return self.attempt_repo.create(user_id, guideline_id, [q.id for q in questions])
+        questions = self._select_set(guideline_id)  # 10 PracticeQuestion rows
+        snapshot = [self._snapshot_question(q) for q in questions]
+        try:
+            return self.attempt_repo.create(
+                user_id=user_id,
+                guideline_id=guideline_id,
+                question_ids=[q.id for q in questions],
+                questions_snapshot_json=snapshot,
+            )
+        except IntegrityError:
+            self.db.rollback()
+            winner = self.attempt_repo.get_in_progress(user_id, guideline_id)
+            if winner is None:
+                raise  # genuinely unexpected
+            return winner
+
+    def _snapshot_question(self, q: PracticeQuestion) -> dict:
+        """Copy the full question payload + a per-question presentation_seed
+        so resume shows the same layout (FR-20)."""
+        payload = dict(q.question_json)
+        payload["_id"] = q.id
+        payload["_format"] = q.format
+        payload["_difficulty"] = q.difficulty
+        payload["_concept_tag"] = q.concept_tag
+        payload["_presentation_seed"] = random.randint(0, 2**31 - 1)
+        return payload
 
     def _select_set(self, guideline_id: str) -> list[PracticeQuestion]:
         """FR-15..FR-19 — 10 questions, 3/5/2 mix, all FF absorbed, format variety."""
@@ -299,29 +369,50 @@ class PracticeService:
         quota = {"easy": 3, "medium": 5, "hard": 2}
         for q in free_form:
             quota[q.difficulty] = max(0, quota[q.difficulty] - 1)
-        # Random fill, then shuffle; enforce format-variety per FR-19
         picked = self._pick_with_variety(structured, quota)
         chosen = free_form + picked
         random.shuffle(chosen)
         return self._enforce_no_consecutive_same_format(chosen)
 
-    def save_answer(self, attempt_id: str, q_idx: int, answer) -> None: ...
+    def save_answer(self, attempt_id: str, q_idx: int, answer) -> None:
+        """Merges answer into answers_json. Raises ConflictError (→ HTTP 409)
+        if status != 'in_progress'. Caller must be resilient to 409 on late PATCH."""
+        ...
 
-    def submit(self, attempt_id: str, user_id: str) -> PracticeAttempt:
-        """Flip to 'grading', spawn grading_service.run_grading() in a thread.
-        Mirrors run_in_background_v2's wrapper pattern (fresh DB session).
+    def submit(self, attempt_id: str, user_id: str, final_answers: dict) -> PracticeAttempt:
+        """Atomic: merge final_answers_json + flip status → 'grading' in one transaction.
+        Spawns grading worker AFTER commit.
         """
-        attempt = self.attempt_repo.mark_submitted(attempt_id)
+        with self.db.begin_nested():  # SAVEPOINT — commit at exit
+            row = (
+                self.db.query(PracticeAttempt)
+                .filter_by(id=attempt_id, user_id=user_id)
+                .with_for_update()
+                .one()
+            )
+            if row.status != "in_progress":
+                raise AttemptNotInProgressError(row.status)
+            row.answers_json = {**(row.answers_json or {}), **final_answers}
+            row.status = "grading"
+            row.submitted_at = datetime.utcnow()
+        self.db.commit()
         self._spawn_grading_worker(attempt_id, user_id)
-        return attempt
+        return row
 
-    def redact_for_student(self, q: PracticeQuestion) -> PracticeQuestionDTO:
-        """Strip correct_answer / correct_index / explanation_why before sending
-        to student during the set (FR-26)."""
+    def redact_for_student(self, snapshot: dict) -> dict:
+        """Strip correct_answer / correct_index / correct_answer_bool / pairs'
+        correctness / expected_answer / grading_rubric / explanation_why before
+        sending to the student during the set (FR-26)."""
         ...
 ```
 
-**Decision — grading worker mechanism:** use the exact threading pattern from `book_ingestion_v2/api/processing_routes.py::run_in_background_v2` — a fresh DB session, try/except, separate session for error handling after long LLM calls. The existing pattern is proven, handles DB-connection-after-long-LLM-call correctly, and doesn't require a task queue. We don't need App Runner to survive a worker restart — if it does, we fail the attempt to `grading_failed` via the existing stale-heartbeat pattern and the student uses the manual retry (FR-40).
+**Decision — grading worker mechanism:** use the exact threading pattern from `book_ingestion_v2/api/processing_routes.py::run_in_background_v2` — a fresh DB session, try/except, separate session for error handling after long LLM calls. The existing pattern is proven and doesn't require a task queue.
+
+**Decision — threading vs asyncio boundary.** `run_in_background_v2` spawns a sync `threading.Thread`. For the "parallel ~1s wall-clock" grading claim (§6.5) we need concurrent LLM calls inside that thread. Approach: the worker uses `concurrent.futures.ThreadPoolExecutor(max_workers=10)` for per-question LLM calls (the existing OpenAI Python SDK is thread-safe for blocking calls; the grading path doesn't need async). **No `asyncio.gather` inside the sync worker** — the earlier §6.5 wording is updated accordingly. Simpler, fewer moving parts.
+
+**Failure detection — honest v1 scope.** There is **no attempt-level heartbeat** today. `chapter_job_service` heartbeats operate on `ChapterProcessingJob` rows, which are unrelated to practice attempts. v1 therefore only catches failures that surface as **synchronous exceptions inside the worker** (LLM 5xx, OpenAI timeouts, JSON parse errors) — these get the 3-attempt exponential-backoff retry, then flip the attempt to `grading_failed` (FR-40). Silent thread death (process crash, container restart mid-grade) will leave the attempt stuck in `status='grading'` indefinitely. Students can see this on the landing page ("grading in progress…") but won't auto-recover.
+
+Mitigation (post-v1, documented in §11): add `grading_started_at` timestamp + a periodic sweeper that flips `status='grading' AND grading_started_at < now() - 5min` to `grading_failed`. Out of scope for v1; if field reports surface stuck attempts, prioritize then.
 
 #### Grading Service (`tutor/services/practice_grading_service.py`)
 
@@ -332,31 +423,37 @@ class PracticeGradingService:
         self.llm = llm_service  # Configured with practice_grader model
 
     def grade_attempt(self, attempt_id: str) -> None:
-        """Entry point. Loads attempt + questions. For each question:
+        """Entry point called from the background thread. Loads attempt +
+        reads questions from attempt.questions_snapshot_json (NOT from the
+        practice_questions table — the bank may have been regenerated since).
+
+        For each of the 10 snapshot questions:
            - structured format: deterministic comparison (FR-37)
            - free_form:         LLM call for 0.0–1.0 score + rationale (FR-38)
            - any wrong/blank:   LLM call for 'wrong_pick_explanation' (FR-39)
+        Uses ThreadPoolExecutor(max_workers=10) to fan out the LLM calls.
         Writes grading_json + total_score + graded_at. Retry 3× exponential
-        backoff on LLM failure; after 3 failures → status='grading_failed'.
+        backoff per LLM call; after 3 failures on any single call → the whole
+        attempt flips to status='grading_failed' with the first failing error.
         """
 
-    def _grade_structured(self, q: PracticeQuestion, answer) -> tuple[float, bool]:
-        """Deterministic: compare answer against q.content.correct_index /
+    def _grade_structured(self, snapshot_q: dict, answer) -> tuple[float, bool]:
+        """Deterministic: compare answer against snapshot's correct_index /
         correct_answer_bool / pairs / sequence_items / bucket_items / ...
         Blank → (0.0, False). No LLM call."""
 
-    def _grade_freeform(self, q: PracticeQuestion, answer) -> tuple[float, str]:
+    def _grade_freeform(self, snapshot_q: dict, answer) -> tuple[float, str]:
         """LLM: returns (fractional 0.0–1.0, 1-sentence rationale).
-        Structured output schema enforces bounds."""
+        Structured output schema enforces bounds (response_format=json_schema, strict)."""
 
-    def _explain_wrong_pick(self, q: PracticeQuestion, student_answer) -> str:
+    def _explain_wrong_pick(self, snapshot_q: dict, student_answer) -> str:
         """LLM: 'The student picked X but the correct answer is Y because ...'
         Generates per FR-39 for every wrong/blank structured answer."""
 ```
 
-**Decision — one LLM call per wrong answer (not batched):** per-pick rationale depends on the student's specific answer, which the LLM cannot accurately analyze in a batch without leaking cross-question context. 10 parallel small calls finish in ≲10s with gpt-4o-mini. If latency becomes a complaint, revisit after measurement. This matches the existing "one LLM call per remedial card" pattern in `master_tutor.generate_simplified_card`.
+**Decision — one LLM call per wrong answer (not batched):** per-pick rationale depends on the student's specific answer, which the LLM cannot accurately analyze in a batch without leaking cross-question context. 10 parallel small calls finish in ≲1s with gpt-4o-mini via ThreadPoolExecutor. If latency becomes a complaint, revisit after measurement. This matches the existing "one LLM call per remedial card" pattern in `master_tutor.generate_simplified_card`.
 
-**Retry pattern:** 3 attempts with 10s / 20s / 40s backoff. On final failure: `attempt.status = "grading_failed"`, `attempt.grading_error = "..."`, banner shows the attempt with a Retry-grading action.
+**Retry pattern:** per LLM call, 3 attempts with 10s / 20s / 40s backoff (inside the thread-pool task). On final failure of any single call: `attempt.status = "grading_failed"`, `attempt.grading_error = "..."`, banner surfaces the attempt with a Retry-grading action (via the `status IN ('graded', 'grading_failed')` unread-banner query — see §4.1).
 
 #### Repositories (`shared/repositories/`)
 
@@ -382,6 +479,17 @@ class PracticeGradingService:
   - `latest_graded(user_id, guideline_id) -> Optional[PracticeAttempt]`  # for scorecard "7/10"
 
 ### 4.2 `book_ingestion_v2/` module — offline bank generation
+
+**Pipeline position — depends on explanation generation, not just topic decomposition.** The bank generator prompt (§6.1) consumes existing explanation cards as concept-grounding input. Therefore:
+
+```
+topic extraction → topic decomposition → explanation generation → check-in enrichment → practice-bank generation
+```
+
+The admin workflow mirrors check-in enrichment: a chapter cannot generate practice banks until explanation generation has completed for its topics. The `generate-practice-banks` endpoint guards on this (returns 400 "Explanations not generated yet" if any target guideline is missing `explanation_cards`). PRD wording "new last stage after topic decomposition" is updated to "new last stage after explanation generation" in the technical doc (Step 14).
+
+**Bank-size edge case (FR-9).** If a topic is purely procedural and the LLM returns zero free-form questions after validate, we prefer to respect the topic's nature rather than force-insert a contrived FF. The generator service accepts `0 ≤ FF count ≤ 3` at validate-time; this is a minor deviation from PRD FR-9 "1–3 free-form". Flagged as Q6 in §12 for PRD author confirmation before implementation.
+
 
 #### API Layer — extend `book_ingestion_v2/api/sync_routes.py`
 
@@ -540,9 +648,41 @@ Single page manages:
 - **Review screen**: after Q10 → full-list review of answers with Edit-per-question (tap a row to jump back to it); single **Submit** button (FR-31).
 - **Submit**: `POST /submit` → navigate to `/learn/:subject/:chapter/:topic` (ModeSelection) per FR-34. No toast, no confirmation — the banner is the feedback mechanism.
 
-**`QuestionRenderer.tsx`**: dispatches on `question.format` to the existing 11 activity components from `components/`. Key change from check-in usage: in practice mode, activity components must **not** auto-submit on first selection — practice lets students change answers (FR-25). Approach: add an optional `mode` prop (`'check_in'` | `'practice_capture'`) and branch behavior. The 11 components already expose an `onComplete` callback; practice passes an `onAnswerChange` callback instead (the parent decides when to move forward via Next button).
+**`QuestionRenderer.tsx`**: dispatches on `question.format` to a **new practice-capture layer** (NOT the existing 11 check-in components as-is). See §5.4.1.
 
 For `free_form` questions, `FreeFormQuestion.tsx` renders a simple `<textarea>`.
+
+### 5.4.1 Practice-capture layer for the 11 interactive formats
+
+**Reality check.** Current components in `llm-frontend/src/components/*Activity.tsx` are **correctness-driven, uncontrolled, and side-effectful**:
+- Auto-submit on first correct pick (`PickOneActivity.tsx:50`); permanently disable further interaction (`disabled={isCorrect !== null}`).
+- Play TTS on success and hints (`playTTS(checkIn.success_message)`, `playTTS(checkIn.hint)`) — conflicts with FR-28 (no audio on practice).
+- Show correctness styling + shake animation — conflicts with FR-26 (no correctness signals).
+- Randomize option order / pair order on mount via `useMemo`/`useState` initializers — would shuffle differently on resume, breaking FR-20.
+- Emit `onComplete(CheckInActivityResult)` only after they decide the student is done — not controlled state, cannot hydrate from prior answer.
+- Several components (e.g., `MatchActivity`, `SwipeClassifyActivity`) have multi-step internal state (selected-left-then-right, swipe-right-sorting) that is not exposed.
+
+A `mode` prop alone does not fix this. Plan approach: **build a parallel `components/practice/capture/` layer** — one controlled component per format, ~100–200 lines each, reusing the **presentation** building blocks from the check-in components (option buttons, pair lists, swipe cards) but with:
+
+| Requirement | How the capture layer meets it |
+|---|---|
+| Controlled answer state (FR-25) | Each component is pure-controlled: `value` + `onChange(answer)` props. Parent `PracticeRunner` owns state. |
+| Hydrate from server on resume (FR-33) | Initial `value` comes from `attempt.answers_json[q_idx]`. |
+| Stable presentation on resume (FR-20) | Shuffle uses `seed` prop (from snapshot's `_presentation_seed`). Deterministic. |
+| No correctness signals (FR-26) | No `correct` / `wrong` classes, no shake animation, no disabling of options. |
+| No audio (FR-28) | No `playTTS` calls. |
+| No hints (FR-26) | No hint reveal logic. |
+| Changeable until submit (FR-25) | Tapping a different option replaces the selection. Tapping the same option deselects. |
+
+**Shared primitives to extract from check-in components into `components/shared/`:**
+- `<OptionButton>` — option-row rendering (used by PickOne, TrueFalse, TapToEliminate, OddOneOut, SpotTheError)
+- `<PairColumn>` / `<PairLine>` — two-column pair rendering (used by MatchPairs)
+- `<BucketZone>` — drop target (used by SortBuckets, SwipeClassify)
+- `<SequenceList>` — reorderable list (used by Sequence)
+
+This refactor is **its own implementation step** (§8 Step 9a), sequenced before the frontend runtime (Step 9b). Without it, §8 Step 9 cannot deliver FR-25/26/28/33.
+
+**Counter-option considered:** add a `mode='practice_capture'` prop to the existing 11 components and branch internally. Rejected: each component would need to fork ~60% of its logic, the branches would rot unless kept rigorously paired, and resume hydration requires lifting state anyway. A dedicated capture layer is smaller over time.
 
 ### 5.5 New: `PracticeResultsPage.tsx`
 
@@ -552,13 +692,15 @@ For `free_form` questions, `FreeFormQuestion.tsx` renders a simple `<textarea>`.
 │                      │
 │       7.5 / 10       │
 │                      │
-│  [ Reteach         ] │   → /learn/:subject/:chapter/:topic with ?mode=teach_me autoselect
+│  [ Reteach         ] │   → /learn/:subject/:chapter/:topic?autostart=teach_me
 │  [ Practice again  ] │   → POST /practice/attempts → /practice/:newId
 │  [ Review my picks ] │   → PracticeReviewPage
 └──────────────────────┘
 ```
 
 Also calls `POST /practice/attempts/{id}/mark-viewed` on mount to clear the banner.
+
+**Reteach autoselect implementation.** `ModeSelectPage.tsx:21–129` currently has no query-param autoselect behavior. Add: on mount, read `?autostart=<mode>` from `useSearchParams()`. If present and the mode is available for this topic, immediately invoke the existing Teach Me entry handler (same as tapping the Teach Me tile), then clear the query param via `navigate(..., { replace: true })` to avoid re-firing on back-navigation.
 
 ### 5.6 New: `PracticeReviewPage.tsx`
 
@@ -586,17 +728,31 @@ Renders as vertical scroll list — no Next/Prev nav.
 
 ### 5.8 New: `PracticeBanner.tsx`
 
-Mounted in `AppShell.tsx` (sits above all authenticated routes). Polls `GET /practice/attempts/recent` every 30s. If any attempt has `graded_at` but no `results_viewed_at`, renders:
+**Placement — above AppShell, covering ALL authenticated routes including chat sessions.** `AppShell` currently wraps only non-chat authenticated routes (`/learn/:subject`, `/learn/:subject/:chapter`, ModeSelectPage, report-card, profile, history — see `llm-frontend/src/App.tsx:94–119`). The chat-session routes (`teach/:sessionId`, `clarify/:sessionId`, `practice/:sessionId`, `exam/:sessionId` — lines 121–149) are **outside AppShell** by design (they have their own nav-bar).
 
+FR-34 requires the banner to fire even when the student is mid-Teach-Me (post-submit, they go start another activity while grading runs in the background). So mounting `PracticeBanner` inside AppShell alone misses half the target surface.
+
+**Approach:** mount `PracticeBanner` in a new top-level wrapper, `<AuthenticatedLayout>`, that sits **above both** the AppShell-wrapped route group and the chat-session routes but **below** `<ProtectedRoute>` / `<OnboardingGuard>`. The banner renders as a fixed-position element at the top of the viewport (z-index above all nav-bars); it doesn't interfere with chat session layout. Update `App.tsx` routes accordingly.
+
+Polls `GET /practice/attempts/recent` every 30s. Pauses polling when `document.visibilityState != 'visible'` (zero-cost optimization; resumes immediately on visibility change). The `/recent` filter is `status IN ('graded', 'grading_failed') AND results_viewed_at IS NULL` (see §4.1 fix — earlier draft's `graded_at IS NOT NULL` filter silently excluded failed attempts from the banner).
+
+**Success banner** (attempt has `status='graded'`):
 ```
 ┌────────────────────────────────────────────────┐
 │ ✓ Your Practice results are ready  →           │
 └────────────────────────────────────────────────┘
 ```
+Tap → navigate to `PracticeResultsPage` for that attempt.
 
-Tap → navigate to `PracticeResultsPage` for that attempt. Silent when no unread attempts.
+**Failure banner** (attempt has `status='grading_failed'`):
+```
+┌────────────────────────────────────────────────┐
+│ ⚠ Grading failed. Retry?                       │
+└────────────────────────────────────────────────┘
+```
+Tap → `POST /practice/attempts/{id}/retry-grading`, flip to a brief "Retrying…" state, reload banner state.
 
-For `status == grading_failed`: banner reads `⚠ Grading failed. Retry?` — tap → `POST /retry-grading` and reload banner state.
+Silent when no unread attempts.
 
 **Decision — poll, not push.** No WebSocket infra for banners exists; introducing one adds complexity. 30s polling at ~50 bytes per response is negligible and matches the PRD's "in-app banner only" (FR-35, §10 out-of-scope: no browser push). If poll cost becomes a problem later, switch to Server-Sent Events.
 
@@ -627,11 +783,34 @@ export async function markPracticeViewed(attemptId: string): Promise<void>;
 
 Delete: `ExamReviewResponse`, `ExamReviewQuestion`, `getExamReview`, all exam-related types.
 
-### 5.10 Modified: `ReportCardPage.tsx` + `ReportCardSubject` types
+### 5.10 Modified: Scorecard — **query-path restructure, not a rename**
 
+**Current code** (`tutor/services/report_card_service.py:240–308`) accumulates per-topic "exam" stats by iterating sessions and reading `state.get("exam_total_correct")` + `state.get("exam_questions")` **from `state_json`** — not from the `exam_score` / `exam_total` columns on `sessions`. Migration needs a structural change, not a rename.
+
+**New aggregation path:**
+1. After the existing `_group_sessions_by_topic` loop finishes (teach_me coverage, last_studied, etc.), call a new `_merge_practice_attempts_into_grouped(grouped, user_id)` helper.
+2. That helper queries `PracticeAttemptRepository` with an aggregate:
+   ```sql
+   SELECT guideline_id,
+          (array_agg(total_score ORDER BY graded_at DESC))[1] AS latest_score,
+          (array_agg(total_possible ORDER BY graded_at DESC))[1] AS latest_total,
+          COUNT(*) FILTER (WHERE status = 'graded') AS attempt_count,
+          MAX(graded_at) AS last_practiced
+     FROM practice_attempts
+    WHERE user_id = :user_id AND status = 'graded'
+    GROUP BY guideline_id
+   ```
+3. For each returned row, find the topic in `grouped[subject][chapter]["topics"][topic_key]` by `guideline_id` and set `latest_practice_score`, `latest_practice_total`, `practice_attempt_count`, and `last_practiced`.
+4. Remove the old `mode == "exam"` and `mode == "practice"` branches from `_group_sessions_by_topic` (lines 85, 111, 263–296) — they're no longer a source of scorecard data.
+
+**Backend response schema (`shared/models/schemas.py:87–97`):**
+- **Keep** the integer `latest_exam_score` / `latest_exam_total` fields during Steps 1–11 (frontend still reads them).
+- **Add** `latest_practice_score: Optional[float]`, `latest_practice_total: Optional[int]`, `practice_attempt_count: Optional[int]`.
+- Step 11 populates the new fields; Step 13 removes the legacy integer exam fields once the frontend migrates.
+
+**Frontend (`ReportCardPage.tsx` + types):**
 - Rename on-screen label "Exam scores" → "Practice scores" (FR-48).
-- Per-topic display: show `latest_practice_score / total (N attempts)` instead of `latest_exam_score / latest_exam_total` (FR-49).
-- Backend: `report_card_service.py` replaces `exam_finished` query with `PracticeAttemptRepository.latest_graded()` + `count_by_user_guideline()`.
+- Per-topic display: show `latest_practice_score / latest_practice_total (N attempts)` using fractional rendering (e.g., "7.5/10"). `attempt_count` is pluralized: "1 attempt" / "3 attempts" (FR-49).
 
 ---
 
@@ -673,8 +852,8 @@ Inputs: question text + student's specific selection (text or value) + correct a
 
 - **Bank generation** — one call per topic at ingestion. ~4K input / ~8K output tokens; gpt-5.2 medium reasoning. Plus 1 review-refine round ≈ 2× cost. Happens once per topic; not in the student path.
 - **Student path — structured grading**: zero LLM calls.
-- **Student path — per-pick rationale**: one call per wrong/blank structured answer. gpt-4o-mini, ~500 in / ~100 out. Worst case (10 wrongs): ~10 calls, ~5–8s end-to-end if sequential. **Optimization**: grade all 10 questions in parallel (`asyncio.gather`) to compress to ~1s wall-clock.
-- **Student path — free-form grading**: 1–3 calls per attempt. ~1K in / ~200 out each. Parallel with rationale calls.
+- **Student path — per-pick rationale**: one call per wrong/blank structured answer. gpt-4o-mini, ~500 in / ~100 out. Worst case (10 wrongs): ~10 calls, ~5–8s end-to-end if sequential. **Optimization**: grade all 10 questions in parallel via `ThreadPoolExecutor(max_workers=10)` inside the sync grading worker (matches `run_in_background_v2`'s threading model — see §4.1 "threading vs asyncio boundary"). Compresses to ~1s wall-clock.
+- **Student path — free-form grading**: 1–3 calls per attempt. ~1K in / ~200 out each. Parallel with rationale calls (same executor).
 
 No caching needed for v1 — every call's input is attempt-specific.
 
@@ -695,26 +874,28 @@ No new environment variables. No new config.py fields — all model selection is
 
 ## 8. Implementation Order
 
-Each step is independently testable; earlier steps don't block on later ones landing.
+Each step is independently testable; earlier steps don't block on later ones landing. **Critical sequencing constraint:** additive work in Steps 1–11 leaves all existing exam + old-chat-practice code live and functional. Destructive removal is concentrated in Step 12 so production never has a half-deleted state.
 
 | Step | What to Build | Files | Depends On | Testable? |
 |------|---------------|-------|------------|-----------|
-| 1 | **DB schema**: models + migration + LLM config seeds | `shared/models/entities.py`, `db.py` | — | `python db.py --migrate` runs clean; tables + indexes + seeds present; unit test for `_apply_practice_tables` |
-| 2 | **Repositories**: `PracticeQuestionRepository`, `PracticeAttemptRepository` | `shared/repositories/practice_question_repository.py`, `shared/repositories/practice_attempt_repository.py` | 1 | Unit tests with in-memory DB |
-| 3 | **Bank generator service** + prompts + `V2JobType.PRACTICE_BANK_GENERATION` | `book_ingestion_v2/services/practice_bank_generator_service.py`, `book_ingestion_v2/prompts/practice_bank_generation.txt`, `practice_bank_review_refine.txt`, `book_ingestion_v2/constants.py` | 1, 2 | Unit tests with mocked LLM; end-to-end against a real topic |
+| 1 | **DB schema (additive only)**: new tables + LLM config seeds. **Does not** drop columns or delete rows. | `shared/models/entities.py` (add models, do **not** touch exam columns), `db.py` (add `_apply_practice_tables`; **do not** add `_cleanup_exam_and_old_practice_data` yet) | — | `python db.py --migrate` runs clean on a DB that still has live exam data; `sessions.exam_score/exam_total` still present; new tables + indexes + seeds present |
+| 2 | **Repositories**: `PracticeQuestionRepository`, `PracticeAttemptRepository` (with `questions_snapshot_json` support + `list_recent_unread` filter on `status IN ('graded', 'grading_failed')`) | `shared/repositories/practice_question_repository.py`, `shared/repositories/practice_attempt_repository.py` | 1 | Unit tests with test DB; `test_partial_unique_index_rejects_second_in_progress`; `test_list_recent_unread_includes_failed` |
+| 3 | **Bank generator service** + prompts + `V2JobType.PRACTICE_BANK_GENERATION` + dependency check on explanation generation | `book_ingestion_v2/services/practice_bank_generator_service.py`, `book_ingestion_v2/prompts/practice_bank_generation.txt`, `practice_bank_review_refine.txt`, `book_ingestion_v2/constants.py` | 1, 2 | Unit tests with mocked LLM; end-to-end against a real topic with explanation cards |
 | 4 | **Ingestion API**: generate-practice-banks + status + bank-viewer endpoints | `book_ingestion_v2/api/sync_routes.py` | 3 | curl against local backend; job status transitions |
 | 5 | **Admin UI**: `PracticeBankAdmin.tsx` page + hook in `BookV2Detail.tsx` | frontend admin | 4 | Manual — generate bank for one topic, view it |
-| 6 | **Runtime grading service** | `tutor/services/practice_grading_service.py`, `tutor/prompts/practice_grading.py` | 2 | Unit tests with mocked LLM for deterministic + FF paths |
-| 7 | **Runtime practice service** (set selection + auto-save + submit + threaded grading worker) | `tutor/services/practice_service.py`, `tutor/models/practice.py` | 2, 6 | Unit tests for `_select_set` (difficulty mix, FF absorption, variety); integration test: create attempt → save answers → submit → assert grading thread completes and grading_json populated |
-| 8 | **Runtime API**: `/practice` router | `tutor/api/practice.py`, `main.py` | 7 | curl full flow locally: start → save → submit → poll /recent → mark-viewed |
-| 9 | **Frontend runtime**: landing + runner + results + review + history + banner | `llm-frontend/src/pages/Practice*.tsx`, `components/practice/*`, `api.ts` | 8 | Manual browser test — full student flow on a topic with a seeded bank |
-| 10 | **ModeSelection refactor**: tile simplification + landing routing + disabled-when-no-bank | `llm-frontend/src/components/ModeSelection.tsx`, `pages/ModeSelectPage.tsx` | 9 | Manual — tap Let's Practice → landing |
-| 11 | **Scorecard**: rename + practice-score sourcing | `tutor/services/report_card_service.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `api.ts` types | 2 | Unit test on `get_report_card` with mixed teach_me + practice data |
-| 12 | **Exam deletion (backend)**: delete exam_service, exam_prompts, practice_prompts, exam dispatch in orchestrator, exam REST endpoints, exam session state fields + DB cleanup migration | many (see §2 Modified/Deleted) | 11 (replacement flow live first) | Backend unit + integration tests all pass; no references to `"exam"` mode remain; `grep -r 'ExamService\|exam_prompts\|practice_prompts' llm-backend/` returns 0 |
-| 13 | **Exam deletion (frontend)**: delete `ExamReviewPage`, exam routes, exam types in `api.ts` | `llm-frontend/**/Exam*`, `App.tsx`, `api.ts` | 12 | `grep -r 'exam' llm-frontend/src` returns only legal uses (none expected) |
-| 14 | **Docs**: new principles/functional/technical docs for practice; update scorecard + architecture-overview + database + ai-agent-files; delete stale exam docs | `docs/principles/practice-mode.md`, `docs/functional/practice-mode.md`, `docs/technical/practice-mode.md`, updates to existing docs | 13 | `/update-all-docs` skill passes |
+| 6 | **Runtime grading service** (sync + ThreadPoolExecutor fan-out) | `tutor/services/practice_grading_service.py`, `tutor/prompts/practice_grading.py` | 2 | Unit tests for deterministic grading paths; `test_grading_failure_flips_status`; `test_grading_retries_3x_then_fails` |
+| 7 | **Runtime practice service** (start_or_resume with concurrent-race handling + snapshot + atomic submit) | `tutor/services/practice_service.py`, `tutor/models/practice.py` | 2, 6 | Unit: `_select_set` (mix, FF absorption, variety), `test_concurrent_start_is_idempotent`, `test_submit_atomically_persists_final_answers_and_flips_status`, `test_save_answer_after_submit_returns_409` |
+| 8 | **Runtime API**: `/practice` router (including `POST /submit` body-final-answers contract) | `tutor/api/practice.py`, `main.py` | 7 | curl full flow locally: start → save → submit-with-final-answers → poll /recent → mark-viewed. Integration test verifies debounce-race fix. |
+| **9a** | **Practice-capture component layer**: 11 new controlled components in `components/practice/capture/` + extracted shared primitives in `components/shared/`. Existing `*Activity.tsx` components remain untouched and continue serving check-ins. | `llm-frontend/src/components/practice/capture/*.tsx`, `llm-frontend/src/components/shared/OptionButton.tsx` etc. | — (can be parallel with 6–8) | Storybook-style unit tests per component: hydrate from `value` prop, emit `onChange` on interaction, no TTS, no correctness styling, deterministic shuffle from `seed` prop |
+| **9b** | **Frontend runtime**: landing + runner (using capture layer) + results + review + history + banner | `llm-frontend/src/pages/Practice*.tsx`, `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion,PracticeBanner}.tsx`, `api.ts` | 8, 9a | Manual browser test — full student flow on a topic with a seeded bank, including pause/resume preserving option order (FR-20) |
+| 9c | **Banner placement refactor**: new `<AuthenticatedLayout>` wrapper above both AppShell and chat-session routes; mount `PracticeBanner` there | `llm-frontend/src/App.tsx` | 9b | Manual: submit practice, start Teach Me, verify banner appears when grading completes |
+| 10 | **ModeSelection refactor**: tile simplification + landing routing + disabled-when-no-bank + `?autostart=teach_me` handler | `llm-frontend/src/components/ModeSelection.tsx`, `pages/ModeSelectPage.tsx` | 9b | Manual — tap Let's Practice → landing; tap Reteach from results → ModeSelectPage auto-starts Teach Me |
+| 11 | **Scorecard (additive)**: add new practice-v2 aggregator in `report_card_service` + new response fields; do **not** yet remove old `mode == "exam"` / `mode == "practice"` branches | `tutor/services/report_card_service.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `shared/models/schemas.py`, `api.ts` types | 2 | Unit test on `get_report_card` with mixed teach_me + practice-v2 attempts; legacy exam/practice session data still renders old fields correctly |
+| 12 | **Destructive cleanup (backend)** — ALL of the following in a single deploy: <br>• Delete `exam_service.py`, `exam_prompts.py`, `practice_prompts.py`, `tests/unit/test_exam_lifecycle.py`. <br>• Remove all `session.mode == "exam"` and `session.mode == "practice"` branches across orchestrator, session_service, master_tutor, session_state, report_card_service. <br>• Remove `_process_exam_turn`, `_build_exam_feedback`, `generate_exam_welcome`, `_process_practice_turn`, `_build_practice_turn_prompt`. <br>• Remove `/sessions/{id}/end-exam`, `/sessions/{id}/exam-review`, `/sessions/{id}/end-practice` endpoints + `EndExamResponse` / `ExamReviewResponse` / `ExamReviewQuestion` schemas. <br>• Remove `exam_*` fields and `practice_questions_answered` from `SessionState` + `ResumableSessionResponse`. <br>• Run `_cleanup_exam_and_old_practice_data()` migration (DELETE rows + DROP columns in single transaction). <br>• Remove old-exam branches in `report_card_service`. | many — see §2 "Destructive" list | 9c, 10, 11 (all replacements live) | Backend tests pass; the grep-gate command in §2 returns 0; `python db.py --migrate` is idempotent; no production 500s from missing columns |
+| 13 | **Destructive cleanup (frontend)**: delete `ExamReviewPage.tsx`, `/exam/:sessionId`, `/exam-review/:sessionId`, `/practice/:sessionId` routes; delete exam types + old practice types from `api.ts`; remove legacy `latest_exam_score`/`latest_exam_total` from response schema + reads | `llm-frontend/**/Exam*`, `App.tsx`, `api.ts`, `ReportCardPage.tsx` | 12 | `grep -rE '(exam-review\|end-exam\|/exam/\|end-practice\|ExamReviewPage\|getExamReview)' llm-frontend/src` returns 0 |
+| 14 | **Docs**: new principles/functional/technical docs for practice; update scorecard + architecture-overview + database + ai-agent-files; delete `docs/feature-development/teach-me-practice-split/` (superseded); delete stale exam docs | `docs/principles/practice-mode.md`, `docs/functional/practice-mode.md`, `docs/technical/practice-mode.md`, updates to existing docs | 13 | `/update-all-docs` skill passes |
 
-**Order rationale:** schema → repos → offline bank generation → offline admin UI (so QA can review banks) → runtime grading → runtime service → runtime API → runtime frontend → mode-picker wiring → scorecard. Exam deletion comes AFTER the replacement runtime is live so prod never has a window with neither feature. Docs last.
+**Order rationale:** Steps 1–11 are **purely additive** — each is shippable independently and leaves exam + old-chat-practice live and working. Step 12 bundles ALL destructive changes (code + DB migration) in a single atomic deploy; running Step 1's migration alone would drop columns the live code still writes to, so the DDL is deliberately deferred. Steps 9a/9b/9c are split because the capture-component layer (9a) is a substantial refactor that the runtime UI (9b) depends on and the banner placement (9c) is a routing-tree change best isolated.
 
 ---
 
@@ -743,11 +924,22 @@ Each step is independently testable; earlier steps don't block on later ones lan
 
 | Test | What It Verifies |
 |------|------------------|
-| `test_practice_full_flow` | POST /attempts → PATCH answers → POST submit → poll grading → GET attempt shows `status=graded` + grading_json |
+| `test_practice_full_flow` | POST /attempts → PATCH answers → POST /submit with final_answers_json → poll grading → GET attempt shows `status=graded` + grading_json |
+| `test_submit_atomically_persists_final_answers_and_flips_status` | Debounce-race fix: submit body's `final_answers_json` overwrites any older auto-saved answer atomically with the status flip |
+| `test_save_answer_after_submit_returns_409` | Late PATCH arriving after commit gets 409, not silent no-op |
+| `test_concurrent_start_is_idempotent` | Two simultaneous POST /attempts → one row created, both return it |
+| `test_review_renders_correctly_after_bank_regenerated` | Create attempt, submit, then `delete_by_guideline` + regenerate → GET attempt still returns full question payload from snapshot |
+| `test_resume_presentation_order_stable` | Start attempt, answer Q1 with option B selected, pause, resume → option layout matches original (seed-driven shuffle) |
 | `test_practice_parallel_attempts_across_topics` | Submit on topic A, start attempt on topic B before A finishes grading (FR-36) |
 | `test_practice_multiple_history_attempts` | 3 submitted attempts on same topic → GET /attempts?guideline_id returns all 3 newest-first |
 | `test_practice_resume_on_landing` | Create attempt, disconnect, hit landing again → in-progress attempt surfaces |
-| `test_exam_mode_404_after_deletion` | POST /sessions {mode: "exam"} returns 400 "Mode not supported" |
+| `test_recent_unread_includes_failed` | `/recent` returns attempts with `status='grading_failed'`, not just `status='graded'` |
+| `test_grading_failure_retry_clears_error` | Submit → force grading failure → `POST /retry-grading` → success → banner clears |
+| `test_banner_covers_chat_session_routes` | Frontend test: submit practice, navigate to `/learn/.../teach/:sessionId` (outside AppShell), verify banner visible when grading completes |
+| `test_reteach_autoselect` | Frontend test: navigate to `/learn/.../topic?autostart=teach_me` → Teach Me auto-starts, query param cleared |
+| `test_step1_migration_is_additive_only` | Run Step 1 migration on a DB populated with exam sessions + exam columns → all exam data intact, new tables created |
+| `test_step12_migration_cleans_up` | Run Step 12 migration → exam/old-practice rows deleted, exam columns dropped, all wrapped in single transaction |
+| `test_exam_mode_404_after_deletion` | After Step 12: POST /sessions {mode: "exam"} returns 400 "Mode not supported"; POST /sessions {mode: "practice"} same |
 
 ### Manual verification
 
@@ -779,10 +971,12 @@ Each step is independently testable; earlier steps don't block on later ones lan
 
 ## 10. Deployment Considerations
 
-- **Migration order:** deploy code and migration together; `python db.py --migrate` is idempotent and safe to run on every deploy (existing pattern). The migration's `DELETE FROM sessions WHERE mode = 'exam'` is destructive — **confirmed acceptable per FR-1** (no exam data preserved). Wrap in a transaction.
+- **Migration rollout — two deploys, not one:**
+  - **Deploys for Steps 1–11** (additive): run `_apply_practice_tables` only. Creates new tables, new indexes, new LLM config seeds. Does **not** touch exam columns or sessions rows. Idempotent; safe to re-run on every deploy.
+  - **Deploy for Step 12** (destructive): same deploy as the exam/old-practice code removal. Runs `_cleanup_exam_and_old_practice_data` inside a single `with engine.begin():` transaction — `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` + `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score` + `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_total`. Confirmed acceptable per FR-1 + FR-2 (no exam or old-practice data preserved).
 - **Feature rollout:** ship to all users at once (PRD §10 out-of-scope: no feature flag, no phased rollout).
-- **Ingestion backfill:** after deploy, run `POST /admin/v2/books/{id}/generate-practice-banks` for each existing book to populate banks. Without this step, every topic's Practice tile will be greyed out. Suggest a one-shot script `scripts/backfill_practice_banks.py` that iterates all books and calls the endpoint. Wall-clock ~5 min per chapter at gpt-5.2 medium; parallelize across books.
-- **Rollback plan:** if critical bug surfaces post-deploy, revert the backend container image and run a "resurrect exam" migration — this is non-trivial because exam session data was deleted. Mitigation: keep a DB snapshot from the moment before the deploy; restore from snapshot if rollback is needed.
+- **Ingestion backfill:** after Step 4 ships, run `POST /admin/v2/books/{id}/generate-practice-banks` for each existing book to populate banks. Without this step, every topic's Practice tile will be greyed out. Suggest a one-shot script `scripts/backfill_practice_banks.py` that iterates all books and calls the endpoint. **Revised time estimate:** ~2 min per guideline at gpt-5.2 medium + 1 review round; a chapter with 20 topics takes ~40 min (sequential within a chapter because of the chapter-level lock); parallelize across books. Start early — can run against Step 4 deploy while Steps 5–11 are still in progress.
+- **Rollback plan (Step 12 only — other steps are pure additive):** the only meaningful rollback window is the Step 12 deploy. Take a DB snapshot immediately before it. If a critical bug surfaces post-deploy, revert the container image and restore the snapshot. Steps 1–11 can be rolled back by reverting the container alone (no data migration to reverse).
 - **Infra:** no new AWS resources. No new secrets. `practice_grader` → gpt-4o-mini will appear in OpenAI cost reports; budget ~$0.0002 per submitted attempt (10 small calls). At 1000 attempts/day, ~$6/month.
 
 ---
@@ -793,20 +987,32 @@ Each step is independently testable; earlier steps don't block on later ones lan
 |------|-----------|--------|------------|
 | Bank generation produces incorrect "correct answers" (distractors marked correct) | Medium | High (student learns wrong) | Review-refine pass is correctness-scoped + admin read-only bank viewer lets a human spot-check before topics go live. Start with `review_rounds=1` default; bump to 2 if audit flags issues. |
 | FF grading inconsistent (LLM gives different score to same answer across attempts) | Medium | Medium | Accept it. FF is 1–3 out of 10 per attempt. Rubric in prompt anchors consistency. Log grading rationales so admin can audit patterns later. |
-| Background grading thread dies mid-work (App Runner restart, DB connection lost) | Low | Medium | Stuck attempts auto-detected by a stale-heartbeat check (future; not v1). For v1, student manually triggers retry from the banner — FR-40. |
-| Parallel grading (N attempts across topics all grading at once) overloads LLM rate limit | Low | Medium | Each attempt is ~10 small calls; OpenAI gpt-4o-mini rate limits are generous. `LLMService.call` already has built-in retry for rate-limit errors. If this becomes real, add a simple semaphore (`asyncio.Semaphore(5)`) in the grading worker. |
-| Bank < 10 questions after validate+top-up (LLM can't generate enough valid questions) | Low | Medium | `_top_up` runs until threshold or 3 attempts. If still < 30, log an admin alert and mark the topic as "bank unavailable" — the tile greys out gracefully (FR-5). |
-| Frontend activity components break when used in "capture" mode (no auto-submit) | Medium | Medium | Add `mode` prop to each of 11 components. Keep existing check-in behavior as default. Add unit tests per component for both modes. Roll out behind the 11 components one at a time. |
-| Deletion of old Exam code breaks a code path we didn't spot | Medium | Low | Step 12 (deletion) runs ONLY after step 9 (new frontend live). Smoke test all modes post-deletion. Grep step in §8 Step 12 catches leftover references. |
-| Discarded exam history is a regression for long-tenured students | High (certain) | Low (confirmed by FR-1) | PRD explicitly accepts this. No mitigation needed. |
+| Background grading thread dies silently (process crash, container restart mid-grade); attempt stuck in `status='grading'` | Low | Medium | **v1: no auto-recovery.** Student sees "grading in progress…" on landing page forever. Post-v1 mitigation (documented in §4.1): add `grading_started_at` timestamp + sweeper that flips stuck attempts to `grading_failed` after 5 min. If field reports surface stuck attempts, prioritize then. |
+| Parallel grading (N attempts across topics all grading at once) overloads LLM rate limit | Low | Medium | Each attempt is ~10 small calls; OpenAI gpt-4o-mini rate limits are generous. `LLMService.call` already has built-in retry for rate-limit errors. If this becomes real, add a simple process-wide semaphore (`threading.BoundedSemaphore(20)`) around the per-call executor submits. |
+| Bank < 30 questions after validate+top-up (LLM can't generate enough valid questions) | Low | Medium | `_top_up` runs until threshold or 3 attempts. If still < 30, log an admin alert and mark the topic as "bank unavailable" — the tile greys out gracefully (FR-5). |
+| **Practice-capture component layer is substantial new code** (11 controlled components + shared primitives) | **High (certain)** | **Medium** | Scoped as dedicated Step 9a. Each capture component is ~100–200 lines, controlled props, no side effects. Storybook-style unit tests per component. Shared primitives (`OptionButton`, `PairColumn`, etc.) extracted from existing check-in components where pure, or duplicated where the check-in version is too entangled with correctness logic. |
+| **Bank regeneration orphans historical attempts** (old `question_ids` point to deleted rows) | Would be High without mitigation | High | **Eliminated by design.** `practice_attempts.questions_snapshot_json` stores the full payload at creation; rendering/grading/review read only from the snapshot. `PracticeQuestionRepository.delete_by_guideline()` is safe to call at any time. Unit test `test_review_renders_correctly_after_bank_regenerated`. |
+| **Debounced auto-save + Submit loses the student's last answer** | Would be High without mitigation | High | **Eliminated by design.** `POST /submit` carries `final_answers_json`; server persists answers + flips status in a single transaction; client cancels in-flight PATCH before issuing Submit. Late PATCH arriving after commit returns 409 and is discarded. Integration test `test_submit_with_in_flight_answer_persists_final`. |
+| **Concurrent tabs both trigger `start_or_resume`**, second tab hits IntegrityError | Would be Medium without mitigation | Medium | **Eliminated by design.** Service catches IntegrityError, re-reads the winning `in_progress` row, returns it. Unit test `test_concurrent_start_is_idempotent`. |
+| **Migration drops columns while live code still writes to them** | Would be HIGH without mitigation | HIGH (production crash) | **Eliminated by design.** §3 migration is split: Step 1 is additive-only (new tables + seeds), destructive cleanup (DELETE rows + DROP columns) is bundled into Step 12 alongside the code removal. Verified by test: Step 1's `_apply_practice_tables` runs clean on a DB that still has `sessions.exam_score/exam_total` populated. |
+| **Step 12 code removal misses a reference to old exam/practice code** | Medium | Low (CI fails; easy fix) | Step 12 includes a mandatory grep gate in §2. CI runs the grep command as a test; deploy blocked if it returns non-zero. |
+| **PracticeBanner mounted only in AppShell wouldn't cover chat-session routes** (FR-34 violation) | Would be Medium without mitigation | Medium | **Eliminated by design.** Step 9c introduces `<AuthenticatedLayout>` above both AppShell and chat-session routes; banner renders as a fixed-position element visible regardless of which route-group is active. |
+| Discarded exam + old-practice history is a regression for long-tenured students | High (certain) | Low (confirmed by FR-1, FR-2) | PRD explicitly accepts this. No mitigation needed. A DB snapshot taken immediately before Step 12 deploy is the rollback path. |
 | Banner polling at 30s is too slow (student sits staring at ModeSelection) | Medium | Low | 30s is a PRD-informed default. If UX testing shows impatience, drop to 10s or migrate to SSE post-ship. |
+| Bank generation runtime per chapter is underestimated for multi-topic chapters | Medium | Low | Revised estimate: ~2 minutes per guideline at gpt-5.2 medium + 1 review round. A chapter with 20 topics takes ~40 min (sequential within chapter; lock prevents parallelism). Backfill script parallelizes across books. If slower than acceptable, drop review rounds to 0 and rely on the admin bank viewer for spot-checks. |
 
 ---
 
 ## 12. Open Questions
 
-- **Q1:** FR-41 says "half-point granularity (e.g., 7.5/10)." Does each FR-38 fractional score contribute its raw 0.0–1.0 to the total, or do we bucket to half-points per question? **Proposed:** store raw fractional in `grading_json`, display total rounded to nearest 0.5. Simplest; preserves data for later.
-- **Q2:** For FR-19 "at least 4 different formats per set" — does `free_form` count as a format? **Proposed:** yes. 10-question sets will naturally have ≥4 formats when 1–3 are FF and the rest are drawn randomly from 11 structured formats.
-- **Q3:** FR-43 says "Pixi.js visuals MAY be included on evaluation cards when they help explain the 'why'." Scope for v1? **Proposed:** out of scope for v1 launch. Data model supports it via a nullable `visual_explanation` field inside `grading_json[q_idx]`; a later PR wires the existing `VisualExplanation` frontend component into `PracticeReviewPage.tsx`. Flag this in the tech plan review.
-- **Q4:** FR-34 says student is routed back to topic list after Submit; should the route go to ModeSelection (same topic) or up a level to TopicSelect? **Proposed:** ModeSelection — student is likely to immediately pick another activity on this topic (Teach Me if score was low, Clarify Doubts, or another Practice). One tap back if they want to switch topics.
-- **Q5:** Sessions DB column cleanup — drop `exam_score`, `exam_total` columns? **Proposed:** yes, in the same deploy. Safe because no code reads them after step 12, and they're not referenced by any index or foreign key.
+**Resolved in this revision:**
+
+- **Q1 (RESOLVED):** FR-41 half-point granularity. **Decision:** round **at grading write time** — `total_score` is stored already rounded to the nearest 0.5 (`round(raw * 2) / 2`). All display paths read the stored value directly. Rationale: mixed-rounding (raw stored, rounded at display) causes sums/totals to disagree across views and creates a UX bug when students compare numbers. Per-question `score` remains raw fractional in `grading_json` for admin audit; only `total_score` is rounded.
+- **Q3 (RESOLVED):** FR-43 Pixi visuals on evaluation cards. **Decision:** out of scope for v1 launch, but the data model is pre-wired. `grading_json[q_idx].visual_explanation_code` is a nullable string slot (see §3). v1 leaves it null. A later PR wires the existing `VisualExplanation` frontend component into `PracticeReviewPage.tsx` — no migration needed.
+- **Q4 (RESOLVED):** FR-34 post-submit destination. **Decision:** route to **ModeSelectPage** (same topic's activity picker). PRD wording "topic list" was ambiguous; `ModeSelectPage` is a better fit because (a) the student is most likely to Reteach or Practice-again on the same topic, (b) the Reteach button on `PracticeResultsPage` also targets `ModeSelectPage` with `?autostart=teach_me`, keeping the mental model consistent. Update `docs/functional/practice-mode.md` in Step 14 to lock this in.
+- **Q5 (RESOLVED):** Drop `exam_score`, `exam_total` columns. **Decision:** yes, in the Step 12 migration (`_cleanup_exam_and_old_practice_data`) alongside the `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` and the code removal. See §3 migration split.
+
+**Still open:**
+
+- **Q2:** For FR-19 "at least 4 different formats per set" — does `free_form` count as a format? **Proposed:** yes. 10-question sets will naturally have ≥4 formats when 1–3 are FF and the rest are drawn randomly from 11 structured formats. Confirm with PRD author before Step 7.
+- **Q6 (new):** FR-9 says "1–3 free-form (FF) text questions" per topic. Purely procedural topics may legitimately produce zero FFs — the LLM returns 0 valid FFs after review/refine, and forcing an additional pass to generate at least one FF risks low-quality contrived questions. **Proposed:** relax to `0 ≤ FF count ≤ 3` in the generator's validate step; update PRD wording if confirmed. Confirm with PRD author before Step 3.
