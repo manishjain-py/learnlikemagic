@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 9 of 16 steps complete (counting 9a). Backend fully wired and capture components in place. Next is Step 9b — runtime pages that compose these captures into a usable drill flow.
+**Status:** 10 of 16 steps complete (counting 9a + 9b). Full student-facing drill flow is now clickable end-to-end locally. Next is Step 9c — AuthenticatedLayout wrapper + PracticeBanner placement so graded-set surface works mid-Teach-Me.
 
 ---
 
@@ -49,8 +49,8 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 | 7 | Practice lifecycle service | ✅ Done | `tutor/services/practice_service.py` (new), `tutor/models/practice.py` (new DTOs) | Public API: `start_or_resume`, `save_answer`, `submit`, `retry_grading`, `get_attempt`, `list_attempts`, `mark_viewed`, `list_recent_unread`. Custom exceptions (NotFound/Permission/Conflict/BankEmpty) map 1:1 to 404/403/409/409. `_select_set` delivers exactly 3E/5M/2H with fallback backfill; `_enforce_no_consecutive_same_format` greedy-reorders to eliminate dupes. `_snapshot_question` injects `_id/_format/_difficulty/_concept_tag/_presentation_seed` (random int). Submit is atomic (`SELECT FOR UPDATE` → merge → flip → commit) then spawns daemon thread with fresh DB session + `practice_grader` LLM config + `initial_retry_delay=10`. Redaction strips 7 correctness keys + flattens match_pairs into `pair_lefts/pair_rights` + strips `correct_bucket` from sort_buckets/swipe_classify. Full lifecycle smoke test passed end-to-end: start → save_answer → submit → 6s grading → AttemptResults with 3.0/10 half-point score + kid-friendly rationales. |
 | 8 | Practice runtime REST API | ✅ Done | `tutor/api/practice.py` (new), `main.py` (+1 import, +1 include_router) | 9 endpoints: POST /start, GET /availability/{gid}, GET /attempts/recent, GET /attempts/for-topic/{gid}, GET /attempts/{id}, PATCH /attempts/{id}/answer, POST /attempts/{id}/submit, POST /attempts/{id}/retry-grading, POST /attempts/{id}/mark-viewed. Route declaration order ensures `recent` and `for-topic` win over `{attempt_id}`. Exception→HTTP mapping via a `_call` helper: NotFound→404, Permission→403, Conflict→409, BankEmpty→409. All endpoints require `get_current_user` — no anonymous access (unlike sessions). Verified via FastAPI TestClient: 14/14 cases pass (start, idempotent resume, save, submit, 409-on-locked-attempt, 403-cross-user, grading transition, recent + mark-viewed flow, for-topic history, 404-unknown-id). |
 | 9a | Practice-capture component layer | ✅ Done | `llm-frontend/src/components/practice/capture/*.tsx` (11 new + shared `types.ts`), `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList,seededShuffle}.tsx` (5 new shared) | All 11 capture components are controlled (`{ questionJson, value, onChange, seed, disabled }`), no correctness styling, no TTS, no auto-submit. Seed-stable presentation via `mulberry32` + Fisher-Yates — original indices are preserved as values so backend grading works. Per-format answer shapes match the backend: number for pick-style, boolean for true/false, `Record<string,string>` for match_pairs, `number[]` for bucket sorts, `string[]` for sequence. Fix along the way: added `reveal_text` to `REDACT_TOP_LEVEL_KEYS` in practice_service — it was leaking the predict_then_reveal answer in the redacted payload. `npm run build` passes clean. |
-| 9b | Frontend runtime pages | ⏳ Next | `llm-frontend/src/pages/Practice{Landing,Runner,Results,Review,History}Page.tsx` (5 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion,PracticeBanner}.tsx` (3 new), `llm-frontend/src/api.ts` (new funcs) | Runner: question-by-question + review screen + atomic submit (AbortController cancels in-flight debounced PATCH before calling submit). Results: fractional score (half-point rounded), Reteach / Practice-again / Review-my-picks. Banner: 30s poll of `/practice/attempts/recent`, pauses when `document.visibilityState != 'visible'`. Success banner → PracticeResultsPage. Failure banner → `POST /retry-grading`. |
-| 9c | AuthenticatedLayout + banner placement | Pending | `llm-frontend/src/App.tsx`, `llm-frontend/src/components/AuthenticatedLayout.tsx` (new) | AppShell currently wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`) are outside. New wrapper sits above both route groups (below ProtectedRoute/OnboardingGuard) so `PracticeBanner` fires mid-Teach-Me after a practice submit. Fixed-position top element, z-indexed above nav bars. |
+| 9b | Frontend runtime pages + chalkboard restyle | ✅ Done | `llm-frontend/src/pages/Practice{Landing,Runner,Results}Page.tsx` (3 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion}.tsx` (2 new), `llm-frontend/src/api.ts` (9 funcs + 5 interfaces), `App.tsx` (3 routes), `App.css` (+819 lines practice block), `AppShell.tsx` (+/practice in `isChalkboardRoute`), 4 shared primitives + 11 captures + `types.ts` migrated from inline styles to `.practice-*` class names | Runner: question-by-question navigation + internal "Review my picks" screen + atomic submit. Debounced PATCH (600ms) with AbortController canceling in-flight requests before submit. Results: fractional score, per-question expandable breakdown that re-uses `QuestionRenderer` in `disabled` mode to show the student's answer, plus rationale chip + correct-answer summary on wrong picks. Retry grading on `grading_failed`. Reteach CTA deferred to Step 10's ModeSelect refactor. Review + History pages folded into Landing + Results for v1. Banner (30s poll) deferred to Step 9c. **Chalkboard restyle:** on first browser walkthrough the inline cyan/teal styling clashed with the rest of the app's chalkboard aesthetic (PR #99). Refactored to use existing chalkboard tokens — `.selection-step` page surfaces, handwritten `--font-hand` question text, parchment CTAs + free-form textarea, gold/mint/coral chalk states for selection/correct/wrong. `/practice/*` added to `AppShell.isChalkboardRoute` so the theme scope covers the new routes. `npm run build` clean — 1075 modules; verified in Chrome on a graded attempt. |
+| 9c | AuthenticatedLayout + banner placement | ⏳ Next | `llm-frontend/src/App.tsx`, `llm-frontend/src/components/AuthenticatedLayout.tsx` (new) | AppShell currently wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`) are outside. New wrapper sits above both route groups (below ProtectedRoute/OnboardingGuard) so `PracticeBanner` fires mid-Teach-Me after a practice submit. Fixed-position top element, z-indexed above nav bars. |
 | 10 | ModeSelection refactor | Pending | `llm-frontend/src/components/ModeSelection.tsx`, `llm-frontend/src/pages/ModeSelectPage.tsx` | Delete Exam tile + `completedExams` / `incompleteExam` / `incompletePractice` state. Let's Practice tile has NO badges. `practiceAvailable` from new `getPracticeAvailability(guideline_id)` API in the page-load `Promise.all`; disable tile when no bank. Handle `?autostart=teach_me` query param (from PracticeResultsPage's Reteach). On autostart, invoke existing Teach Me entry handler then clear query via `navigate(..., {replace: true})`. |
 | 11 | Scorecard additive | Pending | `tutor/services/report_card_service.py`, `shared/models/schemas.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `llm-frontend/src/api.ts` types | **Structural change, not a rename.** Current code reads exam stats from `state_json` via session iteration. New `_merge_practice_attempts_into_grouped(grouped, user_id)` issues SQL aggregate over `practice_attempts` (latest score via `array_agg ORDER BY graded_at DESC`, count, `MAX(graded_at)`). Response schema **additively** gets `latest_practice_score` (Optional[float]), `latest_practice_total` (Optional[int]), `practice_attempt_count` (Optional[int]). Legacy integer `latest_exam_score`/`latest_exam_total` kept until Step 13. Frontend: rename label "Exam scores" → "Practice scores", fractional render (e.g. "7.5/10"), pluralize attempts. |
 | 12 | Destructive cleanup (backend + DB) | Pending | Many — see plan §2 "Destructive" list | **SINGLE atomic deploy.** Delete `exam_service.py`, `exam_prompts.py`, `practice_prompts.py`, `tests/unit/test_exam_lifecycle.py`. Remove `session.mode == "exam"` and `"practice"` branches across orchestrator, session_service, master_tutor, session_state, report_card_service. Remove `/end-exam`, `/exam-review`, `/end-practice` endpoints + DTOs. Run `_cleanup_exam_and_old_practice_data()` inside single `with engine.begin():` transaction: `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` + `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score` + `exam_total`. **Grep-gate CI test** must return 0: ``grep -rE '(ExamService\|exam_prompts\|practice_prompts\|_process_practice_turn\|_process_exam_turn\|_build_practice_turn_prompt\|practice_questions_answered\|exam_questions\|ExamQuestion\|ExamFeedback\|end-practice\|end-exam\|exam-review)' llm-backend/ \| grep -v docs/ \| wc -l`` |
@@ -96,7 +96,36 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 
 ---
 
-## Next step briefing — Step 9b
+## Next step briefing — Step 9c
+
+**Goal:** PracticeBanner + AuthenticatedLayout wrapper so a graded set surfaces even when the student is mid-Teach-Me (FR-35) or mid-Clarify (FR-40).
+
+**Problem today:**
+`AppShell` wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`, `exam/:sessionId`, `practice/:sessionId`) are outside `AppShell` because they have their own nav bar. So if we put the banner in `AppShell`, it never fires during a chat session — exactly when the student is waiting on practice results.
+
+**Solution per plan §5.4.3:**
+A new `AuthenticatedLayout` wrapper that sits ABOVE both `AppShell` routes AND chat-session routes (below `ProtectedRoute/OnboardingGuard`). `PracticeBanner` is mounted in this wrapper as a fixed-position top element, z-indexed above the chat nav bar.
+
+**Files to touch:**
+- `llm-frontend/src/components/AuthenticatedLayout.tsx` (new)
+- `llm-frontend/src/components/practice/PracticeBanner.tsx` (new)
+- `llm-frontend/src/App.tsx` — restructure `<Route>` tree so `AuthenticatedLayout` wraps both the AppShell-route group AND the chat-session-route group.
+
+**PracticeBanner behavior (FR-35, FR-40):**
+- Polls `GET /practice/attempts/recent` every 30s.
+- Pauses when `document.visibilityState !== 'visible'` (saves battery on backgrounded tabs).
+- For each `graded` attempt not yet viewed: show a green banner ("Your practice set is ready — tap to see how you did") that navigates to `/practice/attempts/{id}/results`.
+- For each `grading_failed` attempt not yet viewed: show a yellow banner with a "Retry" button that calls `POST /practice/attempts/{id}/retry-grading` inline.
+- Results page already calls `mark-viewed` on graded/failed — same trigger clears the banner. Clicking the banner itself doesn't need to call mark-viewed explicitly; navigating to results covers it.
+
+**Success criteria:**
+- Submit a practice set. Navigate away (e.g. into Teach Me on another topic). Within ~30s the banner appears at the top of the screen with the score.
+- Clicking the banner routes to results; the banner disappears after mark-viewed fires.
+- Tab backgrounded → poll pauses. Foregrounded → poll resumes.
+
+---
+
+## Superseded briefing — Step 9b
 
 **Goal:** Runtime pages + `QuestionRenderer` that compose the Step 9a captures into a usable drill flow. This is the first slice a student can actually use.
 
@@ -354,15 +383,18 @@ Copy-paste this into a new chat:
 
 ## Git checkpoint
 
-As of 2026-04-17 end-of-session:
+As of 2026-04-17:
 - Branch: `feat/lets-practice-v2` (local; not pushed)
-- Last commit on the branch: `fc4cdbd` (feat: let's practice v2 — additive backend foundation (steps 1-3))
-- Uncommitted additive changes:
-  - `book_ingestion_v2/api/sync_routes.py` — 4 endpoints + `_run_practice_bank_generation` background task.
-  - `book_ingestion_v2/models/schemas.py` — 4 new Pydantic response schemas.
-  - `db.py` — `practice_bank_generator` seed corrected to `claude_code/claude-opus-4-6` (was `openai/gpt-5.2` in Step 1's draft).
-- DB migration applied: both tables + partial unique index + both LLM config rows verified via SELECT.
-- End-to-end tested: POST returns 202 → job transitions pending→running→completed (4m 19s on claude_code/claude-opus-4-6 for one topic with 1 review round) → GET `/practice-banks/{gid}` returns 30 questions spanning all 12 formats (FF=2, TF=1, SB=2, OOO=2, TAP=3, SEQ=2, PICK=5, MP=3, FB=4, SPOT=2, PR=3, SC=1) and a sensible difficulty mix. Status endpoint returns the expected per-topic summary for the chapter (only 1 of 8 topics has explanations, so only that one has a bank).
-- Import-verified after every edit; 28 routes registered on the running uvicorn (`--reload` picks up changes automatically).
+- Commits on the branch (oldest → newest):
+  - `fc4cdbd` — additive backend foundation (steps 1-3)
+  - `7d4a37d` — ingestion API (step 4)
+  - `db69da5` — admin UI + grading service (steps 5-6)
+  - `11ad29f` — lifecycle service (step 7)
+  - `dc17d4f` — runtime REST API (step 8)
+  - `06c1423` — capture components (step 9a)
+  - (step 9b — runtime pages + chalkboard restyle — committed after this update)
+- DB migration applied on local dev; claude_code/claude-opus-4-6 bank generation verified on one topic (30 questions, 12 formats).
+- Full student flow clickable end-to-end locally: landing → start → runner (Prev/Next + Review) → atomic submit → grading poll → graded results with fractional score + per-question rationales.
+- Step 9b visual consistency: new practice pages fully styled with chalkboard tokens (`--board-green`, `--parchment`, `--chalk-*`, `--font-hand`) so they match the app's aesthetic from PR #99. `/practice/*` added to `AppShell.isChalkboardRoute`.
 
-Recommended next commit boundary: now. The branch is in a clean additive state with verified end-to-end behavior. Then move to Step 5 (admin UI).
+Next step: 9c (AuthenticatedLayout + PracticeBanner placement).

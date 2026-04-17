@@ -22,13 +22,3 @@ export interface CaptureProps<T> {
   seed: number;
   disabled?: boolean;
 }
-
-import type { CSSProperties } from 'react';
-
-export const QUESTION_TEXT_STYLE: CSSProperties = {
-  fontSize: '17px',
-  fontWeight: 500,
-  color: '#111827',
-  marginBottom: '16px',
-  lineHeight: 1.45,
-};

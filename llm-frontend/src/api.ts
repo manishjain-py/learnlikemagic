@@ -975,3 +975,155 @@ export class TutorWebSocket {
     return this._connected && this.ws?.readyState === WebSocket.OPEN;
   }
 }
+
+
+// ──────────────────────────────────────────────
+// Practice v2 — client functions
+// ──────────────────────────────────────────────
+
+export interface PracticeAttemptQuestion {
+  q_idx: number;
+  q_id: string;
+  format: string;
+  difficulty: string;
+  concept_tag: string;
+  presentation_seed: number;
+  question_json: Record<string, unknown>;
+}
+
+export interface PracticeAttempt {
+  id: string;
+  user_id: string;
+  guideline_id: string;
+  status: 'in_progress' | 'grading' | 'graded' | 'grading_failed';
+  total_possible: number;
+  questions: PracticeAttemptQuestion[];
+  answers: Record<string, unknown>;
+  created_at: string;
+  submitted_at: string | null;
+}
+
+export interface GradedQuestion {
+  q_idx: number;
+  q_id: string;
+  format: string;
+  difficulty: string;
+  concept_tag: string;
+  question_json: Record<string, unknown>;
+  student_answer: unknown;
+  correct: boolean;
+  score: number;
+  correct_answer_summary: unknown;
+  rationale: string | null;
+  visual_explanation_code: string | null;
+}
+
+export interface PracticeAttemptResults {
+  id: string;
+  user_id: string;
+  guideline_id: string;
+  status: 'graded' | 'grading_failed';
+  total_possible: number;
+  total_score: number | null;
+  questions: GradedQuestion[];
+  grading_error: string | null;
+  submitted_at: string | null;
+  graded_at: string | null;
+}
+
+export interface PracticeAttemptSummary {
+  id: string;
+  status: string;
+  total_score: number | null;
+  total_possible: number;
+  submitted_at: string | null;
+  graded_at: string | null;
+}
+
+export interface PracticeAvailability {
+  available: boolean;
+  question_count: number;
+}
+
+export async function getPracticeAvailability(guidelineId: string): Promise<PracticeAvailability> {
+  const r = await apiFetch(`/practice/availability/${guidelineId}`);
+  if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function startPractice(guidelineId: string): Promise<PracticeAttempt> {
+  const r = await apiFetch('/practice/start', {
+    method: 'POST',
+    body: JSON.stringify({ guideline_id: guidelineId }),
+  });
+  if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function getPracticeAttempt(
+  attemptId: string,
+): Promise<PracticeAttempt | PracticeAttemptResults> {
+  const r = await apiFetch(`/practice/attempts/${attemptId}`);
+  if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function savePracticeAnswer(
+  attemptId: string,
+  qIdx: number,
+  answer: unknown,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await apiFetch(`/practice/attempts/${attemptId}/answer`, {
+    method: 'PATCH',
+    body: JSON.stringify({ q_idx: qIdx, answer }),
+    signal,
+  });
+  if (!r.ok && r.status !== 204) {
+    throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  }
+}
+
+export async function submitPractice(
+  attemptId: string,
+  finalAnswers: Record<string, unknown>,
+): Promise<PracticeAttempt> {
+  const r = await apiFetch(`/practice/attempts/${attemptId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify({ final_answers: finalAnswers }),
+  });
+  if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function retryPracticeGrading(attemptId: string): Promise<void> {
+  const r = await apiFetch(`/practice/attempts/${attemptId}/retry-grading`, {
+    method: 'POST',
+  });
+  if (!r.ok && r.status !== 204) {
+    throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  }
+}
+
+export async function markPracticeViewed(attemptId: string): Promise<void> {
+  const r = await apiFetch(`/practice/attempts/${attemptId}/mark-viewed`, {
+    method: 'POST',
+  });
+  if (!r.ok && r.status !== 204) {
+    throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  }
+}
+
+export async function listRecentPracticeAttempts(): Promise<{ attempts: PracticeAttemptSummary[] }> {
+  const r = await apiFetch('/practice/attempts/recent');
+  if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function listPracticeAttemptsForTopic(
+  guidelineId: string,
+): Promise<PracticeAttemptSummary[]> {
+  const r = await apiFetch(`/practice/attempts/for-topic/${guidelineId}`);
+  if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+  return r.json();
+}

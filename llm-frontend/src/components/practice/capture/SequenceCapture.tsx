@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import SequenceList from '../../shared/SequenceList';
 import { seededShuffle } from '../../shared/seededShuffle';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 /**
  * Put items in the correct order. The initial display is a seed-shuffled
@@ -15,26 +15,16 @@ export default function SequenceCapture({
   questionJson, value, onChange, seed, disabled,
 }: CaptureProps<string[]>) {
   const original = (questionJson.sequence_items as string[] | undefined) ?? [];
-  // Initial order — stable per seed, different from the correct order.
   const initialOrder = useMemo(() => seededShuffle(original, seed), [original, seed]);
   const current = value ?? initialOrder;
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
-      <div style={{
-        fontSize: '12px', color: '#6B7280', marginBottom: '12px',
-        fontStyle: 'italic',
-      }}>
-        Use ↑ ↓ to put these in the correct order.
-      </div>
-      <SequenceList
-        items={current}
-        onReorder={onChange}
-        disabled={disabled}
-      />
+      <div className="practice-subhint">Use ↑ ↓ to put these in the correct order.</div>
+      <SequenceList items={current} onReorder={onChange} disabled={disabled} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import BucketZone from '../../shared/BucketZone';
 import { seededShuffle } from '../../shared/seededShuffle';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 interface BucketItem {
   text: string;
@@ -21,8 +21,6 @@ export default function SortBucketsCapture({
 }: CaptureProps<number[]>) {
   const bucketNames = (questionJson.bucket_names as string[] | undefined) ?? [];
   const items = (questionJson.bucket_items as BucketItem[] | undefined) ?? [];
-  // Items are shown in a seed-shuffled DISPLAY order but value indexing
-  // follows the original served order so grading works.
   const displayOrder = useMemo(
     () => seededShuffle(items.map((_, i) => i), seed),
     [items, seed],
@@ -46,36 +44,24 @@ export default function SortBucketsCapture({
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
-      <div style={{
-        fontSize: '12px', color: '#6B7280', marginBottom: '12px',
-        fontStyle: 'italic',
-      }}>
-        Tap an item below, then tap its bucket.
-      </div>
+      <div className="practice-subhint">Tap an item below, then tap its bucket.</div>
 
-      {/* Items not yet assigned */}
       <div style={{ marginBottom: '14px' }}>
         {displayOrder.map(origIdx => {
           const assigned = state[origIdx] !== -1 && state[origIdx] !== undefined;
           if (assigned) return null;
+          const cls = ['practice-item-chip', active === origIdx && 'active']
+            .filter(Boolean).join(' ');
           return (
             <button
               key={origIdx}
               type="button"
+              className={cls}
               onClick={() => onItemClick(origIdx)}
               disabled={disabled}
-              style={{
-                display: 'inline-block',
-                padding: '8px 12px', margin: '4px',
-                borderRadius: '8px',
-                border: active === origIdx ? '2px solid #0891B2' : '2px solid #E5E7EB',
-                backgroundColor: active === origIdx ? '#CCFBF1' : 'white',
-                fontSize: '13px', color: '#111827',
-                cursor: disabled ? 'default' : 'pointer',
-              }}
             >
               {items[origIdx].text}
             </button>
@@ -83,8 +69,7 @@ export default function SortBucketsCapture({
         })}
       </div>
 
-      {/* Bucket drop zones */}
-      <div style={{ display: 'flex', gap: '10px' }}>
+      <div className="practice-bucket-row">
         {bucketNames.map((name, bIdx) => {
           const itemsInBucket = state
             .map((b, i) => ({ b, i }))

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import OptionButton from '../../shared/OptionButton';
 import { seededShuffle } from '../../shared/seededShuffle';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 /**
  * Predict-then-reveal: student predicts an outcome from a set of options.
@@ -21,15 +21,10 @@ export default function PredictThenRevealCapture({
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
-      <div style={{
-        fontSize: '12px', color: '#6B7280', marginBottom: '12px',
-        fontStyle: 'italic',
-      }}>
-        What do you think will happen?
-      </div>
+      <div className="practice-subhint">What do you think will happen?</div>
       {displayOrder.map(origIdx => (
         <OptionButton
           key={origIdx}

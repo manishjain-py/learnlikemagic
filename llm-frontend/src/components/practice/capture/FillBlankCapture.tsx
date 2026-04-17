@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import OptionButton from '../../shared/OptionButton';
 import { seededShuffle } from '../../shared/seededShuffle';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 /**
  * Fill-the-blank — visually identical to PickOneCapture but the question
@@ -19,7 +19,7 @@ export default function FillBlankCapture({
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
       {displayOrder.map(origIdx => (

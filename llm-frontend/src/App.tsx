@@ -63,6 +63,9 @@ import GuidelinesAdmin from './features/admin/pages/GuidelinesAdmin';
 import OCRAdmin from './features/admin/pages/OCRAdmin';
 import VisualsAdmin from './features/admin/pages/VisualsAdmin';
 import PracticeBankAdmin from './features/admin/pages/PracticeBankAdmin';
+import PracticeLandingPage from './pages/PracticeLandingPage';
+import PracticeRunnerPage from './pages/PracticeRunnerPage';
+import PracticeResultsPage from './pages/PracticeResultsPage';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
 import InteractiveVisualsPocPage from './features/admin/pages/InteractiveVisualsPocPage';
 import FeatureFlagsPage from './features/admin/pages/FeatureFlagsPage';
@@ -117,6 +120,11 @@ function App() {
 
             {/* Issue reporting */}
             <Route path="/report-issue" element={<ReportIssuePage />} />
+
+            {/* Practice v2 — batch-drill flow */}
+            <Route path="/practice/:guidelineId" element={<PracticeLandingPage />} />
+            <Route path="/practice/attempts/:attemptId/run" element={<PracticeRunnerPage />} />
+            <Route path="/practice/attempts/:attemptId/results" element={<PracticeResultsPage />} />
           </Route>
 
           {/* Chat session routes — OUTSIDE AppShell (own nav-bar) */}

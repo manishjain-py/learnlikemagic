@@ -1,5 +1,5 @@
 import React from 'react';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 /**
  * Student picks which step in a sequence contains the error. Steps are
@@ -13,44 +13,26 @@ export default function SpotTheErrorCapture({
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
-      <div style={{
-        fontSize: '12px', color: '#6B7280', marginBottom: '12px',
-        fontStyle: 'italic',
-      }}>
-        Tap the step that has a mistake.
-      </div>
-      {steps.map((step, i) => (
-        <button
-          key={i}
-          type="button"
-          onClick={() => { if (!disabled) onChange(i); }}
-          disabled={disabled}
-          style={{
-            display: 'flex', alignItems: 'flex-start', gap: '10px',
-            width: '100%', textAlign: 'left',
-            padding: '12px 14px', marginBottom: '8px',
-            borderRadius: '10px',
-            border: value === i ? '2px solid #0891B2' : '2px solid #E5E7EB',
-            backgroundColor: value === i ? '#CCFBF1' : 'white',
-            color: '#111827',
-            cursor: disabled ? 'default' : 'pointer',
-            opacity: disabled ? 0.6 : 1,
-          }}
-        >
-          <span style={{
-            width: '26px', height: '26px', borderRadius: '13px',
-            backgroundColor: '#F3F4F6', display: 'inline-flex',
-            alignItems: 'center', justifyContent: 'center',
-            fontSize: '12px', fontWeight: 700, color: '#6B7280', flexShrink: 0,
-          }}>
-            {i + 1}
-          </span>
-          <span style={{ fontSize: '14px', lineHeight: 1.4 }}>{step}</span>
-        </button>
-      ))}
+      <div className="practice-subhint">Tap the step that has a mistake.</div>
+      {steps.map((step, i) => {
+        const cls = ['practice-step-row', value === i && 'selected']
+          .filter(Boolean).join(' ');
+        return (
+          <button
+            key={i}
+            type="button"
+            className={cls}
+            onClick={() => { if (!disabled) onChange(i); }}
+            disabled={disabled}
+          >
+            <span className="practice-step-num">{i + 1}</span>
+            <span>{step}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

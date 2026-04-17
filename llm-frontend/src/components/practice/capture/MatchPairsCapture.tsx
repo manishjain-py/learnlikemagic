@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import PairColumn from '../../shared/PairColumn';
 import { seededShuffle } from '../../shared/seededShuffle';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 /**
  * Match pairs — student taps a left item to activate, then taps a right
@@ -26,7 +26,6 @@ export default function MatchPairsCapture({
 
   const onLeftClick = (left: string) => {
     if (pairs[left]) {
-      // Already paired — tapping again unpairs.
       const next = { ...pairs };
       delete next[left];
       onChange(next);
@@ -38,7 +37,6 @@ export default function MatchPairsCapture({
 
   const onRightClick = (right: string) => {
     if (!activeLeft) return;
-    // If this right is already paired with another left, remove that mapping first.
     const next = { ...pairs };
     for (const k of Object.keys(next)) {
       if (next[k] === right) delete next[k];
@@ -53,16 +51,13 @@ export default function MatchPairsCapture({
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
-      <div style={{
-        fontSize: '12px', color: '#6B7280', marginBottom: '12px',
-        fontStyle: 'italic',
-      }}>
+      <div className="practice-subhint">
         Tap a term on the left, then tap its match on the right.
       </div>
-      <div style={{ display: 'flex', gap: '12px' }}>
+      <div className="practice-pair-row">
         <PairColumn
           title="Terms"
           items={lefts}
@@ -81,12 +76,8 @@ export default function MatchPairsCapture({
         />
       </div>
       {Object.keys(pairs).length > 0 && (
-        <div style={{
-          marginTop: '14px', padding: '10px 12px',
-          backgroundColor: '#F9FAFB', borderRadius: '8px',
-          fontSize: '12px', color: '#6B7280',
-        }}>
-          <strong style={{ color: '#374151' }}>Your pairs:</strong>{' '}
+        <div className="practice-pair-summary">
+          <strong>Your pairs:</strong>{' '}
           {Object.entries(pairs).map(([l, r]) => `${l} ↔ ${r}`).join(', ')}
         </div>
       )}

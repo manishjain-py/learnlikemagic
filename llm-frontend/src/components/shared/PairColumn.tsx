@@ -21,40 +21,23 @@ export default function PairColumn({
   items, activeItem, usedItems, onItemClick, disabled, title,
 }: Props) {
   return (
-    <div style={{ flex: 1 }}>
-      {title && (
-        <div style={{
-          fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
-          color: '#6B7280', marginBottom: '8px', letterSpacing: '0.5px',
-        }}>
-          {title}
-        </div>
-      )}
+    <div className="practice-pair-col">
+      {title && <div className="practice-pair-col-title">{title}</div>}
       {items.map(item => {
         const isActive = activeItem === item;
         const isUsed = usedItems.includes(item);
+        const cls = [
+          'practice-pair-item',
+          isActive && 'active',
+          isUsed && !isActive && 'used',
+        ].filter(Boolean).join(' ');
         return (
           <button
             key={item}
             type="button"
+            className={cls}
             onClick={() => { if (!disabled) onItemClick(item); }}
             disabled={disabled}
-            style={{
-              display: 'block',
-              width: '100%',
-              textAlign: 'left',
-              padding: '10px 14px',
-              marginBottom: '6px',
-              borderRadius: '8px',
-              border: isActive ? '2px solid #0891B2' : '2px solid #E5E7EB',
-              backgroundColor: isActive
-                ? '#CCFBF1'
-                : isUsed ? '#F3F4F6' : 'white',
-              color: isUsed && !isActive ? '#9CA3AF' : '#111827',
-              fontSize: '14px',
-              cursor: disabled ? 'default' : 'pointer',
-              opacity: disabled ? 0.6 : 1,
-            }}
           >
             {item}
           </button>

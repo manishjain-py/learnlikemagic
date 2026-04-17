@@ -17,43 +17,19 @@ interface Props {
 export default function BucketZone({
   name, itemsInBucket, onDrop, active, disabled,
 }: Props) {
+  const cls = ['practice-bucket', active && 'active'].filter(Boolean).join(' ');
   return (
     <div
+      className={cls}
       onClick={() => { if (onDrop && !disabled) onDrop(); }}
-      style={{
-        flex: 1,
-        border: active ? '2px solid #0891B2' : '2px dashed #D1D5DB',
-        borderRadius: '10px',
-        padding: '12px',
-        backgroundColor: active ? '#ECFEFF' : '#FAFAFA',
-        cursor: onDrop && !disabled ? 'pointer' : 'default',
-        minHeight: '120px',
-        opacity: disabled ? 0.6 : 1,
-      }}
+      style={{ cursor: onDrop && !disabled ? 'pointer' : 'default', opacity: disabled ? 0.6 : 1 }}
     >
-      <div style={{
-        fontSize: '13px', fontWeight: 700, color: '#111827',
-        marginBottom: '8px', textAlign: 'center',
-      }}>
-        {name}
-      </div>
+      <div className="practice-bucket-label">{name}</div>
       {itemsInBucket.map(item => (
-        <div key={item} style={{
-          padding: '6px 10px', marginBottom: '4px',
-          backgroundColor: 'white', borderRadius: '6px',
-          fontSize: '13px', color: '#374151',
-          border: '1px solid #E5E7EB',
-        }}>
-          {item}
-        </div>
+        <div key={item} className="practice-bucket-item">{item}</div>
       ))}
       {itemsInBucket.length === 0 && (
-        <div style={{
-          textAlign: 'center', color: '#9CA3AF', fontSize: '12px',
-          fontStyle: 'italic', paddingTop: '16px',
-        }}>
-          (empty)
-        </div>
+        <div className="practice-bucket-empty">(empty)</div>
       )}
     </div>
   );

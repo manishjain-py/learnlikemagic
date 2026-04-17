@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import OptionButton from '../../shared/OptionButton';
 import { seededShuffle } from '../../shared/seededShuffle';
-import { CaptureProps, QUESTION_TEXT_STYLE } from './types';
+import { CaptureProps } from './types';
 
 /**
  * Pick the item that doesn't belong. Items shuffled by seed; stored value
@@ -18,15 +18,10 @@ export default function OddOneOutCapture({
 
   return (
     <div>
-      <div style={QUESTION_TEXT_STYLE}>
+      <div className="practice-question-text">
         {questionJson.question_text as string}
       </div>
-      <div style={{
-        fontSize: '12px', color: '#6B7280', marginBottom: '12px',
-        fontStyle: 'italic',
-      }}>
-        Which one doesn't belong?
-      </div>
+      <div className="practice-subhint">Which one doesn't belong?</div>
       {displayOrder.map(origIdx => (
         <OptionButton
           key={origIdx}
