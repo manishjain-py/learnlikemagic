@@ -1,6 +1,6 @@
 # Report Card
 
-The report card is a student's progress overview. It shows what they have studied, how much of each topic they have covered, and their latest exam results.
+The report card is a student's progress overview. It shows what they have studied, how much of each topic they have covered, and their latest practice scores.
 
 ---
 
@@ -18,7 +18,7 @@ Tap any subject card to see a detailed breakdown:
 - **Chapters** — Each chapter lists its topics
 - **Topics** — Each topic shows:
   - A coverage percentage and progress bar showing how much of the study plan has been worked through
-  - Latest exam score (if the student has taken an exam on this topic)
+  - Latest practice score (if the student has submitted at least one graded practice attempt on this topic)
   - The date the student last studied this topic
   - A "Practice Again" button to start a new session
 
@@ -30,7 +30,7 @@ Tap any subject card to see a detailed breakdown:
 
 Coverage measures what fraction of a topic's study plan the student has worked through. It accumulates across multiple Teach Me sessions — if a student covers some concepts in one session and different concepts in the next, coverage reflects the total.
 
-Only Teach Me sessions contribute to coverage. Clarify Doubts and Exam sessions do not change the coverage percentage.
+Only Teach Me sessions contribute to coverage. Clarify Doubts sessions and practice attempts do not change the coverage percentage.
 
 The denominator (total concepts in the plan) comes from the most recent session's study plan, not a union of all sessions. This means if the plan is updated, coverage recalculates against the current plan.
 
@@ -40,7 +40,7 @@ The denominator (total concepts in the plan) comes from the most recent session'
 
 When browsing chapters and topics to start a new session, each chapter and topic shows a progress badge based on the student's past Teach Me sessions. Three statuses:
 
-- **Completed** (checkmark) — topic coverage >= 80%; for chapters, average coverage across all topics >= 80%
+- **Completed** (checkmark) — topic coverage ≥ 80%; for chapters, average coverage across all topics ≥ 80%
 - **In Progress** (highlighted) — coverage > 0% but below 80%
 - **Not Started** (default) — no Teach Me sessions yet
 
@@ -48,34 +48,14 @@ Topics also show a coverage percentage ("42% covered") when progress exists.
 
 ---
 
-## Exam Scores
+## Practice Scores
 
-When a student completes an exam on a topic, the report card shows the score from the most recent exam (for example, "7/10"). Only completed exams are counted — if a student starts an exam but does not finish, it does not appear.
+When a student completes a practice attempt on a topic, the report card shows the latest attempt's score alongside the attempt count — for example, **7.5 / 10 · 3 attempts**.
 
-If a student takes multiple exams on the same topic, only the latest result is displayed.
-
----
-
-## Past Exams and Exam Review
-
-On the mode selection screen (where students choose Teach Me, Clarify Doubts, or Take Exam), there is an expandable "Past Exams" section that lists all completed exams for that topic. Each entry shows the date, the score (e.g., "7/10"), and the percentage, color-coded green/orange/red based on performance.
-
-Tapping a past exam opens a detailed **Exam Review** page showing:
-
-- **Overall score** and percentage
-- **Question-by-question breakdown** — each question with the student's answer, the expected answer, the score, and the grading rationale
-- **Next steps** — suggestions for what to focus on, when available
-
----
-
-## Resuming Sessions
-
-On the mode selection screen, if the student has an incomplete Teach Me lesson with coverage above 0% or an in-progress exam with at least one answered question, the app shows a resume option:
-
-- **Continue Lesson** — Shows the coverage so far and lets the student pick up where they left off. A "Start Fresh" button is also available to begin a new lesson instead.
-- **Resume Exam** — Shows how many questions have been answered and lets the student continue the exam. While an incomplete exam exists, the "Take Exam" button is hidden to prevent duplicate exams.
-
-For "Get Ready" refresher topics, only the Teach Me option is shown — Clarify Doubts, Take Exam, and Past Exams are not offered.
+- Only **graded** attempts count. In-progress attempts and attempts that failed grading do not appear.
+- If a student has multiple graded attempts on the same topic, the latest is displayed.
+- Scores are fractional with half-point granularity (e.g., `8` displays as `8`, `7.5` displays as `7.5`).
+- A topic with practice attempts but no Teach Me sessions still appears on the report card — the practice chip creates the row.
 
 ---
 
@@ -87,14 +67,23 @@ The button is only available for topics that are linked to a teaching guideline.
 
 ---
 
+## Resuming Sessions
+
+On the mode selection screen, if the student has an incomplete Teach Me lesson with coverage above 0%, the app shows a **Continue Lesson** option with the coverage so far and lets them pick up where they left off. A "Start Fresh" button is also available to begin a new lesson instead.
+
+For "Get Ready" refresher topics, only the Teach Me option is shown — Clarify Doubts and Let's Practice are not offered.
+
+---
+
 ## Empty State
 
-When a student has no completed sessions, the report card shows an encouraging message and a "Start Learning" button that takes them to the topic selection screen.
+When a student has no completed sessions and no graded practice attempts, the report card shows an encouraging message and a "Start Learning" button that takes them to the topic selection screen.
 
 ---
 
 ## Key Details
 
-- The report card updates automatically after each completed session
-- Coverage only counts Teach Me sessions; exams and Clarify Doubts sessions do not contribute
-- The report card is accessible from the user menu ("My Report Card") and the session history page
+- The report card updates automatically after each completed Teach Me session and each graded practice attempt.
+- Coverage only counts Teach Me sessions; Clarify Doubts sessions and practice attempts do not contribute to coverage.
+- Practice scores display the latest attempt, not a rolling average — students see where they are now, not a smoothed trend.
+- The report card is accessible from the user menu ("My Report Card") and the session history page.

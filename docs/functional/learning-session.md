@@ -1,6 +1,6 @@
 # Learning Session
 
-A learning session is a one-on-one conversation between a student and the AI tutor on a specific topic. The platform offers three session modes: **Teach Me** (structured lesson), **Clarify Doubts** (student-led Q&A), and **Exam** (knowledge test).
+A learning session is a one-on-one conversation between a student and the AI tutor on a specific topic. The platform offers two session modes: **Teach Me** (structured lesson) and **Clarify Doubts** (student-led Q&A). A separate batch-drill mode called **Let's Practice** provides low-stakes self-assessment — see `docs/functional/practice-mode.md`.
 
 ---
 
@@ -10,11 +10,11 @@ A learning session is a one-on-one conversation between a student and the AI tut
 2. **Pick a topic** — Choose a topic within that subject (e.g., Fractions)
 3. **Pick a subtopic** — Choose a specific subtopic (e.g., Comparing Fractions)
    - Subtopics show progress badges if you've studied them before: a check mark for mastered, a dot for in progress, along with a percentage score
-   - Some subtopics are marked as **warm-up / refresher** topics (they cover prerequisite knowledge from earlier grades). These are restricted to Teach Me mode and use the card-based explanation flow only — no exam, no Clarify Doubts. When you finish reading the refresher cards, the session ends right there — there is no follow-up interactive lesson and no per-card "I didn't understand" simplification
+   - Some subtopics are marked as **warm-up / refresher** topics (they cover prerequisite knowledge from earlier grades). These are restricted to Teach Me mode and use the card-based explanation flow only — no Clarify Doubts, no Let's Practice. When you finish reading the refresher cards, the session ends right there — there is no follow-up interactive lesson and no per-card "I didn't understand" simplification
 4. **Pick a mode** — Choose how you want to learn:
    - **Teach Me** — Learn the topic from scratch with a structured lesson
    - **Clarify Doubts** — Ask questions about the topic and get direct answers
-   - **Exam** — Test your knowledge with a set of questions
+   - **Let's Practice** — Test yourself with a 10-question batch drill (see `docs/functional/practice-mode.md`)
 5. **Resume (if available)** — If you have a paused Teach Me session for this subtopic, a "Resume" option appears at the top of the mode selection, showing your coverage percentage so you can pick up where you left off
 6. **Start learning** — The tutor greets you and begins
 
@@ -73,25 +73,9 @@ A student-led Q&A session where you ask questions and the tutor answers them dir
 - After resolving a doubt, the tutor asks if you have more questions or would like to end — it does not keep adding extra teaching questions
 - Past discussions for the same subtopic are available (up to 5 most recent) so you can see what you've already asked about
 
-### Exam
+### Let's Practice
 
-A knowledge test with a set of questions (typically 7) covering the subtopic's concepts. The exam assesses what you know without teaching. You can only have one incomplete exam per subtopic at a time — if you already have an unfinished exam, you must complete or end it before starting a new one. Questions are personalized with your name, interests, and familiar people when a personality profile is available.
-
-- Questions span three difficulty levels: easy (~30%), medium (~50%), and hard (~20%)
-- Questions cover different types: conceptual, procedural, application, real-world scenarios, error-spotting, and reasoning
-- After each answer, the tutor acknowledges it and moves to the next question — it does not reveal whether you were correct or teach during the exam
-- Answers are scored behind the scenes on a 0-to-1 scale with partial credit — you see the full results only at the end
-- Each answer includes a brief rationale explaining what you got right or wrong
-- A question counter shows how many questions you've answered out of the total
-- You can end the exam early using the "End Exam Early" button and still get your results
-- At the end, you see a results summary with:
-  - Score and percentage (fractional — e.g., 5.3/7)
-  - Per-question review showing your score and a rationale for how it was graded
-  - Strengths (concepts you got right)
-  - Weak areas (concepts to review)
-  - Patterns (overall performance observations)
-  - Suggested next steps (e.g., "Review these concepts in Teach Me")
-- You can revisit completed exams later to see a detailed review of each question, your answer, the expected answer, and the grading rationale
+A 10-question batch drill that tests what you know on the subtopic — no hints, no scaffolding, no tutor mid-set. You answer silently, hit Submit once, and get per-question results with a rationale for every wrong pick. Every attempt is stored forever. Full details in `docs/functional/practice-mode.md`.
 
 ---
 
@@ -198,14 +182,6 @@ A Clarify Doubts session ends when:
 - You tell the tutor you're done (e.g., "no more doubts", "that's all")
 
 After the session, you see the list of concepts you discussed.
-
-### Exam
-
-An Exam session ends when:
-- You answer all the questions
-- You tap the "End Exam Early" button
-
-After the session, you see a results summary with your score, strengths, weak areas, and suggested next steps.
 
 ### After Any Session
 

@@ -58,10 +58,8 @@ Schema, tables, migrations, and connection management.
 | `step_idx` | INT | Current step index (default 0) |
 | `user_id` | VARCHAR | FK --> users (nullable, supports anonymous) |
 | `subject` | VARCHAR | Denormalized subject name |
-| `mode` | VARCHAR | Learning mode: `teach_me` or `exam_me` (default `teach_me`) |
+| `mode` | VARCHAR | Learning mode: `teach_me` or `clarify_doubts` (default `teach_me`) |
 | `is_paused` | BOOL | Whether session is paused (default false) |
-| `exam_score` | FLOAT | Score achieved in exam mode |
-| `exam_total` | INT | Total possible exam score |
 | `guideline_id` | VARCHAR | Associated teaching guideline ID |
 | `state_version` | INT | Optimistic concurrency version (default 1) |
 | `created_at` | DATETIME | Timestamp |
@@ -195,6 +193,8 @@ Centralized model configuration per component. Single source of truth for which 
 | `fast_model` | openai | gpt-4o-mini | Lightweight model for safety checks, translation, and other fast tasks |
 | `pixi_code_generator` | openai | gpt-5.3-codex | Pixi.js visual code generation from natural language |
 | `check_in_enrichment` | claude_code | claude-opus-4-6 | Check-in card generation (match-the-pairs activities for explanation cards) |
+| `practice_bank_generator` | claude_code | claude-opus-4-6 | Offline practice question bank generation + correctness refine (ingestion path) |
+| `practice_grader` | openai | gpt-4o-mini | Runtime grading for free-form answers + per-pick "why wrong" rationales |
 
 ### Session Feedback
 
@@ -301,6 +301,51 @@ Runtime feature flags toggled via the `/admin/feature-flags` UI. Each row is a n
 |-----------|---------|-------------|
 | `show_visuals_in_tutor_flow` | true | Show Pixi.js visual explanations during tutoring sessions |
 
+### Practice Questions
+
+**Table:** `practice_questions` | **Model:** `PracticeQuestion` (`shared/models/entities.py`)
+
+Offline-generated question bank for Let's Practice. One row per question. Populated by `PracticeBankGeneratorService` during ingestion; read-only at runtime (practice attempts snapshot questions into their own row at creation time).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key (UUID) |
+| `guideline_id` | VARCHAR | FK --> teaching_guidelines (CASCADE delete) |
+| `question_json` | JSONB | Full question payload (format, text, options, correct answer, rubric, `explanation_why`) |
+| `format` | VARCHAR | One of 12: `pick_one`, `true_false`, `fill_blank`, `match_pairs`, `sort_buckets`, `sequence`, `spot_the_error`, `odd_one_out`, `predict_then_reveal`, `swipe_classify`, `tap_to_eliminate`, `free_form` |
+| `difficulty` | VARCHAR | `easy`, `medium`, or `hard` |
+| `concept_tag` | VARCHAR | Concept label from the topic's guideline |
+| `created_at` | DATETIME | Timestamp |
+
+**Indexes:** `idx_practice_questions_guideline` (guideline_id), `idx_practice_questions_guideline_difficulty` (guideline_id, difficulty).
+
+### Practice Attempts
+
+**Table:** `practice_attempts` | **Model:** `PracticeAttempt` (`shared/models/entities.py`)
+
+One row per practice attempt. Self-contained — snapshots the 10 selected questions at creation so bank regeneration never orphans history.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | VARCHAR | Primary key (UUID) |
+| `user_id` | VARCHAR | FK --> users (CASCADE delete) |
+| `guideline_id` | VARCHAR | FK --> teaching_guidelines (CASCADE delete) |
+| `status` | VARCHAR | `in_progress`, `grading`, `graded`, or `grading_failed` |
+| `questions_snapshot_json` | JSONB | 10 question payloads + per-q `_id`, `_format`, `_difficulty`, `_concept_tag`, `_presentation_seed` |
+| `answers_json` | JSONB | `{q_idx (string): answer}` map written by PATCH /answer and final submit |
+| `grading_json` | JSONB | Per-question grading rows. Null until graded. |
+| `total_score` | FLOAT | Aggregate score, half-point-rounded at write-time. Null until graded. |
+| `total_possible` | INT | Always 10 in v1 |
+| `grading_error` | TEXT | Exception text if grading failed |
+| `viewed_at` | DATETIME | Set by POST /mark-viewed to clear the banner |
+| `created_at`, `submitted_at`, `graded_at` | DATETIME | Timestamps |
+
+**Indexes:**
+- `idx_practice_attempts_user_guideline` (user_id, guideline_id)
+- `idx_practice_attempts_user_status` (user_id, status) — drives `/attempts/recent`
+
+**Partial unique index (migration-created):** `uq_practice_attempts_one_in_progress_per_user_topic` on `(user_id, guideline_id) WHERE status='in_progress'` — enforces "at most one resumable attempt per topic."
+
 ### Topic Explanations
 
 **Table:** `topic_explanations` | **Model:** `TopicExplanation` (`shared/models/entities.py`)
@@ -361,8 +406,11 @@ users ──1:1──> kid_enrichment_profiles
 users ──1:N──> kid_personalities
 users ──1:N──> session_feedback
 users ──1:N──> issues
+users ──1:N──> practice_attempts
 teaching_guidelines ──1:N──> study_plans (per-user plans)
 teaching_guidelines ──1:N──> topic_explanations (pre-computed explanation variants)
+teaching_guidelines ──1:N──> practice_questions (offline question bank)
+teaching_guidelines ──1:N──> practice_attempts (student attempts)
 books ──1:N──> book_chapters ──1:N──> chapter_pages
 books ──1:N──> book_chapters ──1:N──> chapter_topics
 llm_config (standalone, no FKs)
@@ -380,6 +428,9 @@ feature_flags (standalone, no FKs)
 - `KidPersonality.user_id` --> `User.id`
 - `TopicExplanation.guideline_id` --> `TeachingGuideline.id` (CASCADE delete; unique on guideline_id + variant_key)
 - `Issue.user_id` --> `User.id` (SET NULL on delete, nullable)
+- `PracticeQuestion.guideline_id` --> `TeachingGuideline.id` (CASCADE delete)
+- `PracticeAttempt.user_id` --> `User.id` (CASCADE delete)
+- `PracticeAttempt.guideline_id` --> `TeachingGuideline.id` (CASCADE delete); partial unique on (user_id, guideline_id) WHERE status='in_progress'
 
 ---
 
@@ -391,7 +442,7 @@ Custom imperative migration (not Alembic):
 
 1. `Base.metadata.create_all()` -- Creates new tables (idempotent for existing)
 2. `_apply_session_columns()` -- Adds `user_id` and `subject` columns to sessions if missing
-3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `exam_score`, `exam_total`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows
+3. `_apply_learning_modes_columns()` -- Adds `mode`, `is_paused`, `guideline_id`, `state_version` columns to sessions if missing; creates partial unique index; backfills `mode='teach_me'` for existing rows. The `exam_score` + `exam_total` columns were originally added here and later dropped in `_cleanup_exam_and_old_practice_data()` (step 12 of lets-practice-v2).
 4. `_apply_user_language_columns()` -- Adds `text_language_preference` and `audio_language_preference` to users if missing
 5. `_apply_user_preferred_name_column()` -- Adds `preferred_name` to users if missing
 6. `_apply_sequencing_columns()` -- Adds `chapter_sequence`, `topic_sequence`, `chapter_storyline` to teaching_guidelines if missing
@@ -408,8 +459,10 @@ Custom imperative migration (not Alembic):
 17. `_apply_topic_planning_columns()` -- Adds `planned_topics_json` to chapter_processing_jobs, `prior_topics_context` and `topic_assignment` to chapter_topics, and `prior_topics_context` to teaching_guidelines (topic-quality planning support)
 18. `_apply_topic_explanations_table()` -- Verifies topic_explanations table exists (created by `create_all`); ensures `explanation_generator` and `check_in_enrichment` LLM config entries exist via `_ensure_llm_config()`
 19. `_apply_issues_table()` -- Verifies issues table exists (created by `create_all`)
-20. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
-21. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
+20. `_apply_practice_tables()` -- Verifies `practice_questions` + `practice_attempts` tables exist (created by `create_all`); creates partial unique index `uq_practice_attempts_one_in_progress_per_user_topic` via raw SQL; ensures `practice_bank_generator` + `practice_grader` LLM config entries exist via `_ensure_llm_config()`
+21. `_cleanup_exam_and_old_practice_data()` -- One-time destructive migration (lets-practice-v2 step 12): in a single `engine.begin()` transaction, deletes child `events` rows for exam/practice sessions, deletes `sessions` with `mode IN ('exam', 'practice')`, and drops `sessions.exam_score` + `sessions.exam_total` columns. Idempotent on rerun (columns may already be dropped, sessions may already be gone)
+22. `_seed_llm_config()` -- Seeds the `llm_config` table with default rows if empty
+23. `_seed_feature_flags()` -- Seeds `feature_flags` table with default flags (insert-if-missing per flag)
 
 ```bash
 # Run migrations
@@ -460,7 +513,7 @@ python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guide
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation, Issue) |
+| `shared/models/entities.py` | All core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation, Issue, PracticeQuestion, PracticeAttempt) |
 | `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob) |
 | `db.py` | Migration CLI and migration functions |
 | `database.py` | DatabaseManager, connection pooling, `get_db()` dependency |

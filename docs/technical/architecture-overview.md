@@ -10,9 +10,10 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ┌─────────────────────────────────────────────────────────────────┐
 │  Frontend (React + TypeScript + Vite)                           │
 │  S3 + CloudFront                                                │
-│  Routes: /learn/*, /learn/.../teach/:id, /learn/.../exam/:id,   │
-│          /learn/.../clarify/:id, /login/*, /profile,            │
-│          /report-card, /report-issue, /history, /admin/*        │
+│  Routes: /learn/*, /learn/.../teach/:id, /learn/.../clarify/:id,│
+│          /practice/:guidelineId, /practice/attempts/:id/{run,   │
+│          results}, /login/*, /profile, /report-card,            │
+│          /report-issue, /history, /admin/*                      │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST API + WebSocket
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -34,7 +35,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │          feature_flags, session_feedback, kid_enrichment_profiles,│
 │          kid_personalities, book_chapters, chapter_pages,        │
 │          chapter_processing_jobs, chapter_chunks, chapter_topics,│
-│          topic_explanations, issues                              │
+│          topic_explanations, issues, practice_questions,         │
+│          practice_attempts                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -83,13 +85,13 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 
 ```
 llm-backend/
-├── tutor/                # Runtime tutoring sessions (teach, clarify, exam)
-│   ├── api/              # sessions, curriculum, transcription, tts endpoints
+├── tutor/                # Runtime tutoring sessions (teach, clarify) + practice v2
+│   ├── api/              # sessions, curriculum, transcription, tts, practice endpoints
 │   ├── agents/           # master_tutor, safety, base_agent
 │   ├── orchestration/    # orchestrator
-│   ├── services/         # session_service, exam_service, report_card_service, topic_adapter, pixi_code_generator
-│   ├── models/           # session_state, messages, study_plan, agent_logs
-│   ├── prompts/          # master_tutor, exam, clarify_doubts, orchestrator, language_utils, templates
+│   ├── services/         # session_service, practice_service, practice_grading_service, report_card_service, topic_adapter, pixi_code_generator
+│   ├── models/           # session_state, messages, study_plan, agent_logs, practice
+│   ├── prompts/          # master_tutor, clarify_doubts, orchestrator, practice_grading, language_utils, templates
 │   ├── utils/            # schema_utils, state_utils, prompt_utils
 │   └── exceptions.py     # Custom exception hierarchy for tutor module
 ├── book_ingestion_v2/    # Book upload, TOC extraction, chapter processing, topic sync (V2 pipeline)
@@ -98,7 +100,8 @@ llm-backend/
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
 │   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
 │   │                     #   explanation_generator_service, animation_enrichment_service,
-│   │                     #   check_in_enrichment_service, refresher_topic_generator_service
+│   │                     #   check_in_enrichment_service, refresher_topic_generator_service,
+│   │                     #   practice_bank_generator_service
 │   ├── repositories/     # chapter_repository, chapter_page_repository, chunk_repository,
 │   │                     #   processing_job_repository, topic_repository
 │   ├── models/           # schemas, database, processing_models
@@ -170,7 +173,8 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 |--------|--------|---------|
 | health | (none) | Root endpoint, `/health`, `/health/db`, `/config/models` |
 | curriculum | `/curriculum` | Curriculum hierarchy API |
-| sessions | `/sessions` | Session management, report card, topic progress, exam review, WebSocket |
+| sessions | `/sessions` | Session management (teach_me, clarify_doubts), report card, topic progress, WebSocket |
+| practice | `/practice` | Let's Practice batch-drill lifecycle: start, save, submit, results, banner poll, history |
 | transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
 | tts | `/text-to-speech` | Text-to-speech via Google Cloud TTS (English, Hindi, Hinglish) |
 | evaluation | `/api/evaluation` | Evaluation pipeline |
@@ -207,12 +211,14 @@ llm-frontend/src/
 │   ├── ChapterSelect.tsx     # Chapter picker (/learn/:subject)
 │   ├── TopicSelect.tsx       # Topic picker (/learn/:subject/:chapter)
 │   ├── ModeSelectPage.tsx    # Mode picker (/learn/:subject/:chapter/:topic)
-│   ├── ChatSession.tsx       # Chat UI (/learn/.../teach|exam|clarify/:sessionId)
-│   ├── ExamReviewPage.tsx    # Post-exam question-by-question review
+│   ├── ChatSession.tsx       # Chat UI (/learn/.../teach|clarify/:sessionId)
+│   ├── PracticeLandingPage.tsx # Practice landing (/practice/:guidelineId)
+│   ├── PracticeRunnerPage.tsx  # Practice runner (/practice/attempts/:id/run)
+│   ├── PracticeResultsPage.tsx # Practice results (/practice/attempts/:id/results)
 │   ├── ProfilePage.tsx
 │   ├── EnrichmentPage.tsx    # Parent enrichment profile form + personality card
 │   ├── SessionHistoryPage.tsx
-│   ├── ReportCardPage.tsx    # Student report card (coverage %, exam scores)
+│   ├── ReportCardPage.tsx    # Student report card (coverage %, practice scores)
 │   └── ReportIssuePage.tsx   # Issue reporting form (text, voice, screenshots)
 ├── hooks/
 │   └── useStudentProfile.ts  # Student profile hook (board, grade, country)
@@ -220,8 +226,12 @@ llm-frontend/src/
 │   └── AuthContext.tsx    # Global auth state (Cognito SDK)
 ├── components/
 │   ├── AppShell.tsx          # Shared layout for authenticated pages (nav bar, user menu)
+│   ├── AuthenticatedLayout.tsx # Layout above AppShell + chat-session groups; mounts PracticeBanner
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
-│   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/exam/resume)
+│   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/practice, resume)
+│   ├── practice/             # Practice v2 UI: QuestionRenderer, FreeFormQuestion,
+│   │                         #   PracticeBanner, capture/*.tsx (11 controlled question components)
+│   ├── shared/               # OptionButton, PairColumn, BucketZone, SequenceList, seededShuffle
 │   ├── TypewriterMarkdown.tsx   # Markdown renderer with typewriter animation for tutor messages
 │   ├── VisualExplanation.tsx    # Renders LLM-generated Pixi.js visuals in sandboxed iframe
 │   ├── InteractiveQuestion.tsx  # Rich question formats: fill-in-the-blank, MCQ, matching, etc.
@@ -291,11 +301,12 @@ llm-frontend/src/
 | `/learn` | AppShell > SubjectSelect | Protected + Onboarding | Subject picker |
 | `/learn/:subject` | AppShell > ChapterSelect | Protected + Onboarding | Chapter picker |
 | `/learn/:subject/:chapter` | AppShell > TopicSelect | Protected + Onboarding | Topic picker |
-| `/learn/:subject/:chapter/:topic` | AppShell > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/exam/resume) |
+| `/learn/:subject/:chapter/:topic` | AppShell > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/practice, resume) |
 | `/learn/:subject/:chapter/:topic/teach/:sessionId` | ChatSession | Protected + Onboarding | Teach Me chat session |
-| `/learn/:subject/:chapter/:topic/exam/:sessionId` | ChatSession | Protected + Onboarding | Exam chat session |
 | `/learn/:subject/:chapter/:topic/clarify/:sessionId` | ChatSession | Protected + Onboarding | Clarify Doubts chat session |
-| `/learn/:subject/:chapter/:topic/exam-review/:sessionId` | AppShell > ExamReviewPage | Protected + Onboarding | Post-exam review with answers |
+| `/practice/:guidelineId` | AppShell > PracticeLandingPage | Protected + Onboarding | Practice landing (Start / Resume / history) |
+| `/practice/attempts/:attemptId/run` | AppShell > PracticeRunnerPage | Protected + Onboarding | Practice drill runner |
+| `/practice/attempts/:attemptId/results` | AppShell > PracticeResultsPage | Protected + Onboarding | Practice results + per-question review |
 | `/session/:sessionId` | ChatSession | Protected + Onboarding | Legacy session URL (backward compat) |
 | `/profile` | AppShell > ProfilePage | Protected + Onboarding | Profile management |
 | `/profile/enrichment` | AppShell > EnrichmentPage | Protected + Onboarding | Parent enrichment profile + personality |
@@ -313,6 +324,7 @@ llm-frontend/src/
 | `/admin/books-v2/:bookId/explanations/:chapterId` | AdminLayout > ExplanationAdmin | Unprotected | Per-chapter explanation cards |
 | `/admin/books-v2/:bookId/visuals/:chapterId` | AdminLayout > VisualsAdmin | Unprotected | Per-chapter Pixi visuals |
 | `/admin/books-v2/:bookId/ocr/:chapterId` | AdminLayout > OCRAdmin | Unprotected | Per-chapter OCR page viewer |
+| `/admin/books-v2/:bookId/practice-banks/:chapterId` | AdminLayout > PracticeBankAdmin | Unprotected | Per-chapter practice question bank viewer |
 | `/admin/evaluation` | AdminLayout > EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | AdminLayout > DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
@@ -381,7 +393,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
 - **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
-- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `pixi_code_generator`, `check_in_enrichment`
+- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `pixi_code_generator`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`
 - **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
 
 ### Key Provider Files

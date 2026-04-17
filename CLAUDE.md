@@ -29,6 +29,7 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/principles/autoresearch.md` | How autonomous prompt optimization works |
 | `docs/principles/prerequisites.md` | How prerequisite knowledge gaps are handled (refresher topics, warm-up framing) |
 | `docs/principles/easy-english.md` | Language accessibility for Indian ESL students (no idioms, simple grammar, Indian contexts) |
+| `docs/principles/practice-mode.md` | How Let's Practice works (offline bank, no hints during set, evaluation-as-learning) |
 
 ## Documentation Index
 
@@ -39,11 +40,13 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/functional/learning-session.md` | Tutoring experience from student POV | Understanding the tutor feature |
 | `docs/functional/evaluation.md` | Tutor quality testing from admin POV | Understanding evaluation |
 | `docs/functional/scorecard.md` | Student progress report | Understanding scorecard |
+| `docs/functional/practice-mode.md` | Let's Practice — student-facing drill flow | Understanding the practice feature |
 | `docs/functional/auth-and-onboarding.md` | Login, signup, onboarding | Understanding auth flows |
 | `docs/technical/architecture-overview.md` | Full-stack architecture, tech stack, conventions | Code organization, adding new code |
 | `docs/technical/learning-session.md` | Tutor pipeline technical details | Working on tutor code |
 | `docs/technical/evaluation.md` | Evaluation pipeline technical details | Working on evaluation |
 | `docs/technical/scorecard.md` | Scorecard service technical details | Working on scorecard |
+| `docs/technical/practice-mode.md` | Let's Practice technical details (schema, grading, APIs, frontend) | Working on practice code |
 | `docs/technical/auth-and-onboarding.md` | Auth architecture, Cognito, APIs | Working on auth |
 | `docs/technical/dev-workflow.md` | Local setup, testing, git workflow | Dev environment, testing |
 | `docs/technical/deployment.md` | AWS infra, Terraform, CI/CD | Deploying, debugging prod |
