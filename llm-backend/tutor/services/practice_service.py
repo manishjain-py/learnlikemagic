@@ -57,6 +57,7 @@ REDACT_TOP_LEVEL_KEYS = {
     "explanation_why",
     "error_index",
     "odd_index",
+    "reveal_text",  # predict_then_reveal's post-pick explanation
 }
 
 
