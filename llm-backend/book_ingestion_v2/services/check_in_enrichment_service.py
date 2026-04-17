@@ -191,6 +191,7 @@ class CheckInEnrichmentService:
 
         Returns: {"enriched": int, "skipped": int, "failed": int, "errors": [str]}
         """
+        review_rounds = max(0, min(review_rounds, 5))
         explanations = self.repo.get_by_guideline_id(guideline.id)
         if not explanations:
             return {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
@@ -491,7 +492,7 @@ class CheckInEnrichmentService:
             )
             parsed = self.llm.parse_json_response(response["output_text"])
             return CheckInGenerationOutput.model_validate(parsed)
-        except (LLMServiceError, json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.error(f"Check-in review-refine failed for {topic}: {e}")
             return None
 

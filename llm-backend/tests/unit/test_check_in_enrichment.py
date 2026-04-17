@@ -553,3 +553,23 @@ class TestEnrichVariantReviewRounds:
         assert svc._review_and_refine_check_ins.call_count == 1
         # Commit happened, meaning we got past validation and insertion
         svc.db.commit.assert_called_once()
+
+    def test_review_empty_check_ins_preserves_prior_output(self):
+        """If review returns CheckInGenerationOutput with empty check_ins, loop breaks and prior output is kept."""
+        svc = self._get_service()
+        cards = _sample_cards(6)
+        expl = self._make_explanation(cards)
+        guideline = _make_guideline_mock()
+        ci = _make_check_in_decision(insert_after=3, num_pairs=3)
+        self._wire_generate_output(svc, ci)
+        from book_ingestion_v2.services.check_in_enrichment_service import CheckInGenerationOutput
+        svc._review_and_refine_check_ins = MagicMock(
+            return_value=CheckInGenerationOutput(check_ins=[])
+        )
+
+        ok = svc._enrich_variant(expl, guideline, force=False, review_rounds=2)
+
+        # empty check_ins treated same as None → loop breaks after first call
+        assert ok is True
+        assert svc._review_and_refine_check_ins.call_count == 1
+        svc.db.commit.assert_called_once()
