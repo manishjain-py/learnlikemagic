@@ -33,6 +33,7 @@ class V2JobType(str, Enum):
     AUDIO_GENERATION = "v2_audio_generation"
     REFRESHER_GENERATION = "v2_refresher_generation"
     CHECK_IN_ENRICHMENT = "v2_check_in_enrichment"
+    PRACTICE_BANK_GENERATION = "v2_practice_bank_generation"
 
 
 class V2JobStatus(str, Enum):

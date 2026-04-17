@@ -377,4 +377,63 @@ class Issue(Base):
     )
 
 
+class PracticeQuestion(Base):
+    """Offline practice question bank per topic (30-40 rows per guideline).
+
+    Mutable — regenerated when admin re-syncs. question_json holds the full
+    format-specific payload including correct_answer, explanation_why, and
+    (for free_form) expected_answer + grading_rubric.
+    """
+    __tablename__ = "practice_questions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"), nullable=False)
+    format = Column(String, nullable=False)
+    difficulty = Column(String, nullable=False)
+    concept_tag = Column(String, nullable=False)
+    question_json = Column(JSONB, nullable=False)
+    generator_model = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_practice_questions_guideline", "guideline_id"),
+    )
+
+
+class PracticeAttempt(Base):
+    """One row per practice attempt (in-progress or submitted).
+
+    questions_snapshot_json stores the full question payload at attempt
+    creation, so bank regeneration cannot orphan history. Rendering, grading,
+    and review all read from the snapshot — never from practice_questions.
+
+    Partial unique index on (user_id, guideline_id) WHERE status = 'in_progress'
+    is created in db.py _apply_practice_tables() (declarative WHERE clauses
+    aren't portable across dialects in this codebase's pattern).
+    """
+    __tablename__ = "practice_attempts"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"), nullable=False)
+    question_ids = Column(JSONB, nullable=False)
+    questions_snapshot_json = Column(JSONB, nullable=False)
+    answers_json = Column(JSONB, nullable=False, default=dict)
+    grading_json = Column(JSONB, nullable=True)
+    total_score = Column(Float, nullable=True)
+    total_possible = Column(Integer, default=10, nullable=False)
+    status = Column(String, nullable=False, default="in_progress")
+    grading_error = Column(Text, nullable=True)
+    grading_attempts = Column(Integer, default=0, nullable=False)
+    results_viewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    submitted_at = Column(DateTime, nullable=True)
+    graded_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_practice_attempts_user_guideline", "user_id", "guideline_id"),
+        Index("idx_practice_attempts_user_status", "user_id", "status"),
+    )
+
+
 # FTS5 virtual table is created via raw SQL in db.py, not as ORM model

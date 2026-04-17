@@ -77,6 +77,18 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "claude-opus-4-6",
         "description": "Check-in card generation (match-the-pairs activities for explanation cards)",
     },
+    {
+        "component_key": "practice_bank_generator",
+        "provider": "openai",
+        "model_id": "gpt-5.2",
+        "description": "Practice question bank generation + correctness review",
+    },
+    {
+        "component_key": "practice_grader",
+        "provider": "openai",
+        "model_id": "gpt-4o-mini",
+        "description": "Practice free-form grading + per-pick wrong-answer rationale",
+    },
 ]
 
 
@@ -133,6 +145,10 @@ def migrate():
 
         # Rebuild paused-session unique index to include mode (teach_me + practice can both be paused)
         _apply_practice_mode_support(db_manager)
+
+        # Practice v2 tables (create_all handles base tables; this adds the partial
+        # unique index + seeds practice_bank_generator / practice_grader LLM configs)
+        _apply_practice_tables(db_manager)
 
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
@@ -700,6 +716,48 @@ def _apply_issues_table(db_manager):
         print("  ✓ issues table exists")
     else:
         print("  ✓ issues table created")
+
+
+def _apply_practice_tables(db_manager):
+    """Practice v2 — additive migration only (Step 1 of lets-practice-v2 impl plan).
+
+    Base.metadata.create_all() already created practice_questions and
+    practice_attempts via the ORM models. This function adds the partial
+    unique index that SQLAlchemy declarative can't express portably in this
+    codebase's pattern, and ensures the practice LLM config rows exist on
+    deployments where _seed_llm_config won't re-run (table non-empty).
+
+    Does NOT touch sessions.exam_score / sessions.exam_total — the destructive
+    cleanup (DELETE rows + DROP columns) is bundled into Step 12 of the impl
+    plan alongside the code removal so runtime never sees a half-state.
+    """
+    inspector = inspect(db_manager.engine)
+    if "practice_attempts" not in inspector.get_table_names():
+        return
+
+    with db_manager.engine.connect() as conn:
+        print("  Applying practice_attempts partial unique index...")
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_attempts_one_inprogress_per_topic "
+            "ON practice_attempts(user_id, guideline_id) WHERE status = 'in_progress'"
+        ))
+        conn.commit()
+        print("  ✓ practice_attempts partial unique index applied")
+
+    _ensure_llm_config(
+        db_manager,
+        component_key="practice_bank_generator",
+        provider="openai",
+        model_id="gpt-5.2",
+        description="Practice question bank generation + correctness review",
+    )
+    _ensure_llm_config(
+        db_manager,
+        component_key="practice_grader",
+        provider="openai",
+        model_id="gpt-4o-mini",
+        description="Practice free-form grading + per-pick wrong-answer rationale",
+    )
 
 
 def _seed_llm_config(db_manager):

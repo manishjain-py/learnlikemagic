@@ -1,0 +1,138 @@
+You are creating a practice question bank for a Grade {grade} student studying {subject} — specifically the topic "{topic_title}".
+
+This bank feeds a "Let's Practice" batch drill. At session start, 10 questions are randomly sampled from this bank. The student answers silently with no hints, no scaffolding, and no correctness feedback until they submit. After submit, every question gets a "why the correct answer is correct" explanation and, for wrong answers, a targeted "why your pick was wrong" rationale (generated at grading time). Your job is to build a bank the sampler can draw a good 10-question set from.
+
+Generate 30 to 40 questions total, covering the topic comprehensively.
+
+TEACHING GUIDELINE (ground truth for what was taught):
+{guideline_text}
+
+EXPLANATION CARDS (what the student has been taught — use these to ground your questions in the exact same concepts and examples):
+{explanation_cards_json}
+
+═══════════════════════════════════════════════
+LANGUAGE RULES (students are Indian — English is NOT their first language)
+═══════════════════════════════════════════════
+- Sentences under 12 words. One idea per sentence.
+- No idioms. No phrasal verbs. No complex words.
+- Use Indian contexts: rupees, chapatis, cricket, Diwali, Indian names (Aarav, Meera, Kabir).
+- Use daily-life words: "big" not "enormous", "show" not "demonstrate".
+- English only. No Hindi / Hinglish.
+- No personalization — do not reference a specific student's name or interests.
+
+═══════════════════════════════════════════════
+DIFFICULTY MIX (across the full bank)
+═══════════════════════════════════════════════
+- ~30% easy — recall, direct application of one step.
+- ~50% medium — apply in slightly new context, compare, 2 steps.
+- ~20% hard — multi-step reasoning, edge cases, subtle distractors.
+
+Every question MUST have `difficulty` set to exactly one of: easy, medium, hard.
+
+═══════════════════════════════════════════════
+FORMAT MIX — 12 FORMATS (11 structured + 1 free-form)
+═══════════════════════════════════════════════
+
+STRUCTURED FORMATS:
+
+1. pick_one — Question with 2-3 options. Exactly one is correct.
+   Fill: options (2-3 strings), correct_index (0-based).
+
+2. true_false — A statement the student judges true or false.
+   Fill: statement, correct_answer_bool.
+   question_text: a short prompt such as "Is this right?"
+
+3. fill_blank — A sentence with a blank + 2-3 options for the blank.
+   Fill: question_text (use ___ for the blank), options, correct_index.
+
+4. match_pairs — 2-3 left-right pairs the student must match.
+   Fill: pairs ([{left, right}]).
+   Each pair must have ONE unambiguous correct match. No synonym collisions.
+
+5. sort_buckets — 4-6 items sorted into 2 labeled groups.
+   Fill: bucket_names (2 labels), bucket_items ([{text, correct_bucket}]).
+   correct_bucket is 0 or 1. At least 2 items per bucket.
+
+6. sequence — 3-4 items the student puts in correct order.
+   Fill: sequence_items (list in correct order — NOT shuffled).
+
+7. spot_the_error — 3-5 steps of a worked solution. Exactly one step is wrong.
+   Fill: error_steps (3-5 strings), error_index.
+   The wrong step must contain a clear, specific error. Every OTHER step must be correct.
+
+8. odd_one_out — 3-4 items where one doesn't share a property with the others.
+   Fill: odd_items (3-4), odd_index.
+
+9. predict_then_reveal — A prediction question + 2-3 options + explanation shown after.
+   Fill: options, correct_index, reveal_text (1-2 sentence explanation).
+
+10. swipe_classify — 4-8 items the student swipes into 2 categories.
+    Fill: bucket_names (2 labels), bucket_items ([{text, correct_bucket}]).
+    Same rules as sort_buckets but more items.
+
+11. tap_to_eliminate — 4-5 options; student crosses out wrong ones until one remains.
+    Fill: options (4-5), correct_index (the ONE right answer).
+    question_text must tell the student to eliminate wrong answers.
+
+FREE-FORM FORMAT:
+
+12. free_form — Short-answer text question. Student types 2-5 sentences.
+    Fill: question_text, expected_answer, grading_rubric.
+    expected_answer: a reasonable full-credit answer, 2-5 sentences.
+    grading_rubric: 2-4 short bullet points describing what earns full / partial credit.
+    Use free-form for questions where reasoning, justification, or "in your own words" matters — not where a single number or word suffices.
+
+═══════════════════════════════════════════════
+FREE-FORM COUNT (IMPORTANT)
+═══════════════════════════════════════════════
+
+Include 0 to 3 free-form questions based on the nature of this topic:
+- Explanation-heavy topics (where reasoning, justification, or "why" matters): include 2-3.
+- Balanced topics: include 1-2.
+- Purely procedural topics (calculations, identification, sorting, ordering where a short answer suffices): include 0 or 1.
+
+Do NOT force free-form questions onto a purely procedural topic — a contrived free-form is worse than none. Pick the count that genuinely fits the topic.
+
+═══════════════════════════════════════════════
+EVERY QUESTION MUST INCLUDE
+═══════════════════════════════════════════════
+
+- format (one of the 12 listed above)
+- difficulty (easy / medium / hard)
+- concept_tag — short snake_case identifier for which sub-concept this tests (e.g., "place_value_hundreds", "equivalent_fractions", "past_tense_regular").
+- question_text — the question as shown to the student.
+- explanation_why — ONE sentence explaining why the correct answer is correct. Shown to the student after grading. Must be self-contained — do not reference card numbers or other questions.
+- All format-specific fields listed for the chosen format.
+
+Free-form questions additionally MUST include non-empty:
+- expected_answer
+- grading_rubric
+
+═══════════════════════════════════════════════
+VARIETY RULES
+═══════════════════════════════════════════════
+
+- Use at least 6 different structured formats across the bank so the 10-question sampler has broad supply.
+- Aim for 2 to 6 questions of each format you use. Do not cluster 15 pick_ones and 2 match_pairs.
+- Cover the full range of sub-concepts from the teaching guideline — do not concentrate on a single concept.
+- Concept_tags should repeat across questions at different difficulties (an "easy" and a "hard" question on the same concept is good).
+
+═══════════════════════════════════════════════
+CORRECTNESS RULES
+═══════════════════════════════════════════════
+
+- Exactly ONE option is correct in pick_one, fill_blank, predict_then_reveal, tap_to_eliminate.
+- Distractors (wrong options) must be unambiguously wrong. Never "also kind of right".
+- Numeric answers must be arithmetically correct.
+- `sequence_items` must be in the correct order (NOT shuffled — the order given IS the correct order).
+- For match_pairs, each left has exactly one correct right; no left can plausibly match more than one right.
+- For sort_buckets / swipe_classify, every item's correct_bucket matches its bucket_names[correct_bucket] label in a way a Grade {grade} student can justify (e.g., if the label says "3-digit number", every item in that bucket must actually have 3 digits).
+- Every factual claim matches the teaching guideline.
+
+═══════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════
+
+Respond with valid JSON only — no markdown fences, no explanation outside the JSON. The response MUST conform to this schema:
+
+{output_schema}

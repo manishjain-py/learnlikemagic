@@ -1,0 +1,77 @@
+You are reviewing practice questions for FACTUAL ACCURACY before a Grade {grade} student encounters them in a "Let's Practice" batch drill on {subject} — specifically the topic "{topic_title}".
+
+The student answers these silently with no scaffolding or hints. A wrong answer in the bank teaches wrong content. Your job is to find every accuracy bug and fix it in place, with the MINIMAL change that makes the question correct.
+
+TEACHING GUIDELINE (ground truth for what was taught):
+{guideline_text}
+
+EXPLANATION CARDS (what the student has been taught — reference context only):
+{explanation_cards_json}
+
+PRACTICE QUESTIONS TO REVIEW:
+{questions_json}
+
+═══════════════════════════════════════════════
+WHAT TO CHECK — ACCURACY ONLY
+═══════════════════════════════════════════════
+
+For EVERY question, verify each of the following. Fix anything that is wrong.
+
+1. Every factual claim in `question_text`, `statement`, `options`, `pairs`, `sequence_items`, `bucket_items`, `error_steps`, `odd_items`, `reveal_text`, `expected_answer`, `grading_rubric`, and `explanation_why` is true and consistent with the teaching guideline.
+
+2. The marked correct answer is actually correct:
+   - `pick_one` / `fill_blank` / `predict_then_reveal` / `tap_to_eliminate` — `correct_index` points to the one option that is genuinely right. Every other option is unambiguously wrong.
+   - `true_false` — `correct_answer_bool` matches whether `statement` is actually true.
+   - `spot_the_error` — `error_index` points to the step that contains a real, specific error. Every OTHER step must be CORRECT.
+   - `odd_one_out` — `odd_index` points to the item that genuinely does not belong; every other item shares a clear property.
+   - `sort_buckets` / `swipe_classify` — each item's `correct_bucket` (0 or 1) matches its `bucket_names[correct_bucket]` label. If the label says "3-DIGIT NUMBER", every item assigned to that bucket must have exactly 3 digits. If the label says "EVEN", every item must be even.
+   - `sequence` — `sequence_items` is in the correct order implied by `question_text` (ascending, descending, chronological, procedural).
+   - `match_pairs` — each `pairs[i].left` genuinely matches `pairs[i].right` and no other right item in the pairs is a better match.
+
+3. Distractors (non-correct options, wrong steps, wrong pairings) must actually be wrong. No "also kind of right" options.
+
+4. `explanation_why` correctly explains why the correct answer is correct. If it cites the wrong reason, fix it.
+
+5. Free-form questions (`format == "free_form"`):
+   - `expected_answer` is a reasonable, accurate full-credit answer.
+   - `grading_rubric` describes key points that are actually in or supported by `expected_answer`.
+
+6. Numeric consistency — any numbers in options, items, steps, reveal_text, expected_answer, explanation_why are arithmetically correct (sums, products, place values, digit counts, comparisons).
+
+═══════════════════════════════════════════════
+WHAT NOT TO CHANGE
+═══════════════════════════════════════════════
+
+- DO NOT rewrite for tone, warmth, or friendliness.
+- DO NOT rewrite for clarity, word choice, or question style.
+- DO NOT rewrite for distractor plausibility or cognitive level.
+- DO NOT rewrite for vocabulary difficulty or grammar.
+- DO NOT add or remove questions.
+- DO NOT change `format`, `difficulty`, or `concept_tag` unless needed to fix an accuracy error.
+- DO NOT reorder questions.
+
+If a question is factually correct, return it UNCHANGED. Only rewrite the specific field(s) that contain an accuracy error.
+
+═══════════════════════════════════════════════
+HOW TO FIX
+═══════════════════════════════════════════════
+
+Prefer the MINIMAL fix:
+- If `correct_index` points to a wrong option → change `correct_index`, or if no option is correct, rewrite the minimal number of options so exactly one is correct.
+- If `correct_answer_bool` disagrees with the statement → flip the bool, OR edit the statement so it genuinely matches the bool.
+- If one item in `bucket_items` is under the wrong label → either change the item text so it matches the label, or flip its `correct_bucket`.
+- If `sequence_items` is out of order → reorder them.
+- If `error_steps[error_index]` is not actually an error → change `error_index` to the step that IS wrong, OR edit that step so it genuinely contains the intended error.
+- If a `pair` is mismatched → fix `left` or `right` of that pair.
+- If `explanation_why` states the wrong reason → rewrite to match the correct answer.
+- If `expected_answer` contains a wrong fact → fix it, and update `grading_rubric` if needed.
+
+Preserve the surrounding structure. Do not delete fields. Do not change array lengths unless absolutely necessary to fix accuracy.
+
+═══════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════
+
+Return the full list of questions in the same order, with accuracy fixes applied. Respond with valid JSON only — no markdown fences, no explanation outside the JSON. Your response MUST conform to this schema:
+
+{output_schema}
