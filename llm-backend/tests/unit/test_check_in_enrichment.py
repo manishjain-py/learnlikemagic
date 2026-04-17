@@ -331,3 +331,245 @@ class TestSummaryBuilderCheckIns:
             summary = svc._build_precomputed_summary(session)
 
         assert "Check-in struggles:" not in summary
+
+
+# ─── Review-Refine Tests ──────────────────────────────────────────────────
+
+def _make_guideline_mock(topic="Place Value", grade=3, guideline_text="Teach digit counting."):
+    """Minimal guideline-like object for review prompts."""
+    g = MagicMock()
+    g.topic_title = topic
+    g.topic = topic
+    g.subject = "Mathematics"
+    g.grade = grade
+    g.guideline = guideline_text
+    g.description = guideline_text
+    g.id = "g1"
+    g.book_id = "b1"
+    g.chapter_key = "chapter-1"
+    return g
+
+
+def _make_sort_buckets_decision(
+    items=None, bucket_names=("3-DIGIT NUMBER", "4-DIGIT NUMBER"),
+    insert_after=3, instruction="Put each number in the right group.",
+):
+    """Build a sort_buckets CheckInDecision for review tests.
+
+    `items` is a list of (text, correct_bucket) tuples. Defaults to the exact
+    bug from the screenshot: '87' miscategorised as a 3-digit number.
+    """
+    from book_ingestion_v2.services.check_in_enrichment_service import (
+        CheckInDecision, BucketItemOutput,
+    )
+    if items is None:
+        items = [
+            ("352", 0), ("87", 0), ("999", 0),
+            ("7,089", 1), ("1,000", 1), ("3,527", 1),
+        ]
+    return CheckInDecision(
+        insert_after_card_idx=insert_after,
+        activity_type="sort_buckets",
+        title="Quick check!",
+        instruction=instruction,
+        hint="Count the digits.",
+        success_message="Well done! 4-digit numbers start from 1,000.",
+        audio_text=instruction,
+        bucket_names=list(bucket_names),
+        bucket_items=[BucketItemOutput(text=t, correct_bucket=b) for t, b in items],
+    )
+
+
+class TestCheckInReviewRefine:
+    """Tests for _review_and_refine_check_ins — the accuracy-only LLM pass."""
+
+    def _get_service_with_mock_llm(self):
+        """Service skeleton with a MagicMock LLM and stubbed schema."""
+        from book_ingestion_v2.services.check_in_enrichment_service import CheckInEnrichmentService
+        svc = CheckInEnrichmentService.__new__(CheckInEnrichmentService)
+        svc.llm = MagicMock()
+        svc.llm.provider = "openai"
+        svc._generation_schema = {"type": "object"}  # value unused; we mock parse_json_response
+        return svc
+
+    def test_preserves_unchanged_output_when_llm_returns_same(self):
+        svc = self._get_service_with_mock_llm()
+        ci = _make_sort_buckets_decision(items=[
+            ("352", 0), ("387", 0), ("999", 0),
+            ("7,089", 1), ("1,000", 1), ("3,527", 1),
+        ])
+        explanation_cards = _sample_cards(5)
+        guideline = _make_guideline_mock()
+
+        svc.llm.call.return_value = {"output_text": "unused — parse_json_response is mocked"}
+        svc.llm.parse_json_response.return_value = {
+            "check_ins": [ci.model_dump()],
+        }
+
+        out = svc._review_and_refine_check_ins([ci], explanation_cards, guideline)
+
+        assert out is not None
+        assert len(out.check_ins) == 1
+        assert out.check_ins[0].activity_type == "sort_buckets"
+        assert [bi.text for bi in out.check_ins[0].bucket_items] == \
+            ["352", "387", "999", "7,089", "1,000", "3,527"]
+        svc.llm.call.assert_called_once()
+
+    def test_fixes_accuracy_bug_when_llm_corrects(self):
+        """Input has '87' in '3-DIGIT NUMBER' bucket; reviewer rewrites to '387'."""
+        svc = self._get_service_with_mock_llm()
+        buggy = _make_sort_buckets_decision()  # defaults to the '87' bug
+        fixed = _make_sort_buckets_decision(items=[
+            ("352", 0), ("387", 0), ("999", 0),
+            ("7,089", 1), ("1,000", 1), ("3,527", 1),
+        ])
+        explanation_cards = _sample_cards(5)
+        guideline = _make_guideline_mock()
+
+        svc.llm.call.return_value = {"output_text": "unused"}
+        svc.llm.parse_json_response.return_value = {
+            "check_ins": [fixed.model_dump()],
+        }
+
+        out = svc._review_and_refine_check_ins([buggy], explanation_cards, guideline)
+
+        assert out is not None
+        texts = [bi.text for bi in out.check_ins[0].bucket_items]
+        assert "87" not in texts  # the bug is gone
+        assert "387" in texts     # fixed value present
+
+    def test_returns_none_on_llm_error(self):
+        from shared.services.llm_service import LLMServiceError
+        svc = self._get_service_with_mock_llm()
+        ci = _make_sort_buckets_decision()
+        guideline = _make_guideline_mock()
+        svc.llm.call.side_effect = LLMServiceError("boom")
+
+        out = svc._review_and_refine_check_ins([ci], _sample_cards(5), guideline)
+
+        assert out is None
+
+    def test_returns_none_on_invalid_json(self):
+        svc = self._get_service_with_mock_llm()
+        ci = _make_sort_buckets_decision()
+        guideline = _make_guideline_mock()
+        svc.llm.call.return_value = {"output_text": "not json"}
+        svc.llm.parse_json_response.side_effect = json.JSONDecodeError("bad", "doc", 0)
+
+        out = svc._review_and_refine_check_ins([ci], _sample_cards(5), guideline)
+
+        assert out is None
+
+    def test_prompt_includes_check_in_and_guideline_text(self):
+        """Reviewer prompt must contain the check-in to review AND the ground-truth guideline."""
+        svc = self._get_service_with_mock_llm()
+        ci = _make_sort_buckets_decision()
+        guideline = _make_guideline_mock(
+            guideline_text="A 3-digit number has exactly three digits in the 100-999 range.",
+        )
+
+        svc.llm.call.return_value = {"output_text": "{}"}
+        svc.llm.parse_json_response.return_value = {"check_ins": [ci.model_dump()]}
+
+        svc._review_and_refine_check_ins([ci], _sample_cards(5), guideline)
+
+        sent_prompt = svc.llm.call.call_args.kwargs["prompt"]
+        assert "87" in sent_prompt  # the suspect item is visible to the reviewer
+        assert "3-DIGIT NUMBER" in sent_prompt
+        assert "three digits" in sent_prompt  # guideline text threaded through
+
+
+class TestEnrichVariantReviewRounds:
+    """Tests that _enrich_variant invokes the review loop correctly per review_rounds."""
+
+    def _get_service(self):
+        from book_ingestion_v2.services.check_in_enrichment_service import CheckInEnrichmentService
+        svc = CheckInEnrichmentService.__new__(CheckInEnrichmentService)
+        svc.llm = MagicMock()
+        svc.db = MagicMock()
+        svc.repo = MagicMock()
+        svc._generation_schema = {"type": "object"}
+        # no-op refresh so we don't hit real DB
+        svc._refresh_db_session = lambda: None
+        return svc
+
+    def _make_explanation(self, cards):
+        expl = MagicMock()
+        expl.id = "e1"
+        expl.variant_key = "A"
+        expl.cards_json = cards
+        return expl
+
+    def _wire_generate_output(self, svc, decision):
+        from book_ingestion_v2.services.check_in_enrichment_service import CheckInGenerationOutput
+        svc._generate_check_ins = MagicMock(
+            return_value=CheckInGenerationOutput(check_ins=[decision])
+        )
+
+    def test_review_skipped_when_rounds_zero(self):
+        svc = self._get_service()
+        cards = _sample_cards(6)
+        expl = self._make_explanation(cards)
+        guideline = _make_guideline_mock()
+        ci = _make_check_in_decision(insert_after=3, num_pairs=3)
+        self._wire_generate_output(svc, ci)
+        svc._review_and_refine_check_ins = MagicMock()
+
+        ok = svc._enrich_variant(expl, guideline, force=False, review_rounds=0)
+
+        assert ok is True
+        svc._review_and_refine_check_ins.assert_not_called()
+
+    def test_review_called_n_times(self):
+        svc = self._get_service()
+        cards = _sample_cards(6)
+        expl = self._make_explanation(cards)
+        guideline = _make_guideline_mock()
+        ci = _make_check_in_decision(insert_after=3, num_pairs=3)
+        self._wire_generate_output(svc, ci)
+        from book_ingestion_v2.services.check_in_enrichment_service import CheckInGenerationOutput
+        svc._review_and_refine_check_ins = MagicMock(
+            return_value=CheckInGenerationOutput(check_ins=[ci])
+        )
+
+        svc._enrich_variant(expl, guideline, force=False, review_rounds=3)
+
+        assert svc._review_and_refine_check_ins.call_count == 3
+
+    def test_review_failure_preserves_prior_output(self):
+        """If review returns None, the loop breaks but prior output is kept and inserted."""
+        svc = self._get_service()
+        cards = _sample_cards(6)
+        expl = self._make_explanation(cards)
+        guideline = _make_guideline_mock()
+        ci = _make_check_in_decision(insert_after=3, num_pairs=3)
+        self._wire_generate_output(svc, ci)
+        svc._review_and_refine_check_ins = MagicMock(return_value=None)
+
+        ok = svc._enrich_variant(expl, guideline, force=False, review_rounds=2)
+
+        # review failed → loop breaks after first call → original output flows to validation
+        assert ok is True
+        assert svc._review_and_refine_check_ins.call_count == 1
+        # Commit happened, meaning we got past validation and insertion
+        svc.db.commit.assert_called_once()
+
+    def test_review_empty_check_ins_preserves_prior_output(self):
+        """If review returns CheckInGenerationOutput with empty check_ins, loop breaks and prior output is kept."""
+        svc = self._get_service()
+        cards = _sample_cards(6)
+        expl = self._make_explanation(cards)
+        guideline = _make_guideline_mock()
+        ci = _make_check_in_decision(insert_after=3, num_pairs=3)
+        self._wire_generate_output(svc, ci)
+        from book_ingestion_v2.services.check_in_enrichment_service import CheckInGenerationOutput
+        svc._review_and_refine_check_ins = MagicMock(
+            return_value=CheckInGenerationOutput(check_ins=[])
+        )
+
+        ok = svc._enrich_variant(expl, guideline, force=False, review_rounds=2)
+
+        # empty check_ins treated same as None → loop breaks after first call
+        assert ok is True
+        assert svc._review_and_refine_check_ins.call_count == 1
+        svc.db.commit.assert_called_once()

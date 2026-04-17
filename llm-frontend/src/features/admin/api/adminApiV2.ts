@@ -723,12 +723,13 @@ export async function getCheckInStatus(
 
 export async function generateCheckIns(
   bookId: string,
-  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
 ): Promise<ProcessingJobResponseV2> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.force) params.set('force', 'true');
+  if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/generate-check-ins${qs}`,

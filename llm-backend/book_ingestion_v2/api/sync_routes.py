@@ -1086,12 +1086,14 @@ def generate_check_ins(
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
     guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic enrichment"),
     force: bool = Query(False, description="Re-generate check-ins even if they already exist"),
+    review_rounds: int = Query(1, ge=0, le=5, description="Accuracy review-refine rounds after initial generation (0 disables)"),
     db: Session = Depends(get_db),
 ):
     """Generate interactive check-in cards for explanation cards.
 
     Runs as a background job. Requires explanations to already exist.
     Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    review_rounds controls the accuracy review-refine loop (0-5, default 1).
     """
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
     from shared.models.entities import TeachingGuideline
@@ -1138,7 +1140,7 @@ def generate_check_ins(
 
         run_in_background_v2(
             _run_check_in_enrichment, job_id, book_id,
-            chapter_id or "", guideline_id or "", str(force),
+            chapter_id or "", guideline_id or "", str(force), str(review_rounds),
         )
 
         return job_service.get_job(job_id)
@@ -1237,7 +1239,7 @@ def get_latest_check_in_job(
 
 def _run_check_in_enrichment(
     db: Session, job_id: str, book_id: str, chapter_id: str,
-    guideline_id: str = "", force_str: str = "False",
+    guideline_id: str = "", force_str: str = "False", review_rounds_str: str = "1",
 ):
     """Background task for check-in enrichment of explanation cards."""
     import json as _json
@@ -1249,6 +1251,10 @@ def _run_check_in_enrichment(
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
 
     force = force_str.lower() == "true"
+    try:
+        review_rounds = int(review_rounds_str)
+    except (TypeError, ValueError):
+        review_rounds = 1
 
     settings = get_settings()
 
@@ -1283,7 +1289,9 @@ def _run_check_in_enrichment(
         heartbeat_fn = lambda: job_service.update_progress(
             job_id, current_item=topic, completed=0, failed=0,
         )
-        result = service.enrich_guideline(guideline, force=force, heartbeat_fn=heartbeat_fn)
+        result = service.enrich_guideline(
+            guideline, force=force, review_rounds=review_rounds, heartbeat_fn=heartbeat_fn,
+        )
 
         job_service.update_progress(
             job_id, current_item=None,
@@ -1296,6 +1304,7 @@ def _run_check_in_enrichment(
             book_id,
             chapter_id=chapter_id or None,
             force=force,
+            review_rounds=review_rounds,
             job_service=job_service,
             job_id=job_id,
         )
