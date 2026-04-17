@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 12 of 16 steps complete (counting 9a + 9b + 9c). Mode-select page now drops the Exam tile, gates the Let's Practice tile on bank availability, and auto-triggers Teach Me when the URL carries `?autostart=teach_me` (from Results → Reteach). Full student loop — Learn → Practice → Results → Reteach — now threads the topic path end-to-end. Next is Step 11 — Scorecard additive (Practice section next to legacy Exam section; no destructive cleanup yet).
+**Status:** 13 of 16 steps complete (counting 9a + 9b + 9c). Report card now surfaces v2 practice stats (latest fractional score + attempt count) alongside the legacy exam chip, additive-only — legacy fields stay until Step 13's destructive cleanup. Next is Step 12 — destructive backend + DB cleanup (single atomic deploy that rips exam_service, chat-practice branches, and the legacy sessions.exam_score columns).
 
 ---
 
@@ -52,7 +52,7 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 | 9b | Frontend runtime pages + chalkboard restyle | ✅ Done | `llm-frontend/src/pages/Practice{Landing,Runner,Results}Page.tsx` (3 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion}.tsx` (2 new), `llm-frontend/src/api.ts` (9 funcs + 5 interfaces), `App.tsx` (3 routes), `App.css` (+819 lines practice block), `AppShell.tsx` (+/practice in `isChalkboardRoute`), 4 shared primitives + 11 captures + `types.ts` migrated from inline styles to `.practice-*` class names | Runner: question-by-question navigation + internal "Review my picks" screen + atomic submit. Debounced PATCH (600ms) with AbortController canceling in-flight requests before submit. Results: fractional score, per-question expandable breakdown that re-uses `QuestionRenderer` in `disabled` mode to show the student's answer, plus rationale chip + correct-answer summary on wrong picks. Retry grading on `grading_failed`. Reteach CTA deferred to Step 10's ModeSelect refactor. Review + History pages folded into Landing + Results for v1. Banner (30s poll) deferred to Step 9c. **Chalkboard restyle:** on first browser walkthrough the inline cyan/teal styling clashed with the rest of the app's chalkboard aesthetic (PR #99). Refactored to use existing chalkboard tokens — `.selection-step` page surfaces, handwritten `--font-hand` question text, parchment CTAs + free-form textarea, gold/mint/coral chalk states for selection/correct/wrong. `/practice/*` added to `AppShell.isChalkboardRoute` so the theme scope covers the new routes. `npm run build` clean — 1075 modules; verified in Chrome on a graded attempt. |
 | 9c | AuthenticatedLayout + PracticeBanner | ✅ Done | `llm-frontend/src/components/AuthenticatedLayout.tsx` (new), `llm-frontend/src/components/practice/PracticeBanner.tsx` (new), `llm-frontend/src/App.tsx` (route restructure), `App.css` (+100 lines banner CSS) | New `AuthenticatedLayout` sits below ProtectedRoute/OnboardingGuard and above both the AppShell route group AND the chat-session route group — collapsed the 5 chat-session route wrappers into a single shared parent. `PracticeBanner` fetches `/practice/attempts/recent` immediately on mount, then polls every 30s. Pauses polling when `document.visibilityState !== 'visible'` and resumes on return. Each attempt renders as a fixed-top banner: green/mint for `graded` (tap → results), amber for `grading_failed` (inline Retry button posts `/retry-grading`). Filters out the attempt whose results page the student is currently on, to avoid the 30s overlap window. `npm run build` clean — 1077 modules. Behavioral verification deferred (see §Testing backlog). |
 | 10 | ModeSelection refactor | ✅ Done | `llm-frontend/src/components/ModeSelection.tsx`, `llm-frontend/src/pages/ModeSelectPage.tsx`, `llm-frontend/src/pages/Practice{Landing,Runner,Results}Page.tsx`, `llm-frontend/src/App.css` | **ModeSelection**: narrowed `SelectableMode` to `'teach_me' \| 'clarify_doubts'`; dropped `completedExams`, `incompleteExam`, `incompletePractice`, `lastPracticed`, past-exams toggle + section, Exam tile, Resume-Exam + Resume-Practice cards, `onViewExamReview`, `formatRelativeDate`, `getTopicProgress` import. New props `onPractice: () => void` + `practiceAvailable: boolean`. Let's Practice tile is always rendered, `disabled` + "No practice bank for this topic yet" sub-label when `!practiceAvailable`. **ModeSelectPage**: added `availability` state fetched via `getPracticeAvailability(guidelineId)` in its own effect (runs once guidelineId resolves). Added `?autostart=teach_me` handler — one-shot useEffect gated by `autostartFiredRef`, fires `navigate(pathname, {replace:true})` to clear the query then `handleModeSelect('teach_me')`. `handlePractice` navigates to `/practice/:guidelineId` with full state `{topicTitle, subject, chapter, topic, topicKey}`. **Plumbing**: PracticeLandingPage + PracticeRunnerPage forward the same state bundle to downstream routes. PracticeResultsPage reads it to gate the Reteach CTA — visible only when `subject && chapter && topic` are in state (banner flow falls back to Practice again + Back to topic only). Reteach navigates to `/learn/:subject/:chapter/:topic?autostart=teach_me` with `{topicKey, guidelineId}` in state so ModeSelectPage skips the curriculum resolve fetch. **CSS**: added `.chalkboard-active .selection-card:disabled` (dim + grayscale + not-allowed cursor) and `flex-wrap: wrap` on `.practice-cta-row`. `npm run build` clean, 1077 modules. |
-| 11 | Scorecard additive | Pending | `tutor/services/report_card_service.py`, `shared/models/schemas.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `llm-frontend/src/api.ts` types | **Structural change, not a rename.** Current code reads exam stats from `state_json` via session iteration. New `_merge_practice_attempts_into_grouped(grouped, user_id)` issues SQL aggregate over `practice_attempts` (latest score via `array_agg ORDER BY graded_at DESC`, count, `MAX(graded_at)`). Response schema **additively** gets `latest_practice_score` (Optional[float]), `latest_practice_total` (Optional[int]), `practice_attempt_count` (Optional[int]). Legacy integer `latest_exam_score`/`latest_exam_total` kept until Step 13. Frontend: rename label "Exam scores" → "Practice scores", fractional render (e.g. "7.5/10"), pluralize attempts. |
+| 11 | Scorecard additive | ✅ Done | `llm-backend/tutor/services/report_card_service.py`, `llm-backend/shared/models/schemas.py`, `llm-backend/tests/conftest.py`, `llm-backend/tests/unit/test_report_card_service.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `llm-frontend/src/api.ts`, `llm-frontend/src/App.css` | **report_card_service:** added `_load_user_practice_attempts` (status='graded' filter, ordered `guideline_id ASC, graded_at DESC`) + `_merge_practice_attempts_into_grouped` (takes the head-of-group as latest, counts the group, creates the topic row if practice-only). Extended `_build_guideline_lookup` to include subject and to accept practice attempts as a second source of guideline_ids so practice-only topics still resolve hierarchy. `get_report_card` no longer early-exits on empty sessions when the user has practice attempts. `_build_report` emits the three new additive fields. **Schema:** `ReportCardTopic` grew `latest_practice_score: Optional[float]`, `latest_practice_total: Optional[int]`, `practice_attempt_count: Optional[int]`. Legacy exam fields preserved (30 references across backend + frontend). **Tests:** 7 new cases in `TestReportCardPracticeAttempts` cover exam-only, practice-only, both, `grading_failed` excluded, `in_progress` excluded, latest-wins with count, and practice-only user with zero chat sessions. **Test conftest fix:** pre-existing JSONB-on-SQLite compile error was blocking ALL db_session tests across the suite; added `@compiles(JSONB, 'sqlite')` → `TEXT` hook in `tests/conftest.py`. All 42 report card tests now green. This unmasked 10 pre-existing assertion failures in `test_precomputed_explanations.py` (action-transition bugs unrelated to practice or report card). **Frontend:** `ReportCardPage` renders a practice chip next to the existing exam chip, `formatPracticeScore` helper ints-vs-halves (so `8` and `7.5`), pluralized attempt count (`1 attempt` / `N attempts`). Legacy exam chip still rendered. `npm run build` clean. |
 | 12 | Destructive cleanup (backend + DB) | Pending | Many — see plan §2 "Destructive" list | **SINGLE atomic deploy.** Delete `exam_service.py`, `exam_prompts.py`, `practice_prompts.py`, `tests/unit/test_exam_lifecycle.py`. Remove `session.mode == "exam"` and `"practice"` branches across orchestrator, session_service, master_tutor, session_state, report_card_service. Remove `/end-exam`, `/exam-review`, `/end-practice` endpoints + DTOs. Run `_cleanup_exam_and_old_practice_data()` inside single `with engine.begin():` transaction: `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` + `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score` + `exam_total`. **Grep-gate CI test** must return 0: ``grep -rE '(ExamService\|exam_prompts\|practice_prompts\|_process_practice_turn\|_process_exam_turn\|_build_practice_turn_prompt\|practice_questions_answered\|exam_questions\|ExamQuestion\|ExamFeedback\|end-practice\|end-exam\|exam-review)' llm-backend/ \| grep -v docs/ \| wc -l`` |
 | 13 | Destructive cleanup (frontend) | Pending | `llm-frontend/src/pages/ExamReviewPage.tsx` (delete), `App.tsx`, `api.ts`, `ReportCardPage.tsx` | Delete ExamReviewPage. Delete `/exam/:sessionId`, `/exam-review/:sessionId`, old `/practice/:sessionId` routes. Delete `ExamReviewResponse`, `ExamReviewQuestion`, `getExamReview` from api.ts. Remove legacy `latest_exam_score`/`latest_exam_total` reads from ReportCardPage. Grep-gate: ``grep -rE '(exam-review\|end-exam\|/exam/\|end-practice\|ExamReviewPage\|getExamReview)' llm-frontend/src`` must return 0. |
 | 14 | Docs | Pending | `docs/principles/practice-mode.md` (new), `docs/functional/practice-mode.md` (new), `docs/technical/practice-mode.md` (new), updates to `docs/principles/scorecard.md`, `docs/technical/architecture-overview.md`, `docs/technical/database.md`, `docs/technical/ai-agent-files.md`, `CLAUDE.md` doc index table | Delete `docs/feature-development/teach-me-practice-split/` (superseded). Run `/update-all-docs` skill at end. |
@@ -97,6 +97,10 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 - **Autostart is a one-shot, ref-guarded `useEffect`.** Query cleared via `navigate(pathname, {replace:true})` BEFORE `handleModeSelect` fires so a session-creation error doesn't leave `?autostart` in the URL for a re-fire. A normal click can retry after clearing.
 - **Reteach CTA requires topic-path state.** Result pages opened via PracticeBanner lack `subject/chapter/topic` in state, so Reteach is hidden there — banner users rely on Practice-again + Back-to-topic. Avoids a backend round-trip to resolve guideline_id → topic path for a rare entry point.
 - **Topic-path state bundle** (`{topicTitle, subject, chapter, topic, topicKey}`) is forwarded by every practice-route navigate so downstream screens can build back-links and Reteach without re-fetching curriculum.
+- **Report card merges practice attempts in Python, not SQL.** Plan §11 suggested a SQL aggregate with `array_agg ORDER BY graded_at`. Implementation uses a sorted `.all()` fetch + Python grouping instead — per-user attempt volumes are tiny, and this keeps the code portable across SQLite (tests) and Postgres (prod) without dialect-specific aggregates. `_load_user_practice_attempts` applies the `guideline_id ASC, graded_at DESC` sort, so `attempts[0]` per group is the latest.
+- **Practice-only topics create report card rows via the merge.** If a student has a graded attempt but no teach_me/clarify/exam session for the topic, `_merge_practice_attempts_into_grouped` still creates the `(subject, chapter, topic)` row using the extended `_build_guideline_lookup` (now includes subject). Without this, students who went straight to practice would see their scores disappear from the report card.
+- **Half-point score rendering.** `formatPracticeScore(score)` returns `8` for whole numbers and `7.5` for halves — `toFixed(1)` across the board would produce `8.0` which looks noisy next to `7/10` exam chips during the co-existence window.
+- **JSONB-on-SQLite test hook.** `tests/conftest.py` compiles `JSONB → TEXT` under SQLite via `@compiles`. Reason: ORM models use `JSONB` from `sqlalchemy.dialects.postgresql`, which SQLite can't compile natively — this blocked every `db_session` test. The workaround leaves production (Postgres) untouched and keeps the in-memory test DB pattern intact.
 
 ---
 
@@ -120,6 +124,14 @@ Happy-path static checks (TS build, single screenshot of graded results page) ar
 - [ ] `grading_failed` banner: force failure (e.g. invalid API key), verify amber banner with inline Retry button; click Retry → `/retry-grading` fires.
 - [ ] Chat-session routes (teach, clarify, legacy exam/practice/session) still load after route restructure.
 
+**Step 11 (Scorecard additive):**
+- [ ] Report card for a student with one graded practice attempt per topic: practice chip renders `8/10 · 1 attempt`, no exam chip.
+- [ ] Student with 3 graded practice attempts on same topic: chip shows latest score + `3 attempts`.
+- [ ] Student with half-point score (e.g. 7.5): chip renders `7.5/10` (not `7/10`, not `8/10`, not `7.5.0`).
+- [ ] Student with both a legacy exam score AND a graded practice attempt: both chips render side by side.
+- [ ] `grading_failed` + `in_progress` attempts do NOT show up as completed attempts.
+- [ ] Attempt count hover tooltip reads correctly (`1 practice attempt` / `N practice attempts`).
+
 **Step 10 (ModeSelectPage + Reteach):**
 - [ ] Topic with no practice bank: Let's Practice tile visibly disabled (opacity + grayscale + cursor), sub-label reads "No practice bank for this topic yet", clicks no-op.
 - [ ] Topic with a bank: tile active, clicking navigates to `/practice/:guidelineId` and PracticeLandingPage shows the correct topic title.
@@ -135,33 +147,65 @@ Happy-path static checks (TS build, single screenshot of graded results page) ar
 
 ---
 
-## Next step briefing — Step 11
+## Next step briefing — Step 12
 
-**Goal:** Scorecard additive — the report card starts surfacing practice-attempt stats side-by-side with the legacy exam stats. **Additive only** — legacy `latest_exam_score` / `latest_exam_total` fields stay until the destructive cleanup pass in Step 13. Per plan §11.
+**Goal:** Destructive cleanup (backend + DB). The ONLY destructive deploy in this series. Single atomic transaction that (a) removes all exam-mode code paths, (b) removes chat-mode "practice" branches, (c) drops `sessions.exam_score` + `sessions.exam_total` columns, (d) deletes legacy exam/practice session rows. Per plan §2 + §12.
 
-**Files to touch:**
-- `llm-backend/tutor/services/report_card_service.py` — add `_merge_practice_attempts_into_grouped(grouped, user_id)` that issues one SQL aggregate over `practice_attempts` grouped by `guideline_id`: latest score (via `array_agg(total_score ORDER BY graded_at DESC)[1]`), `COUNT(*)`, `MAX(graded_at)`. Merge into the existing grouped structure keyed by guideline.
-- `llm-backend/shared/models/schemas.py` (or wherever the report-card response model lives) — add `latest_practice_score: Optional[float]`, `latest_practice_total: Optional[int]`, `practice_attempt_count: Optional[int]`. Keep legacy exam fields.
-- `llm-frontend/src/api.ts` types — mirror the new fields on the report card entry type.
-- `llm-frontend/src/pages/ReportCardPage.tsx` — render the Practice scores section. Rename the label "Exam scores" → "Practice scores"; render fractionally (e.g. `"7.5/10"` not `"7/10"`); pluralize attempt count correctly.
+**Files to touch / delete:**
+- **Delete outright:** `llm-backend/tutor/services/exam_service.py`, `llm-backend/tutor/prompts/exam_prompts.py`, `llm-backend/tutor/prompts/practice_prompts.py`, `llm-backend/tests/unit/test_exam_lifecycle.py`.
+- **Edit to remove exam + chat-practice branches:** orchestrator, session_service, master_tutor agent, session_state, `report_card_service.py` (drop `exam_finished` / `exam_total_correct` / `exam_questions` handling and the `last_practiced` path that reads `practice_questions_answered` from state_json).
+- **API surface shrink (`llm-backend/tutor/api/sessions.py` + matching DTOs in `shared/models/schemas.py`):** delete `/end-exam`, `/exam-review`, `/end-practice` routes + `EndExamResponse`, `ExamReviewResponse`, `ExamReviewQuestion`.
+- **DB cleanup** — one migration running in a single `with engine.begin():` transaction:
+  ```python
+  def _cleanup_exam_and_old_practice_data(engine):
+      with engine.begin() as conn:
+          conn.execute(text("DELETE FROM sessions WHERE mode IN ('exam', 'practice')"))
+          conn.execute(text("ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score"))
+          conn.execute(text("ALTER TABLE sessions DROP COLUMN IF EXISTS exam_total"))
+  ```
+  Add the call in `db.py` after existing `_apply_*_tables` helpers. Also drop the `exam_score` / `exam_total` columns from the `Session` ORM model in `shared/models/entities.py`.
+
+**Grep-gate CI test** must return 0 after the pass:
+```bash
+grep -rE '(ExamService|exam_prompts|practice_prompts|_process_practice_turn|_process_exam_turn|_build_practice_turn_prompt|practice_questions_answered|exam_questions|ExamQuestion|ExamFeedback|end-practice|end-exam|exam-review)' llm-backend/ | grep -v docs/ | wc -l
+```
 
 **What to read first:**
-- `report_card_service.py` — current flow reads exam stats from `sessions.state_json` via iteration. Understand where `grouped` is built so the merge hook lands in the right place.
-- `practice_attempts` schema in `shared/models/entities.py` (Step 1) — confirm `total_score` is a half-point float, `graded_at` is nullable, `status` enum includes `graded`.
-- `tests/unit/test_report_card_service.py` — existing coverage for exam aggregation; mirror the pattern for practice.
-- `ReportCardPage.tsx` — how existing exam scores render; copy-paste the JSX block and flip to practice fields.
+- Full orchestrator — `llm-backend/tutor/orchestration/orchestrator.py` — find every place `session.mode == 'exam'` or `== 'practice'` branches.
+- `llm-backend/tutor/services/session_service.py` — likely has 20+ branches on mode. Methodically delete `exam` and `practice` arms, keep `teach_me` + `clarify_doubts`.
+- `llm-backend/tutor/agents/master_tutor_agent.py` — check if mode-conditional prompt building exists.
+- `llm-backend/tutor/models/session_state.py` — remove exam/practice-mode state fields.
+- `llm-backend/tutor/services/report_card_service.py` — the `exam_finished` branch in `_group_sessions`, the `practice_questions_answered` branch in `_group_sessions` + `get_topic_progress`, and the `last_practiced` state reads all need to go.
+- `llm-backend/shared/models/schemas.py` — `CreateSessionRequest.mode` Literal currently allows `"exam"` + `"practice"`; narrow to `"teach_me" | "clarify_doubts"`.
 
 **Locked decisions (per plan):**
-- **Additive, not a rename.** Both exam stats and practice stats exist in the response until Step 13 drops the former.
-- Practice-attempt count and latest score come from `practice_attempts` — **never from `sessions.state_json`**. That table is frozen for practice-mode writes (Step 6 lifecycle writes here, not to sessions).
-- Half-point fractional display on the frontend. Backend stores half-point-rounded `total_score` already (Step 6); just `toFixed(1)` when the fractional part is nonzero, or drop the decimal cleanly.
-- Only `status == 'graded'` attempts count — `grading_failed` / `grading` / `in_progress` are excluded from stats.
+- **Single atomic deploy** — one PR, one migration, one transaction. Rollback = revert PR + manual column re-add if needed (no automatic rollback path).
+- **Delete, don't deprecate.** No shims, no deprecation warnings, no `@deprecated` comments. Remove the code.
+- **Don't worry about in-flight exam sessions** — local dev DB hasn't had exams for days, and prod has zero Let's-Practice-v2 users yet. Drop the sessions.
+- Report card response: drop `latest_exam_score` / `latest_exam_total` from `ReportCardTopic` schema. Frontend removal is Step 13.
 
 **Success criteria:**
-- `GET /report-card` (or whatever the endpoint is called) returns both legacy exam fields AND new practice fields per guideline.
-- ReportCardPage shows a Practice scores row per topic with a bank, displaying `latest_practice_score/latest_practice_total` + `practice_attempt_count` attempts.
-- Backend unit tests cover: (a) topic with only exam attempts, (b) topic with only practice attempts, (c) topic with both, (d) topic with a `grading_failed` attempt only (should not count).
-- `grep -rE 'latest_exam_score|latest_exam_total' llm-backend/ llm-frontend/src/` still returns matches (legacy fields preserved).
+- All Python unit tests pass (including the 42 report card tests and any new regression coverage you add).
+- The grep-gate returns 0.
+- Import-check clean: `venv/bin/python -c "from main import app"` runs without error.
+- Backend boots clean: `make run` up to `"Uvicorn running on..."` with no import-time errors.
+- Admin + non-admin flows still work locally (teach_me session create → step → end; clarify_doubts session create → step → end).
+- Migration ran once locally against the dev DB: `venv/bin/python db.py --migrate`.
+
+---
+
+## Superseded briefing — Step 11
+
+**Goal:** Scorecard additive — the report card starts surfacing practice-attempt stats side-by-side with the legacy exam stats. Additive only. Per plan §11.
+
+**What got built (2026-04-17):**
+- **`report_card_service.py`:** `_load_user_practice_attempts(user_id)` fetches `status='graded'` attempts ordered `guideline_id ASC, graded_at DESC` so `attempts[0]` per group is the latest. `_merge_practice_attempts_into_grouped(grouped, guideline_lookup, practice_attempts)` groups in Python (no SQL `array_agg`) and augments — or creates — topic rows in `grouped`. `_build_guideline_lookup` now accepts a second source (practice attempts) and carries `subject` so practice-only topics resolve their hierarchy. `get_report_card` no longer early-exits when sessions are empty but practice attempts exist. `_build_report` emits the three new fields.
+- **Schemas:** `ReportCardTopic` gained `latest_practice_score: Optional[float]`, `latest_practice_total: Optional[int]`, `practice_attempt_count: Optional[int]`. Legacy exam fields preserved (30 references across backend + frontend remain; Step 13 removes them).
+- **Test conftest:** pre-existing JSONB-on-SQLite compile error was silently ERRORing every `db_session` unit test across the suite (report card, session repo, etc.). Added `@compiles(JSONB, 'sqlite')` → `TEXT` in `tests/conftest.py`. Unblocked the report card suite (42 tests green) and surfaced 10 pre-existing assertion failures in `test_precomputed_explanations.py` — those are unrelated to this branch and are punted.
+- **Tests:** `TestReportCardPracticeAttempts` with 7 cases — exam-only, practice-only, both, `grading_failed` excluded, `in_progress` excluded, latest-wins with count, practice-only user with zero chat sessions.
+- **Frontend:** `ReportCardPage.tsx` renders a practice chip next to the exam chip, with `formatPracticeScore` (no `.0` on whole scores, one decimal on halves) and a pluralized attempt count suffix (`N attempts`). `api.ts` mirrors the three new fields as optional. `App.css` adds `.reportcard-attempt-count` (lighter weight for the suffix). `npm run build` clean.
+
+**Verification:** 42 report card tests green. Frontend build green. Live UI behavior not verified — queued in testing backlog below.
 
 ---
 
@@ -443,7 +487,7 @@ Copy-paste this into a new chat:
 ## Git checkpoint
 
 As of 2026-04-17:
-- Branch: `feat/lets-practice-v2` (local; not pushed)
+- Branch: `feat/lets-practice-v2` (PR #103 open on GitHub)
 - Commits on the branch (oldest → newest):
   - `fc4cdbd` — additive backend foundation (steps 1-3)
   - `7d4a37d` — ingestion API (step 4)
@@ -453,11 +497,13 @@ As of 2026-04-17:
   - `06c1423` — capture components (step 9a)
   - `48c745f` — runtime pages + chalkboard restyle (step 9b)
   - `633e1de` — AuthenticatedLayout + PracticeBanner (step 9c)
-  - (step 10 — ModeSelectPage refactor + Reteach CTA — committed after this update)
+  - `a6fcd25` — ModeSelectPage refactor + Reteach CTA (step 10)
+  - (step 11 — scorecard additive — committed after this update)
 - DB migration applied on local dev; claude_code/claude-opus-4-6 bank generation verified on one topic (30 questions, 12 formats).
 - Full student flow clickable end-to-end locally: ModeSelectPage (gated Practice tile) → landing → start → runner (Prev/Next + Review) → atomic submit → grading poll → graded results with fractional score + per-question rationales → Reteach → autostarted Teach Me session.
 - Step 9b visual consistency: new practice pages fully styled with chalkboard tokens (`--board-green`, `--parchment`, `--chalk-*`, `--font-hand`) so they match the app's aesthetic from PR #99. `/practice/*` added to `AppShell.isChalkboardRoute`.
 - Step 9c: banner + AuthenticatedLayout wired; `npm run build` passes 1077 modules. Behavioral checks (poll cadence, visibility pause, mid-chat appearance, retry flow, route restructure regressions) queued in §Testing backlog.
 - Step 10: Exam tile + past-exams toggle + old chat-practice resume card + `lastPracticed` UX all removed from ModeSelection; practice tile now fully driven by `getPracticeAvailability`. `?autostart=teach_me` autostart is a one-shot `useEffect` guarded by a ref that clears the query via replace-navigate before firing `handleModeSelect`. Topic-path state threads from ModeSelectPage → Landing → Runner → Results so the Reteach CTA can build the session URL — banner-sourced results hide the Reteach button since state is absent. Build clean at 1077 modules after the refactor (no module count drift — all changes in place).
+- Step 11: `report_card_service` now merges graded v2 practice attempts (from `practice_attempts`, NOT `sessions.state_json`) into the per-topic stats and emits three new optional fields; practice-only topics create their own row via the extended `_build_guideline_lookup`. Legacy exam fields preserved for Step 13 to drop. 42 backend report card tests green after adding a JSONB→TEXT sqlite compile hook in `tests/conftest.py` that unblocked every `db_session` test across the suite. Frontend renders a practice chip beside the legacy exam chip on `ReportCardPage`, using a `formatPracticeScore` helper that keeps whole scores clean (`8`) and half scores fractional (`7.5`). Behavioral browser QA queued in §Testing backlog.
 
-Next step: 11 (Scorecard additive — practice stats alongside legacy exam stats).
+Next step: 12 (destructive backend + DB cleanup — single atomic deploy per plan §2 / §12).

@@ -10,7 +10,12 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from shared.models.entities import Session as SessionModel, TeachingGuideline, User
+from shared.models.entities import (
+    PracticeAttempt,
+    Session as SessionModel,
+    TeachingGuideline,
+    User,
+)
 from tutor.services.report_card_service import ReportCardService
 
 
@@ -62,6 +67,40 @@ def _create_guideline(
     db.add(g)
     db.commit()
     return g
+
+
+def _create_practice_attempt(
+    db,
+    user_id=USER_ID,
+    guideline_id="g1",
+    total_score=7.5,
+    total_possible=10,
+    status="graded",
+    graded_at=None,
+    attempt_id=None,
+):
+    """Create a practice attempt for report-card merging tests."""
+    if attempt_id is None:
+        attempt_id = f"att-{uuid.uuid4().hex[:8]}"
+    if graded_at is None and status == "graded":
+        graded_at = datetime.utcnow()
+
+    attempt = PracticeAttempt(
+        id=attempt_id,
+        user_id=user_id,
+        guideline_id=guideline_id,
+        question_ids=[],
+        questions_snapshot_json=[],
+        answers_json={},
+        grading_json=None,
+        total_score=total_score if status == "graded" else None,
+        total_possible=total_possible,
+        status=status,
+        graded_at=graded_at,
+    )
+    db.add(attempt)
+    db.commit()
+    return attempt
 
 
 def _create_session(
@@ -434,6 +473,173 @@ class TestReportCardExamScore:
         topic = result["subjects"][0]["chapters"][0]["topics"][0]
         assert topic["latest_exam_score"] == 8
         assert topic["latest_exam_total"] == 10
+
+
+# ===========================================================================
+# Practice Attempts (Step 11 — additive)
+# ===========================================================================
+
+class TestReportCardPracticeAttempts:
+    """Test practice-attempt merging into the report card (additive alongside exam)."""
+
+    def test_exam_only_topic_has_no_practice_fields(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(
+            db_session,
+            mode="exam",
+            mastery_estimates={},
+            exam_finished=True,
+            exam_total_correct=7,
+            exam_questions=[{} for _ in range(10)],
+        )
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] == 7
+        assert topic["latest_exam_total"] == 10
+        assert topic["latest_practice_score"] is None
+        assert topic["latest_practice_total"] is None
+        assert topic["practice_attempt_count"] is None
+
+    def test_practice_only_topic_creates_row_with_practice_fields(self, db_session):
+        """A topic with only a graded practice attempt (no sessions) still appears."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            total_score=7.5,
+            total_possible=10,
+        )
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_practice_score"] == 7.5
+        assert topic["latest_practice_total"] == 10
+        assert topic["practice_attempt_count"] == 1
+        assert topic["latest_exam_score"] is None
+        assert topic["latest_exam_total"] is None
+
+    def test_topic_with_both_exam_and_practice_has_both(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(
+            db_session,
+            mode="exam",
+            mastery_estimates={},
+            exam_finished=True,
+            exam_total_correct=6,
+            exam_questions=[{} for _ in range(10)],
+        )
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            total_score=8.0,
+            total_possible=10,
+        )
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_exam_score"] == 6
+        assert topic["latest_exam_total"] == 10
+        assert topic["latest_practice_score"] == 8.0
+        assert topic["latest_practice_total"] == 10
+        assert topic["practice_attempt_count"] == 1
+
+    def test_grading_failed_attempt_excluded(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(db_session, mode="teach_me",
+                        mastery_estimates={"c1": 0.9},
+                        concepts_covered_set=["c1"])
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            status="grading_failed",
+            total_score=None,
+        )
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_practice_score"] is None
+        assert topic["practice_attempt_count"] is None
+
+    def test_in_progress_attempt_excluded(self, db_session):
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_session(db_session, mode="teach_me",
+                        mastery_estimates={"c1": 0.9},
+                        concepts_covered_set=["c1"])
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            status="in_progress",
+            total_score=None,
+            graded_at=None,
+        )
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_practice_score"] is None
+        assert topic["practice_attempt_count"] is None
+
+    def test_latest_graded_attempt_wins(self, db_session):
+        """When multiple graded attempts exist, latest graded_at wins — and the count is all of them."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        now = datetime.utcnow()
+
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            total_score=5.0,
+            graded_at=now - timedelta(days=2),
+        )
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            total_score=9.0,
+            graded_at=now,
+        )
+        _create_practice_attempt(
+            db_session,
+            guideline_id="g1",
+            total_score=7.5,
+            graded_at=now - timedelta(days=1),
+        )
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_practice_score"] == 9.0
+        assert topic["practice_attempt_count"] == 3
+
+    def test_practice_only_user_gets_empty_total_sessions(self, db_session):
+        """A user with only practice attempts (no chat sessions) still gets a subject row."""
+        _create_user(db_session)
+        _create_guideline(db_session)
+        _create_practice_attempt(db_session, guideline_id="g1", total_score=6.5)
+
+        service = ReportCardService(db_session)
+        result = service.get_report_card(USER_ID)
+
+        assert result["total_sessions"] == 0  # chat-session count unaffected
+        assert len(result["subjects"]) == 1
+        assert result["subjects"][0]["subject"] == "Mathematics"
+        topic = result["subjects"][0]["chapters"][0]["topics"][0]
+        assert topic["latest_practice_score"] == 6.5
 
 
 # ===========================================================================

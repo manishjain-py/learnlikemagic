@@ -2,7 +2,8 @@
 
 Returns only deterministic metrics:
 - Coverage completion % (teach_me sessions only)
-- Exam score (latest X/Y from exam sessions)
+- Exam score (latest X/Y from exam sessions; legacy — dropped in Step 13)
+- Practice score (latest fractional score + attempt count from practice_attempts)
 """
 
 import json
@@ -11,7 +12,11 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session as DBSession
 
-from shared.models.entities import Session as SessionModel, TeachingGuideline
+from shared.models.entities import (
+    PracticeAttempt,
+    Session as SessionModel,
+    TeachingGuideline,
+)
 
 logger = logging.getLogger("tutor.report_card_service")
 
@@ -34,11 +39,13 @@ class ReportCardService:
         - No aggregate scores, no strengths/weaknesses, no trends
         """
         sessions = self._load_user_sessions(user_id)
-        if not sessions:
+        practice_attempts = self._load_user_practice_attempts(user_id)
+        if not sessions and not practice_attempts:
             return self._empty_report_card()
 
-        guideline_lookup = self._build_guideline_lookup(sessions)
+        guideline_lookup = self._build_guideline_lookup(sessions, practice_attempts)
         grouped = self._group_sessions(sessions, guideline_lookup)
+        self._merge_practice_attempts_into_grouped(grouped, guideline_lookup, practice_attempts)
         subjects_data = self._build_report(grouped)
 
         total_sessions = len(sessions)
@@ -151,10 +158,37 @@ class ReportCardService:
             .all()
         )
 
-    def _build_guideline_lookup(self, sessions) -> dict:
+    def _load_user_practice_attempts(self, user_id: str) -> list:
+        """Load graded practice attempts for the user, ordered by guideline_id + graded_at DESC.
+
+        Filters to status='graded' with non-null graded_at + total_score so the
+        grouping in `_merge_practice_attempts_into_grouped` can take attempts[0]
+        as the latest graded attempt per guideline.
+        """
+        return (
+            self.db.query(
+                PracticeAttempt.guideline_id,
+                PracticeAttempt.total_score,
+                PracticeAttempt.total_possible,
+                PracticeAttempt.graded_at,
+            )
+            .filter(
+                PracticeAttempt.user_id == user_id,
+                PracticeAttempt.status == "graded",
+                PracticeAttempt.graded_at.isnot(None),
+                PracticeAttempt.total_score.isnot(None),
+            )
+            .order_by(
+                PracticeAttempt.guideline_id.asc(),
+                PracticeAttempt.graded_at.desc(),
+            )
+            .all()
+        )
+
+    def _build_guideline_lookup(self, sessions, practice_attempts=None) -> dict:
         """
         Build guideline_id → hierarchy info by collecting all topic_ids from sessions
-        and batch-querying teaching_guidelines.
+        and practice attempts, then batch-querying teaching_guidelines.
         """
         guideline_ids = set()
         for s in sessions:
@@ -171,12 +205,17 @@ class ReportCardService:
             if topic_id:
                 guideline_ids.add(topic_id)
 
+        for a in practice_attempts or []:
+            if a.guideline_id:
+                guideline_ids.add(a.guideline_id)
+
         if not guideline_ids:
             return {}
 
         guidelines = (
             self.db.query(
                 TeachingGuideline.id,
+                TeachingGuideline.subject,
                 TeachingGuideline.chapter,
                 TeachingGuideline.topic,
                 TeachingGuideline.chapter_title,
@@ -190,6 +229,7 @@ class ReportCardService:
 
         return {
             g.id: {
+                "subject": g.subject,
                 "chapter": g.chapter_title or g.chapter,
                 "topic": g.topic_title or g.topic,
                 "chapter_key": g.chapter_key or (g.chapter_title or g.chapter).lower().replace(" ", "-"),
@@ -309,6 +349,54 @@ class ReportCardService:
 
         return grouped
 
+    def _merge_practice_attempts_into_grouped(
+        self,
+        grouped,
+        guideline_lookup: dict,
+        practice_attempts: list,
+    ) -> None:
+        """Merge graded practice attempts (v2 practice_attempts table) into the
+        grouped structure. Latest-graded score + attempt count per guideline.
+
+        Additive — does NOT touch legacy exam fields (dropped in Step 13).
+        Creates a topic row if a guideline has practice data but no
+        teach_me/clarify/exam sessions yet. Attempts are expected to already be
+        sorted guideline_id ASC, graded_at DESC.
+        """
+        by_guideline: dict[str, list] = defaultdict(list)
+        for attempt in practice_attempts:
+            if attempt.guideline_id:
+                by_guideline[attempt.guideline_id].append(attempt)
+
+        for guideline_id, attempts in by_guideline.items():
+            if not attempts or guideline_id not in guideline_lookup:
+                continue
+            gl = guideline_lookup[guideline_id]
+            subject = gl.get("subject") or "Unknown"
+            chapter_name = gl["chapter"]
+            topic_name = gl["topic"]
+            chapter_key = gl["chapter_key"]
+            topic_key = gl["topic_key"]
+
+            latest = attempts[0]
+            chapter_entry = grouped[subject][chapter_key]
+            if not chapter_entry.get("chapter_name"):
+                chapter_entry["chapter_name"] = chapter_name
+            topic_entry = chapter_entry["topics"].get(topic_key, {
+                "topic_name": topic_name,
+                "guideline_id": guideline_id,
+                "concepts_covered": [],
+                "plan_concepts": [],
+                "last_studied": None,
+                "last_practiced": None,
+                "latest_exam_score": None,
+                "latest_exam_total": None,
+            })
+            topic_entry["latest_practice_score"] = latest.total_score
+            topic_entry["latest_practice_total"] = latest.total_possible
+            topic_entry["practice_attempt_count"] = len(attempts)
+            chapter_entry["topics"][topic_key] = topic_entry
+
     def _build_report(self, grouped) -> list:
         """Build flat report from grouped data. No aggregate scores."""
         subjects_data = []
@@ -330,6 +418,9 @@ class ReportCardService:
                         "coverage": coverage,
                         "latest_exam_score": topic_info.get("latest_exam_score"),
                         "latest_exam_total": topic_info.get("latest_exam_total"),
+                        "latest_practice_score": topic_info.get("latest_practice_score"),
+                        "latest_practice_total": topic_info.get("latest_practice_total"),
+                        "practice_attempt_count": topic_info.get("practice_attempt_count"),
                         "last_studied": topic_info.get("last_studied"),
                         "last_practiced": topic_info.get("last_practiced"),
                     })

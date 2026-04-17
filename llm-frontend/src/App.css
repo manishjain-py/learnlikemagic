@@ -1634,6 +1634,11 @@ body {
   border-radius: 10px;
 }
 
+.reportcard-attempt-count {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
 /* Subject detail header */
 .reportcard-subject-header {
   display: flex;

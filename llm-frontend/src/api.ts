@@ -391,6 +391,9 @@ export interface ReportCardTopic {
   coverage: number;
   latest_exam_score: number | null;
   latest_exam_total: number | null;
+  latest_practice_score?: number | null;
+  latest_practice_total?: number | null;
+  practice_attempt_count?: number | null;
   last_studied: string | null;
   last_practiced?: string | null;
 }

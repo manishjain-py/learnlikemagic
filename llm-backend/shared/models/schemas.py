@@ -89,11 +89,14 @@ class ReportCardTopic(BaseModel):
     topic: str
     topic_key: str
     guideline_id: Optional[str] = None
-    coverage: float                          # 0-100%, from teach_me + practice combined
-    latest_exam_score: Optional[int] = None  # X in X/Y
-    latest_exam_total: Optional[int] = None  # Y in X/Y
+    coverage: float                                 # 0-100%, from teach_me + practice combined
+    latest_exam_score: Optional[int] = None         # Legacy — removed in Step 13
+    latest_exam_total: Optional[int] = None         # Legacy — removed in Step 13
+    latest_practice_score: Optional[float] = None   # Half-point fractional X in X/Y
+    latest_practice_total: Optional[int] = None     # Y in X/Y (usually 10)
+    practice_attempt_count: Optional[int] = None    # # of graded attempts for this guideline
     last_studied: Optional[str] = None
-    last_practiced: Optional[str] = None     # Latest practice session date (3+ questions)
+    last_practiced: Optional[str] = None            # Latest legacy practice session date
 
 
 class ReportCardChapter(BaseModel):

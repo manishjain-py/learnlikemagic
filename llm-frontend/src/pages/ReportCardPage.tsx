@@ -16,6 +16,11 @@ import {
 } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 
+// Half-point scores render fractionally (7.5) but whole numbers stay clean (8 not 8.0).
+function formatPracticeScore(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
 // -- Sub-components --
 
 function SubjectCards({
@@ -74,6 +79,20 @@ function ChapterSection({
                 <span className="reportcard-coverage">
                   {(st.coverage ?? 0).toFixed(0)}% covered
                 </span>
+                {st.latest_practice_score != null && st.latest_practice_total != null && (
+                  <span
+                    className="reportcard-exam-score"
+                    title={`${st.practice_attempt_count ?? 1} practice attempt${(st.practice_attempt_count ?? 1) === 1 ? '' : 's'}`}
+                  >
+                    {formatPracticeScore(st.latest_practice_score)}/{st.latest_practice_total}
+                    {st.practice_attempt_count != null && st.practice_attempt_count > 0 && (
+                      <span className="reportcard-attempt-count">
+                        {' \u00B7 '}
+                        {st.practice_attempt_count} attempt{st.practice_attempt_count === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </span>
+                )}
                 {st.latest_exam_score != null && st.latest_exam_total != null && (
                   <span className="reportcard-exam-score">
                     {st.latest_exam_score}/{st.latest_exam_total}
