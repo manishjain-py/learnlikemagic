@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 10 of 16 steps complete (counting 9a + 9b). Full student-facing drill flow is now clickable end-to-end locally. Next is Step 9c — AuthenticatedLayout wrapper + PracticeBanner placement so graded-set surface works mid-Teach-Me.
+**Status:** 11 of 16 steps complete (counting 9a + 9b + 9c). Full student-facing drill flow is clickable end-to-end locally, chalkboard-themed, and a graded-set banner floats above AppShell + chat-session routes. Next is Step 10 — ModeSelectPage refactor (drop Exam tile, gate Let's Practice on bank availability, support `?autostart=teach_me`).
 
 ---
 
@@ -50,7 +50,7 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 | 8 | Practice runtime REST API | ✅ Done | `tutor/api/practice.py` (new), `main.py` (+1 import, +1 include_router) | 9 endpoints: POST /start, GET /availability/{gid}, GET /attempts/recent, GET /attempts/for-topic/{gid}, GET /attempts/{id}, PATCH /attempts/{id}/answer, POST /attempts/{id}/submit, POST /attempts/{id}/retry-grading, POST /attempts/{id}/mark-viewed. Route declaration order ensures `recent` and `for-topic` win over `{attempt_id}`. Exception→HTTP mapping via a `_call` helper: NotFound→404, Permission→403, Conflict→409, BankEmpty→409. All endpoints require `get_current_user` — no anonymous access (unlike sessions). Verified via FastAPI TestClient: 14/14 cases pass (start, idempotent resume, save, submit, 409-on-locked-attempt, 403-cross-user, grading transition, recent + mark-viewed flow, for-topic history, 404-unknown-id). |
 | 9a | Practice-capture component layer | ✅ Done | `llm-frontend/src/components/practice/capture/*.tsx` (11 new + shared `types.ts`), `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList,seededShuffle}.tsx` (5 new shared) | All 11 capture components are controlled (`{ questionJson, value, onChange, seed, disabled }`), no correctness styling, no TTS, no auto-submit. Seed-stable presentation via `mulberry32` + Fisher-Yates — original indices are preserved as values so backend grading works. Per-format answer shapes match the backend: number for pick-style, boolean for true/false, `Record<string,string>` for match_pairs, `number[]` for bucket sorts, `string[]` for sequence. Fix along the way: added `reveal_text` to `REDACT_TOP_LEVEL_KEYS` in practice_service — it was leaking the predict_then_reveal answer in the redacted payload. `npm run build` passes clean. |
 | 9b | Frontend runtime pages + chalkboard restyle | ✅ Done | `llm-frontend/src/pages/Practice{Landing,Runner,Results}Page.tsx` (3 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion}.tsx` (2 new), `llm-frontend/src/api.ts` (9 funcs + 5 interfaces), `App.tsx` (3 routes), `App.css` (+819 lines practice block), `AppShell.tsx` (+/practice in `isChalkboardRoute`), 4 shared primitives + 11 captures + `types.ts` migrated from inline styles to `.practice-*` class names | Runner: question-by-question navigation + internal "Review my picks" screen + atomic submit. Debounced PATCH (600ms) with AbortController canceling in-flight requests before submit. Results: fractional score, per-question expandable breakdown that re-uses `QuestionRenderer` in `disabled` mode to show the student's answer, plus rationale chip + correct-answer summary on wrong picks. Retry grading on `grading_failed`. Reteach CTA deferred to Step 10's ModeSelect refactor. Review + History pages folded into Landing + Results for v1. Banner (30s poll) deferred to Step 9c. **Chalkboard restyle:** on first browser walkthrough the inline cyan/teal styling clashed with the rest of the app's chalkboard aesthetic (PR #99). Refactored to use existing chalkboard tokens — `.selection-step` page surfaces, handwritten `--font-hand` question text, parchment CTAs + free-form textarea, gold/mint/coral chalk states for selection/correct/wrong. `/practice/*` added to `AppShell.isChalkboardRoute` so the theme scope covers the new routes. `npm run build` clean — 1075 modules; verified in Chrome on a graded attempt. |
-| 9c | AuthenticatedLayout + banner placement | ⏳ Next | `llm-frontend/src/App.tsx`, `llm-frontend/src/components/AuthenticatedLayout.tsx` (new) | AppShell currently wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`) are outside. New wrapper sits above both route groups (below ProtectedRoute/OnboardingGuard) so `PracticeBanner` fires mid-Teach-Me after a practice submit. Fixed-position top element, z-indexed above nav bars. |
+| 9c | AuthenticatedLayout + PracticeBanner | ✅ Done | `llm-frontend/src/components/AuthenticatedLayout.tsx` (new), `llm-frontend/src/components/practice/PracticeBanner.tsx` (new), `llm-frontend/src/App.tsx` (route restructure), `App.css` (+100 lines banner CSS) | New `AuthenticatedLayout` sits below ProtectedRoute/OnboardingGuard and above both the AppShell route group AND the chat-session route group — collapsed the 5 chat-session route wrappers into a single shared parent. `PracticeBanner` fetches `/practice/attempts/recent` immediately on mount, then polls every 30s. Pauses polling when `document.visibilityState !== 'visible'` and resumes on return. Each attempt renders as a fixed-top banner: green/mint for `graded` (tap → results), amber for `grading_failed` (inline Retry button posts `/retry-grading`). Filters out the attempt whose results page the student is currently on, to avoid the 30s overlap window. `npm run build` clean — 1077 modules. Behavioral verification deferred (see §Testing backlog). |
 | 10 | ModeSelection refactor | Pending | `llm-frontend/src/components/ModeSelection.tsx`, `llm-frontend/src/pages/ModeSelectPage.tsx` | Delete Exam tile + `completedExams` / `incompleteExam` / `incompletePractice` state. Let's Practice tile has NO badges. `practiceAvailable` from new `getPracticeAvailability(guideline_id)` API in the page-load `Promise.all`; disable tile when no bank. Handle `?autostart=teach_me` query param (from PracticeResultsPage's Reteach). On autostart, invoke existing Teach Me entry handler then clear query via `navigate(..., {replace: true})`. |
 | 11 | Scorecard additive | Pending | `tutor/services/report_card_service.py`, `shared/models/schemas.py`, `llm-frontend/src/pages/ReportCardPage.tsx`, `llm-frontend/src/api.ts` types | **Structural change, not a rename.** Current code reads exam stats from `state_json` via session iteration. New `_merge_practice_attempts_into_grouped(grouped, user_id)` issues SQL aggregate over `practice_attempts` (latest score via `array_agg ORDER BY graded_at DESC`, count, `MAX(graded_at)`). Response schema **additively** gets `latest_practice_score` (Optional[float]), `latest_practice_total` (Optional[int]), `practice_attempt_count` (Optional[int]). Legacy integer `latest_exam_score`/`latest_exam_total` kept until Step 13. Frontend: rename label "Exam scores" → "Practice scores", fractional render (e.g. "7.5/10"), pluralize attempts. |
 | 12 | Destructive cleanup (backend + DB) | Pending | Many — see plan §2 "Destructive" list | **SINGLE atomic deploy.** Delete `exam_service.py`, `exam_prompts.py`, `practice_prompts.py`, `tests/unit/test_exam_lifecycle.py`. Remove `session.mode == "exam"` and `"practice"` branches across orchestrator, session_service, master_tutor, session_state, report_card_service. Remove `/end-exam`, `/exam-review`, `/end-practice` endpoints + DTOs. Run `_cleanup_exam_and_old_practice_data()` inside single `with engine.begin():` transaction: `DELETE FROM sessions WHERE mode IN ('exam', 'practice')` + `ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score` + `exam_total`. **Grep-gate CI test** must return 0: ``grep -rE '(ExamService\|exam_prompts\|practice_prompts\|_process_practice_turn\|_process_exam_turn\|_build_practice_turn_prompt\|practice_questions_answered\|exam_questions\|ExamQuestion\|ExamFeedback\|end-practice\|end-exam\|exam-review)' llm-backend/ \| grep -v docs/ \| wc -l`` |
@@ -96,32 +96,57 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 
 ---
 
-## Next step briefing — Step 9c
+## Testing backlog — run before we call the flow "verified"
 
-**Goal:** PracticeBanner + AuthenticatedLayout wrapper so a graded set surfaces even when the student is mid-Teach-Me (FR-35) or mid-Clarify (FR-40).
+Happy-path static checks (TS build, single screenshot of graded results page) are done for steps 9a/9b/9c. The dynamic behaviors below are still unverified in a real browser session — cover them when picking this up next.
 
-**Problem today:**
-`AppShell` wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`, `exam/:sessionId`, `practice/:sessionId`) are outside `AppShell` because they have their own nav bar. So if we put the banner in `AppShell`, it never fires during a chat session — exactly when the student is waiting on practice results.
+**Step 9b (runner + results — all 12 formats):**
+- [ ] Full 10-question set answering every format at least once (pick_one, true_false, fill_blank, tap_to_eliminate, predict_then_reveal, spot_the_error, odd_one_out, match_pairs, sort_buckets, swipe_classify, sequence, free_form) — confirm selection styling (gold chalk) and value round-tripping.
+- [ ] Refresh mid-set — seed-stable option order, answers preserved from the server (`a.answers`).
+- [ ] Skip some questions, go to Review, edit one, submit — answered/skipped counts correct, skipped count ≤ 10.
+- [ ] Submit with 0 answers — server still accepts? (bank empty edge case already exercised by unit tests but not UI.)
+- [ ] Mobile viewport (≤600px): MatchPairs columns stack, Bucket rows wrap, question text scales down.
 
-**Solution per plan §5.4.3:**
-A new `AuthenticatedLayout` wrapper that sits ABOVE both `AppShell` routes AND chat-session routes (below `ProtectedRoute/OnboardingGuard`). `PracticeBanner` is mounted in this wrapper as a fixed-position top element, z-indexed above the chat nav bar.
+**Step 9c (banner + layout):**
+- [ ] Submit set → go to `/learn` → green banner appears within ~30s with `X/Y` score.
+- [ ] Tap banner → navigates to results; banner clears on next poll after `mark-viewed`.
+- [ ] Currently-viewing-results filter: while on a results page, no banner appears for that attempt even if it's in the recent list.
+- [ ] Start a Teach Me session, then submit a practice set from another tab — banner appears over the chat nav bar without breaking nav layout.
+- [ ] Tab backgrounded 2 min → no network requests; return → immediate refetch + 30s cadence resumes.
+- [ ] `grading_failed` banner: force failure (e.g. invalid API key), verify amber banner with inline Retry button; click Retry → `/retry-grading` fires.
+- [ ] Chat-session routes (teach, clarify, legacy exam/practice/session) still load after route restructure.
+
+**Longer-running integrity:**
+- [ ] Two-browser race: submit same topic from two tabs before first finishes — `SELECT FOR UPDATE` on submit + 409 on stale PATCH.
+- [ ] Bank regen mid-attempt: snapshot isolation holds (results render from snapshot, not live bank).
+
+---
+
+## Next step briefing — Step 10
+
+**Goal:** ModeSelectPage refactor to (a) delete Exam tile (feature being replaced), (b) make the Let's Practice tile disabled when no bank exists, (c) handle `?autostart=teach_me` query param from PracticeResultsPage's Reteach CTA. Per plan §10.
 
 **Files to touch:**
-- `llm-frontend/src/components/AuthenticatedLayout.tsx` (new)
-- `llm-frontend/src/components/practice/PracticeBanner.tsx` (new)
-- `llm-frontend/src/App.tsx` — restructure `<Route>` tree so `AuthenticatedLayout` wraps both the AppShell-route group AND the chat-session-route group.
+- `llm-frontend/src/components/ModeSelection.tsx` — main tile UI + sessions/progress fetch.
+- `llm-frontend/src/pages/ModeSelectPage.tsx` — wrapper that fetches guideline info + hands to ModeSelection.
 
-**PracticeBanner behavior (FR-35, FR-40):**
-- Polls `GET /practice/attempts/recent` every 30s.
-- Pauses when `document.visibilityState !== 'visible'` (saves battery on backgrounded tabs).
-- For each `graded` attempt not yet viewed: show a green banner ("Your practice set is ready — tap to see how you did") that navigates to `/practice/attempts/{id}/results`.
-- For each `grading_failed` attempt not yet viewed: show a yellow banner with a "Retry" button that calls `POST /practice/attempts/{id}/retry-grading` inline.
-- Results page already calls `mark-viewed` on graded/failed — same trigger clears the banner. Clicking the banner itself doesn't need to call mark-viewed explicitly; navigating to results covers it.
+**What to read first:**
+- Current `ModeSelection.tsx` — `sessions` state, `incompleteExam`, `incompletePractice`, `completedExams` local derivations. See the `setShowPastExams` toggle + past-exams rendering.
+- `ModeSelectPage.tsx` — URL param parsing + `createSession` flow. Note `SessionConflictError` 409 handling and how it routes to existing session.
+- `api.ts::getPracticeAvailability` (already built in Step 8). Returns `{ available, question_count }`.
+- `PracticeResultsPage` Reteach CTA — currently not wired. Plan §10 says: route to `/learn/.../topic?autostart=teach_me`. Need to add this in Results page.
+
+**Locked decisions (per plan):**
+- No badges on the Let's Practice tile — availability alone enables/disables it; past attempts live in Landing page, not inline.
+- Exam tile: delete entirely from UI. The server code + DB columns stay until Step 12.
+- Past-exams toggle: delete from UI (same logic — replaced by practice history at /practice/:guidelineId).
+- On autostart=teach_me query: invoke the existing Teach Me entry handler then `navigate(..., { replace: true })` to clear the query so a browser-back isn't broken.
 
 **Success criteria:**
-- Submit a practice set. Navigate away (e.g. into Teach Me on another topic). Within ~30s the banner appears at the top of the screen with the score.
-- Clicking the banner routes to results; the banner disappears after mark-viewed fires.
-- Tab backgrounded → poll pauses. Foregrounded → poll resumes.
+- Topic with no practice bank: Let's Practice tile rendered disabled with a "no bank yet" sub-label.
+- Topic with a bank: tile active; clicking navigates to `/practice/:guidelineId`.
+- Post-graded-set Reteach CTA → ModeSelectPage URL with `?autostart=teach_me` → session auto-creates and navigates.
+- No Exam tile anywhere.
 
 ---
 
@@ -392,9 +417,11 @@ As of 2026-04-17:
   - `11ad29f` — lifecycle service (step 7)
   - `dc17d4f` — runtime REST API (step 8)
   - `06c1423` — capture components (step 9a)
-  - (step 9b — runtime pages + chalkboard restyle — committed after this update)
+  - `48c745f` — runtime pages + chalkboard restyle (step 9b)
+  - (step 9c — AuthenticatedLayout + PracticeBanner — committed after this update)
 - DB migration applied on local dev; claude_code/claude-opus-4-6 bank generation verified on one topic (30 questions, 12 formats).
 - Full student flow clickable end-to-end locally: landing → start → runner (Prev/Next + Review) → atomic submit → grading poll → graded results with fractional score + per-question rationales.
 - Step 9b visual consistency: new practice pages fully styled with chalkboard tokens (`--board-green`, `--parchment`, `--chalk-*`, `--font-hand`) so they match the app's aesthetic from PR #99. `/practice/*` added to `AppShell.isChalkboardRoute`.
+- Step 9c: banner + AuthenticatedLayout wired; `npm run build` passes 1077 modules. Behavioral checks (poll cadence, visibility pause, mid-chat appearance, retry flow, route restructure regressions) queued in §Testing backlog.
 
-Next step: 9c (AuthenticatedLayout + PracticeBanner placement).
+Next step: 10 (ModeSelectPage refactor).

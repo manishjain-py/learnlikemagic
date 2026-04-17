@@ -8239,3 +8239,106 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   .chalkboard-active .practice-pair-row { flex-direction: column; }
   .chalkboard-active .practice-bucket-row { flex-wrap: wrap; }
 }
+
+
+/* ==========================================================================
+   PRACTICE v2 — floating banner for graded/failed sets (AuthenticatedLayout)
+   Not scoped under .chalkboard-active — the banner sits outside the
+   chalkboard surface so it floats above whichever route the student is on.
+   ========================================================================== */
+
+.practice-banner-wrap {
+  position: fixed;
+  top: 8px;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+.practice-banner {
+  pointer-events: auto;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 10px 14px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow:
+    0 12px 28px rgba(20, 14, 6, 0.35),
+    0 2px 4px rgba(20, 14, 6, 0.2);
+  animation: practice-banner-slide-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes practice-banner-slide-in {
+  from { transform: translateY(-20px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.practice-banner--graded {
+  background: linear-gradient(135deg, #D1FAE5 0%, #8EDACE 100%);
+  color: #065F46;
+  border: 1.5px solid #6FC7B7;
+}
+.practice-banner--failed {
+  background: linear-gradient(135deg, #FEF3C7 0%, #F4C76C 100%);
+  color: #92400E;
+  border: 1.5px solid #E3B04C;
+}
+
+.practice-banner-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.practice-banner-text {
+  flex: 1;
+  line-height: 1.35;
+}
+.practice-banner-text strong {
+  font-weight: 800;
+}
+
+.practice-banner-arrow {
+  font-size: 1.1rem;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.practice-banner-retry {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  background: rgba(255, 255, 255, 0.5);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.practice-banner-retry:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+}
+.practice-banner-retry:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
