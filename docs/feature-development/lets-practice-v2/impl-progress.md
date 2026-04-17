@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Branch:** `feat/lets-practice-v2` (off `main`)
-**Status:** 7 of 16 steps complete. Backend-complete for the practice path (ingestion → bank → attempt → grading) and admin UI is up. Next is the student-facing REST API (Step 8).
+**Status:** 8 of 16 steps complete. Backend is fully wired (ingestion → bank → attempt → grading → REST). Next is the frontend runtime — capture components (Step 9a) and runtime pages (Step 9b).
 
 ---
 
@@ -47,8 +47,8 @@ Both blocking questions from plan §12 are resolved. Downstream work should appl
 | 5 | Admin UI bank viewer | ✅ Done | `llm-frontend/src/features/admin/pages/PracticeBankAdmin.tsx` (new), `BookV2Detail.tsx` (extend), `adminApiV2.ts` (+4 funcs), `App.tsx` (+1 route) | BookV2Detail mirrors the Check-ins integration (state, polling, handler, step badge, manage-link + rounds select + running chip + result banner). PracticeBankAdmin is read-only: per-topic list with question counts + Generate/Regenerate/View; View modal shows all questions with expand-on-click (Question / Correct / Why / Rubric / Raw JSON). Browser-tested on test_mathematics_2_2026 / Introducing Thousands — all 30 questions render cleanly. Known polish-later: for `true_false` / `match_pairs` the collapsed row shows generic `question_text` instead of the format-specific content. |
 | 6 | Grading service | ✅ Done | `tutor/services/practice_grading_service.py` (new), `tutor/prompts/practice_grading.py` (new) | `grade_attempt(attempt_id)` idempotent entry-point: bails if status != 'grading'. Three phases: (1) deterministic pass classifies structured vs free-form, enqueues LLM tasks for wrong/blank structured + all free-form; (2) `ThreadPoolExecutor(max_workers=10)` runs per-task LLM calls in parallel; (3) assemble `grading_json` + half-point-rounded `total_score` via `save_grading`. Unhandled errors → `mark_grading_failed`. Structured correctness handled for all 11 non-FF formats (pick_one/fill_blank/tap_to_eliminate/predict_then_reveal use `correct_index`; true_false uses `correct_answer_bool`; match_pairs compares dict; sort_buckets/swipe_classify compare list[int]; sequence compares list[str]; spot_the_error + odd_one_out use their own index fields). LLMService construction + `initial_retry_delay=10` passed-in at worker-spawn time (Step 7). Pydantic strict schemas: `FreeFormGradingOutput` (score float 0-1 + rationale) and `PickRationaleOutput` (rationale). 18/18 deterministic cases smoke-tested. `visual_explanation_code` slot pre-wired in `grading_json[q_idx]` as null for FR-43. |
 | 7 | Practice lifecycle service | ✅ Done | `tutor/services/practice_service.py` (new), `tutor/models/practice.py` (new DTOs) | Public API: `start_or_resume`, `save_answer`, `submit`, `retry_grading`, `get_attempt`, `list_attempts`, `mark_viewed`, `list_recent_unread`. Custom exceptions (NotFound/Permission/Conflict/BankEmpty) map 1:1 to 404/403/409/409. `_select_set` delivers exactly 3E/5M/2H with fallback backfill; `_enforce_no_consecutive_same_format` greedy-reorders to eliminate dupes. `_snapshot_question` injects `_id/_format/_difficulty/_concept_tag/_presentation_seed` (random int). Submit is atomic (`SELECT FOR UPDATE` → merge → flip → commit) then spawns daemon thread with fresh DB session + `practice_grader` LLM config + `initial_retry_delay=10`. Redaction strips 7 correctness keys + flattens match_pairs into `pair_lefts/pair_rights` + strips `correct_bucket` from sort_buckets/swipe_classify. Full lifecycle smoke test passed end-to-end: start → save_answer → submit → 6s grading → AttemptResults with 3.0/10 half-point score + kid-friendly rationales. |
-| 8 | Practice runtime REST API | ⏳ Next | `tutor/api/practice.py` (new), `main.py` (register router) | Endpoints per plan §4.1 table. `/practice/attempts/recent` polls every 30s from frontend banner. `POST /submit` body carries `final_answers_json` (kills the debounce race). Every endpoint does `attempt.user_id == current_user.id` ownership check mirroring `_check_session_ownership`. Register at `/practice` prefix. |
-| 9a | Practice-capture component layer | Pending | `llm-frontend/src/components/practice/capture/*.tsx` (11 new), `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList}.tsx` (new shared primitives) | **Key refactor — not a trivial reuse.** Existing `*Activity.tsx` are correctness-driven, uncontrolled, side-effectful (auto-submit on correct, TTS, non-deterministic shuffle, multi-step internal state). New layer is pure controlled: `{ value, onChange, seed }` props. Deterministic shuffle via seed. No TTS. No correctness styling. Do NOT fork existing check-in components with a `mode` prop — build parallel components per plan §5.4.1 counter-option rejection. |
+| 8 | Practice runtime REST API | ✅ Done | `tutor/api/practice.py` (new), `main.py` (+1 import, +1 include_router) | 9 endpoints: POST /start, GET /availability/{gid}, GET /attempts/recent, GET /attempts/for-topic/{gid}, GET /attempts/{id}, PATCH /attempts/{id}/answer, POST /attempts/{id}/submit, POST /attempts/{id}/retry-grading, POST /attempts/{id}/mark-viewed. Route declaration order ensures `recent` and `for-topic` win over `{attempt_id}`. Exception→HTTP mapping via a `_call` helper: NotFound→404, Permission→403, Conflict→409, BankEmpty→409. All endpoints require `get_current_user` — no anonymous access (unlike sessions). Verified via FastAPI TestClient: 14/14 cases pass (start, idempotent resume, save, submit, 409-on-locked-attempt, 403-cross-user, grading transition, recent + mark-viewed flow, for-topic history, 404-unknown-id). |
+| 9a | Practice-capture component layer | ⏳ Next | `llm-frontend/src/components/practice/capture/*.tsx` (11 new), `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList}.tsx` (new shared primitives) | **Key refactor — not a trivial reuse.** Existing `*Activity.tsx` are correctness-driven, uncontrolled, side-effectful (auto-submit on correct, TTS, non-deterministic shuffle, multi-step internal state). New layer is pure controlled: `{ value, onChange, seed }` props. Deterministic shuffle via seed. No TTS. No correctness styling. Do NOT fork existing check-in components with a `mode` prop — build parallel components per plan §5.4.1 counter-option rejection. |
 | 9b | Frontend runtime pages | Pending | `llm-frontend/src/pages/Practice{Landing,Runner,Results,Review,History}Page.tsx` (5 new), `llm-frontend/src/components/practice/{QuestionRenderer,FreeFormQuestion,PracticeBanner}.tsx` (3 new), `llm-frontend/src/api.ts` (new funcs) | Runner: question-by-question + review screen + atomic submit (AbortController cancels in-flight debounced PATCH before calling submit). Results: fractional score (half-point rounded), Reteach / Practice-again / Review-my-picks. Banner: 30s poll of `/practice/attempts/recent`, pauses when `document.visibilityState != 'visible'`. Success banner → PracticeResultsPage. Failure banner → `POST /retry-grading`. |
 | 9c | AuthenticatedLayout + banner placement | Pending | `llm-frontend/src/App.tsx`, `llm-frontend/src/components/AuthenticatedLayout.tsx` (new) | AppShell currently wraps only non-chat routes. Chat-session routes (`teach/:sessionId`, `clarify/:sessionId`) are outside. New wrapper sits above both route groups (below ProtectedRoute/OnboardingGuard) so `PracticeBanner` fires mid-Teach-Me after a practice submit. Fixed-position top element, z-indexed above nav bars. |
 | 10 | ModeSelection refactor | Pending | `llm-frontend/src/components/ModeSelection.tsx`, `llm-frontend/src/pages/ModeSelectPage.tsx` | Delete Exam tile + `completedExams` / `incompleteExam` / `incompletePractice` state. Let's Practice tile has NO badges. `practiceAvailable` from new `getPracticeAvailability(guideline_id)` API in the page-load `Promise.all`; disable tile when no bank. Handle `?autostart=teach_me` query param (from PracticeResultsPage's Reteach). On autostart, invoke existing Teach Me entry handler then clear query via `navigate(..., {replace: true})`. |
@@ -96,7 +96,50 @@ Already in the code or prompts — don't re-debate these without an explicit rea
 
 ---
 
-## Next step briefing — Step 8
+## Next step briefing — Step 9a
+
+**Goal:** Practice-capture components. A NEW parallel React component layer — not a fork of check-in's existing `*Activity.tsx` — that captures student input per question format. Controlled components: `{ value, onChange, seed }`.
+
+**Key constraint — why this isn't reuse:**
+Existing `*Activity.tsx` components are correctness-driven, uncontrolled, side-effectful (auto-submit on correct, TTS, non-deterministic shuffle, internal multi-step state). Practice capture must be pure + controlled so the batch-drill flow can buffer answers, navigate between questions, and round-trip state via PATCH /answer. Per plan §5.4.1 the "add a `mode` prop to existing" option was rejected because it would leak runtime correctness logic into the batch path.
+
+**Files to create:**
+- `llm-frontend/src/components/practice/capture/{PickOne,TrueFalse,FillBlank,MatchPairs,SortBuckets,Sequence,SpotTheError,OddOneOut,PredictThenReveal,SwipeClassify,TapToEliminate}Capture.tsx` (11 new)
+- `llm-frontend/src/components/shared/{OptionButton,PairColumn,BucketZone,SequenceList}.tsx` (shared primitives — reuse between capture variants)
+- Note: `FreeForm` capture lives in Step 9b (`FreeFormQuestion.tsx` — textarea w/ no correctness styling)
+
+**What to read first:**
+- Existing `llm-frontend/src/components/*Activity.tsx` files — understand the correctness-driven behavior you're explicitly NOT copying.
+- `llm-frontend/src/components/practice/**` — may already have stubs or be empty.
+
+**Controlled-component contract:**
+```ts
+interface CaptureProps<T> {
+  questionJson: Record<string, unknown>;  // redacted payload (no correctness)
+  value: T | null;                        // current student answer from parent state
+  onChange: (value: T) => void;           // called on every input change
+  seed: number;                           // for deterministic shuffle
+  disabled?: boolean;                     // freeze during review / after submit
+}
+```
+
+**Per-format answer shape (must match backend grading):**
+- `pick_one` / `fill_blank` / `tap_to_eliminate` / `predict_then_reveal` / `spot_the_error` / `odd_one_out`: `number` (index)
+- `true_false`: `boolean`
+- `match_pairs`: `{ [leftText: string]: string }` (map left → right)
+- `sort_buckets` / `swipe_classify`: `number[]` (bucket_idx per item, in the order served)
+- `sequence`: `string[]` (the reordered sequence_items)
+
+**Shuffle-by-seed:** Use a simple deterministic seeded shuffle (e.g., mulberry32 → Fisher-Yates) so options order is stable on refresh. Don't touch `questionJson.options` order — the backend grading compares against the original snapshot.
+
+**Success criteria:**
+- 11 new components compile under strict TS.
+- Each one captures input via `onChange` without any correctness styling (no red/green until review).
+- Storybook/PoC smoke: render each component with a sample redacted `questionJson`, verify input is captured.
+
+---
+
+## Superseded briefing — Step 8
 
 **Goal:** Practice runtime REST API — thin HTTP wrapper around `PracticeService` that serves the student app. REST only (no WebSocket). Every endpoint ownership-checks `attempt.user_id == current_user.id`.
 
