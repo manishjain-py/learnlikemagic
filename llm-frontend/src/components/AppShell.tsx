@@ -18,7 +18,8 @@ export default function AppShell() {
     location.pathname.startsWith('/history') ||
     location.pathname.startsWith('/report-card') ||
     location.pathname.startsWith('/profile') ||
-    location.pathname.startsWith('/report-issue');
+    location.pathname.startsWith('/report-issue') ||
+    location.pathname.startsWith('/practice');
 
   // Close menu on outside click
   useEffect(() => {

@@ -21,13 +21,13 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | Feature | What It Does |
 |---------|-------------|
 | **Learning Sessions** | Interactive tutoring conversations on any topic in the curriculum |
-| **Learning Modes** | Three ways to learn: Teach Me, Clarify Doubts, and Exam |
+| **Learning Modes** | Three ways to learn: Teach Me (structured lesson), Clarify Doubts (Q&A), and Let's Practice (batch drill) |
 | **Voice Input** | Students can speak their answers instead of typing |
 | **Voice Output** | The tutor can read responses aloud (text-to-speech) in English, Hindi, or Hinglish |
-| **Exam Review** | After finishing an exam, students see a detailed breakdown of each question with correct answers and explanations |
+| **Practice Results** | After a practice set, students see fractional scores and per-question rationale explaining why each pick was right or wrong |
 | **Session Pause & Resume** | Pause a teaching session and pick up where you left off later |
 | **Session History** | View past learning sessions with mastery scores and learning stats |
-| **Report Card** | Progress report showing coverage percentage and exam scores per subject, chapter, and topic |
+| **Report Card** | Progress report showing coverage percentage and latest practice scores per subject, chapter, and topic |
 | **Enrichment Profile** | Parents describe their child's interests, learning style, strengths, challenges, and preferences to personalize tutoring |
 | **Profile** | View and edit personal details like name, grade, board, and school |
 | **Book & Guidelines** | Admin tool to upload textbooks, extract table of contents, process chapters, and sync topics to the curriculum |
@@ -35,7 +35,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
 | **Feature Flags** | Admin tool to toggle runtime features on or off (e.g., visuals in tutor flow). Changes take effect immediately for new sessions |
 | **Pre-Computed Explanations** | During book ingestion, the system pre-generates multiple explanation variants for each topic (e.g., everyday analogies, visual/hands-on, story-based). During a Teach Me session, the tutor can present these as step-by-step explanation cards. If the student wants a different approach, they can request an alternative variant |
-| **Interactive Questions** | During exams and teaching, the tutor presents questions in rich interactive formats — fill-in-the-blank, multiple choice, true/false, matching, sort-into-buckets, and sequencing — instead of plain text. Students tap or type answers directly in the structured format |
+| **Interactive Questions** | During teaching and practice drills, questions are rendered in rich interactive formats — fill-in-the-blank, multiple choice, true/false, matching, sort-into-buckets, and sequencing — instead of plain text. Students tap or type answers directly in the structured format |
 | **Check-In Activities** | Mid-explanation comprehension checks rendered as quick interactive activities (match-the-pairs, pick-one, true/false, fill-in-blank, sort-into-buckets, sequence) to verify understanding before moving on |
 | **Get Ready Refresher** | A prerequisite "warm-up" topic appears at the top of each chapter. It revisits foundational knowledge needed before diving into the chapter's main topics |
 | **Report Issue** | Students can report problems via text, voice recording, or screenshot attachments. Reports are tracked by status (open, in progress, closed) |
@@ -60,9 +60,9 @@ After choosing a subtopic, students pick how they want to learn:
 |------|-------------|
 | **Teach Me** | The tutor teaches the topic step-by-step from scratch. Tracks progress and coverage. Can be paused and resumed later. |
 | **Clarify Doubts** | The student asks their own questions about the topic. The tutor answers and tracks which concepts were discussed. |
-| **Exam** | The tutor quizzes the student with questions and tracks correct answers. Can be ended early to see results. After finishing, shows a detailed exam review. |
+| **Let's Practice** | A 10-question batch drill with no hints or tutor-in-the-loop. Students submit once and see per-question results with a rationale. Available on topics that have a question bank ready. See `docs/functional/practice-mode.md`. |
 
-If a student previously paused a Teach Me session on the same subtopic, a **Resume** option appears showing how much was already covered.
+If a student previously paused a Teach Me session on the same subtopic, a **Resume** option appears showing how much was already covered. Let's Practice sessions auto-save progress mid-drill and can be resumed from the practice landing screen.
 
 ---
 
@@ -75,10 +75,10 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 3. **Pick a subject** — Choose a subject from the curriculum
 4. **Pick a chapter** — Choose a chapter within that subject
 5. **Pick a topic** — Choose a specific topic to study
-6. **Choose a mode** — Teach Me, Clarify Doubts, or Exam (or resume a paused session)
+6. **Choose a mode** — Teach Me, Clarify Doubts, or Let's Practice (or resume a paused session)
 7. **Learn** — Interact with the tutor through text or voice; listen to responses read aloud; pause to come back later or end early to see results
-8. **Review exam results** — After an exam, see a question-by-question breakdown with answers and explanations
-9. **Check report card** — View coverage and exam scores across subjects, chapters, and topics
+8. **Review practice results** — After a practice set, see a question-by-question breakdown with your answer, the correct answer, and a rationale for wrong picks
+9. **Check report card** — View coverage and latest practice scores across subjects, chapters, and topics
 10. **View session history** — Browse past sessions with mastery scores and learning stats
 11. **Manage profile** — Update your name, grade, board, school, and other details
 12. **Report an issue** — Describe a problem via text, voice, or screenshots; the team tracks it

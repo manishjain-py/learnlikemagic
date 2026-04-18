@@ -241,10 +241,10 @@ Global auth state provider. Exposes:
 
 | Route | `ProtectedRoute` | `OnboardingGuard` | Notes |
 |-------|:-:|:-:|-------|
-| `/learn` (+ nested child routes) | Yes | Yes | Wrapped in `AppShell`. Child routes: `/learn` (SubjectSelect), `/learn/:subject` (ChapterSelect), `/learn/:subject/:chapter` (TopicSelect), `/learn/:subject/:chapter/:topic` (ModeSelectPage), `/learn/:subject/:chapter/:topic/exam-review/:sessionId` (ExamReviewPage) |
+| `/learn` (+ nested child routes) | Yes | Yes | Wrapped in `AppShell`. Child routes: `/learn` (SubjectSelect), `/learn/:subject` (ChapterSelect), `/learn/:subject/:chapter` (TopicSelect), `/learn/:subject/:chapter/:topic` (ModeSelectPage) |
 | `/learn/:subject/:chapter/:topic/teach/:sessionId` | Yes | Yes | Chat sessions — outside AppShell (own nav-bar) |
-| `/learn/:subject/:chapter/:topic/exam/:sessionId` | Yes | Yes | Chat sessions — outside AppShell |
 | `/learn/:subject/:chapter/:topic/clarify/:sessionId` | Yes | Yes | Chat sessions — outside AppShell |
+| `/practice/:guidelineId` (+ `/practice/attempts/:id/{run,results}`) | Yes | Yes | Practice v2 batch-drill routes — inside AppShell via AuthenticatedLayout |
 | `/session/:sessionId` | Yes | Yes | Backward-compatible old session URL |
 | `/profile` | Yes | Yes | Inside AppShell — requires completed onboarding |
 | `/profile/enrichment` | Yes | Yes | Inside AppShell — enrichment profile form |

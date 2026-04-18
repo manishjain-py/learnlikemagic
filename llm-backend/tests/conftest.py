@@ -1,6 +1,8 @@
 """Pytest configuration and shared fixtures."""
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
@@ -8,6 +10,14 @@ from shared.models.entities import Base
 # Import all models to ensure they are registered with Base.metadata
 from shared.models.entities import *
 from main import app
+
+
+# Compile Postgres JSONB columns as TEXT on SQLite so the in-memory test DB
+# can create all tables. JSONB values in ORM models are still serialized via
+# the dialect's Python-side processors.
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_as_text_on_sqlite(element, compiler, **kw):  # noqa: ARG001
+    return "TEXT"
 
 
 @pytest.fixture(scope="function")

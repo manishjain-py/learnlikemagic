@@ -2,7 +2,7 @@
 
 Returns only deterministic metrics:
 - Coverage completion % (teach_me sessions only)
-- Exam score (latest X/Y from exam sessions)
+- Practice score (latest fractional score + attempt count from practice_attempts)
 """
 
 import json
@@ -11,7 +11,11 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session as DBSession
 
-from shared.models.entities import Session as SessionModel, TeachingGuideline
+from shared.models.entities import (
+    PracticeAttempt,
+    Session as SessionModel,
+    TeachingGuideline,
+)
 
 logger = logging.getLogger("tutor.report_card_service")
 
@@ -30,15 +34,17 @@ class ReportCardService:
 
         Returns only deterministic data:
         - total_sessions, total_chapters_studied
-        - Per topic: coverage % (teach_me only) + latest exam score
+        - Per topic: coverage % (teach_me only) + practice attempt stats
         - No aggregate scores, no strengths/weaknesses, no trends
         """
         sessions = self._load_user_sessions(user_id)
-        if not sessions:
+        practice_attempts = self._load_user_practice_attempts(user_id)
+        if not sessions and not practice_attempts:
             return self._empty_report_card()
 
-        guideline_lookup = self._build_guideline_lookup(sessions)
+        guideline_lookup = self._build_guideline_lookup(sessions, practice_attempts)
         grouped = self._group_sessions(sessions, guideline_lookup)
+        self._merge_practice_attempts_into_grouped(grouped, guideline_lookup, practice_attempts)
         subjects_data = self._build_report(grouped)
 
         total_sessions = len(sessions)
@@ -52,13 +58,12 @@ class ReportCardService:
 
     def get_topic_progress(self, user_id: str) -> dict:
         """
-        Returns {guideline_id: {coverage, session_count, status, last_practiced}}
+        Returns {guideline_id: {coverage, session_count, status}}
         for the curriculum picker coverage indicators.
 
-        Coverage numerator = concepts covered across teach_me + practice sessions.
+        Coverage numerator = concepts covered across teach_me sessions.
         Coverage denominator = canonical concept list from most recent teach_me
-        session's plan (never from a practice plan, to prevent denominator shrinkage).
-        Practice sessions contribute only if they have >=3 questions answered (FR-30).
+        session's plan.
         """
         sessions = self._load_user_sessions(user_id)
         progress: dict[str, dict] = {}
@@ -78,45 +83,26 @@ class ReportCardService:
                 continue
 
             mode = state.get("mode", "teach_me")
-            if mode not in ("teach_me", "practice"):
+            if mode != "teach_me":
                 continue
-
-            # Practice 3-question gate
-            if mode == "practice" and state.get("practice_questions_answered", 0) < 3:
-                continue
-
-            session_date = session_row.created_at.isoformat() if session_row.created_at else None
 
             existing = progress.get(topic_id, {
                 "covered_set": set(),
                 "plan_concepts": set(),
                 "session_count": 0,
-                "last_practiced": None,
             })
 
-            # Accumulate concepts covered (from both teach_me and practice)
             concepts_covered = state.get("concepts_covered_set", [])
             if isinstance(concepts_covered, list):
                 existing["covered_set"].update(concepts_covered)
 
-            # Canonical denominator comes from teach_me sessions ONLY.
-            # Practice plans are struggle-weighted subsets — using them would
-            # shrink the denominator and falsely inflate combined coverage.
-            if mode == "teach_me":
-                mastery_estimates = state.get("mastery_estimates", {})
-                if isinstance(mastery_estimates, dict) and mastery_estimates:
-                    existing["plan_concepts"] = set(mastery_estimates.keys())
-
-            # Track last_practiced from practice sessions (3+ questions gate already applied)
-            if mode == "practice" and session_date:
-                last_p = existing.get("last_practiced")
-                if not last_p or session_date > last_p:
-                    existing["last_practiced"] = session_date
+            mastery_estimates = state.get("mastery_estimates", {})
+            if isinstance(mastery_estimates, dict) and mastery_estimates:
+                existing["plan_concepts"] = set(mastery_estimates.keys())
 
             existing["session_count"] += 1
             progress[topic_id] = existing
 
-        # Convert to output format
         result = {}
         for topic_id, data in progress.items():
             plan = data["plan_concepts"]
@@ -129,7 +115,6 @@ class ReportCardService:
                 "coverage": coverage,
                 "session_count": data["session_count"],
                 "status": "studied" if data["session_count"] > 0 else "not_started",
-                "last_practiced": data.get("last_practiced"),
             }
 
         return {"user_progress": result}
@@ -151,10 +136,37 @@ class ReportCardService:
             .all()
         )
 
-    def _build_guideline_lookup(self, sessions) -> dict:
+    def _load_user_practice_attempts(self, user_id: str) -> list:
+        """Load graded practice attempts for the user, ordered by guideline_id + graded_at DESC.
+
+        Filters to status='graded' with non-null graded_at + total_score so the
+        grouping in `_merge_practice_attempts_into_grouped` can take attempts[0]
+        as the latest graded attempt per guideline.
+        """
+        return (
+            self.db.query(
+                PracticeAttempt.guideline_id,
+                PracticeAttempt.total_score,
+                PracticeAttempt.total_possible,
+                PracticeAttempt.graded_at,
+            )
+            .filter(
+                PracticeAttempt.user_id == user_id,
+                PracticeAttempt.status == "graded",
+                PracticeAttempt.graded_at.isnot(None),
+                PracticeAttempt.total_score.isnot(None),
+            )
+            .order_by(
+                PracticeAttempt.guideline_id.asc(),
+                PracticeAttempt.graded_at.desc(),
+            )
+            .all()
+        )
+
+    def _build_guideline_lookup(self, sessions, practice_attempts=None) -> dict:
         """
         Build guideline_id → hierarchy info by collecting all topic_ids from sessions
-        and batch-querying teaching_guidelines.
+        and practice attempts, then batch-querying teaching_guidelines.
         """
         guideline_ids = set()
         for s in sessions:
@@ -171,12 +183,17 @@ class ReportCardService:
             if topic_id:
                 guideline_ids.add(topic_id)
 
+        for a in practice_attempts or []:
+            if a.guideline_id:
+                guideline_ids.add(a.guideline_id)
+
         if not guideline_ids:
             return {}
 
         guidelines = (
             self.db.query(
                 TeachingGuideline.id,
+                TeachingGuideline.subject,
                 TeachingGuideline.chapter,
                 TeachingGuideline.topic,
                 TeachingGuideline.chapter_title,
@@ -190,6 +207,7 @@ class ReportCardService:
 
         return {
             g.id: {
+                "subject": g.subject,
                 "chapter": g.chapter_title or g.chapter,
                 "topic": g.topic_title or g.topic,
                 "chapter_key": g.chapter_key or (g.chapter_title or g.chapter).lower().replace(" ", "-"),
@@ -202,7 +220,6 @@ class ReportCardService:
         """
         Group sessions into subject → chapter → topic hierarchy.
         Only accumulates coverage from teach_me sessions.
-        Tracks latest exam score from exam sessions.
         """
         grouped = defaultdict(lambda: defaultdict(lambda: {"chapter_name": "", "topics": {}}))
 
@@ -247,53 +264,19 @@ class ReportCardService:
 
             session_date = session_row.created_at.isoformat() if session_row.created_at else None
 
-            # Get or initialize topic accumulator
             existing = grouped[subject][chapter_key]["topics"].get(topic_key, {})
             existing_covered = set(existing.get("concepts_covered", []))
             existing_plan = set(existing.get("plan_concepts", []))
             existing_last_studied = existing.get("last_studied")
-            existing_last_practiced = existing.get("last_practiced")
-            existing_exam_score = existing.get("latest_exam_score")
-            existing_exam_total = existing.get("latest_exam_total")
 
-            # Coverage contribution: teach_me always, practice gated on 3+ questions (FR-30)
-            contributes_to_coverage = False
             if mode == "teach_me":
-                contributes_to_coverage = True
-            elif mode == "practice":
-                if state.get("practice_questions_answered", 0) >= 3:
-                    contributes_to_coverage = True
-
-            if contributes_to_coverage:
                 concepts_covered = state.get("concepts_covered_set", [])
                 if isinstance(concepts_covered, list):
                     existing_covered.update(concepts_covered)
-
                 existing_last_studied = session_date
-
-                # Canonical denominator comes from teach_me sessions ONLY.
-                # Practice plans are struggle-weighted subsets — using them would
-                # shrink the denominator and falsely inflate combined coverage.
-                if mode == "teach_me":
-                    mastery_estimates = state.get("mastery_estimates", {})
-                    if isinstance(mastery_estimates, dict) and mastery_estimates:
-                        existing_plan = set(mastery_estimates.keys())
-
-            # Track last_practiced from practice sessions (with 3-question gate)
-            if mode == "practice" and state.get("practice_questions_answered", 0) >= 3:
-                if not existing_last_practiced or (session_date and session_date > existing_last_practiced):
-                    existing_last_practiced = session_date
-
-            # Track latest exam score (with type guards for legacy data)
-            if mode == "exam" and state.get("exam_finished", False):
-                raw_score = state.get("exam_total_correct", 0)
-                exam_score = int(raw_score) if isinstance(raw_score, (int, float)) else 0
-                raw_questions = state.get("exam_questions", [])
-                exam_total = len(raw_questions) if isinstance(raw_questions, list) else 0
-                if exam_total > 0:
-                    existing_exam_score = exam_score
-                    existing_exam_total = exam_total
-                    existing_last_studied = session_date
+                mastery_estimates = state.get("mastery_estimates", {})
+                if isinstance(mastery_estimates, dict) and mastery_estimates:
+                    existing_plan = set(mastery_estimates.keys())
 
             grouped[subject][chapter_key]["chapter_name"] = chapter_name
             grouped[subject][chapter_key]["topics"][topic_key] = {
@@ -302,12 +285,53 @@ class ReportCardService:
                 "concepts_covered": list(existing_covered),
                 "plan_concepts": list(existing_plan),
                 "last_studied": existing_last_studied,
-                "last_practiced": existing_last_practiced,
-                "latest_exam_score": existing_exam_score,
-                "latest_exam_total": existing_exam_total,
             }
 
         return grouped
+
+    def _merge_practice_attempts_into_grouped(
+        self,
+        grouped,
+        guideline_lookup: dict,
+        practice_attempts: list,
+    ) -> None:
+        """Merge graded practice attempts (v2 practice_attempts table) into the
+        grouped structure. Latest-graded score + attempt count per guideline.
+
+        Creates a topic row if a guideline has practice data but no
+        teach_me/clarify_doubts sessions yet. Attempts are expected to already
+        be sorted guideline_id ASC, graded_at DESC.
+        """
+        by_guideline: dict[str, list] = defaultdict(list)
+        for attempt in practice_attempts:
+            if attempt.guideline_id:
+                by_guideline[attempt.guideline_id].append(attempt)
+
+        for guideline_id, attempts in by_guideline.items():
+            if not attempts or guideline_id not in guideline_lookup:
+                continue
+            gl = guideline_lookup[guideline_id]
+            subject = gl.get("subject") or "Unknown"
+            chapter_name = gl["chapter"]
+            topic_name = gl["topic"]
+            chapter_key = gl["chapter_key"]
+            topic_key = gl["topic_key"]
+
+            latest = attempts[0]
+            chapter_entry = grouped[subject][chapter_key]
+            if not chapter_entry.get("chapter_name"):
+                chapter_entry["chapter_name"] = chapter_name
+            topic_entry = chapter_entry["topics"].get(topic_key, {
+                "topic_name": topic_name,
+                "guideline_id": guideline_id,
+                "concepts_covered": [],
+                "plan_concepts": [],
+                "last_studied": None,
+            })
+            topic_entry["latest_practice_score"] = latest.total_score
+            topic_entry["latest_practice_total"] = latest.total_possible
+            topic_entry["practice_attempt_count"] = len(attempts)
+            chapter_entry["topics"][topic_key] = topic_entry
 
     def _build_report(self, grouped) -> list:
         """Build flat report from grouped data. No aggregate scores."""
@@ -328,10 +352,10 @@ class ReportCardService:
                         "topic_key": topic_key,
                         "guideline_id": topic_info.get("guideline_id"),
                         "coverage": coverage,
-                        "latest_exam_score": topic_info.get("latest_exam_score"),
-                        "latest_exam_total": topic_info.get("latest_exam_total"),
+                        "latest_practice_score": topic_info.get("latest_practice_score"),
+                        "latest_practice_total": topic_info.get("latest_practice_total"),
+                        "practice_attempt_count": topic_info.get("practice_attempt_count"),
                         "last_studied": topic_info.get("last_studied"),
-                        "last_practiced": topic_info.get("last_practiced"),
                     })
 
                 chapters_data.append({

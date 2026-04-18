@@ -154,9 +154,6 @@ class SessionRepository:
                     entry["coverage"] = 0
             elif mode == "clarify_doubts":
                 entry["concepts_discussed"] = state.get("concepts_discussed", [])
-            elif mode == "exam":
-                entry["exam_score"] = state.get("exam_total_correct")
-                entry["exam_total"] = len(state.get("exam_questions", []))
 
             results.append(entry)
         return results
@@ -198,7 +195,7 @@ class SessionRepository:
         """List sessions for a user+guideline, optionally filtered by mode and completion.
 
         Uses SessionState.is_complete as the single source of truth for completion
-        across all modes (teach_me, practice, exam, clarify_doubts).
+        across teach_me and clarify_doubts modes.
         """
         from tutor.models.session_state import SessionState
 
@@ -211,9 +208,6 @@ class SessionRepository:
         rows = query.order_by(SessionModel.created_at.desc()).all()
 
         results = []
-        # Canonical concepts for this guideline (used as the coverage denominator).
-        # Pulled from the latest teach_me session's plan — never from a practice plan,
-        # since practice plans are struggle-weighted subsets that would shrink the denominator.
         canonical_concepts = self._get_canonical_concepts(guideline_id)
 
         for row in rows:
@@ -228,82 +222,28 @@ class SessionRepository:
             if finished_only and not is_complete:
                 continue
 
-            # Exam score / answered (only relevant for exam mode)
-            exam_questions = session_state.exam_questions if session_state.mode == "exam" else []
-            exam_score = (
-                round(sum(q.score for q in exam_questions), 1)
-                if exam_questions else None
-            )
-            exam_answered = sum(1 for q in exam_questions if q.student_answer)
-
-            # Coverage: teach_me always, practice gated on min 3 questions (FR-30)
             coverage = None
             if session_state.mode == "teach_me":
                 coverage = self._compute_coverage(
                     session_state.concepts_covered_set, canonical_concepts
                 )
-            elif session_state.mode == "practice":
-                if session_state.practice_questions_answered >= 3:
-                    coverage = self._compute_coverage(
-                        session_state.concepts_covered_set, canonical_concepts
-                    )
 
             results.append({
                 "session_id": row.id,
                 "mode": session_state.mode,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "is_complete": is_complete,
-                "exam_finished": session_state.exam_finished,
-                "exam_score": exam_score if session_state.mode == "exam" else None,
-                "exam_total": len(exam_questions) if session_state.mode == "exam" else None,
-                "exam_answered": exam_answered if session_state.mode == "exam" else None,
                 "coverage": coverage,
-                "practice_questions_answered": (
-                    session_state.practice_questions_answered
-                    if session_state.mode == "practice" else None
-                ),
             })
         return results
-
-    def find_most_recent_completed_teach_me(
-        self, user_id: str, guideline_id: str
-    ):
-        """Find the most recent completed Teach Me session for a user+topic.
-
-        Used by Practice session creation for context auto-attach (FR-21). Returns
-        the deserialized SessionState, or None if no completed Teach Me exists.
-        """
-        from tutor.models.session_state import SessionState
-
-        rows = (
-            self.db.query(SessionModel)
-            .filter(
-                SessionModel.user_id == user_id,
-                SessionModel.guideline_id == guideline_id,
-                SessionModel.mode == "teach_me",
-            )
-            .order_by(SessionModel.created_at.desc())
-            .all()
-        )
-        for row in rows:
-            try:
-                state = SessionState.model_validate_json(row.state_json)
-                if state.is_complete:
-                    return state
-            except Exception:
-                continue
-        return None
 
     def _get_canonical_concepts(self, guideline_id: str) -> list[str]:
         """Get the canonical concept list for a topic.
 
-        Uses the most recent teach_me session's plan as the canonical concept set.
-        Teach_me plans cover the full topic, while practice plans are subsets — so
-        we anchor the coverage denominator on teach_me only to prevent denominator
-        shrinkage when a struggle-weighted practice plan becomes the latest session.
-
-        Returns an empty list if no teach_me session exists (practice-only users
-        get 0% coverage until they also do Teach Me — acceptable).
+        Uses the most recent teach_me session's mastery estimates as the
+        canonical concept set. Returns an empty list if no teach_me session
+        exists (practice-only users get 0% coverage until they also do Teach
+        Me — acceptable).
         """
         from tutor.models.session_state import SessionState
 

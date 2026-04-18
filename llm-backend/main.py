@@ -14,7 +14,7 @@ from shared.api import health
 from shared.api import llm_config_routes
 from shared.api import feature_flag_routes
 from shared.api import issue_routes
-from tutor.api import curriculum, sessions, transcription, tts
+from tutor.api import curriculum, practice, sessions, transcription, tts
 from autoresearch.tutor_teaching_quality.evaluation.api import router as evaluation_router
 from auth.api.auth_routes import router as auth_router
 from auth.api.profile_routes import router as profile_router
@@ -103,6 +103,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(curriculum.router)
 app.include_router(sessions.router)
+app.include_router(practice.router)         # Practice v2: /practice/*
 app.include_router(transcription.router)  # Audio-to-text via Whisper
 app.include_router(tts.router)              # Text-to-speech via Google Cloud TTS
 app.include_router(evaluation_router)  # Evaluation pipeline endpoints

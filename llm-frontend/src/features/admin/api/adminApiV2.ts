@@ -750,6 +750,84 @@ export async function getCheckInJobStatus(
   );
 }
 
+// ===== Practice Bank Generation =====
+
+export interface TopicPracticeBankStatusV2 {
+  guideline_id: string;
+  topic_title: string;
+  topic_key?: string;
+  question_count: number;
+  has_explanations: boolean;
+}
+
+export interface ChapterPracticeBankStatusResponseV2 {
+  chapter_id: string;
+  chapter_key: string;
+  topics: TopicPracticeBankStatusV2[];
+}
+
+export interface PracticeBankQuestionItemV2 {
+  id: string;
+  format: string;
+  difficulty: string;
+  concept_tag: string;
+  question_json: Record<string, unknown>;
+  generator_model?: string | null;
+  created_at: string;
+}
+
+export interface PracticeBankDetailResponseV2 {
+  guideline_id: string;
+  topic_title: string;
+  question_count: number;
+  questions: PracticeBankQuestionItemV2[];
+}
+
+export async function getPracticeBankStatus(
+  bookId: string, chapterId: string
+): Promise<ChapterPracticeBankStatusResponseV2> {
+  return apiFetch<ChapterPracticeBankStatusResponseV2>(
+    `/admin/v2/books/${bookId}/practice-bank-status?chapter_id=${chapterId}`
+  );
+}
+
+export async function generatePracticeBanks(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.force) params.set('force', 'true');
+  if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/generate-practice-banks${qs}`,
+    { method: 'POST' }
+  );
+}
+
+export async function getPracticeBankJobStatus(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/practice-bank-jobs/latest${qs}`
+  );
+}
+
+export async function getPracticeBank(
+  bookId: string, guidelineId: string
+): Promise<PracticeBankDetailResponseV2> {
+  return apiFetch<PracticeBankDetailResponseV2>(
+    `/admin/v2/books/${bookId}/practice-banks/${guidelineId}`
+  );
+}
+
 // ===== Audio Generation =====
 
 export async function generateAudio(

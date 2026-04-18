@@ -70,7 +70,6 @@ class SessionStateDTO(BaseModel):
     mode: str = "teach_me"
     coverage: float = 0.0
     concepts_discussed: list[str] = Field(default_factory=list)
-    exam_progress: Optional[dict] = None
     is_paused: bool = False
 
 

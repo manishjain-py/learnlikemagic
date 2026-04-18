@@ -22,6 +22,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import OnboardingGuard from './components/OnboardingGuard';
 import AppShell from './components/AppShell';
+import AuthenticatedLayout from './components/AuthenticatedLayout';
 
 // Auth pages
 import LoginPage from './pages/LoginPage';
@@ -47,7 +48,6 @@ import ChapterSelect from './pages/ChapterSelect';
 import TopicSelect from './pages/TopicSelect';
 import ModeSelectPage from './pages/ModeSelectPage';
 import ChatSession from './pages/ChatSession';
-import ExamReviewPage from './pages/ExamReviewPage';
 
 // Admin pages
 import EvaluationDashboard from './features/admin/pages/EvaluationDashboard';
@@ -62,6 +62,10 @@ import TopicsAdmin from './features/admin/pages/TopicsAdmin';
 import GuidelinesAdmin from './features/admin/pages/GuidelinesAdmin';
 import OCRAdmin from './features/admin/pages/OCRAdmin';
 import VisualsAdmin from './features/admin/pages/VisualsAdmin';
+import PracticeBankAdmin from './features/admin/pages/PracticeBankAdmin';
+import PracticeLandingPage from './pages/PracticeLandingPage';
+import PracticeRunnerPage from './pages/PracticeRunnerPage';
+import PracticeResultsPage from './pages/PracticeResultsPage';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
 import InteractiveVisualsPocPage from './features/admin/pages/InteractiveVisualsPocPage';
 import FeatureFlagsPage from './features/admin/pages/FeatureFlagsPage';
@@ -91,71 +95,49 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* All authenticated post-onboarding routes under AppShell */}
+          {/* All authenticated post-onboarding routes under AuthenticatedLayout.
+              The layout mounts PracticeBanner so graded/failed practice sets
+              surface even mid-Teach-Me or mid-Clarify (FR-35, FR-40). */}
           <Route element={
             <ProtectedRoute>
               <OnboardingGuard>
-                <AppShell />
+                <AuthenticatedLayout />
               </OnboardingGuard>
             </ProtectedRoute>
           }>
-            {/* Learn routes */}
-            <Route path="/learn" element={<SubjectSelect />} />
-            <Route path="/learn/:subject" element={<ChapterSelect />} />
-            <Route path="/learn/:subject/:chapter" element={<TopicSelect />} />
-            <Route path="/learn/:subject/:chapter/:topic" element={<ModeSelectPage />} />
-            <Route path="/learn/:subject/:chapter/:topic/exam-review/:sessionId" element={<ExamReviewPage />} />
+            {/* AppShell group — student-facing non-chat routes share a nav bar */}
+            <Route element={<AppShell />}>
+              {/* Learn routes */}
+              <Route path="/learn" element={<SubjectSelect />} />
+              <Route path="/learn/:subject" element={<ChapterSelect />} />
+              <Route path="/learn/:subject/:chapter" element={<TopicSelect />} />
+              <Route path="/learn/:subject/:chapter/:topic" element={<ModeSelectPage />} />
 
-            {/* Profile & settings */}
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/profile/enrichment" element={<EnrichmentPage />} />
+              {/* Profile & settings */}
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/profile/enrichment" element={<EnrichmentPage />} />
 
-            {/* History & report card */}
-            <Route path="/history" element={<SessionHistoryPage />} />
-            <Route path="/report-card" element={<ReportCardPage />} />
+              {/* History & report card */}
+              <Route path="/history" element={<SessionHistoryPage />} />
+              <Route path="/report-card" element={<ReportCardPage />} />
 
-            {/* Issue reporting */}
-            <Route path="/report-issue" element={<ReportIssuePage />} />
+              {/* Issue reporting */}
+              <Route path="/report-issue" element={<ReportIssuePage />} />
+
+              {/* Practice v2 — batch-drill flow */}
+              <Route path="/practice/:guidelineId" element={<PracticeLandingPage />} />
+              <Route path="/practice/attempts/:attemptId/run" element={<PracticeRunnerPage />} />
+              <Route path="/practice/attempts/:attemptId/results" element={<PracticeResultsPage />} />
+            </Route>
+
+            {/* Chat session routes — OUTSIDE AppShell (own nav-bar) but still
+                inside AuthenticatedLayout so PracticeBanner fires here too. */}
+            <Route path="/learn/:subject/:chapter/:topic/teach/:sessionId" element={<ChatSession />} />
+            <Route path="/learn/:subject/:chapter/:topic/clarify/:sessionId" element={<ChatSession />} />
+
+            {/* Backward compat: old session URL */}
+            <Route path="/session/:sessionId" element={<ChatSession />} />
           </Route>
-
-          {/* Chat session routes — OUTSIDE AppShell (own nav-bar) */}
-          <Route path="/learn/:subject/:chapter/:topic/teach/:sessionId" element={
-            <ProtectedRoute>
-              <OnboardingGuard>
-                <ChatSession />
-              </OnboardingGuard>
-            </ProtectedRoute>
-          } />
-          <Route path="/learn/:subject/:chapter/:topic/exam/:sessionId" element={
-            <ProtectedRoute>
-              <OnboardingGuard>
-                <ChatSession />
-              </OnboardingGuard>
-            </ProtectedRoute>
-          } />
-          <Route path="/learn/:subject/:chapter/:topic/clarify/:sessionId" element={
-            <ProtectedRoute>
-              <OnboardingGuard>
-                <ChatSession />
-              </OnboardingGuard>
-            </ProtectedRoute>
-          } />
-          <Route path="/learn/:subject/:chapter/:topic/practice/:sessionId" element={
-            <ProtectedRoute>
-              <OnboardingGuard>
-                <ChatSession key="practice" />
-              </OnboardingGuard>
-            </ProtectedRoute>
-          } />
-
-          {/* Backward compat: old session URL */}
-          <Route path="/session/:sessionId" element={
-            <ProtectedRoute>
-              <OnboardingGuard>
-                <ChatSession />
-              </OnboardingGuard>
-            </ProtectedRoute>
-          } />
 
           {/* Backward compat: redirect / to /learn */}
           <Route path="/" element={<Navigate to="/learn" replace />} />
@@ -176,6 +158,7 @@ function App() {
             <Route path="books-v2/:bookId/guidelines/:chapterId" element={<GuidelinesAdmin />} />
             <Route path="books-v2/:bookId/ocr/:chapterId" element={<OCRAdmin />} />
             <Route path="books-v2/:bookId/visuals/:chapterId" element={<VisualsAdmin />} />
+            <Route path="books-v2/:bookId/practice-banks/:chapterId" element={<PracticeBankAdmin />} />
             <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
             <Route path="interactive-poc" element={<InteractiveVisualsPocPage />} />
             <Route path="feature-flags" element={<FeatureFlagsPage />} />

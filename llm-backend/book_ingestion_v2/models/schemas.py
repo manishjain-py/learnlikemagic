@@ -315,6 +315,37 @@ class ChapterCheckInStatusResponse(BaseModel):
     topics: List[TopicCheckInStatus]
 
 
+# ───── Practice Bank Generation Status ─────
+
+class TopicPracticeBankStatus(BaseModel):
+    guideline_id: str
+    topic_title: str
+    topic_key: Optional[str] = None
+    question_count: int
+    has_explanations: bool = False
+
+class ChapterPracticeBankStatusResponse(BaseModel):
+    chapter_id: str
+    chapter_key: str
+    topics: List[TopicPracticeBankStatus]
+
+
+class PracticeBankQuestionItem(BaseModel):
+    id: str
+    format: str
+    difficulty: str
+    concept_tag: str
+    question_json: Dict[str, Any]
+    generator_model: Optional[str] = None
+    created_at: datetime
+
+class PracticeBankDetailResponse(BaseModel):
+    guideline_id: str
+    topic_title: str
+    question_count: int
+    questions: List[PracticeBankQuestionItem]
+
+
 # ───── Results ─────
 
 class ChapterResultSummary(BaseModel):

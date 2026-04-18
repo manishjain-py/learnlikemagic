@@ -12,8 +12,6 @@ import {
   submitFeedback,
   cardAction,
   simplifyCard,
-  createSession,
-  endPracticeSession,
   TutorWebSocket,
   Turn,
   ExplanationCard,
@@ -40,11 +38,6 @@ interface Message {
   hints?: string[];
   visualExplanation?: VisualExplanationType | null;
   questionFormat?: QuestionFormat | null;
-}
-
-interface ExamQuestionDraft {
-  question_idx: number;
-  question_text: string;
 }
 
 interface Slide {
@@ -129,23 +122,14 @@ export default function ChatSession() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
-  const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts' | 'exam' | 'practice'>(
+  const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts'>(
     (locState?.mode as any) || 'teach_me',
   );
   const [coverage, setCoverage] = useState(0);
   const [conceptsDiscussed, setConceptsDiscussed] = useState<string[]>([]);
-  const [examProgress, setExamProgress] = useState<{ current: number; total: number; answered: number } | null>(null);
-  const [examFeedback, setExamFeedback] = useState<{ score: number; total: number; percentage: number } | null>(null);
-  const [examResults, setExamResults] = useState<Array<{ question_idx: number; question_text: string; student_answer?: string | null; result?: 'correct' | 'partial' | 'incorrect' | null; score?: number; marks_rationale?: string; feedback?: string; expected_answer?: string }>>([]);
-  const [examQuestions, setExamQuestions] = useState<ExamQuestionDraft[]>([]);
-  const [examDraftAnswers, setExamDraftAnswers] = useState<Record<number, string>>({});
-  const [activeExamQuestionIdx, setActiveExamQuestionIdx] = useState(0);
-  const [examSubmittedIdxs, setExamSubmittedIdxs] = useState<Set<number>>(new Set());
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
-  const [examHydrationError, setExamHydrationError] = useState(false);
-  const [examSubmitError, setExamSubmitError] = useState<string | null>(null);
   const [playingSlideId, setPlayingSlideId] = useState<string | null>(null);
 
   // Card phase state (pre-computed explanations)
@@ -163,14 +147,7 @@ export default function ChatSession() {
   const [teachMeCompletionMessage, setTeachMeCompletionMessage] = useState<string | null>(null);
   const [teachMeConceptsCovered, setTeachMeConceptsCovered] = useState<string[]>([]);
   const [teachMeGuidelineId, setTeachMeGuidelineId] = useState<string | null>(null);
-  const [creatingPractice, setCreatingPractice] = useState(false);
-  const [practiceStartError, setPracticeStartError] = useState<string | null>(null);
 
-  // Practice completion screen state (shown when mastery achieved or ended early)
-  const [practiceComplete, setPracticeComplete] = useState(false);
-  const [practiceSummary, setPracticeSummary] = useState<string | null>(null);
-  const [practiceQuestionsAnswered, setPracticeQuestionsAnswered] = useState(0);
-  const [endingPractice, setEndingPractice] = useState(false);
   // Typewriter: track which slide indices have been fully revealed
   const [revealedSlides, setRevealedSlides] = useState<Set<number>>(new Set());
   const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
@@ -209,7 +186,6 @@ export default function ChatSession() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const examEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef<Map<string, Promise<Blob>>>(new Map());
@@ -299,7 +275,7 @@ export default function ChatSession() {
 
   // Auto-advance carousel when new slides appear
   useEffect(() => {
-    if (sessionMode === 'exam' || isComplete) return;
+    if (isComplete) return;
     const prev = prevSlidesLen.current;
     prevSlidesLen.current = carouselSlides.length;
     if (carouselSlides.length > prev && prev > 0) {
@@ -380,57 +356,6 @@ export default function ChatSession() {
     return () => timers.forEach(clearTimeout);
   }, [currentSlideIdx, sessionPhase, carouselSlides]);
 
-  const hydrateExamState = (state: any) => {
-    if (!state?.exam_questions) return;
-
-    const questions = state.exam_questions.map((q: any) => ({
-      question_idx: q.question_idx,
-      question_text: q.question_text,
-    }));
-    setExamQuestions(questions);
-
-    const existingAnswers: Record<number, string> = {};
-    const alreadySubmitted = new Set<number>();
-    state.exam_questions.forEach((q: any) => {
-      if (q.student_answer) {
-        existingAnswers[q.question_idx] = q.student_answer;
-        alreadySubmitted.add(q.question_idx);
-      }
-    });
-    setExamDraftAnswers(existingAnswers);
-    setExamSubmittedIdxs(alreadySubmitted);
-
-    const answeredCount = Object.values(existingAnswers).filter((a) => a.trim().length > 0).length;
-    const firstUnansweredIdx = questions.findIndex((q: ExamQuestionDraft) => !(existingAnswers[q.question_idx] || '').trim());
-    const nextIdx = firstUnansweredIdx >= 0 ? firstUnansweredIdx : questions.length;
-    setActiveExamQuestionIdx(nextIdx);
-
-    setExamProgress({
-      current: Math.min(nextIdx + 1, questions.length || 1),
-      total: questions.length,
-      answered: answeredCount,
-    });
-  };
-
-  const retryExamHydration = () => {
-    if (!sessionId) return;
-    setExamHydrationError(false);
-    setReplayLoading(true);
-    getSessionReplay(sessionId)
-      .then((state) => {
-        if (state.mode === 'exam' && state.exam_questions) {
-          hydrateExamState(state);
-        }
-      })
-      .catch((err) => {
-        console.error('Retry failed:', err);
-        setExamHydrationError(true);
-      })
-      .finally(() => setReplayLoading(false));
-  };
-
-  useEffect(() => { examEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeExamQuestionIdx, examDraftAnswers]);
-
   useEffect(() => {
     getModelConfig()
       .then((config) => setModelLabel(config.tutor?.description || config.tutor?.model_id || ''))
@@ -473,17 +398,6 @@ export default function ChatSession() {
       setStepIdx(locState.firstTurn.step_idx);
       if ((locState.firstTurn as any).total_steps) setTotalSteps((locState.firstTurn as any).total_steps);
       setMastery(locState.firstTurn.mastery_score);
-      if (locState.mode === 'exam' && locState.firstTurn.exam_progress) {
-        setExamProgress({
-          current: locState.firstTurn.exam_progress.current_question,
-          total: locState.firstTurn.exam_progress.total_questions,
-          answered: locState.firstTurn.exam_progress.answered_questions,
-        });
-      }
-
-      if (locState.mode === 'exam' && locState.firstTurn.exam_questions) {
-        hydrateExamState({ exam_questions: locState.firstTurn.exam_questions });
-      }
 
       // Auto-play TTS for first slide
       if (locState.firstTurn.session_phase === 'card_phase') {
@@ -520,23 +434,6 @@ export default function ChatSession() {
           if (state.current_step != null) setStepIdx(state.current_step);
           if (state.mode) setSessionMode(state.mode);
           if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
-          if (state.mode === 'exam' && state.exam_questions) {
-            hydrateExamState(state);
-            if (state.exam_finished) {
-              setExamResults(
-                state.exam_questions.map((q: any) => ({
-                  question_idx: q.question_idx,
-                  question_text: q.question_text,
-                  student_answer: q.student_answer,
-                  result: q.result,
-                  score: q.score,
-                  marks_rationale: q.marks_rationale,
-                  feedback: q.feedback,
-                  expected_answer: q.expected_answer,
-                })),
-              );
-            }
-          }
 
           // Hydrate card phase — active or completed
           if (state._replay_explanation_cards) {
@@ -574,41 +471,15 @@ export default function ChatSession() {
           }
 
           // Hydrate completion using backend is_complete (single source of truth).
-          // Fall back to legacy checks only if the field is missing (shouldn't
-          // happen with the new replay API but safe to keep).
           const completed = state.is_complete
             ?? (state.clarify_complete
-                || state.exam_finished
-                || state.practice_mastery_achieved
                 || (state.topic && state.current_step > (state.topic?.study_plan?.steps?.length ?? Infinity)));
           if (completed) {
             setIsComplete(true);
-            // Reconstruct exam summary from persisted feedback
-            if (state.exam_finished && state.exam_feedback) {
-              setSummary({
-                steps_completed: state.exam_feedback.total,
-                mastery_score: state.exam_feedback.percentage / 100,
-                misconceptions_seen: state.exam_feedback.weak_areas || [],
-                suggestions: state.exam_feedback.next_steps || [],
-              });
-              setExamFeedback({
-                score: state.exam_feedback.score,
-                total: state.exam_feedback.total,
-                percentage: state.exam_feedback.percentage,
-              });
-            }
-            // Reconstruct practice completion state on resume
-            if (state.mode === 'practice' && state.practice_mastery_achieved) {
-              setPracticeComplete(true);
-              setPracticeQuestionsAnswered(state.practice_questions_answered || 0);
-            }
           }
         })
         .catch((err) => {
           console.error('Failed to load session:', err);
-          if (sessionMode === 'exam') {
-            setExamHydrationError(true);
-          }
         })
         .finally(() => setReplayLoading(false));
     }
@@ -617,9 +488,9 @@ export default function ChatSession() {
     navigate(location.pathname, { replace: true, state: null });
   }, [sessionId]);
 
-  // Connect WebSocket for streaming (non-exam modes)
+  // Connect WebSocket for streaming
   useEffect(() => {
-    if (!sessionId || sessionMode === 'exam') return;
+    if (!sessionId) return;
 
     const ws = new TutorWebSocket(sessionId, {
       onToken: (text) => {
@@ -735,35 +606,9 @@ export default function ChatSession() {
       if (response.next_turn.concepts_discussed) {
         setConceptsDiscussed(response.next_turn.concepts_discussed);
       }
-      if (response.next_turn.exam_progress) {
-        setExamProgress({
-          current: response.next_turn.exam_progress.current_question,
-          total: response.next_turn.exam_progress.total_questions,
-          answered: response.next_turn.exam_progress.answered_questions,
-        });
-      }
       if (response.next_turn.is_complete) {
         setIsComplete(true);
-        if (sessionMode === 'exam') {
-          if (response.next_turn.exam_feedback) {
-            setSummary({
-              steps_completed: response.next_turn.exam_feedback.total,
-              mastery_score: response.next_turn.exam_feedback.percentage / 100,
-              misconceptions_seen: response.next_turn.exam_feedback.weak_areas || [],
-              suggestions: response.next_turn.exam_feedback.next_steps || [],
-            });
-            setExamFeedback({
-              score: response.next_turn.exam_feedback.score,
-              total: response.next_turn.exam_feedback.total,
-              percentage: response.next_turn.exam_feedback.percentage,
-            });
-          }
-          setExamResults(response.next_turn.exam_results || []);
-        } else if (sessionMode === 'practice') {
-          // Practice mastery achieved — show practice completion screen
-          setPracticeComplete(true);
-          setPracticeSummary(response.next_turn.message);
-        } else if (sessionMode !== 'clarify_doubts') {
+        if (sessionMode !== 'clarify_doubts') {
           const summaryData = await getSummary(sessionId);
           setSummary(summaryData);
         }
@@ -778,107 +623,7 @@ export default function ChatSession() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !sessionId || loading) return;
-
-    if (sessionMode === 'exam') {
-      const currentQuestion = examQuestions[activeExamQuestionIdx];
-      if (!currentQuestion) return;
-
-      const updatedAnswers = {
-        ...examDraftAnswers,
-        [currentQuestion.question_idx]: input.trim(),
-      };
-      setExamDraftAnswers(updatedAnswers);
-      setInput('');
-
-      const answeredCount = Object.values(updatedAnswers).filter((a) => a.trim().length > 0).length;
-      // Find next unanswered question (skip already-answered ones)
-      let nextIdx = activeExamQuestionIdx;
-      for (let i = activeExamQuestionIdx + 1; i < examQuestions.length; i++) {
-        if (!(updatedAnswers[examQuestions[i].question_idx] || '').trim()) {
-          nextIdx = i;
-          break;
-        }
-      }
-      // If no unanswered found after current, stay at end (all answered)
-      if (nextIdx === activeExamQuestionIdx) {
-        nextIdx = examQuestions.length; // signals "all done"
-      }
-      setActiveExamQuestionIdx(nextIdx);
-      setExamProgress({
-        current: Math.min(nextIdx + 1, examQuestions.length),
-        total: examQuestions.length,
-        answered: answeredCount,
-      });
-      return;
-    }
-
     await sendMessage(input);
-  };
-
-  const handleSubmitAllExamAnswers = async () => {
-    if (!sessionId || loading) return;
-
-    // Only validate and submit questions not yet graded server-side
-    const toSubmit = examQuestions.filter((q) => !examSubmittedIdxs.has(q.question_idx));
-
-    const missing = toSubmit.filter((q) => !(examDraftAnswers[q.question_idx] || '').trim());
-    if (missing.length > 0) {
-      setActiveExamQuestionIdx(examQuestions.findIndex((q) => q.question_idx === missing[0].question_idx));
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setExamSubmitError(null);
-      let finalResponse: any = null;
-      let submitFailed = false;
-
-      for (const q of toSubmit) {
-        try {
-          finalResponse = await submitStep(sessionId, (examDraftAnswers[q.question_idx] || '').trim());
-          // Track successful submission so retries skip this question
-          setExamSubmittedIdxs((prev) => new Set(prev).add(q.question_idx));
-        } catch (err) {
-          console.error(`Failed to submit answer for Q${q.question_idx + 1}:`, err);
-          submitFailed = true;
-          setExamSubmitError(`Failed to submit Q${q.question_idx + 1}. Please retry to submit remaining answers.`);
-          // Stop on first failure so the student can retry remaining questions
-          break;
-        }
-      }
-
-      if (submitFailed || !finalResponse?.next_turn?.is_complete) return;
-
-      setIsComplete(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'teacher',
-          content: finalResponse.next_turn.message,
-          hints: finalResponse.next_turn.hints,
-        },
-      ]);
-      setExamProgress((prev) => prev ? { ...prev, answered: examQuestions.length, current: examQuestions.length } : prev);
-      if (finalResponse.next_turn.exam_feedback) {
-        setSummary({
-          steps_completed: finalResponse.next_turn.exam_feedback.total,
-          mastery_score: finalResponse.next_turn.exam_feedback.percentage / 100,
-          misconceptions_seen: finalResponse.next_turn.exam_feedback.weak_areas || [],
-          suggestions: finalResponse.next_turn.exam_feedback.next_steps || [],
-        });
-        setExamFeedback({
-          score: finalResponse.next_turn.exam_feedback.score,
-          total: finalResponse.next_turn.exam_feedback.total,
-          percentage: finalResponse.next_turn.exam_feedback.percentage,
-        });
-      }
-      setExamResults(finalResponse.next_turn.exam_results || []);
-    } catch (error) {
-      console.error('Failed to submit full exam:', error);
-      setExamSubmitError('Something went wrong submitting the exam. Please try again.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleBack = () => {
@@ -1329,42 +1074,16 @@ export default function ChatSession() {
     }
   };
 
-  // ─── Practice CTA handlers ────────────────────────────────────────
-  const handleStartPracticeFromCTA = async () => {
-    if (!sessionId || !subject || !chapter || !topic) return;
-    // guideline_id comes from the teach_me_complete response
-    if (!teachMeGuidelineId) {
-      setPracticeStartError('Could not determine topic for practice. Try again from topic selection.');
-      return;
-    }
-    setCreatingPractice(true);
-    setPracticeStartError(null);
-    try {
-      const response = await createSession({
-        student: {
-          id: studentId,
-          grade,
-          prefs: { style: 'standard', lang: 'en' },
-        },
-        goal: {
-          chapter,
-          syllabus: `${board}-G${grade}`,
-          learning_objectives: [`Practice ${topic}`],
-          guideline_id: teachMeGuidelineId,
-        },
-        mode: 'practice',
-        source_session_id: sessionId,  // FR-10: explicit handoff
-      });
-      navigate(
-        `/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}/practice/${response.session_id}`,
-        { state: { firstTurn: response.first_turn, mode: 'practice' } },
-      );
-    } catch (err: any) {
-      console.error('Failed to start practice:', err);
-      setPracticeStartError(err?.message || 'Could not start practice session. Please try again.');
-    } finally {
-      setCreatingPractice(false);
-    }
+  // ─── Practice CTA handler ────────────────────────────────────────
+  // Teach Me complete → hand off to Practice v2 drill route.
+  const handleStartPracticeFromCTA = () => {
+    if (!teachMeGuidelineId) return;
+    const prettyTopic = /[-_]/.test(topic)
+      ? topic.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      : topic;
+    navigate(`/practice/${teachMeGuidelineId}`, {
+      state: { topicTitle: prettyTopic, subject, chapter, topic },
+    });
   };
 
   const handleDoneForNow = () => {
@@ -1372,32 +1091,6 @@ export default function ChatSession() {
       navigate('/learn');
       return;
     }
-    navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
-  };
-
-  const handleEndPractice = async () => {
-    if (!sessionId) return;
-    if (!confirm("End this practice session? You'll see your progress.")) return;
-    setEndingPractice(true);
-    try {
-      const result = await endPracticeSession(sessionId);
-      setPracticeComplete(true);
-      setIsComplete(true);
-      setPracticeSummary(result.message);
-      setPracticeQuestionsAnswered(result.questions_answered);
-    } catch (err: any) {
-      console.error('Failed to end practice:', err);
-    } finally {
-      setEndingPractice(false);
-    }
-  };
-
-  const handleStartExamFromPractice = () => {
-    if (!subject || !chapter || !topic) {
-      navigate('/learn');
-      return;
-    }
-    // Navigate back to mode-select so they can choose exam
     navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
   };
 
@@ -1472,18 +1165,7 @@ export default function ChatSession() {
           </span>
 
           <div className="nav-actions">
-            {sessionId && sessionMode === 'practice' && !isComplete && (
-              <button
-                onClick={handleEndPractice}
-                className="nav-action-btn"
-                disabled={endingPractice}
-                title="End this practice session"
-                data-testid="end-practice-btn"
-              >
-                {endingPractice ? 'Ending...' : 'End Practice'}
-              </button>
-            )}
-            {sessionId && sessionMode !== 'exam' && !isComplete && (
+            {sessionId && !isComplete && (
               <button
                 onClick={() => setFeedbackModalOpen(true)}
                 className="nav-action-btn feedback-btn"
@@ -1493,7 +1175,7 @@ export default function ChatSession() {
                 Feedback
               </button>
             )}
-            {sessionId && sessionMode !== 'exam' && !isComplete && carouselSlides.length > 0 && (
+            {sessionId && !isComplete && carouselSlides.length > 0 && (
               <>
                 <button
                   className={`focus-audio-btn${playingSlideId === carouselSlides[currentSlideIdx]?.id ? ' playing' : ''}`}
@@ -1562,12 +1244,6 @@ export default function ChatSession() {
                   : 'Ask your questions!'}
               </span>
             )}
-            {sessionMode === 'exam' && examProgress && (
-              <>
-                <span>Question {examProgress.current}/{examProgress.total}</span>
-                <span>{examProgress.answered}/{examProgress.total} answered</span>
-              </>
-            )}
           </div>
         </div>
 
@@ -1590,46 +1266,12 @@ export default function ChatSession() {
                   {teachMeCompletionMessage}
                 </p>
               )}
-              {practiceStartError && (
-                <p className="restart-button-error">
-                  {practiceStartError}
-                </p>
-              )}
               <button
                 onClick={handleStartPracticeFromCTA}
-                disabled={creatingPractice}
                 className="restart-button"
                 data-testid="start-practice-cta"
               >
-                {creatingPractice ? 'Setting up practice...' : "Let's Practice — put it to work!"}
-              </button>
-              <button
-                onClick={handleDoneForNow}
-                disabled={creatingPractice}
-                className="restart-button restart-button--ghost"
-              >
-                I'm done for now
-              </button>
-            </div>
-          ) : practiceComplete ? (
-            <div className="summary-card" data-testid="practice-complete">
-              <h2>Great practice session!</h2>
-              {practiceSummary && (
-                <p className="summary-card-message">
-                  {practiceSummary}
-                </p>
-              )}
-              {practiceQuestionsAnswered > 0 && (
-                <p className="summary-card-meta">
-                  You answered {practiceQuestionsAnswered} question{practiceQuestionsAnswered === 1 ? '' : 's'}.
-                </p>
-              )}
-              <button
-                onClick={handleStartExamFromPractice}
-                className="restart-button"
-                data-testid="start-exam-cta"
-              >
-                Make it official — take the exam
+                Let's Practice — put it to work!
               </button>
               <button
                 onClick={handleDoneForNow}
@@ -1659,74 +1301,16 @@ export default function ChatSession() {
                 </>
               ) : (
                 <>
-                  {sessionMode === 'exam' && examFeedback ? (
-                    <>
-                      <h2>Exam Complete!</h2>
-                      <div className="exam-summary-score">
-                        <div
-                          className="exam-summary-score-value"
-                          style={{ color: examFeedback.percentage >= 70 ? '#8EDACE' : examFeedback.percentage >= 40 ? '#F4C76C' : '#F4A7A0' }}
-                        >
-                          {examFeedback.score % 1 === 0 ? examFeedback.score.toFixed(0) : examFeedback.score.toFixed(1)}/{examFeedback.total}
-                        </div>
-                        <div className="exam-summary-score-pct">{examFeedback.percentage.toFixed(1)}%</div>
+                  <h2>Well done!</h2>
+                  {summary && summary.concepts_taught && summary.concepts_taught.length > 0 && (
+                    <div className="summary-content">
+                      <p>You covered:</p>
+                      <div className="summary-chips">
+                        {summary.concepts_taught.map((c, i) => (
+                          <span key={i} className="summary-chip">{c}</span>
+                        ))}
                       </div>
-                      {examResults.length > 0 && (
-                        <div className="exam-summary-questions">
-                          {examResults.map((r) => {
-                            const scoreColor = (r.score ?? 0) >= 0.8 ? '#8EDACE' : (r.score ?? 0) >= 0.2 ? '#F4C76C' : '#F4A7A0';
-                            return (
-                              <div key={r.question_idx} className="exam-summary-question">
-                                <div className="exam-summary-q-head">
-                                  <span className="exam-summary-q-num">Q{r.question_idx + 1}</span>
-                                  <span style={{ fontWeight: 700, color: scoreColor, fontSize: '0.9rem' }}>
-                                    {r.score != null ? (r.score % 1 === 0 ? r.score.toFixed(0) : r.score.toFixed(1)) : '?'}/1
-                                  </span>
-                                </div>
-                                <p className="exam-summary-q-text">{r.question_text}</p>
-                                <div className="exam-summary-q-answer">
-                                  <strong>Your answer:</strong> {r.student_answer || '(no answer)'}
-                                </div>
-                                {r.expected_answer && (
-                                  <div className="exam-summary-q-answer">
-                                    <strong>Expected:</strong> {r.expected_answer}
-                                  </div>
-                                )}
-                                {r.marks_rationale && (
-                                  <div className="exam-summary-q-rationale">
-                                    {r.marks_rationale}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {summary && summary.suggestions.length > 0 && (
-                        <div className="exam-summary-next">
-                          <strong>Next Steps:</strong>
-                          <ul>
-                            {summary.suggestions.map((s, i) => (
-                              <li key={i}>{s}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <h2>Well done!</h2>
-                      {summary && summary.concepts_taught && summary.concepts_taught.length > 0 && (
-                        <div className="summary-content">
-                          <p>You covered:</p>
-                          <div className="summary-chips">
-                            {summary.concepts_taught.map((c, i) => (
-                              <span key={i} className="summary-chip">{c}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    </div>
                   )}
                   <button onClick={handleBack} className="restart-button">
                     Continue Practicing
@@ -1743,127 +1327,7 @@ export default function ChatSession() {
                 </>
               )}
             </div>
-          ) : sessionMode === 'exam' ? (
-            <>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <button onClick={handleBack} className="back-button" style={{ fontSize: '0.8rem' }}>
-                  ← Back
-                </button>
-              </div>
-              {(() => {
-                const allAnswered = examQuestions.length > 0 && examQuestions.every((q) => (examDraftAnswers[q.question_idx] || '').trim());
-                return (
-                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-                  {examHydrationError && examQuestions.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-                      <p style={{ color: '#e53e3e', marginBottom: '12px' }}>Failed to load exam questions. Please try again.</p>
-                      <button type="button" onClick={retryExamHydration} disabled={replayLoading} className="send-button">
-                        {replayLoading ? 'Loading...' : 'Retry'}
-                      </button>
-                    </div>
-                  ) : (
-                  <>
-                    {/* Answered questions list */}
-                    {examQuestions.map((q, i) => {
-                      const answer = (examDraftAnswers[q.question_idx] || '').trim();
-                      const isActive = i === activeExamQuestionIdx && !allAnswered;
-
-                      // Not yet revealed
-                      if (!answer && !isActive) return null;
-
-                      // Completed Q&A pair
-                      if (answer && !isActive) return (
-                        <div key={q.question_idx} style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
-                          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                            <span style={{ color: '#4a5568' }}>{answer}</span>
-                            <button
-                              type="button"
-                              onClick={() => { setActiveExamQuestionIdx(i); setInput(answer); setExamDraftAnswers(prev => { const next = {...prev}; delete next[q.question_idx]; return next; }); }}
-                              style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.8rem', padding: 0, whiteSpace: 'nowrap' }}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </div>
-                      );
-
-                      // Active question with input
-                      return (
-                        <div key={q.question_idx} style={{ marginBottom: '10px' }}>
-                          <div style={{ background: '#fff', border: '2px solid #667eea', borderRadius: '10px', padding: '12px 14px' }}>
-                            <div style={{ fontWeight: 600, marginBottom: '10px' }}>Question {q.question_idx + 1}: <span style={{ fontWeight: 400 }}>{q.question_text}</span></div>
-                            <form className={`input-form${isRecording ? ' recording' : ''}`} onSubmit={handleSubmit} style={{ margin: '0' }}>
-                              <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder={isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Type your answer...'}
-                                disabled={loading || isTranscribing}
-                                className="input-field"
-                                data-testid="chat-input"
-                                autoFocus
-                              />
-                              <button
-                                type="button"
-                                onClick={toggleRecording}
-                                disabled={loading || isTranscribing}
-                                className={`mic-button${isRecording ? ' recording' : ''}${isTranscribing ? ' transcribing' : ''}`}
-                                data-testid="mic-button"
-                                title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
-                                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                              >
-                                {isTranscribing ? (
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 6v6l4 2" />
-                                  </svg>
-                                ) : (
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                  </svg>
-                                )}
-                              </button>
-                              <button type="submit" disabled={loading || isTranscribing || !input.trim()} className="send-button" data-testid="send-button" aria-label={i < examQuestions.length - 1 ? 'Next' : 'Save'}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                  <line x1="12" y1="19" x2="12" y2="5" />
-                                  <polyline points="5 12 12 5 19 12" />
-                                </svg>
-                              </button>
-                            </form>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Submit button when all answered */}
-                    {allAnswered && (
-                      <div style={{ marginTop: '4px' }}>
-                        {examSubmitError && (
-                          <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginBottom: '8px' }}>{examSubmitError}</p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleSubmitAllExamAnswers}
-                          disabled={loading}
-                          className="send-button-wide"
-                        >
-                          {loading ? 'Submitting...' : 'Submit All Answers'}
-                        </button>
-                      </div>
-                    )}
-                    <div ref={examEndRef} />
-                  </>
-                  )}
-                </div>
-                );
-              })()}
-            </>
           ) : (
-            /* Unified carousel for non-exam modes */
             <div className="focus-carousel" ref={containerRef}>
               <div
                 className="focus-track-container"

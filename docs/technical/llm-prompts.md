@@ -14,7 +14,7 @@ All paths relative to `llm-backend/`.
 | `WELCOME_MESSAGE_PROMPT` | `tutor/prompts/orchestrator_prompts.py` | Orchestrator-level greeting (simpler alternative, used directly by orchestrator). |
 | `CLARIFY_DOUBTS_SYSTEM_PROMPT` | `tutor/prompts/clarify_doubts_prompts.py` | Student-led Q&A mode system prompt (direct explanations, no Socratic method). |
 | `CLARIFY_DOUBTS_TURN_PROMPT` | `tutor/prompts/clarify_doubts_prompts.py` | Per-turn directive in clarify_doubts mode. |
-| `EXAM_QUESTION_GENERATION_PROMPT` | `tutor/prompts/exam_prompts.py` | Generate exam questions: 30% easy, 50% medium, 20% hard. Multiple question formats. |
+| Practice grading prompts | `tutor/prompts/practice_grading.py` | `FreeFormGradingOutput` (score + rationale) for free-form answers; `PickRationaleOutput` (rationale) for wrong structured picks. Invoked from `PracticeGradingService` via `ThreadPoolExecutor` — one call per wrong answer. |
 
 ## Safety, Language & Translation
 
@@ -49,6 +49,8 @@ All under `book_ingestion_v2/prompts/`:
 | `visual_code_generation.txt` | Generate Pixi.js v8 code for educational animations from specs. |
 | `toc_extraction.txt` | Extract table of contents from OCR'd textbook pages. |
 | `ocr_page_extraction.txt` | Vision-based textbook page OCR (educational content only, ignore decorative elements). |
+| `practice_bank_generation.txt` | Generate the initial 30–40 question bank per topic (12 formats, 3 difficulty levels, 0–3 free-form). |
+| `practice_bank_review_refine.txt` | Correctness review + refine pass over the generated bank. Drops invalid questions and tops up if count drops below 30. |
 
 ## OCR
 

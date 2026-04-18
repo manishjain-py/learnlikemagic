@@ -8,8 +8,10 @@ import {
   getExplanationStatus, getTopicExplanations, deleteExplanations,
   bulkOcrRetry, bulkOcrRerun, generateRefresher,
   generateCheckIns, getCheckInJobStatus, getCheckInStatus,
+  generatePracticeBanks, getPracticeBankJobStatus, getPracticeBankStatus,
   generateAudio,
   TopicCheckInStatusV2,
+  TopicPracticeBankStatusV2,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
   SyncResponseV2, TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
@@ -62,6 +64,9 @@ const BookV2Detail: React.FC = () => {
   const [checkInJobs, setCheckInJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [checkInStatus, setCheckInStatus] = useState<Record<string, TopicCheckInStatusV2[]>>({});
   const [checkInReviewRounds, setCheckInReviewRounds] = useState<Record<string, number>>({});
+  const [practiceBankJobs, setPracticeBankJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
+  const [practiceBankStatus, setPracticeBankStatus] = useState<Record<string, TopicPracticeBankStatusV2[]>>({});
+  const [practiceBankReviewRounds, setPracticeBankReviewRounds] = useState<Record<string, number>>({});
   const [audioJobs, setAudioJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
@@ -69,6 +74,7 @@ const BookV2Detail: React.FC = () => {
   const topicExplPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const ocrPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const checkInPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const practiceBankPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const audioPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
@@ -79,6 +85,7 @@ const BookV2Detail: React.FC = () => {
       Object.values(topicExplPollingRef.current).forEach(clearInterval);
       Object.values(ocrPollingRef.current).forEach(clearInterval);
       Object.values(checkInPollingRef.current).forEach(clearInterval);
+      Object.values(practiceBankPollingRef.current).forEach(clearInterval);
       Object.values(audioPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
@@ -214,6 +221,31 @@ const BookV2Detail: React.FC = () => {
     checkInPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
 
+  const loadPracticeBankStatus = useCallback(async (chapterId: string) => {
+    if (!id) return;
+    try {
+      const resp = await getPracticeBankStatus(id, chapterId);
+      setPracticeBankStatus(prev => ({ ...prev, [chapterId]: resp.topics }));
+    } catch { /* ignore */ }
+  }, [id]);
+
+  const startPracticeBankPolling = useCallback((chapterId: string) => {
+    if (!id || practiceBankPollingRef.current[chapterId]) return;
+    const poll = async () => {
+      try {
+        const job = await getPracticeBankJobStatus(id!, { chapterId });
+        setPracticeBankJobs(prev => ({ ...prev, [chapterId]: job }));
+        if (['completed', 'failed', 'completed_with_errors'].includes(job.status)) {
+          clearInterval(practiceBankPollingRef.current[chapterId]);
+          delete practiceBankPollingRef.current[chapterId];
+          loadPracticeBankStatus(chapterId);
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    practiceBankPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id, loadPracticeBankStatus]);
+
   const startAudioPolling = useCallback((chapterId: string) => {
     if (!id || audioPollingRef.current[chapterId]) return;
     const poll = async () => {
@@ -273,6 +305,9 @@ const BookV2Detail: React.FC = () => {
     }
     if (ch.status === 'chapter_completed' && !checkInStatus[chId]) {
       loadCheckInStatus(chId);
+    }
+    if (ch.status === 'chapter_completed' && !practiceBankStatus[chId]) {
+      loadPracticeBankStatus(chId);
     }
   };
 
@@ -395,6 +430,18 @@ const BookV2Detail: React.FC = () => {
       startCheckInPolling(ch.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Check-in enrichment failed');
+    }
+  };
+
+  const handleGeneratePracticeBanks = async (ch: ChapterResponseV2, force = false) => {
+    if (!id) return;
+    try {
+      const reviewRounds = practiceBankReviewRounds[ch.id] ?? 1;
+      const job = await generatePracticeBanks(id, { chapterId: ch.id, force, reviewRounds });
+      setPracticeBankJobs(prev => ({ ...prev, [ch.id]: job }));
+      startPracticeBankPolling(ch.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Practice bank generation failed');
     }
   };
 
@@ -876,6 +923,7 @@ const BookV2Detail: React.FC = () => {
                       { label: 'Refresher', done: topics.some(t => t.topic_key === 'get-ready'), active: (explanationStatus[ch.id]?.length ?? 0) > 0 && explanationStatus[ch.id]?.every(t => t.variant_count > 0) },
                       { label: 'Visuals', done: false, active: completed },
                       { label: 'Check-ins', done: (checkInStatus[ch.id]?.length ?? 0) > 0 && checkInStatus[ch.id]?.filter(t => t.has_explanations).every(t => t.cards_with_check_ins > 0), active: completed },
+                      { label: 'Practice', done: (practiceBankStatus[ch.id]?.length ?? 0) > 0 && practiceBankStatus[ch.id]?.filter(t => t.has_explanations).every(t => t.question_count > 0), active: completed },
                     ];
 
                     return (
@@ -969,6 +1017,35 @@ const BookV2Detail: React.FC = () => {
                                   {checkInJobs[ch.id].current_item || 'Starting...'}
                                 </span>
                               )}
+                              <button onClick={() => window.open(`/admin/books-v2/${id}/practice-banks/${ch.id}`, '_blank')} style={manageLinkStyle}>Practice</button>
+                              <button onClick={() => handleGeneratePracticeBanks(ch)} style={manageLinkStyle}>Generate</button>
+                              <label
+                                title="Correctness review-refine rounds after initial practice bank generation (0 disables)"
+                                style={{ fontSize: '11px', color: '#6B7280', marginLeft: '-4px' }}
+                              >
+                                rounds:
+                                <select
+                                  value={practiceBankReviewRounds[ch.id] ?? 1}
+                                  onChange={e =>
+                                    setPracticeBankReviewRounds(prev => ({
+                                      ...prev, [ch.id]: Number(e.target.value),
+                                    }))
+                                  }
+                                  style={{
+                                    marginLeft: '4px', padding: '1px 4px', borderRadius: '4px',
+                                    border: '1px solid #D1D5DB', fontSize: '11px',
+                                  }}
+                                >
+                                  {[0, 1, 2, 3, 4, 5].map(n => (
+                                    <option key={n} value={n}>{n}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              {practiceBankJobs[ch.id] && ['pending', 'running'].includes(practiceBankJobs[ch.id].status) && (
+                                <span style={{ fontSize: '11px', color: '#0891B2' }}>
+                                  {practiceBankJobs[ch.id].current_item || 'Starting...'}
+                                </span>
+                              )}
                               <button onClick={() => handleGenerateAudio(ch)} style={manageLinkStyle}>Audio</button>
                               {audioJobs[ch.id] && ['pending', 'running'].includes(audioJobs[ch.id].status) && (
                                 <span style={{ fontSize: '11px', color: '#7C3AED' }}>
@@ -1043,6 +1120,42 @@ const BookV2Detail: React.FC = () => {
                           {cj.status === 'failed' && cj.error_message
                             ? `Check-in enrichment failed: ${cj.error_message}`
                             : `Check-ins: ${detail?.enriched ?? cj.completed_items} enriched, ${detail?.skipped ?? 0} skipped, ${detail?.failed ?? cj.failed_items} failed.`}
+                          {detail?.errors && detail.errors.length > 0 && (
+                            <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                              {detail.errors.map((e, i) => <li key={i}>{e}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* Practice bank generation progress/result banner */}
+                  {practiceBankJobs[ch.id] && (() => {
+                    const pj = practiceBankJobs[ch.id];
+                    const isRunning = ['pending', 'running'].includes(pj.status);
+                    const isDone = ['completed', 'completed_with_errors', 'failed'].includes(pj.status);
+                    const detail = pj.progress_detail as { generated?: number; skipped?: number; failed?: number; errors?: string[] } | undefined;
+                    if (isRunning) return (
+                      <div style={{ marginTop: '12px', backgroundColor: '#CCFBF1', color: '#115E59', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                        Generating practice banks{pj.current_item ? `: ${pj.current_item}` : '...'}
+                        {pj.total_items ? ` (${pj.completed_items + pj.failed_items}/${pj.total_items})` : ''}
+                      </div>
+                    );
+                    if (isDone) {
+                      const hasErrors = pj.status === 'failed' || (detail?.errors && detail.errors.length > 0);
+                      return (
+                        <div style={{
+                          marginTop: '12px',
+                          backgroundColor: hasErrors ? '#FEF3C7' : '#CCFBF1',
+                          color: hasErrors ? '#92400E' : '#115E59',
+                          padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                        }}>
+                          <button onClick={() => setPracticeBankJobs(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                          {pj.status === 'failed' && pj.error_message
+                            ? `Practice bank generation failed: ${pj.error_message}`
+                            : `Practice banks: ${detail?.generated ?? pj.completed_items} generated, ${detail?.skipped ?? 0} skipped, ${detail?.failed ?? pj.failed_items} failed.`}
                           {detail?.errors && detail.errors.length > 0 && (
                             <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
                               {detail.errors.map((e, i) => <li key={i}>{e}</li>)}

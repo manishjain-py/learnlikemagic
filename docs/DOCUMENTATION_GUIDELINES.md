@@ -14,6 +14,7 @@ docs/
 │   ├── learning-session.md           # Tutoring experience from student POV
 │   ├── evaluation.md                 # Tutor quality testing from admin POV
 │   ├── scorecard.md                  # Student progress report
+│   ├── practice-mode.md              # Let's Practice — student-facing drill flow
 │   ├── book-guidelines.md            # Book ingestion from admin POV
 │   └── auth-and-onboarding.md        # Login, signup, onboarding
 ├── technical/                        # Developer perspective (code, APIs, data flows)
@@ -21,6 +22,7 @@ docs/
 │   ├── learning-session.md           # Tutor pipeline: agents, orchestration, WebSocket
 │   ├── evaluation.md                 # Evaluation pipeline: simulator, judge, reports
 │   ├── scorecard.md                  # Scorecard service, API, aggregation
+│   ├── practice-mode.md              # Let's Practice — schema, grading, APIs, frontend
 │   ├── book-guidelines.md            # Book ingestion, OCR, guideline extraction
 │   ├── auth-and-onboarding.md        # Cognito, auth flows, user management
 │   ├── dev-workflow.md               # Local setup, testing, git workflow
@@ -32,7 +34,8 @@ docs/
 │       └── overview.md               # Autonomous prompt optimization system
 ├── principles/                       # Teaching & content principles
 │   ├── breaking-down-chapters-into-topics.md
-│   └── how-to-explain.md
+│   ├── how-to-explain.md
+│   └── practice-mode.md              # Let's Practice philosophy
 ├── feature-development/              # Active PRDs, implementation plans, trackers
 └── archive/                          # Preserved historical docs
     ├── SESSION_LOG_TUTOR_REWRITE.md
@@ -55,6 +58,7 @@ docs/
 | `docs/functional/learning-session.md` | Tutoring experience from student POV | Understanding the tutor feature |
 | `docs/functional/evaluation.md` | Tutor quality testing from admin POV | Understanding evaluation |
 | `docs/functional/scorecard.md` | Student progress report | Understanding scorecard |
+| `docs/functional/practice-mode.md` | Let's Practice — student-facing drill flow | Understanding the practice feature |
 | `docs/functional/book-guidelines.md` | Book → guidelines → study plans from admin POV | Understanding content pipeline |
 | `docs/functional/auth-and-onboarding.md` | Login, signup, onboarding | Understanding auth flows |
 | **Technical** | | |
@@ -62,6 +66,7 @@ docs/
 | `docs/technical/learning-session.md` | Tutor pipeline technical details | Working on tutor code |
 | `docs/technical/evaluation.md` | Evaluation pipeline technical details | Working on evaluation |
 | `docs/technical/scorecard.md` | Scorecard service technical details | Working on scorecard |
+| `docs/technical/practice-mode.md` | Let's Practice technical details (schema, grading, APIs, frontend) | Working on practice code |
 | `docs/technical/book-guidelines.md` | Book/guidelines pipeline technical details | Working on content pipeline |
 | `docs/technical/auth-and-onboarding.md` | Auth architecture, Cognito, APIs | Working on auth |
 | `docs/technical/dev-workflow.md` | Local setup, testing, git workflow | Dev environment, testing |

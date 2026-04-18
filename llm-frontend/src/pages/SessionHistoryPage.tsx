@@ -19,8 +19,6 @@ interface SessionEntry {
   mode?: string;
   coverage?: number;
   concepts_discussed?: string[];
-  exam_score?: number;
-  exam_total?: number;
 }
 
 interface LearningStats {
@@ -44,7 +42,6 @@ export default function SessionHistoryPage() {
     switch (mode) {
       case 'teach_me': return 'Teach Me';
       case 'clarify_doubts': return 'Clarify Doubts';
-      case 'exam': return 'Exam';
       default: return 'Teach Me';
     }
   };
@@ -53,7 +50,6 @@ export default function SessionHistoryPage() {
     switch (mode) {
       case 'teach_me': return '#667eea';
       case 'clarify_doubts': return '#38a169';
-      case 'exam': return '#e53e3e';
       default: return '#667eea';
     }
   };
@@ -144,7 +140,7 @@ export default function SessionHistoryPage() {
       )}
 
       <div className="mode-filter-group">
-        {['all', 'teach_me', 'clarify_doubts', 'exam'].map((mode) => (
+        {['all', 'teach_me', 'clarify_doubts'].map((mode) => (
           <button
             key={mode}
             onClick={() => setModeFilter(mode)}
@@ -191,9 +187,7 @@ export default function SessionHistoryPage() {
                     className="session-mastery"
                     style={{ color: getMasteryColor(session.mastery) }}
                   >
-                    {session.mode === 'exam' && session.exam_score !== undefined
-                      ? `${session.exam_score}/${session.exam_total}`
-                      : session.mode === 'clarify_doubts' && session.concepts_discussed
+                    {session.mode === 'clarify_doubts' && session.concepts_discussed
                       ? `${session.concepts_discussed.length} concepts`
                       : `${(session.mastery * 100).toFixed(0)}%`}
                   </span>

@@ -77,6 +77,18 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "claude-opus-4-6",
         "description": "Check-in card generation (match-the-pairs activities for explanation cards)",
     },
+    {
+        "component_key": "practice_bank_generator",
+        "provider": "claude_code",
+        "model_id": "claude-opus-4-6",
+        "description": "Practice question bank generation + correctness review",
+    },
+    {
+        "component_key": "practice_grader",
+        "provider": "openai",
+        "model_id": "gpt-4o-mini",
+        "description": "Practice free-form grading + per-pick wrong-answer rationale",
+    },
 ]
 
 
@@ -134,6 +146,13 @@ def migrate():
         # Rebuild paused-session unique index to include mode (teach_me + practice can both be paused)
         _apply_practice_mode_support(db_manager)
 
+        # Practice v2 tables (create_all handles base tables; this adds the partial
+        # unique index + seeds practice_bank_generator / practice_grader LLM configs)
+        _apply_practice_tables(db_manager)
+
+        # Destructive cleanup: drop legacy exam + chat-practice session data and columns
+        _cleanup_exam_and_old_practice_data(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -185,16 +204,6 @@ def _apply_learning_modes_columns(db_manager):
             print("  Adding is_paused column to sessions...")
             conn.execute(text("ALTER TABLE sessions ADD COLUMN is_paused BOOLEAN DEFAULT FALSE"))
             print("  ✓ is_paused column added")
-
-        if "exam_score" not in existing_columns:
-            print("  Adding exam_score column to sessions...")
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN exam_score FLOAT"))
-            print("  ✓ exam_score column added")
-
-        if "exam_total" not in existing_columns:
-            print("  Adding exam_total column to sessions...")
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN exam_total INTEGER"))
-            print("  ✓ exam_total column added")
 
         if "guideline_id" not in existing_columns:
             print("  Adding guideline_id column to sessions...")
@@ -700,6 +709,89 @@ def _apply_issues_table(db_manager):
         print("  ✓ issues table exists")
     else:
         print("  ✓ issues table created")
+
+
+def _apply_practice_tables(db_manager):
+    """Practice v2 — additive migration only (Step 1 of lets-practice-v2 impl plan).
+
+    Base.metadata.create_all() already created practice_questions and
+    practice_attempts via the ORM models. This function adds the partial
+    unique index that SQLAlchemy declarative can't express portably in this
+    codebase's pattern, and ensures the practice LLM config rows exist on
+    deployments where _seed_llm_config won't re-run (table non-empty).
+
+    Does NOT touch sessions.exam_score / sessions.exam_total — the destructive
+    cleanup (DELETE rows + DROP columns) is bundled into Step 12 of the impl
+    plan alongside the code removal so runtime never sees a half-state.
+    """
+    inspector = inspect(db_manager.engine)
+    if "practice_attempts" not in inspector.get_table_names():
+        return
+
+    with db_manager.engine.connect() as conn:
+        print("  Applying practice_attempts partial unique index...")
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_attempts_one_inprogress_per_topic "
+            "ON practice_attempts(user_id, guideline_id) WHERE status = 'in_progress'"
+        ))
+        conn.commit()
+        print("  ✓ practice_attempts partial unique index applied")
+
+    _ensure_llm_config(
+        db_manager,
+        component_key="practice_bank_generator",
+        provider="claude_code",
+        model_id="claude-opus-4-6",
+        description="Practice question bank generation + correctness review",
+    )
+    _ensure_llm_config(
+        db_manager,
+        component_key="practice_grader",
+        provider="openai",
+        model_id="gpt-4o-mini",
+        description="Practice free-form grading + per-pick wrong-answer rationale",
+    )
+
+
+def _cleanup_exam_and_old_practice_data(db_manager):
+    """Step 12 destructive cleanup — rip out legacy exam + chat-practice data.
+
+    Runs the DELETE + DROP in a single transaction so the runtime never sees a
+    half-state where code has shipped without exam/practice handling but rows +
+    columns still reference it.
+
+    Idempotent: DROP uses IF EXISTS, DELETE is safe on empty state.
+    """
+    inspector = inspect(db_manager.engine)
+    if "sessions" not in inspector.get_table_names():
+        return
+
+    existing_cols = {c["name"] for c in inspector.get_columns("sessions")}
+    has_exam_cols = "exam_score" in existing_cols or "exam_total" in existing_cols
+
+    with db_manager.engine.begin() as conn:
+        # Events FK-reference sessions with ON DELETE RESTRICT. Clear child rows first.
+        events_deleted = conn.execute(text(
+            "DELETE FROM events WHERE session_id IN ("
+            "SELECT id FROM sessions WHERE mode IN ('exam', 'practice')"
+            ")"
+        )).rowcount
+        if events_deleted:
+            print(f"  ✓ Deleted {events_deleted} event row(s) for legacy sessions")
+
+        # session_feedback also FK-references sessions; SET NULL on delete per model.
+        # No action needed — PG handles the null-out automatically.
+
+        deleted = conn.execute(
+            text("DELETE FROM sessions WHERE mode IN ('exam', 'practice')")
+        ).rowcount
+        if deleted:
+            print(f"  ✓ Deleted {deleted} legacy exam/chat-practice session row(s)")
+
+        if has_exam_cols:
+            conn.execute(text("ALTER TABLE sessions DROP COLUMN IF EXISTS exam_score"))
+            conn.execute(text("ALTER TABLE sessions DROP COLUMN IF EXISTS exam_total"))
+            print("  ✓ Dropped sessions.exam_score + sessions.exam_total columns")
 
 
 def _seed_llm_config(db_manager):

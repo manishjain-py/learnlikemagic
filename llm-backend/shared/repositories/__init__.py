@@ -5,3 +5,5 @@ from shared.repositories.guideline_repository import TeachingGuidelineRepository
 from shared.repositories.llm_config_repository import LLMConfigRepository
 from shared.repositories.book_repository import BookRepository
 from shared.repositories.explanation_repository import ExplanationRepository
+from shared.repositories.practice_question_repository import PracticeQuestionRepository
+from shared.repositories.practice_attempt_repository import PracticeAttemptRepository
