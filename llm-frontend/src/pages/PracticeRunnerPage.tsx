@@ -153,6 +153,7 @@ export default function PracticeRunnerPage() {
 
       <div className="practice-question-card">
         <QuestionRenderer
+          key={q.q_id}
           format={q.format}
           questionJson={q.question_json}
           value={value}

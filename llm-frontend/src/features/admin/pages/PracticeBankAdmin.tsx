@@ -201,24 +201,40 @@ export default function PracticeBankAdmin() {
     };
   }, [loadData]);
 
-  // Resume polling on mount if jobs are still active
+  // Resume polling on mount if jobs are still active.
+  // Chapter-level: one unconditional probe (cheap, always worth the single call).
+  // Per-topic: only probe topics the admin kicked off earlier in this session,
+  // tracked via sessionStorage. Previously iterated every topic on mount — a
+  // 20-topic chapter fired 20 parallel requests, most 404.
   useEffect(() => {
-    if (!bookId || !chapterId || !topics.length) return;
+    if (!bookId || !chapterId) return;
     getPracticeBankJobStatus(bookId, { chapterId }).then(job => {
       if (['pending', 'running'].includes(job.status)) {
         setChapterJob(job);
         startChapterPolling();
       }
     }).catch(() => {});
-    topics.forEach(t => {
-      getPracticeBankJobStatus(bookId, { guidelineId: t.guideline_id }).then(job => {
+
+    const storageKey = `practice-bank-active-topics:${bookId}:${chapterId}`;
+    let active: string[] = [];
+    try {
+      active = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+    } catch { /* ignore corrupt storage */ }
+    active.forEach(gid => {
+      getPracticeBankJobStatus(bookId, { guidelineId: gid }).then(job => {
         if (['pending', 'running'].includes(job.status)) {
-          setTopicJobs(prev => ({ ...prev, [t.guideline_id]: job }));
-          startTopicPolling(t.guideline_id);
+          setTopicJobs(prev => ({ ...prev, [gid]: job }));
+          startTopicPolling(gid);
+        } else {
+          // Completed / failed — drop from session list so we don't probe next mount.
+          try {
+            const now: string[] = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+            sessionStorage.setItem(storageKey, JSON.stringify(now.filter(x => x !== gid)));
+          } catch { /* ignore */ }
         }
       }).catch(() => {});
     });
-  }, [bookId, chapterId, topics.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookId, chapterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startChapterPolling = useCallback(() => {
     if (!bookId || !chapterId || chapterPollRef.current) return;
@@ -263,6 +279,15 @@ export default function PracticeBankAdmin() {
         reviewRounds,
       });
       if (guidelineId) {
+        // Record in sessionStorage so a mid-generation page reload resumes
+        // polling without an N+1 probe across every topic in the chapter.
+        const storageKey = `practice-bank-active-topics:${bookId}:${chapterId}`;
+        try {
+          const current: string[] = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+          if (!current.includes(guidelineId)) {
+            sessionStorage.setItem(storageKey, JSON.stringify([...current, guidelineId]));
+          }
+        } catch { /* ignore */ }
         setTopicJobs(prev => ({ ...prev, [guidelineId]: job }));
         startTopicPolling(guidelineId);
       } else {
