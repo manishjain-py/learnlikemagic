@@ -257,24 +257,80 @@ export default function TopicsAdmin() {
           </button>
         )}
         {topics.length > 0 && (
-          <>
-            <button onClick={handleRefinalize} disabled={!!isRunning} title="Re-run finalization (consolidate + order topics)" style={{
-              backgroundColor: '#6366F1', color: 'white', border: 'none', padding: '8px 16px',
-              borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px',
-              fontWeight: 600, opacity: isRunning ? 0.6 : 1,
-            }}>
-              Re-finalize
-            </button>
-            <button onClick={handleReprocess} disabled={!!isRunning} title="Delete all topics and re-extract from OCR text" style={{
-              backgroundColor: '#DC2626', color: 'white', border: 'none', padding: '8px 16px',
-              borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px',
-              fontWeight: 600, opacity: isRunning ? 0.6 : 1,
-            }}>
-              Reprocess All
-            </button>
-          </>
+          <button onClick={handleReprocess} disabled={!!isRunning} title="Delete all topics and re-extract from OCR text" style={{
+            backgroundColor: '#DC2626', color: 'white', border: 'none', padding: '8px 16px',
+            borderRadius: '6px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '13px',
+            fontWeight: 600, opacity: isRunning ? 0.6 : 1,
+          }}>
+            Reprocess All
+          </button>
         )}
       </div>
+
+      {/* Finalization section — stage 3 (consolidate drafts → finalized topics) */}
+      {topics.length > 0 && (() => {
+        const draftCount = topics.filter(t => t.status === 'draft').length;
+        const consolidatedCount = topics.filter(t => t.status === 'consolidated').length;
+        const finalCountLocal = topics.filter(t => t.status === 'final').length;
+        const approvedCount = topics.filter(t => t.status === 'approved').length;
+        const chapterStatus = chapter?.status || '';
+        const statusLabel =
+          chapterStatus === 'chapter_completed' ? 'Finalized' :
+          chapterStatus === 'needs_review' ? 'Needs Review' :
+          chapterStatus === 'topic_extraction' ? 'Extraction running' :
+          chapterStatus === 'failed' ? 'Failed' :
+          'Not finalized';
+        const statusColor =
+          chapterStatus === 'chapter_completed' ? '#065F46' :
+          chapterStatus === 'needs_review' ? '#92400E' :
+          chapterStatus === 'failed' ? '#991B1B' :
+          '#6B7280';
+        const statusBg =
+          chapterStatus === 'chapter_completed' ? '#D1FAE5' :
+          chapterStatus === 'needs_review' ? '#FEF3C7' :
+          chapterStatus === 'failed' ? '#FEE2E2' :
+          '#F3F4F6';
+        return (
+          <div style={{
+            marginBottom: '20px', padding: '14px 16px',
+            border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: 'white',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#111827' }}>Finalization</h3>
+              <span style={{
+                fontSize: '11px', fontWeight: 600, padding: '3px 8px', borderRadius: '10px',
+                backgroundColor: statusBg, color: statusColor,
+              }}>{statusLabel}</span>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#374151', marginBottom: '12px' }}>
+              {topics.length} topics total · draft: {draftCount} · consolidated: {consolidatedCount} · final: {finalCountLocal} · approved: {approvedCount}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={handleRefinalize} disabled={!!isRunning} title="Re-run finalization: consolidate, dedupe, reorder draft topics" style={{
+                backgroundColor: '#6366F1', color: 'white', border: 'none', padding: '7px 14px',
+                borderRadius: '5px', cursor: isRunning ? 'wait' : 'pointer', fontSize: '12px',
+                fontWeight: 600, opacity: isRunning ? 0.6 : 1,
+              }}>
+                {isRunning && job?.job_type === 'v2_refinalization' ? 'Finalizing...' : 'Re-finalize'}
+              </button>
+            </div>
+
+            {isRunning && job?.job_type === 'v2_refinalization' && (
+              <div style={{
+                marginTop: '10px', padding: '8px 12px', backgroundColor: '#EEF2FF', borderRadius: '6px',
+                fontSize: '12px', color: '#3730A3',
+              }}>
+                {job.current_item ? `Finalizing: ${job.current_item}` : 'Running finalization...'}
+                {job.completed_items !== undefined && job.total_items !== undefined && (
+                  <> · {job.completed_items}/{job.total_items}</>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Job progress */}
       {isRunning && job && (

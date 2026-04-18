@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getBookV2, getVisualStatus, generateVisuals, getVisualJobStatus,
-  getTopicExplanations, deleteVisuals,
+  getTopicExplanations, deleteVisuals, getVisualJobStageSnapshots,
   BookV2DetailResponse, TopicVisualStatusV2, ProcessingJobResponseV2,
-  TopicExplanationsDetailResponseV2, ExplanationCardV2,
+  TopicExplanationsDetailResponseV2, ExplanationCardV2, VisualStageSnapshotV2,
 } from '../api/adminApiV2';
 
 const POLL_INTERVAL = 3000;
@@ -118,6 +118,8 @@ export default function VisualsAdmin() {
   const [chapterJob, setChapterJob] = useState<ProcessingJobResponseV2 | null>(null);
   const [topicJobs, setTopicJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [viewingVisuals, setViewingVisuals] = useState<TopicExplanationsDetailResponseV2 | null>(null);
+  const [viewingStages, setViewingStages] = useState<{ stages: VisualStageSnapshotV2[]; topicTitle: string } | null>(null);
+  const [reviewRounds, setReviewRounds] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -209,6 +211,7 @@ export default function VisualsAdmin() {
         chapterId: guidelineId ? undefined : chapterId,
         guidelineId,
         force,
+        reviewRounds,
       });
       if (guidelineId) {
         setTopicJobs(prev => ({ ...prev, [guidelineId]: job }));
@@ -240,6 +243,25 @@ export default function VisualsAdmin() {
       setViewingVisuals(detail);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
+    }
+  };
+
+  const handleViewStages = async (guidelineId: string, topicTitle: string) => {
+    if (!bookId) return;
+    try {
+      const job = topicJobs[guidelineId] || chapterJob;
+      if (!job) {
+        setError('No prior job found for this topic — run a generation first.');
+        return;
+      }
+      const result = await getVisualJobStageSnapshots(bookId, job.job_id, guidelineId);
+      if (!result.snapshots || result.snapshots.length === 0) {
+        setError('No stage snapshots recorded for this topic. Re-run with review rounds ≥ 1.');
+        return;
+      }
+      setViewingStages({ stages: result.snapshots, topicTitle });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load stages');
     }
   };
 
@@ -297,6 +319,14 @@ export default function VisualsAdmin() {
         }}>
           Force Regenerate All
         </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ fontSize: '12px', color: '#6B7280' }}>Review rounds:</label>
+          <select value={reviewRounds} onChange={e => setReviewRounds(Number(e.target.value))} style={{
+            padding: '4px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '13px',
+          }}>
+            {[0, 1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Chapter job progress */}
@@ -355,6 +385,9 @@ export default function VisualsAdmin() {
                         <button onClick={() => handleViewVisuals(t.guideline_id)} title="View visual code" style={actionBtn('#0891B2', false)}>
                           View
                         </button>
+                        <button onClick={() => handleViewStages(t.guideline_id, t.topic_title)} title="View per-round PixiJS snapshots from last job" style={actionBtn('#6366F1', false)}>
+                          Stages
+                        </button>
                         <button onClick={() => handleDeleteVisuals(t.guideline_id, t.topic_title)} title="Delete all visuals for this topic" style={actionBtn('#DC2626', false)}>
                           Delete
                         </button>
@@ -378,9 +411,81 @@ export default function VisualsAdmin() {
       {viewingVisuals && (
         <VisualViewerModal detail={viewingVisuals} onClose={() => setViewingVisuals(null)} />
       )}
+
+      {/* Stages Viewer Modal */}
+      {viewingStages && (
+        <VisualStagesModal
+          stages={viewingStages.stages}
+          topicTitle={viewingStages.topicTitle}
+          onClose={() => setViewingStages(null)}
+        />
+      )}
     </div>
   );
 }
+
+/* ─── Stages Viewer Modal ─── */
+const VisualStagesModal: React.FC<{
+  stages: VisualStageSnapshotV2[];
+  topicTitle: string;
+  onClose: () => void;
+}> = ({ stages, topicTitle, onClose }) => {
+  // Group by variant_key + card_idx so each card shows its progression
+  const grouped = new Map<string, VisualStageSnapshotV2[]>();
+  for (const s of stages) {
+    const key = `${s.variant_key}__card${s.card_idx}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(s);
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+      display: 'flex', justifyContent: 'center', alignItems: 'center',
+    }} onClick={onClose}>
+      <div style={{
+        backgroundColor: 'white', borderRadius: '12px', width: '90%', maxWidth: '1000px',
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{
+          padding: '16px 20px', borderBottom: '1px solid #E5E7EB',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '16px' }}>{topicTitle}</div>
+            <div style={{ fontSize: '12px', color: '#6B7280' }}>
+              {grouped.size} card(s), {stages.length} snapshot(s)
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>&times;</button>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+          {Array.from(grouped.entries()).map(([key, cardStages]) => (
+            <div key={key} style={{ marginBottom: '20px', border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', backgroundColor: '#F9FAFB', fontWeight: 600, fontSize: '13px' }}>
+                {cardStages[0].variant_key} · card {cardStages[0].card_idx} · {cardStages[0].output_type}
+              </div>
+              {cardStages.map((s, i) => (
+                <div key={i} style={{ borderTop: '1px solid #E5E7EB' }}>
+                  <div style={{ padding: '6px 14px', backgroundColor: '#F3F4F6', fontSize: '11px', color: '#374151', fontWeight: 600 }}>
+                    {s.stage}
+                  </div>
+                  <pre style={{
+                    margin: 0, padding: '10px 14px', fontSize: '11px',
+                    backgroundColor: '#111827', color: '#E5E7EB',
+                    overflow: 'auto', maxHeight: '300px', whiteSpace: 'pre-wrap',
+                  }}>{s.pixi_code}</pre>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* ─── Helpers ─── */
 function actionBtn(color: string, disabled: boolean): React.CSSProperties {

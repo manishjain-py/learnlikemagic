@@ -404,6 +404,7 @@ def generate_visuals(
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
     guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic enrichment"),
     force: bool = Query(False, description="Re-generate visuals even if cards already have them"),
+    review_rounds: int = Query(1, ge=0, le=5, description="Number of review-refine rounds over the generated PixiJS code"),
     db: Session = Depends(get_db),
 ):
     """Generate pre-computed PixiJS visuals for explanation cards.
@@ -456,7 +457,7 @@ def generate_visuals(
 
         run_in_background_v2(
             _run_visual_enrichment, job_id, book_id,
-            chapter_id or "", guideline_id or "", str(force),
+            chapter_id or "", guideline_id or "", str(force), str(review_rounds),
         )
 
         return job_service.get_job(job_id)
@@ -674,6 +675,7 @@ def _run_explanation_generation(
                     service.repo.delete_by_guideline_id(guideline_id)
                 results = service.generate_for_guideline(
                     guideline, review_rounds=review_rounds, stage_collector=stage_collector,
+                    force=force,
                 )
 
             if stage_collector:
@@ -723,7 +725,7 @@ def _run_explanation_generation(
 
 def _run_visual_enrichment(
     db: Session, job_id: str, book_id: str, chapter_id: str,
-    guideline_id: str = "", force_str: str = "False",
+    guideline_id: str = "", force_str: str = "False", review_rounds_str: str = "1",
 ):
     """Background task for visual enrichment of explanation cards."""
     import json as _json
@@ -735,6 +737,7 @@ def _run_visual_enrichment(
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
 
     force = force_str.lower() == "true"
+    review_rounds = int(review_rounds_str)
 
     settings = get_settings()
 
@@ -775,7 +778,13 @@ def _run_visual_enrichment(
             heartbeat_fn = lambda: job_service.update_progress(
                 job_id, current_item=topic, completed=0, failed=0,
             )
-            result = service.enrich_guideline(guideline, force=force, heartbeat_fn=heartbeat_fn)
+            stage_collector = []
+            result = service.enrich_guideline(
+                guideline, force=force, heartbeat_fn=heartbeat_fn,
+                review_rounds=review_rounds, stage_collector=stage_collector,
+            )
+            if stage_collector:
+                job_service.append_stage_snapshots(job_id, stage_collector)
 
             job_service.update_progress(
                 job_id, current_item=None,
@@ -790,6 +799,7 @@ def _run_visual_enrichment(
                 force=force,
                 job_service=job_service,
                 job_id=job_id,
+                review_rounds=review_rounds,
             )
 
             for error in result.get("errors", []):
@@ -1055,6 +1065,19 @@ def delete_visuals(
     db.commit()
 
     return {"guideline_id": guideline_id, "visuals_stripped": stripped}
+
+
+@router.get("/visual-jobs/{job_id}/stages")
+def get_visual_job_stage_snapshots(
+    book_id: str,
+    job_id: str,
+    guideline_id: Optional[str] = Query(None, description="Filter stages by guideline_id"),
+    db: Session = Depends(get_db),
+):
+    """Get per-card per-round PixiJS snapshots for a visual enrichment job."""
+    job_service = ChapterJobService(db)
+    snapshots = job_service.get_stage_snapshots(job_id, guideline_id=guideline_id)
+    return {"job_id": job_id, "snapshots": snapshots}
 
 
 @router.get("/visual-jobs/latest", response_model=ProcessingJobResponse)

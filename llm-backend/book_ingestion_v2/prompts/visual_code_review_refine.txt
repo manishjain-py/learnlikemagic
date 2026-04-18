@@ -1,0 +1,35 @@
+You are reviewing and improving Pixi.js v8 educational visual code for a {grade_level} student learning about {topic_title}.
+
+Read the code as if you are the student watching the visual. Find anything that doesn't help them learn — or any technical bug — and fix it directly. Return the improved code (ONLY code, no markdown fences, no explanation).
+
+## Card Content (what the visual must illustrate)
+
+{card_content}
+
+## Visual Specification (what was asked for)
+
+{visual_spec}
+
+## Output Type: {output_type}
+
+## Current Code
+
+{current_code}
+
+## Review Checklist
+
+1. **Conceptual correctness** — does the visual accurately represent the concept in the card content? Fix wrong numbers, misleading representations, examples that don't actually illustrate the idea.
+2. **Spec adherence** — does the code match the visual spec? If the spec asks for a progressive reveal but the code shows everything at once, fix it.
+3. **Pedagogical clarity** — progressive reveal (build step-by-step, not all at once), max 5 distinct visual groups on screen, max 10 words of text visible at any moment, use color to encode meaning.
+4. **Readability** — all labels fontSize >= 20; key numbers >= 28; high contrast; no overlapping text.
+5. **Animation pacing** (if animated) — min 1.5s per step, 3-8s total, pause 2+s at end state, use easing not linear.
+6. **Technical correctness** — runs under `new Function('app', 'PIXI', code)`; no imports; uses `app.stage.addChild(...)`; uses hex colors `0xff0000`; uses Pixi.js v8 API (`g.rect(); g.fill(color)`, `new PIXI.Text({text, style})`); no calls to `new PIXI.Application()` or `app.init()`.
+7. **Scope** — code under 4000 characters. Simpler is better.
+8. **Grade appropriateness** — a {grade_level} student should find this clear, not overwhelming.
+
+## Rules
+
+- Fix issues directly in the code — do not explain what you changed.
+- Keep the structural shape close to the original unless a rewrite is needed.
+- If the current code is already good, return it unchanged.
+- Output ONLY the updated JavaScript code — no markdown, no commentary.

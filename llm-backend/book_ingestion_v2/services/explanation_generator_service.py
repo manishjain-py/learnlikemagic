@@ -115,6 +115,16 @@ class ExplanationGeneratorService:
         self.db = get_db_manager().get_session()
         self.repo = ExplanationRepository(self.db)
 
+    def _all_variants_present(
+        self,
+        guideline_id: str,
+        variant_count: int = DEFAULT_VARIANT_COUNT,
+    ) -> bool:
+        """True iff every variant in VARIANT_CONFIGS[:variant_count] has a row."""
+        existing = {e.variant_key for e in self.repo.get_by_guideline_id(guideline_id)}
+        expected = {c["key"] for c in VARIANT_CONFIGS[:variant_count]}
+        return expected.issubset(existing)
+
     def generate_for_guideline(
         self,
         guideline: TeachingGuideline,
@@ -122,8 +132,15 @@ class ExplanationGeneratorService:
         variant_count: int = DEFAULT_VARIANT_COUNT,
         review_rounds: int = DEFAULT_REVIEW_ROUNDS,
         stage_collector: list | None = None,
+        force: bool = False,
     ) -> list[TopicExplanation]:
         """Generate explanation variants for a guideline.
+
+        Retry semantics: when force=False, variants that already exist are skipped
+        (per-variant retry — useful after a partial failure that produced some but
+        not all variants). When force=True, caller is expected to have already
+        wiped existing variants (via delete_by_guideline_id) and this method
+        regenerates all.
 
         Args:
             guideline: The teaching guideline to generate explanations for
@@ -131,6 +148,7 @@ class ExplanationGeneratorService:
             variant_count: Number of variants to generate (default: DEFAULT_VARIANT_COUNT)
             review_rounds: Number of review-and-refine passes (default: DEFAULT_REVIEW_ROUNDS)
             stage_collector: Optional list to collect intermediate stage snapshots
+            force: When True, regenerate even variants that already exist.
 
         Returns:
             List of successfully stored TopicExplanation records
@@ -144,6 +162,11 @@ class ExplanationGeneratorService:
         results = []
 
         for config in configs:
+            if not force and self.repo.get_variant(guideline.id, config["key"]) is not None:
+                logger.info(
+                    f"Variant {config['key']} already exists for {topic}, skipping (retry mode)"
+                )
+                continue
             try:
                 logger.info(json.dumps({
                     "step": "EXPLANATION_GENERATION",
@@ -628,19 +651,20 @@ class ExplanationGeneratorService:
                         job_id, current_item=topic, completed=generated, failed=failed,
                     )
 
-                # Check if explanations already exist
-                if self.repo.has_explanations(guideline.id):
-                    if force:
-                        logger.info(f"Force mode: deleting existing explanations for {topic}")
-                        self.repo.delete_by_guideline_id(guideline.id)
-                    else:
-                        logger.info(f"Explanations already exist for {topic}, skipping")
-                        skipped += 1
-                        continue
+                # Force mode: wipe existing variants so regeneration is clean.
+                # Retry mode (force=False): delegate per-variant skip to generate_for_guideline.
+                if force and self.repo.has_explanations(guideline.id):
+                    logger.info(f"Force mode: deleting existing explanations for {topic}")
+                    self.repo.delete_by_guideline_id(guideline.id)
+                elif not force and self._all_variants_present(guideline.id):
+                    logger.info(f"All variants already exist for {topic}, skipping")
+                    skipped += 1
+                    continue
 
                 stage_collector = []
                 results = self.generate_for_guideline(
                     guideline, review_rounds=review_rounds, stage_collector=stage_collector,
+                    force=force,
                 )
 
                 # Flush stage snapshots to job

@@ -8,6 +8,7 @@ topic_explanations table.
 """
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -26,6 +27,9 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _DECISION_PROMPT = (_PROMPTS_DIR / "visual_decision_and_spec.txt").read_text()
 _DECISION_SYSTEM_FILE = str(_PROMPTS_DIR / "visual_decision_and_spec_system.txt")
 _CODE_GEN_PROMPT = (_PROMPTS_DIR / "visual_code_generation.txt").read_text()
+_REVIEW_REFINE_PROMPT = (_PROMPTS_DIR / "visual_code_review_refine.txt").read_text()
+
+DEFAULT_REVIEW_ROUNDS = 1
 
 # ─── Pydantic models for structured LLM output ─────────────────────────────
 
@@ -79,11 +83,18 @@ class AnimationEnrichmentService:
         force: bool = False,
         variant_keys: Optional[list[str]] = None,
         heartbeat_fn: Optional[callable] = None,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
+        stage_collector: Optional[list] = None,
     ) -> dict:
         """Enrich all variants for a guideline with visuals.
 
+        Args:
+            review_rounds: number of review-and-refine passes over generated PixiJS code (0-5).
+            stage_collector: optional list to collect per-card per-round snapshots for admin viewing.
+
         Returns: {"enriched": int, "skipped": int, "failed": int, "errors": [str]}
         """
+        review_rounds = max(0, min(review_rounds, 5))
         explanations = self.repo.get_by_guideline_id(guideline.id)
         if not explanations:
             return {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
@@ -96,7 +107,10 @@ class AnimationEnrichmentService:
 
         for explanation in explanations:
             try:
-                enriched = self._enrich_variant(explanation, guideline, force=force, heartbeat_fn=heartbeat_fn)
+                enriched = self._enrich_variant(
+                    explanation, guideline, force=force, heartbeat_fn=heartbeat_fn,
+                    review_rounds=review_rounds, stage_collector=stage_collector,
+                )
                 if enriched:
                     result["enriched"] += 1
                 else:
@@ -115,8 +129,10 @@ class AnimationEnrichmentService:
         force: bool = False,
         job_service=None,
         job_id: Optional[str] = None,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
     ) -> dict:
         """Enrich all guidelines in a chapter (or book) with visuals."""
+        review_rounds = max(0, min(review_rounds, 5))
         query = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.book_id == book_id,
             TeachingGuideline.review_status == "APPROVED",
@@ -146,7 +162,15 @@ class AnimationEnrichmentService:
                     job_id, current_item=topic,
                     completed=totals["enriched"], failed=totals["failed"],
                 )
-            result = self.enrich_guideline(guideline, force=force, heartbeat_fn=hb)
+
+            stage_collector = [] if (job_service and job_id) else None
+            result = self.enrich_guideline(
+                guideline, force=force, heartbeat_fn=hb,
+                review_rounds=review_rounds, stage_collector=stage_collector,
+            )
+            if job_service and job_id and stage_collector:
+                job_service.append_stage_snapshots(job_id, stage_collector)
+
             totals["enriched"] += result["enriched"]
             totals["skipped"] += result["skipped"]
             totals["failed"] += result["failed"]
@@ -162,21 +186,27 @@ class AnimationEnrichmentService:
         guideline: TeachingGuideline,
         force: bool = False,
         heartbeat_fn: Optional[callable] = None,
+        review_rounds: int = DEFAULT_REVIEW_ROUNDS,
+        stage_collector: Optional[list] = None,
     ) -> bool:
-        """Enrich a single variant. Returns True if any cards were enriched."""
+        """Enrich a single variant. Returns True if any cards were enriched.
+
+        Retry semantics: when force=False, cards that already have a valid
+        visual_explanation.pixi_code are skipped per-card (partial-failure
+        recovery). When force=True, every selected card is regenerated.
+        """
         cards = explanation.cards_json
         if not cards:
             return False
 
-        # Check if already enriched (skip unless force)
-        if not force:
-            has_visuals = any(
-                c.get("visual_explanation", {}).get("pixi_code")
-                for c in cards if isinstance(c.get("visual_explanation"), dict)
-            )
-            if has_visuals:
-                logger.info(f"Variant {explanation.variant_key} already enriched, skipping")
-                return False
+        def _already_enriched(card: dict) -> bool:
+            ve = card.get("visual_explanation")
+            return isinstance(ve, dict) and bool(ve.get("pixi_code"))
+
+        # Retry-mode short-circuit: if every card is enriched, nothing to do.
+        if not force and all(_already_enriched(c) for c in cards):
+            logger.info(f"Variant {explanation.variant_key} fully enriched, skipping")
+            return False
 
         topic = guideline.topic_title or guideline.topic
         variant_label = explanation.variant_label or explanation.variant_key
@@ -193,7 +223,7 @@ class AnimationEnrichmentService:
 
         logger.info(f"Selected {len(selected)} cards for visuals in {topic} variant {explanation.variant_key}")
 
-        # Step 2: Generate code for each selected card
+        # Step 2: Generate code (then review-refine N rounds) for each selected card
         enriched_count = 0
         for decision in selected:
             if heartbeat_fn:
@@ -203,24 +233,58 @@ class AnimationEnrichmentService:
             if not card:
                 continue
 
+            # Per-card retry skip: leave already-enriched cards untouched when not force.
+            if not force and _already_enriched(card):
+                logger.info(
+                    f"Card {decision.card_idx} already enriched in {topic} variant "
+                    f"{explanation.variant_key}, skipping (retry mode)"
+                )
+                continue
+
             pixi_code = self._generate_and_validate_code(
                 decision, card, guideline,
             )
 
-            if pixi_code:
-                card["visual_explanation"] = {
-                    "output_type": decision.decision,
-                    "title": decision.title,
-                    "visual_summary": decision.visual_summary,
-                    "visual_spec": decision.visual_spec,
-                    "pixi_code": pixi_code,
-                }
-                enriched_count += 1
-            else:
+            if not pixi_code:
                 logger.warning(
                     f"Code generation failed for card {decision.card_idx} in "
                     f"{topic} variant {explanation.variant_key}"
                 )
+                continue
+
+            self._collect_snapshot(
+                stage_collector, guideline, explanation, decision, pixi_code, stage="initial",
+            )
+
+            # Review-refine N rounds
+            for round_num in range(1, review_rounds + 1):
+                if heartbeat_fn:
+                    heartbeat_fn()
+                logger.info(
+                    f"Visual review-refine round {round_num}/{review_rounds} for "
+                    f"{topic} variant {explanation.variant_key} card {decision.card_idx}"
+                )
+                refined = self._review_and_refine_code(decision, card, guideline, pixi_code)
+                if refined and self._validate_code(refined):
+                    pixi_code = refined
+                else:
+                    logger.info(
+                        f"Review-refine round {round_num} returned no improvement; keeping prior code"
+                    )
+
+                self._collect_snapshot(
+                    stage_collector, guideline, explanation, decision, pixi_code,
+                    stage=f"refine_{round_num}",
+                )
+
+            card["visual_explanation"] = {
+                "output_type": decision.decision,
+                "title": decision.title,
+                "visual_summary": decision.visual_summary,
+                "visual_spec": decision.visual_spec,
+                "pixi_code": pixi_code,
+            }
+            enriched_count += 1
 
         if enriched_count == 0:
             return False
@@ -235,6 +299,61 @@ class AnimationEnrichmentService:
             f"Enriched {enriched_count} cards in {topic} variant {explanation.variant_key}"
         )
         return True
+
+    def _collect_snapshot(
+        self,
+        stage_collector: Optional[list],
+        guideline: TeachingGuideline,
+        explanation: TopicExplanation,
+        decision: VisualDecision,
+        pixi_code: str,
+        stage: str,
+    ) -> None:
+        """Append a per-card per-stage snapshot for admin stage viewer."""
+        if stage_collector is None:
+            return
+        stage_collector.append({
+            "guideline_id": guideline.id,
+            "topic_title": guideline.topic_title or guideline.topic,
+            "variant_key": explanation.variant_key,
+            "card_idx": decision.card_idx,
+            "output_type": decision.decision,
+            "stage": stage,
+            "pixi_code": pixi_code,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+    def _review_and_refine_code(
+        self,
+        decision: VisualDecision,
+        card: dict,
+        guideline: TeachingGuideline,
+        current_code: str,
+    ) -> Optional[str]:
+        """Single review-refine pass: LLM reviews the current code and returns an improved version."""
+        topic = guideline.topic_title or guideline.topic
+        grade = f"Grade {guideline.grade}" if guideline.grade else "Grade 3"
+
+        prompt = (_REVIEW_REFINE_PROMPT
+            .replace("{grade_level}", grade)
+            .replace("{topic_title}", topic)
+            .replace("{card_content}", card.get("content", ""))
+            .replace("{visual_spec}", decision.visual_spec or "")
+            .replace("{output_type}", decision.decision)
+            .replace("{current_code}", current_code)
+        )
+
+        try:
+            result = self.code_llm.call(
+                prompt=prompt,
+                reasoning_effort="none",
+                json_mode=False,
+            )
+            code = result["output_text"]
+            return self._strip_markdown_fences(code)
+        except (LLMServiceError, Exception) as e:
+            logger.error(f"Visual review-refine failed for card {decision.card_idx}: {e}")
+            return None
 
     def _decide_and_spec(
         self,

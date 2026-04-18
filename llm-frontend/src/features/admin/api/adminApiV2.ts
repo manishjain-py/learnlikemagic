@@ -664,12 +664,13 @@ export async function getVisualStatus(
 
 export async function generateVisuals(
   bookId: string,
-  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
 ): Promise<ProcessingJobResponseV2> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.force) params.set('force', 'true');
+  if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/generate-visuals${qs}`,
@@ -681,6 +682,26 @@ export async function deleteVisuals(
   bookId: string, guidelineId: string
 ): Promise<{ guideline_id: string; visuals_stripped: number }> {
   return apiFetch(`/admin/v2/books/${bookId}/visuals?guideline_id=${guidelineId}`, { method: 'DELETE' });
+}
+
+export interface VisualStageSnapshotV2 {
+  guideline_id: string;
+  topic_title: string;
+  variant_key: string;
+  card_idx: number;
+  output_type: string;
+  stage: string;
+  pixi_code: string;
+  timestamp: string;
+}
+
+export async function getVisualJobStageSnapshots(
+  bookId: string,
+  jobId: string,
+  guidelineId?: string,
+): Promise<{ job_id: string; snapshots: VisualStageSnapshotV2[] }> {
+  const params = guidelineId ? `?guideline_id=${guidelineId}` : '';
+  return apiFetch(`/admin/v2/books/${bookId}/visual-jobs/${jobId}/stages${params}`);
 }
 
 export async function getVisualJobStatus(

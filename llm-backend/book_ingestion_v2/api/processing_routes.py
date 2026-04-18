@@ -58,20 +58,9 @@ def start_processing(
                 detail=f"Chapter not found: {chapter_id}",
             )
 
-        # Validate chapter is ready
-        allowed_statuses = [ChapterStatus.UPLOAD_COMPLETE.value]
-        if request.resume:
-            allowed_statuses.extend([
-                ChapterStatus.TOPIC_EXTRACTION.value,
-                ChapterStatus.FAILED.value,
-                ChapterStatus.NEEDS_REVIEW.value,
-            ])
-        if chapter.status not in allowed_statuses:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Chapter status is '{chapter.status}', "
-                       f"expected one of {allowed_statuses}",
-            )
+        # Validate chapter is ready (centralized gating)
+        from book_ingestion_v2.services.stage_gating import require_stage_ready
+        require_stage_ready(chapter, V2JobType.TOPIC_EXTRACTION.value, resume=request.resume)
 
         # Acquire job lock
         job_service = ChapterJobService(db)
@@ -157,15 +146,8 @@ def refinalize(
                 detail=f"Chapter not found: {chapter_id}",
             )
 
-        if chapter.status not in [
-            ChapterStatus.CHAPTER_COMPLETED.value,
-            ChapterStatus.FAILED.value,
-            ChapterStatus.NEEDS_REVIEW.value,
-        ]:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Chapter must be completed or failed to refinalize",
-            )
+        from book_ingestion_v2.services.stage_gating import require_stage_ready
+        require_stage_ready(chapter, V2JobType.REFINALIZATION.value)
 
         # Acquire job lock
         job_service = ChapterJobService(db)
@@ -210,14 +192,8 @@ def ocr_retry(
                 detail=f"Chapter not found: {chapter_id}",
             )
 
-        if chapter.status not in [
-            ChapterStatus.UPLOAD_IN_PROGRESS.value,
-            ChapterStatus.UPLOAD_COMPLETE.value,
-        ]:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Chapter status is '{chapter.status}', expected upload_in_progress or upload_complete",
-            )
+        from book_ingestion_v2.services.stage_gating import require_stage_ready
+        require_stage_ready(chapter, V2JobType.OCR.value)
 
         page_repo = ChapterPageRepository(db)
         pages_needing_ocr = page_repo.get_pages_needing_ocr(chapter_id)
@@ -264,14 +240,8 @@ def ocr_rerun(
                 detail=f"Chapter not found: {chapter_id}",
             )
 
-        if chapter.status not in [
-            ChapterStatus.UPLOAD_IN_PROGRESS.value,
-            ChapterStatus.UPLOAD_COMPLETE.value,
-        ]:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Chapter status is '{chapter.status}', expected upload_in_progress or upload_complete",
-            )
+        from book_ingestion_v2.services.stage_gating import require_stage_ready
+        require_stage_ready(chapter, V2JobType.OCR.value)
 
         page_repo = ChapterPageRepository(db)
         total_pages = page_repo.count_by_chapter(chapter_id)
