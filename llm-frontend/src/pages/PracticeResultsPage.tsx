@@ -7,6 +7,11 @@ import {
 } from '../api';
 
 const POLL_INTERVAL_MS = 2000;
+// Stop polling after ~5 minutes. A grading worker that's still running past
+// this mark is almost certainly dead (silent thread death is an acknowledged
+// v1 limitation). Surface a stuck-grading state + Retry instead of polling
+// forever. Tracks with the post-v1 server-side sweeper plan.
+const POLL_MAX_ATTEMPTS = 150; // 150 * 2s = 5 min
 
 interface PracticeFlowState {
   topicTitle?: string;
@@ -36,7 +41,9 @@ export default function PracticeResultsPage() {
   const [retrying, setRetrying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [practiceAgainLoading, setPracticeAgainLoading] = useState(false);
+  const [pollStuck, setPollStuck] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCountRef = useRef(0);
   const viewedMarkedRef = useRef(false);
 
   useEffect(() => {
@@ -61,7 +68,14 @@ export default function PracticeResultsPage() {
   useEffect(() => {
     if (!attemptId || !attempt) return;
     if (attempt.status !== 'grading') return;
+    pollCountRef.current = 0;
     pollRef.current = setInterval(async () => {
+      pollCountRef.current += 1;
+      if (pollCountRef.current > POLL_MAX_ATTEMPTS) {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        setPollStuck(true);
+        return;
+      }
       try {
         const a = await getPracticeAttempt(attemptId);
         setAttempt(a);
@@ -88,9 +102,12 @@ export default function PracticeResultsPage() {
     if (!attemptId) return;
     setRetrying(true);
     setError(null);
+    setPollStuck(false);
+    pollCountRef.current = 0;
     try {
       await retryPracticeGrading(attemptId);
       setAttempt(prev => prev ? { ...prev, status: 'grading' } as any : prev);
+      setRetrying(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setRetrying(false);
@@ -132,6 +149,26 @@ export default function PracticeResultsPage() {
   }
 
   if (attempt.status === 'grading') {
+    if (pollStuck) {
+      return (
+        <div className="selection-step">
+          {topicTitle && <div className="practice-header-topic">{topicTitle}</div>}
+          <h2>Grading is taking longer than expected</h2>
+          <div className="practice-error">
+            We haven't heard back from the grader in a while. Tap Retry to
+            spin up a fresh grading run.
+          </div>
+          {error && <div className="practice-error">{error}</div>}
+          <button
+            className="practice-retry-btn"
+            onClick={handleRetry}
+            disabled={retrying}
+          >
+            {retrying ? 'Retrying…' : 'Retry grading'}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="selection-step">
         {topicTitle && <div className="practice-header-topic">{topicTitle}</div>}

@@ -1078,8 +1078,11 @@ export default function ChatSession() {
   // Teach Me complete → hand off to Practice v2 drill route.
   const handleStartPracticeFromCTA = () => {
     if (!teachMeGuidelineId) return;
+    const prettyTopic = /[-_]/.test(topic)
+      ? topic.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      : topic;
     navigate(`/practice/${teachMeGuidelineId}`, {
-      state: { topicTitle: topic, subject, chapter, topic },
+      state: { topicTitle: prettyTopic, subject, chapter, topic },
     });
   };
 

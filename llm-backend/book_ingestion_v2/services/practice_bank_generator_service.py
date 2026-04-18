@@ -328,16 +328,12 @@ class PracticeBankGeneratorService:
         ]
         for chapter_id in chapter_ids:
             for jt in conflict_types:
-                try:
-                    job = job_service.get_latest_job(chapter_id, job_type=jt)
-                    if job and job.status in ("pending", "running"):
-                        raise RuntimeError(
-                            f"Cannot run practice bank generation: {jt} job is {job.status} "
-                            f"for chapter {chapter_id}"
-                        )
-                except Exception as e:
-                    if "Cannot run" in str(e):
-                        raise
+                job = job_service.get_latest_job(chapter_id, job_type=jt)
+                if job and job.status in ("pending", "running"):
+                    raise RuntimeError(
+                        f"Cannot run practice bank generation: {jt} job is {job.status} "
+                        f"for chapter {chapter_id}"
+                    )
 
     def _generate_and_refine_bank(
         self,

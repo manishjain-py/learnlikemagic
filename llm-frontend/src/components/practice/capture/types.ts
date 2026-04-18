@@ -3,7 +3,9 @@
  *
  * Controlled by design:
  *   - `value` is the current student answer (null while unanswered)
- *   - `onChange(next)` is called on every input change
+ *   - `onChange(next)` is called on every input change. Passing `null`
+ *     clears the answer (unanswered) — the runner removes the key so it
+ *     grades as blank.
  *   - `seed` deterministically shuffles presentation order (stable on reload)
  *   - `disabled` freezes interaction (used on the review screen)
  *
@@ -18,7 +20,7 @@
 export interface CaptureProps<T> {
   questionJson: Record<string, unknown>;
   value: T | null;
-  onChange: (value: T) => void;
+  onChange: (value: T | null) => void;
   seed: number;
   disabled?: boolean;
 }

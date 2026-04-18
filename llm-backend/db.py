@@ -79,8 +79,8 @@ _LLM_CONFIG_SEEDS = [
     },
     {
         "component_key": "practice_bank_generator",
-        "provider": "openai",
-        "model_id": "gpt-5.2",
+        "provider": "claude_code",
+        "model_id": "claude-opus-4-6",
         "description": "Practice question bank generation + correctness review",
     },
     {
@@ -204,16 +204,6 @@ def _apply_learning_modes_columns(db_manager):
             print("  Adding is_paused column to sessions...")
             conn.execute(text("ALTER TABLE sessions ADD COLUMN is_paused BOOLEAN DEFAULT FALSE"))
             print("  ✓ is_paused column added")
-
-        if "exam_score" not in existing_columns:
-            print("  Adding exam_score column to sessions...")
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN exam_score FLOAT"))
-            print("  ✓ exam_score column added")
-
-        if "exam_total" not in existing_columns:
-            print("  Adding exam_total column to sessions...")
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN exam_total INTEGER"))
-            print("  ✓ exam_total column added")
 
         if "guideline_id" not in existing_columns:
             print("  Adding guideline_id column to sessions...")

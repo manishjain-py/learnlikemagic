@@ -1038,9 +1038,10 @@ class SessionService:
         """
         session.complete_card_phase()
 
-        # Build and persist the explanation summary. Stored on the session so a
-        # later Practice session (launched via the CTA or auto-attached) can read
-        # it as shared vocabulary via `source_state.precomputed_explanation_summary`.
+        # Build and persist the explanation summary. Stored on the session so
+        # subsequent Teach Me turns can read it as shared vocabulary via
+        # `source_state.precomputed_explanation_summary` (consumed in
+        # master_tutor.py).
         precomputed_summary = self._build_precomputed_summary(session)
         session.precomputed_explanation_summary = precomputed_summary
 

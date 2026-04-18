@@ -1,6 +1,7 @@
 """Repository for practice question bank (practice_questions table)."""
 from typing import Optional
 from uuid import uuid4
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from shared.models.entities import PracticeQuestion
 
@@ -31,6 +32,23 @@ class PracticeQuestionRepository:
             .filter(PracticeQuestion.guideline_id == guideline_id)
             .count()
         )
+
+    def counts_by_guidelines(self, guideline_ids: list[str]) -> dict[str, int]:
+        """Single GROUP BY aggregate for a batch of guideline_ids.
+        Returns a dict {guideline_id: count}; missing ids map to 0 on the caller.
+        """
+        if not guideline_ids:
+            return {}
+        rows = (
+            self.db.query(
+                PracticeQuestion.guideline_id,
+                func.count(PracticeQuestion.id),
+            )
+            .filter(PracticeQuestion.guideline_id.in_(guideline_ids))
+            .group_by(PracticeQuestion.guideline_id)
+            .all()
+        )
+        return {gid: int(cnt) for gid, cnt in rows}
 
     def bulk_insert(
         self,

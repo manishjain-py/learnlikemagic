@@ -16,6 +16,16 @@ const MODE_URL_SEGMENT: Record<string, string> = {
   clarify_doubts: 'clarify',
 };
 
+// URL topic segments are slugs (e.g. "comparing-like-denominators"); convert
+// to a display title when the backend doesn't give us a human-readable one.
+function humanizeTopicSlug(slug: string): string {
+  if (!slug) return slug;
+  if (!/[-_]/.test(slug)) return slug; // already human-readable
+  return slug
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 type SelectableMode = 'teach_me' | 'clarify_doubts';
 
 export default function ModeSelectPage() {
@@ -128,7 +138,7 @@ export default function ModeSelectPage() {
   const handlePractice = () => {
     navigate(`/practice/${guidelineId}`, {
       state: {
-        topicTitle: topic,
+        topicTitle: humanizeTopicSlug(topic!),
         subject,
         chapter,
         topic,

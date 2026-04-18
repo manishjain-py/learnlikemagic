@@ -190,7 +190,9 @@ class PracticeGradingService:
                 return False
             if len(student_answer) != len(expected):
                 return False
-            return all(expected.get(k) == v for k, v in student_answer.items())
+            # Guard against unknown keys: `expected.get(k)` returns None for
+            # missing keys, which would falsely match a student value of None.
+            return all(k in expected and expected[k] == v for k, v in student_answer.items())
 
         if fmt in ("sort_buckets", "swipe_classify"):
             expected = [bi.get("correct_bucket") for bi in (q.get("bucket_items") or [])]

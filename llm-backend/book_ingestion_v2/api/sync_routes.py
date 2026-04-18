@@ -1433,6 +1433,7 @@ def get_practice_bank_status(
 
         expl_repo = ExplanationRepository(db)
         q_repo = PracticeQuestionRepository(db)
+        counts = q_repo.counts_by_guidelines([g.id for g in guidelines])
         topics = []
         for g in guidelines:
             explanations = expl_repo.get_by_guideline_id(g.id)
@@ -1440,7 +1441,7 @@ def get_practice_bank_status(
                 guideline_id=g.id,
                 topic_title=g.topic_title or g.topic,
                 topic_key=g.topic_key,
-                question_count=q_repo.count_by_guideline(g.id),
+                question_count=counts.get(g.id, 0),
                 has_explanations=len(explanations) > 0,
             ))
 

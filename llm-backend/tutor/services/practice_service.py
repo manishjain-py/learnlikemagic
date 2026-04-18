@@ -170,14 +170,38 @@ class PracticeService:
         """Re-trigger grading on an attempt whose earlier grading failed.
         Status must be `grading_failed`; flips to `grading` and respawns
         the worker.
+
+        Uses SELECT FOR UPDATE so two simultaneous Retry clicks can't both
+        see `grading_failed`, both flip, and both spawn workers.
         """
-        attempt = self._get_owned(attempt_id, user_id)
-        if attempt.status != "grading_failed":
-            raise PracticeConflictError(
-                f"Cannot retry: attempt status is {attempt.status!r}, "
-                f"not 'grading_failed'"
+        try:
+            attempt = (
+                self.db.query(PracticeAttempt)
+                .filter(PracticeAttempt.id == attempt_id)
+                .with_for_update()
+                .first()
             )
-        self.attempt_repo.mark_grading(attempt_id)
+            if attempt is None:
+                raise PracticeNotFoundError(f"Attempt {attempt_id} not found")
+            if attempt.user_id != user_id:
+                raise PracticePermissionError(
+                    f"Attempt {attempt_id} not owned by user {user_id}"
+                )
+            if attempt.status != "grading_failed":
+                raise PracticeConflictError(
+                    f"Cannot retry: attempt status is {attempt.status!r}, "
+                    f"not 'grading_failed'"
+                )
+            attempt.status = "grading"
+            attempt.grading_error = None
+            self.db.commit()
+        except (PracticeNotFoundError, PracticePermissionError, PracticeConflictError):
+            self.db.rollback()
+            raise
+        except Exception:
+            self.db.rollback()
+            raise
+
         self._spawn_grading_worker(attempt_id)
 
     def get_attempt(
@@ -229,25 +253,40 @@ class PracticeService:
     # ─── Set selection ────────────────────────────────────────────────────
 
     def _select_set(self, bank: list[PracticeQuestion]) -> list[PracticeQuestion]:
-        """Pick 10 questions: 3 easy + 5 medium + 2 hard, falling back to
-        adjacent tiers if any bucket is short. Post-pick, reorder to avoid
-        consecutive same-format questions. FF counts toward variety (Q2).
+        """Pick 10 questions per FR-15..FR-19.
+
+        Rules:
+          - FR-17: ALL free-form questions are absorbed first. They count
+            toward the difficulty quota (they don't expand the set).
+          - FR-16: 3 easy / 5 medium / 2 hard, fall back to adjacent tiers
+            if any bucket is short.
+          - FR-19: post-pick, reorder greedily to avoid same-format adjacency;
+            free_form counts toward format variety (Q2 resolution).
         """
+        # FR-17: absorb all FFs first, then reduce the remaining quota.
+        free_form = [q for q in bank if q.format == "free_form"]
+        structured = [q for q in bank if q.format != "free_form"]
+
+        quota = dict(DIFFICULTY_TARGETS)
+        for q in free_form:
+            if q.difficulty in quota:
+                quota[q.difficulty] = max(0, quota[q.difficulty] - 1)
+
         by_diff: dict[str, list[PracticeQuestion]] = {"easy": [], "medium": [], "hard": []}
-        for q in bank:
+        for q in structured:
             if q.difficulty in by_diff:
                 by_diff[q.difficulty].append(q)
 
-        picks: list[PracticeQuestion] = []
+        picks: list[PracticeQuestion] = list(free_form)
         leftovers: list[PracticeQuestion] = []
 
-        for diff, target in DIFFICULTY_TARGETS.items():
+        for diff, target in quota.items():
             pool = by_diff[diff][:]
             random.shuffle(pool)
             picks.extend(pool[:target])
             leftovers.extend(pool[target:])
 
-        # Backfill from leftovers if any tier was short.
+        # Backfill from leftover structured questions if any tier was short.
         random.shuffle(leftovers)
         while len(picks) < SET_SIZE and leftovers:
             picks.append(leftovers.pop())
@@ -313,6 +352,10 @@ class PracticeService:
           - match_pairs: drops `pairs`, exposes `pair_lefts` and `pair_rights`
             as parallel arrays (frontend shuffles rights via seed)
           - sort_buckets / swipe_classify: strips `correct_bucket` per item
+          - sequence: `sequence_items` in the bank are stored in correct order;
+            shuffle them deterministically by `_presentation_seed` before
+            serving so the raw JSON doesn't leak the answer. Grading still
+            reads the snapshot's original order (unchanged on disk).
         """
         out: list[dict] = []
         for q in snapshot:
@@ -328,6 +371,13 @@ class PracticeService:
                 clean["bucket_items"] = [
                     {"text": bi.get("text")} for bi in clean["bucket_items"]
                 ]
+
+            if fmt == "sequence" and isinstance(clean.get("sequence_items"), list):
+                items = list(clean["sequence_items"])
+                seed = clean.get("_presentation_seed", 0)
+                rng = random.Random(seed)
+                rng.shuffle(items)
+                clean["sequence_items"] = items
 
             out.append(clean)
         return out

@@ -1543,7 +1543,7 @@ body {
   color: #667eea;
 }
 
-.reportcard-exam-score {
+.reportcard-practice-score {
   font-size: 0.8rem;
   font-weight: 600;
   color: #38a169;
@@ -5457,7 +5457,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   font-weight: 600;
   color: var(--chalk-gold);
 }
-.chalkboard-active .reportcard-exam-score {
+.chalkboard-active .reportcard-practice-score {
   font-family: var(--font-body);
   font-size: 0.8rem;
   font-weight: 700;

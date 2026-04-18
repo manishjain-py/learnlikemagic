@@ -237,45 +237,13 @@ class SessionRepository:
             })
         return results
 
-    def find_most_recent_completed_teach_me(
-        self, user_id: str, guideline_id: str
-    ):
-        """Find the most recent completed Teach Me session for a user+topic.
-
-        Used by Practice session creation for context auto-attach (FR-21). Returns
-        the deserialized SessionState, or None if no completed Teach Me exists.
-        """
-        from tutor.models.session_state import SessionState
-
-        rows = (
-            self.db.query(SessionModel)
-            .filter(
-                SessionModel.user_id == user_id,
-                SessionModel.guideline_id == guideline_id,
-                SessionModel.mode == "teach_me",
-            )
-            .order_by(SessionModel.created_at.desc())
-            .all()
-        )
-        for row in rows:
-            try:
-                state = SessionState.model_validate_json(row.state_json)
-                if state.is_complete:
-                    return state
-            except Exception:
-                continue
-        return None
-
     def _get_canonical_concepts(self, guideline_id: str) -> list[str]:
         """Get the canonical concept list for a topic.
 
-        Uses the most recent teach_me session's plan as the canonical concept set.
-        Teach_me plans cover the full topic, while practice plans are subsets — so
-        we anchor the coverage denominator on teach_me only to prevent denominator
-        shrinkage when a struggle-weighted practice plan becomes the latest session.
-
-        Returns an empty list if no teach_me session exists (practice-only users
-        get 0% coverage until they also do Teach Me — acceptable).
+        Uses the most recent teach_me session's mastery estimates as the
+        canonical concept set. Returns an empty list if no teach_me session
+        exists (practice-only users get 0% coverage until they also do Teach
+        Me — acceptable).
         """
         from tutor.models.session_state import SessionState
 

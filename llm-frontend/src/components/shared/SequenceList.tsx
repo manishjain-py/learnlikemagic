@@ -25,7 +25,7 @@ export default function SequenceList({ items, onReorder, disabled }: Props) {
   return (
     <div>
       {items.map((item, i) => (
-        <div key={`${i}:${item}`} className="practice-seq-row">
+        <div key={item} className="practice-seq-row">
           <span className="practice-seq-num">{i + 1}</span>
           <span className="practice-seq-text">{item}</span>
           <button

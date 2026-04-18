@@ -81,7 +81,7 @@ function ChapterSection({
                 </span>
                 {st.latest_practice_score != null && st.latest_practice_total != null && (
                   <span
-                    className="reportcard-exam-score"
+                    className="reportcard-practice-score"
                     title={`${st.practice_attempt_count ?? 1} practice attempt${(st.practice_attempt_count ?? 1) === 1 ? '' : 's'}`}
                   >
                     {formatPracticeScore(st.latest_practice_score)}/{st.latest_practice_total}

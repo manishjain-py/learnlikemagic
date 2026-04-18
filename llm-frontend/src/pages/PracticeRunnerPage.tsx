@@ -117,7 +117,8 @@ export default function PracticeRunnerPage() {
   }
 
   const questions = attempt.questions;
-  const answeredCount = questions.filter(q => answers[String(q.q_idx)] !== undefined).length;
+  const isAnswered = (v: unknown) => v !== undefined && v !== null;
+  const answeredCount = questions.filter(q => isAnswered(answers[String(q.q_idx)])).length;
 
   if (showingReview) {
     return renderReview({
@@ -201,6 +202,7 @@ function renderReview(opts: {
   answeredCount: number;
 }) {
   const { questions, answers, topicTitle, onEdit, onSubmit, onBack, submitting, error, answeredCount } = opts;
+  const isAnswered = (v: unknown) => v !== undefined && v !== null;
   return (
     <div className="selection-step">
       {topicTitle && <div className="practice-header-topic">{topicTitle}</div>}
@@ -214,7 +216,7 @@ function renderReview(opts: {
 
       <div style={{ marginBottom: '20px' }}>
         {questions.map((q, i) => {
-          const answered = answers[String(q.q_idx)] !== undefined;
+          const answered = isAnswered(answers[String(q.q_idx)]);
           return (
             <div key={q.q_idx} className="practice-review-row">
               <button className="practice-review-btn" onClick={() => onEdit(i)}>

@@ -27,7 +27,10 @@ export default function TapToEliminateCapture({
     if (next.has(idx)) next.delete(idx);
     else {
       next.add(idx);
-      if (value === idx) onChange(-1 as number);
+      // Eliminating the currently-picked option clears the answer back to
+      // "unanswered" (null). Previously emitted -1, which leaked as a
+      // bogus "invalid index -1" in grading rationales.
+      if (value === idx) onChange(null);
     }
     setEliminated(next);
   };
