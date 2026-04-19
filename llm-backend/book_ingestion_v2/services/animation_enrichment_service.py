@@ -8,6 +8,7 @@ topic_explanations table.
 """
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -502,13 +503,26 @@ class AnimationEnrichmentService:
 
     @staticmethod
     def _strip_markdown_fences(code: str) -> str:
-        """Strip markdown code fences if present."""
-        code = code.strip()
-        if code.startswith("```"):
-            newline_idx = code.find("\n")
+        """Extract JS code from an LLM response.
+
+        Handles: pure code; fenced block (optionally wrapped in prose);
+        prose followed by raw code without a fence.
+        """
+        text = (code or "").strip()
+        fenced = re.search(r"```[a-zA-Z]*\s*\n(.*?)\n```", text, re.DOTALL)
+        if fenced:
+            return fenced.group(1).strip()
+        if text.startswith("```"):
+            newline_idx = text.find("\n")
             if newline_idx == -1:
                 return ""
-            code = code[newline_idx + 1:]
-        if code.endswith("```"):
-            code = code[:-3].rstrip()
-        return code
+            text = text[newline_idx + 1:]
+            if text.endswith("```"):
+                text = text[:-3]
+            return text.strip()
+        js_starts = ("const ", "let ", "var ", "function ", "//", "app.", "new ")
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            if line.lstrip().startswith(js_starts):
+                return "\n".join(lines[i:]).strip()
+        return text
