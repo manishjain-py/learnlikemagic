@@ -667,6 +667,7 @@ export interface TopicVisualStatusV2 {
   topic_key?: string;
   total_cards: number;
   cards_with_visuals: number;
+  layout_warning_count?: number;
   has_explanations: boolean;
 }
 

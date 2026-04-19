@@ -291,6 +291,7 @@ class TopicVisualStatus(BaseModel):
     topic_key: Optional[str] = None
     total_cards: int
     cards_with_visuals: int
+    layout_warning_count: int = 0
     has_explanations: bool = False
 
 class ChapterVisualStatusResponse(BaseModel):

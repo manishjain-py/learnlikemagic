@@ -1203,20 +1203,23 @@ def get_visual_status(
             explanations = repo.get_by_guideline_id(g.id)
             total_cards = 0
             cards_with_visuals = 0
+            layout_warning_count = 0
             for expl in explanations:
                 cards = expl.cards_json or []
                 total_cards += len(cards)
-                cards_with_visuals += sum(
-                    1 for c in cards
-                    if isinstance(c.get("visual_explanation"), dict)
-                    and c["visual_explanation"].get("pixi_code")
-                )
+                for c in cards:
+                    visual = c.get("visual_explanation")
+                    if isinstance(visual, dict) and visual.get("pixi_code"):
+                        cards_with_visuals += 1
+                        if visual.get("layout_warning") is True:
+                            layout_warning_count += 1
             topics.append(TopicVisualStatus(
                 guideline_id=g.id,
                 topic_title=g.topic_title or g.topic,
                 topic_key=g.topic_key,
                 total_cards=total_cards,
                 cards_with_visuals=cards_with_visuals,
+                layout_warning_count=layout_warning_count,
                 has_explanations=len(explanations) > 0,
             ))
 
