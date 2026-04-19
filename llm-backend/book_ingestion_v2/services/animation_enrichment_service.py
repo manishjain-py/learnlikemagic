@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from shared.services.llm_service import LLMService, LLMServiceError
+from shared.services.llm_service import LLMService
 from shared.models.entities import TeachingGuideline, TopicExplanation
 from shared.repositories.explanation_repository import ExplanationRepository
 
@@ -397,7 +397,7 @@ class AnimationEnrichmentService:
             )
             code = result["output_text"]
             return self._strip_markdown_fences(code)
-        except (LLMServiceError, Exception) as e:
+        except Exception as e:
             logger.error(f"Visual review-refine failed for card {decision.card_idx}: {e}")
             return None
 
@@ -559,7 +559,7 @@ class AnimationEnrichmentService:
 
             return [VisualDecision(**d) for d in decisions_list]
 
-        except (LLMServiceError, json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.error(f"Visual decision failed for {topic}: {e}")
             return []
 
@@ -620,7 +620,7 @@ class AnimationEnrichmentService:
             )
             code = result["output_text"]
             return self._strip_markdown_fences(code)
-        except (LLMServiceError, Exception) as e:
+        except Exception as e:
             logger.error(f"Code generation failed for card {decision.card_idx}: {e}")
             return None
 

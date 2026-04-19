@@ -22,7 +22,7 @@ from sqlalchemy.orm import attributes
 
 from shared.models.entities import TeachingGuideline, TopicExplanation
 from shared.repositories.explanation_repository import ExplanationRepository
-from shared.services.llm_service import LLMService, LLMServiceError
+from shared.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +290,7 @@ class AudioTextReviewService:
             )
             parsed = self.llm.parse_json_response(response["output_text"])
             return CardReviewOutput.model_validate(parsed)
-        except (LLMServiceError, json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.error(
                 f"Audio text review LLM call failed for {topic} "
                 f"card {card.get('card_idx')}: {e}"
