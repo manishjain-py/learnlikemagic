@@ -462,6 +462,41 @@ Checks if cards already have `visual_explanation.pixi_code`. Skips unless `force
 
 Runs as a background job with `v2_visual_enrichment` job type. Endpoint table is consolidated above in [Sync to Teaching Guidelines](#sync-to-teaching-guidelines).
 
+### Visual Rendering Review (post-refine overlap gate)
+
+A sub-stage of stage 7 (not a separate numbered stage). Catches a defect class that `visual_code_review_refine.txt` cannot enforce from source — LLMs cannot compute text bounding boxes from Pixi code. Observed defect: a place-value diagram for `5,23,476` rendered as `"Lakhs PeTioodsands Period"` because adjacent labels exceeded their group widths.
+
+**Approach (no vision LLM in v1):**
+
+1. **Preventive prompt** — `visual_code_generation.txt` carries one general rule about crowded adjacent labels. Revertible in one commit if quality regresses.
+2. **Programmatic overlap check** — after the last existing review-refine round, the harness renders the Pixi code and checks for overlap.
+3. **One targeted refine round** — when overlap is detected, `{collision_report}` is substituted into `visual_code_review_refine.txt` with specific coord + IoU data for the refiner to fix.
+4. **Retry exhaustion** — if overlap persists after the targeted round, the code is stored anyway with `visual_explanation.layout_warning = true`, and the student UI renders a subdued chip ("Note: this picture might have some overlap — we're improving it").
+
+**Components:**
+
+| File | Role |
+|---|---|
+| `services/visual_render_harness.py` | Playwright wrapper. `render()` stashes code via the preview store, navigates Playwright to the admin preview page, waits for `data-pixi-state="ready"`, walks `app.stage` via `page.evaluate()`, returns bounds. `preflight()` HEADs localhost:3000 as a fail-fast check at job start. |
+| `services/visual_preview_store.py` | In-memory TTL store keyed by random `secrets.token_urlsafe(24)`. Closes the reflected-XSS vector of carrying executable pixi code in a URL query. 2-minute TTL, 256-entry cap with LRU eviction. |
+| `api/visual_preview_routes.py` | `POST /admin/v2/visual-preview/prepare` (harness stashes code, gets id) and `GET /admin/v2/visual-preview/{id}` (preview page fetches code by id). |
+| `services/visual_overlap_detector.py` | Pure-Python IoU math over a bounds list. Uses `min(area_a, area_b)` as the denominator so a small label fully inside a large box reports IoU=1.0. Flags Text-on-Text and Text-on-dense-Graphics; ignores Graphics-on-Graphics. |
+| `frontend/src/features/admin/pages/VisualRenderPreview.tsx` | Admin-only React page at `/admin/visual-render-preview/:id`. Fetches code from the preview store, mounts Pixi directly (no sandboxed iframe — Playwright can't reach into one), exposes `window.__pixiApp` for `page.evaluate()`. |
+
+**IoU threshold:** default `0.05`. Only pairs above this are flagged.
+
+**Harness failure mode discipline:** if the harness fails (playwright not installed, localhost unreachable mid-job, Pixi threw), the post-refine gate passes the code through WITHOUT setting `layout_warning=true`. We don't false-flag cards when the check itself failed. A job-level preflight catches the steady-state missing-frontend case up front.
+
+**Dev prerequisite:** the frontend dev server must be running at `http://localhost:3000` when the stage-7 job runs. Playwright + Chromium installed locally. See `docs/technical/dev-workflow.md` for setup commands.
+
+**Admin observability:** `/visual-status` response gains `layout_warning_count` per topic; `VisualsAdmin` renders a small amber chip on affected topics.
+
+**Tests:**
+
+- `tests/unit/test_visual_overlap_detector.py` — 14 pure-geometry unit tests
+- `tests/unit/test_visual_preview_store.py` — 9 unit tests (put/get, TTL, LRU, singleton)
+- `tests/integration/test_visual_render_harness.py` — 5 integration tests skip-guarded on playwright + localhost availability; includes the observed place-value defect reproduction
+
 ---
 
 ## Audio Text Review
