@@ -34,6 +34,10 @@ Sync to teaching_guidelines table
 Pre-Computed Explanations (LLM generate → review-and-refine N rounds per variant)
     |
     v
+Audio Generation (Google Cloud TTS per explanation line → S3 upload → stamp audio_url;
+                  runs inline at end of explanation generation AND as a standalone admin job)
+    |
+    v
 Visual Enrichment (LLM decide+spec → generate PixiJS code → validate → store)
     |
     v
@@ -341,6 +345,8 @@ Sync is idempotent: deletes existing guidelines for the chapter before creating 
 | GET | `/visual-status` | Per-topic visual coverage for a chapter (query: `chapter_id`) |
 | GET | `/visual-jobs/latest` | Latest visual job (query: `chapter_id` or `guideline_id`) |
 | DELETE | `/visuals` | Strip visuals from a topic's explanations (query: `guideline_id`) |
+| **Audio (TTS)** | | |
+| POST | `/generate-audio` | Generate TTS audio for explanation card lines via Google Cloud TTS and upload to S3 (query: `chapter_id`, `guideline_id`). Idempotent — skips lines that already have `audio_url`. |
 | **Check-ins** | | |
 | POST | `/generate-check-ins` | Generate inline check-in cards (query: `chapter_id`, `guideline_id`, `force`) |
 | GET | `/check-in-status` | Per-topic check-in counts for a chapter (query: `chapter_id`) |
@@ -450,6 +456,51 @@ Checks if cards already have `visual_explanation.pixi_code`. Skips unless `force
 ### Background Job
 
 Runs as a background job with `v2_visual_enrichment` job type. Endpoint table is consolidated above in [Sync to Teaching Guidelines](#sync-to-teaching-guidelines).
+
+---
+
+## Audio Generation (TTS)
+
+**Service:** `book_ingestion_v2/services/audio_generation_service.py` (`AudioGenerationService`)
+
+Synthesizes pre-computed TTS audio for every `audio` line in every explanation card and uploads each MP3 to S3. Decoupled from explanation generation — writes back the public URL as `audio_url` on each line in `topic_explanations.cards_json`. Not an LLM stage.
+
+### Provider
+
+Google Cloud TTS via API key (`GOOGLE_CLOUD_TTS_API_KEY`). Voice map:
+
+| Language | Language code | Voice name |
+|---|---|---|
+| `en` | `en-US` | `en-US-Chirp3-HD-Kore` |
+| `hi` | `hi-IN` | `hi-IN-Chirp3-HD-Kore` |
+| `hinglish` (default) | `hi-IN` | `hi-IN-Chirp3-HD-Kore` |
+
+Audio encoding: MP3.
+
+### Pipeline
+
+1. **Load cards**: Read `topic_explanations.cards_json` for the scoped guidelines.
+2. **Per line**: Skip if `line.audio_url` already set (idempotent) or `line.audio` is empty. Otherwise call Google Cloud TTS with `SynthesisInput(text=line.audio)`.
+3. **Upload**: Write MP3 bytes to S3 at `audio/{guideline_id}/{variant_key}/{card_idx}/{line_idx}.mp3` (content-type `audio/mpeg`).
+4. **Stamp URL**: Set `line.audio_url = https://{bucket}.s3.{region}.amazonaws.com/{key}` and `flag_modified(explanation, "cards_json")`, commit.
+
+### Triggers (two paths)
+
+- **Inline at end of stage 5**: Called automatically at the end of `ExplanationGeneratorService` generation per variant. Non-fatal — if TTS fails, cards are still saved and the frontend falls back to real-time TTS.
+- **Standalone admin job**: `POST /generate-audio` with scoping `guideline_id` > `chapter_id` > book-wide. Useful when explanations were generated before audio was wired up, or after editing card text.
+
+### Entry Points
+
+- `generate_for_cards(cards_json, guideline_id, variant_key)`: mutate cards list in place, return it
+- `generate_for_topic_explanation(explanation, dry_run=False)`: read cards from a `TopicExplanation` ORM object; `dry_run=True` only counts lines
+
+### Background Job
+
+Runs as a background job with `v2_audio_generation` job type. Per-topic granularity — one `completed`/`failed` increment per guideline, final status is `completed` if zero failures else `completed_with_errors`. Errors (truncated to first 10) are surfaced in job `detail`.
+
+### Skip Logic
+
+Idempotent at line granularity: a line with `audio_url` already set is always skipped. No `force` flag — to regenerate audio for a line, clear its `audio_url` first.
 
 ---
 
