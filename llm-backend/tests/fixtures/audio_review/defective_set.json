@@ -1,0 +1,282 @@
+{
+  "description": "20 handcrafted defective cards for audio text review. Each card carries one deliberate defect so the acceptance signal is unambiguous. Used by audio_review_gold_eval.py to measure PRD SC2 (>=80% defect catch).",
+  "defect_breakdown": {
+    "symbol_leak": 6,
+    "visual_only_reference": 5,
+    "run_on": 4,
+    "cross_line_redundancy": 3,
+    "hinglish_quirk": 2
+  },
+  "cards": [
+    {
+      "defect_class": "symbol_leak",
+      "card": {
+        "card_idx": 1,
+        "card_type": "concept",
+        "title": "Adding Small Numbers",
+        "lines": [
+          {"display": "Let's add 5 and 3.", "audio": "Let's add 5 and 3."},
+          {"display": "5 + 3 = 8", "audio": "5 + 3 = 8"},
+          {"display": "So 5 plus 3 is 8.", "audio": "So 5 plus 3 is 8."}
+        ]
+      },
+      "expected_fixed_line_idx": 1,
+      "acceptance": "revised_audio on line 1 contains no '+', '=', or digit-only adjacency like '5 3'"
+    },
+    {
+      "defect_class": "symbol_leak",
+      "card": {
+        "card_idx": 2,
+        "card_type": "concept",
+        "title": "Bold emphasis",
+        "lines": [
+          {"display": "A fraction has two parts.", "audio": "A fraction has two parts."},
+          {"display": "The **top** is called the numerator.", "audio": "The **top** is called the numerator."}
+        ]
+      },
+      "expected_fixed_line_idx": 1,
+      "acceptance": "revised_audio on line 1 does not contain '**'"
+    },
+    {
+      "defect_class": "symbol_leak",
+      "card": {
+        "card_idx": 3,
+        "card_type": "concept",
+        "title": "Variables",
+        "lines": [
+          {"display": "If x = 5, then x + 2 = 7.", "audio": "If x = 5, then x + 2 = 7."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio contains no standalone '=' or '+' signs"
+    },
+    {
+      "defect_class": "symbol_leak",
+      "card": {
+        "card_idx": 4,
+        "card_type": "concept",
+        "title": "One half",
+        "lines": [
+          {"display": "Half a cake is 1/2.", "audio": "Half a cake is 1/2."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio says 'one half' or similar spoken form"
+    },
+    {
+      "defect_class": "symbol_leak",
+      "card": {
+        "card_idx": 5,
+        "card_type": "concept",
+        "title": "Percent",
+        "lines": [
+          {"display": "50% of the students passed.", "audio": "50% of the students passed."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio uses 'percent' or 'fifty out of a hundred'"
+    },
+    {
+      "defect_class": "symbol_leak",
+      "card": {
+        "card_idx": 6,
+        "card_type": "check_in",
+        "title": "Quick check",
+        "instruction": "Pick the right answer.",
+        "audio_text": "What is 5+3? Tap the correct answer.",
+        "options": ["7", "8", "9"],
+        "correct_index": 1
+      },
+      "expected_fixed_check_in_text": true,
+      "acceptance": "revised check_in_text audio_text contains no '+' sign"
+    },
+    {
+      "defect_class": "visual_only_reference",
+      "card": {
+        "card_idx": 7,
+        "card_type": "concept",
+        "title": "Triangle shapes",
+        "lines": [
+          {"display": "Look at this triangle.", "audio": "As you can see in the diagram here, this triangle has three sides."},
+          {"display": "It has three sides.", "audio": "It has three sides."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio on line 0 does NOT say 'as you can see in the diagram' or 'look at this'"
+    },
+    {
+      "defect_class": "visual_only_reference",
+      "card": {
+        "card_idx": 8,
+        "card_type": "concept",
+        "title": "Counting fingers",
+        "lines": [
+          {"display": "Count the fingers.", "audio": "Count the fingers shown here."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio does not reference 'shown here' or 'here'"
+    },
+    {
+      "defect_class": "visual_only_reference",
+      "card": {
+        "card_idx": 9,
+        "card_type": "concept",
+        "title": "Two apples",
+        "lines": [
+          {"display": "Alice has 2 apples.", "audio": "Alice has 2 apples. Look at the red apples in the picture."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio contains no reference to 'look at' / 'in the picture'"
+    },
+    {
+      "defect_class": "visual_only_reference",
+      "card": {
+        "card_idx": 10,
+        "card_type": "concept",
+        "title": "Arrow",
+        "lines": [
+          {"display": "Follow the arrow to find the answer.", "audio": "Follow the arrow to find the answer."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio does not say 'follow the arrow'"
+    },
+    {
+      "defect_class": "visual_only_reference",
+      "card": {
+        "card_idx": 11,
+        "card_type": "concept",
+        "title": "Colored boxes",
+        "lines": [
+          {"display": "The blue box is bigger than the green one.", "audio": "The blue box you see is bigger than the green one to the right."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio does not say 'you see' / 'to the right'"
+    },
+    {
+      "defect_class": "run_on",
+      "card": {
+        "card_idx": 12,
+        "card_type": "concept",
+        "title": "Place value",
+        "lines": [
+          {"display": "In the number 523, the 5 is in the hundreds place.", "audio": "In the number five hundred twenty-three, the five is in the hundreds place which means it stands for five hundred, not just five, and that is why understanding place value is so important for reading big numbers correctly every time you encounter them."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio is less than 35 words"
+    },
+    {
+      "defect_class": "run_on",
+      "card": {
+        "card_idx": 13,
+        "card_type": "concept",
+        "title": "Adding rule",
+        "lines": [
+          {"display": "Adding zero to any number gives the same number.", "audio": "Adding zero to any number gives back the same number no matter what number you started with so for example if you take seven and add zero you still get seven and if you take fifty and add zero you still get fifty and this works for every number."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio is less than 35 words"
+    },
+    {
+      "defect_class": "run_on",
+      "card": {
+        "card_idx": 14,
+        "card_type": "concept",
+        "title": "Equal parts",
+        "lines": [
+          {"display": "A half means one of two equal parts.", "audio": "A half means one of two equal parts and it is very important to remember that the two parts must be exactly the same size otherwise it would not be a half it would be some other kind of fraction which students often confuse with halves."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio is less than 35 words"
+    },
+    {
+      "defect_class": "run_on",
+      "card": {
+        "card_idx": 15,
+        "card_type": "concept",
+        "title": "Subtraction meaning",
+        "lines": [
+          {"display": "Subtracting means taking away.", "audio": "Subtracting means taking away from a group, so if you have a group of things and you subtract some of them you end up with fewer things than you started with and the answer tells you how many are left after you take some away."}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio is less than 35 words"
+    },
+    {
+      "defect_class": "cross_line_redundancy",
+      "card": {
+        "card_idx": 16,
+        "card_type": "concept",
+        "title": "Halves",
+        "lines": [
+          {"display": "A half means one of two equal parts.", "audio": "A half means one of two equal parts."},
+          {"display": "Written as 1/2.", "audio": "A half means one of two equal parts."}
+        ]
+      },
+      "expected_fixed_line_idx": 1,
+      "acceptance": "revised_audio on line 1 is different from line 0's audio"
+    },
+    {
+      "defect_class": "cross_line_redundancy",
+      "card": {
+        "card_idx": 17,
+        "card_type": "concept",
+        "title": "Even numbers",
+        "lines": [
+          {"display": "Even numbers can be split into two equal groups.", "audio": "Even numbers can be split into two equal groups."},
+          {"display": "Examples: 2, 4, 6, 8.", "audio": "Even numbers can be split into two equal groups."}
+        ]
+      },
+      "expected_fixed_line_idx": 1,
+      "acceptance": "revised_audio on line 1 is different from line 0's audio"
+    },
+    {
+      "defect_class": "cross_line_redundancy",
+      "card": {
+        "card_idx": 18,
+        "card_type": "concept",
+        "title": "Skip counting",
+        "lines": [
+          {"display": "Skip counting means counting by a step bigger than one.", "audio": "Skip counting means counting by a step bigger than one."},
+          {"display": "For example, counting by 2s: 2, 4, 6, 8.", "audio": "Skip counting means counting by a step bigger than one."}
+        ]
+      },
+      "expected_fixed_line_idx": 1,
+      "acceptance": "revised_audio on line 1 is different from line 0's audio"
+    },
+    {
+      "defect_class": "hinglish_quirk",
+      "language": "hinglish",
+      "card": {
+        "card_idx": 19,
+        "card_type": "concept",
+        "title": "Bada number",
+        "lines": [
+          {"display": "1,23,456 is called one lakh twenty-three thousand four hundred fifty-six.", "audio": "one hundred twenty-three thousand four hundred fifty-six"}
+        ]
+      },
+      "expected_fixed_line_idx": 0,
+      "acceptance": "revised_audio uses 'lakh' phrasing (Indian place-value reading)"
+    },
+    {
+      "defect_class": "hinglish_quirk",
+      "language": "hinglish",
+      "card": {
+        "card_idx": 20,
+        "card_type": "concept",
+        "title": "Ten lakh",
+        "lines": [
+          {"display": "10,00,000 is called ten lakh or one million.", "audio": "ten lakh or one million"}
+        ]
+      },
+      "expected_fixed_line_idx": null,
+      "acceptance": "this card is intentionally borderline — reviewer may either leave alone (acceptable) or pick one register"
+    }
+  ]
+}

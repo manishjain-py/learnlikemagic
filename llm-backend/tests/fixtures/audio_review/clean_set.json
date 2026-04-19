@@ -1,0 +1,177 @@
+{
+  "description": "20 known-clean cards for audio text review. Sampled from content that already passed stage-5 review-refine AND was hand-spot-checked. Used by audio_review_gold_eval.py to measure PRD SC3 (>=90% no-false-rewrite). The reviewer should return an empty revisions list for each of these.",
+  "cards": [
+    {
+      "card_idx": 1,
+      "card_type": "concept",
+      "title": "Even numbers",
+      "lines": [
+        {"display": "An even number can be split into two equal groups.", "audio": "An even number can be split into two equal groups."},
+        {"display": "Examples: two, four, six, eight.", "audio": "For example, two, four, six, and eight are all even."}
+      ]
+    },
+    {
+      "card_idx": 2,
+      "card_type": "concept",
+      "title": "Skip counting by 2s",
+      "lines": [
+        {"display": "Count by 2s: 2, 4, 6, 8, 10.", "audio": "Count by twos. Two, four, six, eight, ten."},
+        {"display": "Each step is 2 more than the last.", "audio": "Each step is two more than the last."}
+      ]
+    },
+    {
+      "card_idx": 3,
+      "card_type": "concept",
+      "title": "One half",
+      "lines": [
+        {"display": "One half means one of two equal parts.", "audio": "One half means one of two equal parts."}
+      ]
+    },
+    {
+      "card_idx": 4,
+      "card_type": "concept",
+      "title": "Adding zero",
+      "lines": [
+        {"display": "Adding zero gives the same number back.", "audio": "Adding zero gives the same number back."},
+        {"display": "So 7 + 0 = 7.", "audio": "So seven plus zero is seven."}
+      ]
+    },
+    {
+      "card_idx": 5,
+      "card_type": "concept",
+      "title": "Subtracting means taking away",
+      "lines": [
+        {"display": "Subtracting means taking away from a group.", "audio": "Subtracting means taking away from a group."},
+        {"display": "The answer is what's left.", "audio": "The answer is how many are left."}
+      ]
+    },
+    {
+      "card_idx": 6,
+      "card_type": "concept",
+      "title": "A pair",
+      "lines": [
+        {"display": "A pair is two things that go together.", "audio": "A pair is two things that go together."},
+        {"display": "Socks come in pairs.", "audio": "Socks come in pairs."}
+      ]
+    },
+    {
+      "card_idx": 7,
+      "card_type": "concept",
+      "title": "Counting backwards",
+      "lines": [
+        {"display": "Counting backwards starts from a number and goes down.", "audio": "Counting backwards starts from a number and goes down."},
+        {"display": "Five, four, three, two, one.", "audio": "Five, four, three, two, one."}
+      ]
+    },
+    {
+      "card_idx": 8,
+      "card_type": "concept",
+      "title": "Place of the ones",
+      "lines": [
+        {"display": "The ones place is the rightmost digit.", "audio": "The ones place is the last digit on the right."}
+      ]
+    },
+    {
+      "card_idx": 9,
+      "card_type": "concept",
+      "title": "Tens and ones",
+      "lines": [
+        {"display": "Thirty-two has three tens and two ones.", "audio": "Thirty-two has three tens and two ones."}
+      ]
+    },
+    {
+      "card_idx": 10,
+      "card_type": "concept",
+      "title": "A dozen",
+      "lines": [
+        {"display": "A dozen means twelve.", "audio": "A dozen means twelve."}
+      ]
+    },
+    {
+      "card_idx": 11,
+      "card_type": "concept",
+      "title": "Doubling",
+      "lines": [
+        {"display": "Doubling means adding the same number to itself.", "audio": "Doubling means adding the same number to itself."},
+        {"display": "Double three is six.", "audio": "Double three is six."}
+      ]
+    },
+    {
+      "card_idx": 12,
+      "card_type": "concept",
+      "title": "Halving",
+      "lines": [
+        {"display": "Halving means splitting into two equal parts.", "audio": "Halving means splitting into two equal parts."},
+        {"display": "Half of eight is four.", "audio": "Half of eight is four."}
+      ]
+    },
+    {
+      "card_idx": 13,
+      "card_type": "concept",
+      "title": "The number line",
+      "lines": [
+        {"display": "A number line shows numbers in order from small to big.", "audio": "A number line shows numbers in order from small to big."}
+      ]
+    },
+    {
+      "card_idx": 14,
+      "card_type": "concept",
+      "title": "Greater than",
+      "lines": [
+        {"display": "Greater than means bigger than.", "audio": "Greater than means bigger than."},
+        {"display": "Seven is greater than five.", "audio": "Seven is greater than five."}
+      ]
+    },
+    {
+      "card_idx": 15,
+      "card_type": "concept",
+      "title": "Less than",
+      "lines": [
+        {"display": "Less than means smaller than.", "audio": "Less than means smaller than."},
+        {"display": "Three is less than nine.", "audio": "Three is less than nine."}
+      ]
+    },
+    {
+      "card_idx": 16,
+      "card_type": "check_in",
+      "title": "Quick check",
+      "instruction": "Is seven more than four?",
+      "audio_text": "Is seven more than four?",
+      "options": ["yes", "no"],
+      "correct_index": 0
+    },
+    {
+      "card_idx": 17,
+      "card_type": "concept",
+      "title": "Zero",
+      "lines": [
+        {"display": "Zero means none.", "audio": "Zero means none."}
+      ]
+    },
+    {
+      "card_idx": 18,
+      "card_type": "concept",
+      "title": "An even group",
+      "lines": [
+        {"display": "If you can share a group equally between two people, the group is even.", "audio": "If you can share a group equally between two people, the group is even."}
+      ]
+    },
+    {
+      "card_idx": 19,
+      "card_type": "summary",
+      "title": "Summary",
+      "lines": [
+        {"display": "Even numbers split into two equal groups.", "audio": "Even numbers split into two equal groups."},
+        {"display": "Odd numbers do not.", "audio": "Odd numbers do not."}
+      ]
+    },
+    {
+      "card_idx": 20,
+      "card_type": "concept",
+      "title": "Counting on",
+      "lines": [
+        {"display": "Counting on means starting from a number and adding one each time.", "audio": "Counting on means starting from a number and adding one each time."}
+      ]
+    }
+  ]
+}
