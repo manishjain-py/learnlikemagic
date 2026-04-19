@@ -28,6 +28,13 @@ from book_ingestion_v2.models.schemas import (
     TopicPracticeBankStatus,
     PracticeBankDetailResponse,
     PracticeBankQuestionItem,
+    TopicPipelineStatusResponse,
+    ChapterPipelineSummaryResponse,
+    FanOutJobResponse,
+    RunPipelineRequest,
+    RunPipelineResponse,
+    RunChapterPipelineAllRequest,
+    RunChapterPipelineAllResponse,
 )
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
@@ -38,6 +45,145 @@ from book_ingestion_v2.services.chapter_job_service import ChapterJobService, Ch
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/v2/books/{book_id}", tags=["Book Ingestion V2 - Sync"])
+
+
+def _resolve_approved_guidelines(
+    db: Session,
+    *,
+    book_id: str,
+    chapter_id: Optional[str],
+) -> list:
+    """Return APPROVED TeachingGuidelines in scope.
+
+    Raises HTTPException(404) if `chapter_id` is given but the chapter
+    does not belong to this book.
+    """
+    from shared.models.entities import TeachingGuideline
+
+    query = db.query(TeachingGuideline).filter(
+        TeachingGuideline.book_id == book_id,
+        TeachingGuideline.review_status == "APPROVED",
+    )
+    if chapter_id:
+        chapter = ChapterRepository(db).get_by_id(chapter_id)
+        if not chapter or chapter.book_id != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Chapter {chapter_id} not found in book {book_id}",
+            )
+        chapter_key = f"chapter-{chapter.chapter_number}"
+        query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+    return query.order_by(TeachingGuideline.topic_sequence).all()
+
+
+def _resolve_single_guideline(db: Session, *, book_id: str, guideline_id: str):
+    """Return a TeachingGuideline or raise HTTPException(404)."""
+    from shared.models.entities import TeachingGuideline
+
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id,
+        TeachingGuideline.book_id == book_id,
+    ).first()
+    if not guideline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Guideline {guideline_id} not found in book {book_id}",
+        )
+    return guideline
+
+
+def _fan_out(
+    db: Session,
+    *,
+    launcher,
+    book_id: str,
+    chapter_id: Optional[str],
+    guideline_id: Optional[str],
+    launcher_kwargs: Optional[dict] = None,
+) -> FanOutJobResponse:
+    """Launch a post-sync stage job per guideline in scope.
+
+    - `guideline_id` given → single launcher call (launched=1).
+      Raises ChapterJobLockError (→ 409 at route boundary) if the topic
+      already has an active job — callers that need that signal
+      (per-stage admin pages) get it.
+    - Otherwise → one launcher per APPROVED guideline in the resolved
+      scope. Topics that already have an active job are recorded in
+      `skipped_guidelines` instead of aborting the whole batch.
+    """
+    launcher_kwargs = launcher_kwargs or {}
+    job_ids: list[str] = []
+    skipped: list[str] = []
+
+    if guideline_id:
+        guideline = _resolve_single_guideline(db, book_id=book_id, guideline_id=guideline_id)
+        resolved_chapter_id = _chapter_id_for_guideline(db, book_id, guideline)
+        job_id = launcher(
+            db,
+            book_id=book_id,
+            chapter_id=resolved_chapter_id,
+            guideline_id=guideline.id,
+            **launcher_kwargs,
+        )
+        job_ids.append(job_id)
+        return FanOutJobResponse(launched=len(job_ids), job_ids=job_ids, skipped_guidelines=skipped)
+
+    guidelines = _resolve_approved_guidelines(db, book_id=book_id, chapter_id=chapter_id)
+    for g in guidelines:
+        try:
+            job_id = launcher(
+                db,
+                book_id=book_id,
+                chapter_id=_chapter_id_for_guideline(db, book_id, g),
+                guideline_id=g.id,
+                **launcher_kwargs,
+            )
+            job_ids.append(job_id)
+        except ChapterJobLockError:
+            skipped.append(g.id)
+    return FanOutJobResponse(launched=len(job_ids), job_ids=job_ids, skipped_guidelines=skipped)
+
+
+def _resolve_lookup_scope(
+    db: Session,
+    *,
+    book_id: str,
+    chapter_id: Optional[str],
+    guideline_id: Optional[str],
+) -> tuple[str, Optional[str]]:
+    """Map (book_id, chapter_id, guideline_id) → (lookup_chapter_id, lookup_guideline_id).
+
+    Used by `get_latest_*_job` endpoints to query `ChapterJobService.get_latest_job`.
+    - If `guideline_id` given, resolve the real chapter_id from the guideline's
+      chapter_key and filter by native `guideline_id`.
+    - Else, use the given `chapter_id` (or fall back to `book_id` for book-wide lookups).
+    """
+    if guideline_id:
+        guideline = _resolve_single_guideline(db, book_id=book_id, guideline_id=guideline_id)
+        resolved_chapter_id = _chapter_id_for_guideline(db, book_id, guideline)
+        # Historical rows may have chapter_id = guideline_id (pre-migration).
+        # Use the guideline_id as the fallback chapter_id lookup when the real
+        # chapter_id can't be resolved, so historical rows stay visible.
+        effective = resolved_chapter_id or guideline_id
+        return effective, guideline_id
+    return (chapter_id or book_id), None
+
+
+def _chapter_id_for_guideline(db: Session, book_id: str, guideline) -> str:
+    """Resolve the BookChapter.id for a guideline (joined via chapter_key)."""
+    from book_ingestion_v2.models.database import BookChapter
+
+    if not guideline.chapter_key:
+        return ""
+    try:
+        chapter_num = int(guideline.chapter_key.split("-", 1)[1])
+    except (IndexError, ValueError):
+        return ""
+    chapter = db.query(BookChapter).filter(
+        BookChapter.book_id == book_id,
+        BookChapter.chapter_number == chapter_num,
+    ).first()
+    return chapter.id if chapter else ""
 
 
 @router.post("/sync", response_model=SyncResponse)
@@ -114,7 +260,229 @@ def get_book_results(book_id: str, db: Session = Depends(get_db)):
         )
 
 
-@router.post("/generate-explanations", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/chapters/{chapter_id}/run-pipeline-all",
+    response_model=RunChapterPipelineAllResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def run_chapter_pipeline_all_route(
+    book_id: str,
+    chapter_id: str,
+    body: RunChapterPipelineAllRequest,
+    db: Session = Depends(get_db),
+):
+    """Run the 6-stage pipeline for every APPROVED topic in a chapter.
+
+    Bounded parallelism (default 4 topics at once). Fully-done topics are
+    skipped unless `skip_done=false`. A per-topic failure does NOT halt
+    other topics.
+    """
+    import threading
+    from book_ingestion_v2.services.topic_pipeline_orchestrator import (
+        run_chapter_pipeline_all as _run_chapter_all,
+    )
+    from book_ingestion_v2.services.topic_pipeline_status_service import (
+        TopicPipelineStatusService,
+    )
+
+    # Quick planning pass: figure out how many topics are queued.
+    try:
+        svc = TopicPipelineStatusService(db)
+        summary = svc.get_chapter_summary(book_id, chapter_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+    max_parallel = body.max_parallel
+    if max_parallel is None:
+        from config import get_settings
+        try:
+            max_parallel = int(getattr(get_settings(), "topic_pipeline_max_parallel_topics", 4))
+        except Exception:
+            max_parallel = 4
+
+    # Determine planned queue size (topics whose pipeline needs anything done).
+    queued: list[str] = []
+    skipped: list[str] = []
+    for t in summary.topics:
+        if body.skip_done and t.is_fully_done:
+            skipped.append(t.topic_key)
+        else:
+            queued.append(t.topic_key)
+
+    session_factory = _build_session_factory()
+    chapter_run_id_holder: dict[str, str] = {}
+
+    def _kickoff():
+        try:
+            result = _run_chapter_all(
+                session_factory,
+                book_id=book_id,
+                chapter_id=chapter_id,
+                quality_level=body.quality_level,
+                force=False,
+                skip_done=body.skip_done,
+                max_parallel=max_parallel or 4,
+            )
+            chapter_run_id_holder["id"] = result.get("chapter_run_id", "")
+        except Exception as e:
+            logger.error(f"Chapter-wide runner crashed: {e}", exc_info=True)
+
+    import uuid as _uuid
+    chapter_run_id = str(_uuid.uuid4())
+    chapter_run_id_holder["id"] = chapter_run_id
+
+    threading.Thread(target=_kickoff, daemon=True).start()
+
+    return RunChapterPipelineAllResponse(
+        chapter_run_id=chapter_run_id,
+        topics_queued=len(queued),
+        skipped_topics=skipped,
+    )
+
+
+@router.post(
+    "/chapters/{chapter_id}/topics/{topic_key}/run-pipeline",
+    response_model=RunPipelineResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def run_topic_pipeline(
+    book_id: str,
+    chapter_id: str,
+    topic_key: str,
+    body: RunPipelineRequest,
+    db: Session = Depends(get_db),
+):
+    """Run the 6-stage post-sync pipeline for one topic.
+
+    Computes which stages are not done (or all if `force`), launches the
+    orchestrator in a daemon thread, and returns 202 immediately with the
+    pipeline_run_id and list of stages that will run.
+
+    Each sub-stage acquires its own per-topic lock. A concurrent second
+    super-button press fails fast at the sub-stage lock (409).
+    """
+    import threading
+    from book_ingestion_v2.services.topic_pipeline_status_service import (
+        TopicPipelineStatusService,
+    )
+    from book_ingestion_v2.services.topic_pipeline_orchestrator import (
+        TopicPipelineOrchestrator,
+        stages_to_run_from_status,
+    )
+
+    try:
+        svc = TopicPipelineStatusService(db)
+        status_resp = svc.get_pipeline_status(book_id, chapter_id, topic_key)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+    stages = stages_to_run_from_status(status_resp.stages, force=body.force)
+    if not stages:
+        return RunPipelineResponse(
+            pipeline_run_id="",
+            stages_to_run=[],
+            message="All stages already done.",
+        )
+
+    orchestrator = TopicPipelineOrchestrator(
+        _build_session_factory(),
+        book_id=book_id,
+        chapter_id=chapter_id,
+        guideline_id=status_resp.guideline_id,
+        quality_level=body.quality_level,
+        force=body.force,
+    )
+
+    def _run():
+        try:
+            orchestrator.run(stages)
+        except Exception as e:
+            logger.error(
+                f"Orchestrator {orchestrator.pipeline_run_id} crashed: {e}",
+                exc_info=True,
+            )
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    return RunPipelineResponse(
+        pipeline_run_id=orchestrator.pipeline_run_id,
+        stages_to_run=list(stages),
+    )
+
+
+def _build_session_factory():
+    """Session factory for orchestrator stage threads."""
+    from database import get_db_manager
+    manager = get_db_manager()
+    return manager.session_factory
+
+
+@router.get(
+    "/chapters/{chapter_id}/pipeline-summary",
+    response_model=ChapterPipelineSummaryResponse,
+)
+def get_chapter_pipeline_summary(
+    book_id: str,
+    chapter_id: str,
+    db: Session = Depends(get_db),
+):
+    """Aggregate per-topic pipeline status for one chapter.
+
+    Powers the BookV2Detail chapter summary chip ("12 topics · 8 done · 3 partial · 1 not started").
+    """
+    from book_ingestion_v2.services.topic_pipeline_status_service import (
+        TopicPipelineStatusService,
+    )
+    try:
+        svc = TopicPipelineStatusService(db)
+        return svc.get_chapter_summary(book_id, chapter_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Chapter pipeline summary failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get(
+    "/chapters/{chapter_id}/topics/{topic_key}/pipeline",
+    response_model=TopicPipelineStatusResponse,
+)
+def get_topic_pipeline(
+    book_id: str,
+    chapter_id: str,
+    topic_key: str,
+    db: Session = Depends(get_db),
+):
+    """Consolidated 6-stage pipeline status for one topic.
+
+    Reads all existing artifacts (explanations, visuals, check-ins,
+    practice questions, audio-review job history, audio_url on cards)
+    and computes per-stage state for the admin Topic Pipeline Dashboard.
+    """
+    from book_ingestion_v2.services.topic_pipeline_status_service import (
+        TopicPipelineStatusService,
+    )
+    try:
+        svc = TopicPipelineStatusService(db)
+        return svc.get_pipeline_status(book_id, chapter_id, topic_key)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Topic pipeline status failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.post("/generate-explanations", response_model=FanOutJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def generate_explanations(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
@@ -126,64 +494,27 @@ def generate_explanations(
 ):
     """Generate/regenerate pre-computed explanations for synced guidelines.
 
-    Launches a background job and returns 202 immediately.
-    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    Launches one background job per guideline and returns 202 immediately.
+    Scoping: guideline_id (single topic) > chapter_id (fan-out across chapter)
+    > book-wide (fan-out across whole book).
     mode=generate: full generation pipeline (skips existing unless force=true).
     mode=refine_only: takes existing cards and runs review-refine rounds.
     """
-    from book_ingestion_v2.api.processing_routes import run_in_background_v2
-    from shared.models.entities import TeachingGuideline
+    from book_ingestion_v2.services.stage_launchers import launch_explanation_job
 
     try:
-        if guideline_id:
-            # Single-topic generation
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-                TeachingGuideline.book_id == book_id,
-            ).first()
-            if not guideline:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Guideline {guideline_id} not found in book {book_id}",
-                )
-            total_items = 1
-            lock_chapter_id = guideline_id  # use guideline_id as lock scope
-        else:
-            # Chapter or book-wide generation
-            query = db.query(TeachingGuideline).filter(
-                TeachingGuideline.book_id == book_id,
-                TeachingGuideline.review_status == "APPROVED",
-            )
-            if chapter_id:
-                chapter_repo = ChapterRepository(db)
-                chapter = chapter_repo.get_by_id(chapter_id)
-                if not chapter or chapter.book_id != book_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Chapter {chapter_id} not found in book {book_id}",
-                    )
-                chapter_key = f"chapter-{chapter.chapter_number}"
-                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
-
-            total_items = query.count()
-            lock_chapter_id = chapter_id or book_id
-
-        job_service = ChapterJobService(db)
-        job_id = job_service.acquire_lock(
+        return _fan_out(
+            db,
+            launcher=launch_explanation_job,
             book_id=book_id,
-            chapter_id=lock_chapter_id,
-            job_type=V2JobType.EXPLANATION_GENERATION.value,
-            total_items=total_items,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={
+                "force": force,
+                "mode": mode,
+                "review_rounds": review_rounds,
+            },
         )
-
-        run_in_background_v2(
-            _run_explanation_generation, job_id, book_id,
-            chapter_id or "", guideline_id or "", str(force),
-            mode, str(review_rounds),
-        )
-
-        return job_service.get_job(job_id)
-
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
@@ -204,11 +535,14 @@ def get_latest_explanation_job(
 ):
     """Get the latest explanation generation job for a topic, chapter, or book."""
     try:
-        lock_chapter_id = guideline_id or chapter_id or book_id
+        lookup_chapter_id, lookup_guideline_id = _resolve_lookup_scope(
+            db, book_id=book_id, chapter_id=chapter_id, guideline_id=guideline_id,
+        )
         job_service = ChapterJobService(db)
         result = job_service.get_latest_job(
-            lock_chapter_id,
+            lookup_chapter_id,
             job_type=V2JobType.EXPLANATION_GENERATION.value,
+            guideline_id=lookup_guideline_id,
         )
         if not result:
             raise HTTPException(
@@ -237,11 +571,14 @@ def get_latest_audio_review_job(
     optional job_type filtering + stale detection). No new service method.
     """
     try:
-        lock_chapter_id = guideline_id or chapter_id or book_id
+        lookup_chapter_id, lookup_guideline_id = _resolve_lookup_scope(
+            db, book_id=book_id, chapter_id=chapter_id, guideline_id=guideline_id,
+        )
         job_service = ChapterJobService(db)
         result = job_service.get_latest_job(
-            lock_chapter_id,
+            lookup_chapter_id,
             job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+            guideline_id=lookup_guideline_id,
         )
         if not result:
             raise HTTPException(
@@ -431,7 +768,7 @@ def delete_explanations(
         )
 
 
-@router.post("/generate-visuals", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/generate-visuals", response_model=FanOutJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def generate_visuals(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
@@ -442,59 +779,20 @@ def generate_visuals(
 ):
     """Generate pre-computed PixiJS visuals for explanation cards.
 
-    Runs as a background job. Requires explanations to already exist.
-    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    Launches one background job per guideline. Requires explanations to exist.
+    Scoping: guideline_id (single topic) > chapter_id (fan-out) > book-wide.
     """
-    from book_ingestion_v2.api.processing_routes import run_in_background_v2
-    from shared.models.entities import TeachingGuideline
+    from book_ingestion_v2.services.stage_launchers import launch_visual_job
 
     try:
-        if guideline_id:
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-                TeachingGuideline.book_id == book_id,
-            ).first()
-            if not guideline:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Guideline {guideline_id} not found in book {book_id}",
-                )
-            total_items = 1
-            lock_chapter_id = guideline_id
-        else:
-            query = db.query(TeachingGuideline).filter(
-                TeachingGuideline.book_id == book_id,
-                TeachingGuideline.review_status == "APPROVED",
-            )
-            if chapter_id:
-                chapter_repo = ChapterRepository(db)
-                chapter = chapter_repo.get_by_id(chapter_id)
-                if not chapter or chapter.book_id != book_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Chapter {chapter_id} not found in book {book_id}",
-                    )
-                chapter_key = f"chapter-{chapter.chapter_number}"
-                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
-
-            total_items = query.count()
-            lock_chapter_id = chapter_id or book_id
-
-        job_service = ChapterJobService(db)
-        job_id = job_service.acquire_lock(
+        return _fan_out(
+            db,
+            launcher=launch_visual_job,
             book_id=book_id,
-            chapter_id=lock_chapter_id,
-            job_type=V2JobType.VISUAL_ENRICHMENT.value,
-            total_items=total_items,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={"force": force, "review_rounds": review_rounds},
         )
-
-        run_in_background_v2(
-            _run_visual_enrichment, job_id, book_id,
-            chapter_id or "", guideline_id or "", str(force), str(review_rounds),
-        )
-
-        return job_service.get_job(job_id)
-
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
@@ -506,7 +804,7 @@ def generate_visuals(
         )
 
 
-@router.post("/generate-audio", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/generate-audio", response_model=FanOutJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def generate_audio(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
@@ -519,66 +817,44 @@ def generate_audio(
 ):
     """Generate pre-computed TTS audio for explanation card lines and upload to S3.
 
-    Runs as a background job. Requires explanations to already exist.
+    Launches one background job per guideline. Requires explanations to exist.
     Idempotent — skips lines that already have audio_url.
-    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    Scoping: guideline_id (single topic) > chapter_id (fan-out) > book-wide.
 
     Soft guardrail: if no completed audio_text_review job exists for the
     resolved scope and confirm_skip_review is False, returns HTTP 409 with
-    detail={"code":"no_audio_review","requires_confirmation":true,...} so the
-    frontend can show a confirm dialog and re-call with confirm_skip_review=true.
+    detail={"code":"no_audio_review","requires_confirmation":true,...}. For
+    fan-out (chapter/book-wide), the guardrail checks at the scope level:
+    we inspect the most recent audio review job in the chapter. The per-topic
+    launcher still acquires its own topic-scoped lock.
     """
-    from book_ingestion_v2.api.processing_routes import run_in_background_v2
-    from shared.models.entities import TeachingGuideline
+    from book_ingestion_v2.services.stage_launchers import launch_audio_synthesis_job
 
     try:
-        if guideline_id:
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-                TeachingGuideline.book_id == book_id,
-            ).first()
-            if not guideline:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Guideline {guideline_id} not found in book {book_id}",
-                )
-            total_items = 1
-            lock_chapter_id = guideline_id
-        else:
-            query = db.query(TeachingGuideline).filter(
-                TeachingGuideline.book_id == book_id,
-                TeachingGuideline.review_status == "APPROVED",
-            )
-            if chapter_id:
-                chapter_repo = ChapterRepository(db)
-                chapter = chapter_repo.get_by_id(chapter_id)
-                if not chapter or chapter.book_id != book_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Chapter {chapter_id} not found in book {book_id}",
-                    )
-                chapter_key = f"chapter-{chapter.chapter_number}"
-                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
-            total_items = query.count()
-            lock_chapter_id = chapter_id or book_id
-
-        job_service = ChapterJobService(db)
-
-        # Soft guardrail: warn the admin if no usable audio text review has run.
-        # The 409 detail distinguishes between "never run", "last run failed",
-        # and "run is still in progress" so the frontend dialog can reflect
-        # the actual state (not a blanket "no review has run" message).
+        # Soft guardrail — single-topic uses guideline_id filter, scope-wide uses chapter_id.
         if not confirm_skip_review:
-            latest_review = job_service.get_latest_job(
-                lock_chapter_id,
-                job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
-            )
+            job_service = ChapterJobService(db)
+            if guideline_id:
+                _g = _resolve_single_guideline(db, book_id=book_id, guideline_id=guideline_id)
+                guardrail_chapter_id = _chapter_id_for_guideline(db, book_id, _g)
+                latest_review = job_service.get_latest_job(
+                    guardrail_chapter_id,
+                    job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+                    guideline_id=guideline_id,
+                )
+            else:
+                guardrail_chapter_id = chapter_id or ""
+                latest_review = job_service.get_latest_job(
+                    guardrail_chapter_id,
+                    job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+                ) if guardrail_chapter_id else None
+
             guardrail_code: Optional[str] = None
             guardrail_message: Optional[str] = None
             if latest_review is None:
                 guardrail_code = "no_audio_review"
                 guardrail_message = (
-                    "No audio text review has run for this chapter. "
+                    "No audio text review has run for this scope. "
                     "MP3s will be synthesized on unreviewed text. Proceed anyway?"
                 )
             elif latest_review.status == "failed":
@@ -594,7 +870,6 @@ def generate_audio(
                     f"An audio text review is currently {latest_review.status}. "
                     "Wait for it to finish, or proceed anyway on unreviewed text?"
                 )
-            # completed / completed_with_errors — no guardrail, fall through
 
             if guardrail_message:
                 raise HTTPException(
@@ -607,19 +882,13 @@ def generate_audio(
                     },
                 )
 
-        job_id = job_service.acquire_lock(
+        return _fan_out(
+            db,
+            launcher=launch_audio_synthesis_job,
             book_id=book_id,
-            chapter_id=lock_chapter_id,
-            job_type=V2JobType.AUDIO_GENERATION.value,
-            total_items=total_items,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
         )
-
-        run_in_background_v2(
-            _run_audio_generation, job_id, book_id,
-            chapter_id or "", guideline_id or "",
-        )
-
-        return job_service.get_job(job_id)
 
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -713,7 +982,7 @@ def _run_audio_generation(
 
 @router.post(
     "/generate-audio-review",
-    response_model=ProcessingJobResponse,
+    response_model=FanOutJobResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 def generate_audio_review(
@@ -728,58 +997,21 @@ def generate_audio_review(
 ):
     """Review audio text strings on explanation + check-in cards. Applies surgical revisions.
 
-    Runs as a background job. Requires explanations to already exist.
+    Launches one background job per guideline. Requires explanations to exist.
     Clears audio_url on revised lines so next /generate-audio run re-synthesizes only those.
-    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    Scoping: guideline_id (single topic) > chapter_id (fan-out) > book-wide.
     """
-    from book_ingestion_v2.api.processing_routes import run_in_background_v2
-    from shared.models.entities import TeachingGuideline
+    from book_ingestion_v2.services.stage_launchers import launch_audio_review_job
 
     try:
-        if guideline_id:
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-                TeachingGuideline.book_id == book_id,
-            ).first()
-            if not guideline:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Guideline {guideline_id} not found in book {book_id}",
-                )
-            total_items = 1
-            lock_chapter_id = guideline_id
-        else:
-            query = db.query(TeachingGuideline).filter(
-                TeachingGuideline.book_id == book_id,
-                TeachingGuideline.review_status == "APPROVED",
-            )
-            if chapter_id:
-                chapter_repo = ChapterRepository(db)
-                chapter = chapter_repo.get_by_id(chapter_id)
-                if not chapter or chapter.book_id != book_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Chapter {chapter_id} not found in book {book_id}",
-                    )
-                chapter_key = f"chapter-{chapter.chapter_number}"
-                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
-            total_items = query.count()
-            lock_chapter_id = chapter_id or book_id
-
-        job_service = ChapterJobService(db)
-        job_id = job_service.acquire_lock(
+        return _fan_out(
+            db,
+            launcher=launch_audio_review_job,
             book_id=book_id,
-            chapter_id=lock_chapter_id,
-            job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
-            total_items=total_items,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={"language": language},
         )
-
-        run_in_background_v2(
-            _run_audio_text_review, job_id, book_id,
-            chapter_id or "", guideline_id or "", language or "",
-        )
-
-        return job_service.get_job(job_id)
 
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -1356,10 +1588,14 @@ def get_latest_visual_job(
 ):
     """Latest visual enrichment job for a topic, chapter, or book."""
     try:
-        lock_chapter_id = guideline_id or chapter_id or book_id
+        lookup_chapter_id, lookup_guideline_id = _resolve_lookup_scope(
+            db, book_id=book_id, chapter_id=chapter_id, guideline_id=guideline_id,
+        )
         job_service = ChapterJobService(db)
         result = job_service.get_latest_job(
-            lock_chapter_id, job_type=V2JobType.VISUAL_ENRICHMENT.value,
+            lookup_chapter_id,
+            job_type=V2JobType.VISUAL_ENRICHMENT.value,
+            guideline_id=lookup_guideline_id,
         )
         if not result:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No visual enrichment jobs found")
@@ -1374,7 +1610,7 @@ def get_latest_visual_job(
 # Check-In Enrichment Endpoints
 # ═══════════════════════════════════════════════════════════════════════════
 
-@router.post("/generate-check-ins", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/generate-check-ins", response_model=FanOutJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def generate_check_ins(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
@@ -1385,60 +1621,21 @@ def generate_check_ins(
 ):
     """Generate interactive check-in cards for explanation cards.
 
-    Runs as a background job. Requires explanations to already exist.
-    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    Launches one background job per guideline. Requires explanations to exist.
+    Scoping: guideline_id (single topic) > chapter_id (fan-out) > book-wide.
     review_rounds controls the accuracy review-refine loop (0-5, default 1).
     """
-    from book_ingestion_v2.api.processing_routes import run_in_background_v2
-    from shared.models.entities import TeachingGuideline
+    from book_ingestion_v2.services.stage_launchers import launch_check_in_job
 
     try:
-        if guideline_id:
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-                TeachingGuideline.book_id == book_id,
-            ).first()
-            if not guideline:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Guideline {guideline_id} not found in book {book_id}",
-                )
-            total_items = 1
-            lock_chapter_id = guideline_id
-        else:
-            query = db.query(TeachingGuideline).filter(
-                TeachingGuideline.book_id == book_id,
-                TeachingGuideline.review_status == "APPROVED",
-            )
-            if chapter_id:
-                chapter_repo = ChapterRepository(db)
-                chapter = chapter_repo.get_by_id(chapter_id)
-                if not chapter or chapter.book_id != book_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Chapter {chapter_id} not found in book {book_id}",
-                    )
-                chapter_key = f"chapter-{chapter.chapter_number}"
-                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
-
-            total_items = query.count()
-            lock_chapter_id = chapter_id or book_id
-
-        job_service = ChapterJobService(db)
-        job_id = job_service.acquire_lock(
+        return _fan_out(
+            db,
+            launcher=launch_check_in_job,
             book_id=book_id,
-            chapter_id=lock_chapter_id,
-            job_type=V2JobType.CHECK_IN_ENRICHMENT.value,
-            total_items=total_items,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={"force": force, "review_rounds": review_rounds},
         )
-
-        run_in_background_v2(
-            _run_check_in_enrichment, job_id, book_id,
-            chapter_id or "", guideline_id or "", str(force), str(review_rounds),
-        )
-
-        return job_service.get_job(job_id)
-
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
@@ -1517,10 +1714,14 @@ def get_latest_check_in_job(
 ):
     """Latest check-in enrichment job for a topic, chapter, or book."""
     try:
-        lock_chapter_id = guideline_id or chapter_id or book_id
+        lookup_chapter_id, lookup_guideline_id = _resolve_lookup_scope(
+            db, book_id=book_id, chapter_id=chapter_id, guideline_id=guideline_id,
+        )
         job_service = ChapterJobService(db)
         result = job_service.get_latest_job(
-            lock_chapter_id, job_type=V2JobType.CHECK_IN_ENRICHMENT.value,
+            lookup_chapter_id,
+            job_type=V2JobType.CHECK_IN_ENRICHMENT.value,
+            guideline_id=lookup_guideline_id,
         )
         if not result:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No check-in enrichment jobs found")
@@ -1615,7 +1816,7 @@ def _run_check_in_enrichment(
 # Practice Bank Generation Endpoints
 # ═══════════════════════════════════════════════════════════════════════════
 
-@router.post("/generate-practice-banks", response_model=ProcessingJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/generate-practice-banks", response_model=FanOutJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def generate_practice_banks(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
@@ -1626,61 +1827,22 @@ def generate_practice_banks(
 ):
     """Generate offline practice question banks for each approved topic.
 
-    Runs as a background job. Requires explanations to already exist (the
-    generator prompt consumes variant-A cards for concept grounding).
-    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    Launches one background job per guideline. Requires explanations to exist
+    (the generator prompt consumes variant-A cards for concept grounding).
+    Scoping: guideline_id (single topic) > chapter_id (fan-out) > book-wide.
     review_rounds controls the correctness review-refine loop (0-5, default 1).
     """
-    from book_ingestion_v2.api.processing_routes import run_in_background_v2
-    from shared.models.entities import TeachingGuideline
+    from book_ingestion_v2.services.stage_launchers import launch_practice_bank_job
 
     try:
-        if guideline_id:
-            guideline = db.query(TeachingGuideline).filter(
-                TeachingGuideline.id == guideline_id,
-                TeachingGuideline.book_id == book_id,
-            ).first()
-            if not guideline:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Guideline {guideline_id} not found in book {book_id}",
-                )
-            total_items = 1
-            lock_chapter_id = guideline_id
-        else:
-            query = db.query(TeachingGuideline).filter(
-                TeachingGuideline.book_id == book_id,
-                TeachingGuideline.review_status == "APPROVED",
-            )
-            if chapter_id:
-                chapter_repo = ChapterRepository(db)
-                chapter = chapter_repo.get_by_id(chapter_id)
-                if not chapter or chapter.book_id != book_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Chapter {chapter_id} not found in book {book_id}",
-                    )
-                chapter_key = f"chapter-{chapter.chapter_number}"
-                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
-
-            total_items = query.count()
-            lock_chapter_id = chapter_id or book_id
-
-        job_service = ChapterJobService(db)
-        job_id = job_service.acquire_lock(
+        return _fan_out(
+            db,
+            launcher=launch_practice_bank_job,
             book_id=book_id,
-            chapter_id=lock_chapter_id,
-            job_type=V2JobType.PRACTICE_BANK_GENERATION.value,
-            total_items=total_items,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={"force": force, "review_rounds": review_rounds},
         )
-
-        run_in_background_v2(
-            _run_practice_bank_generation, job_id, book_id,
-            chapter_id or "", guideline_id or "", str(force), str(review_rounds),
-        )
-
-        return job_service.get_job(job_id)
-
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
@@ -1753,10 +1915,14 @@ def get_latest_practice_bank_job(
 ):
     """Latest practice bank generation job for a topic, chapter, or book."""
     try:
-        lock_chapter_id = guideline_id or chapter_id or book_id
+        lookup_chapter_id, lookup_guideline_id = _resolve_lookup_scope(
+            db, book_id=book_id, chapter_id=chapter_id, guideline_id=guideline_id,
+        )
         job_service = ChapterJobService(db)
         result = job_service.get_latest_job(
-            lock_chapter_id, job_type=V2JobType.PRACTICE_BANK_GENERATION.value,
+            lookup_chapter_id,
+            job_type=V2JobType.PRACTICE_BANK_GENERATION.value,
+            guideline_id=lookup_guideline_id,
         )
         if not result:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No practice bank generation jobs found")

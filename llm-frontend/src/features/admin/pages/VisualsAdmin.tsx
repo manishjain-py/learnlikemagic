@@ -207,12 +207,24 @@ export default function VisualsAdmin() {
   const handleGenerate = async (guidelineId?: string, force = false) => {
     if (!bookId || !chapterId) return;
     try {
-      const job = await generateVisuals(bookId, {
+      const fanOut = await generateVisuals(bookId, {
         chapterId: guidelineId ? undefined : chapterId,
         guidelineId,
         force,
         reviewRounds,
       });
+      if (fanOut.launched === 0) {
+        setError(
+          fanOut.skipped_guidelines && fanOut.skipped_guidelines.length
+            ? `All ${fanOut.skipped_guidelines.length} topic(s) already have a job in flight.`
+            : 'Nothing to run.'
+        );
+        return;
+      }
+      const job = await getVisualJobStatus(
+        bookId,
+        guidelineId ? { guidelineId } : { chapterId },
+      );
       if (guidelineId) {
         setTopicJobs(prev => ({ ...prev, [guidelineId]: job }));
         startTopicPolling(guidelineId);

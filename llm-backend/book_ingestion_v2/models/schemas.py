@@ -1,5 +1,5 @@
 """Pydantic API request/response models for Book Ingestion V2."""
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -363,3 +363,108 @@ class BookResultsResponse(BaseModel):
     title: str
     chapters: List[ChapterResultSummary]
     total_topics: int
+
+
+# ───── Topic Pipeline Dashboard ─────
+
+StageId = Literal[
+    "explanations",
+    "visuals",
+    "check_ins",
+    "practice_bank",
+    "audio_review",
+    "audio_synthesis",
+]
+
+StageState = Literal[
+    "done",
+    "warning",
+    "running",
+    "ready",
+    "blocked",
+    "failed",
+]
+
+QualityLevel = Literal["fast", "balanced", "thorough"]
+
+
+class StageStatus(BaseModel):
+    stage_id: StageId
+    state: StageState
+    summary: str
+    warnings: List[str] = []
+    blocked_by: Optional[StageId] = None
+    is_stale: bool = False
+    last_job_id: Optional[str] = None
+    last_job_status: Optional[str] = None
+    last_job_error: Optional[str] = None
+    last_job_completed_at: Optional[datetime] = None
+
+
+class TopicPipelineStatusResponse(BaseModel):
+    topic_key: str
+    topic_title: str
+    guideline_id: str
+    chapter_id: str
+    chapter_preflight_ok: bool
+    pipeline_run_id: Optional[str] = None
+    stages: List[StageStatus]
+
+
+class RunPipelineRequest(BaseModel):
+    quality_level: QualityLevel = "balanced"
+    force: bool = False
+
+
+class RunPipelineResponse(BaseModel):
+    pipeline_run_id: str
+    stages_to_run: List[StageId]
+    message: Optional[str] = None
+
+
+class RunChapterPipelineAllRequest(BaseModel):
+    quality_level: QualityLevel = "balanced"
+    skip_done: bool = True
+    max_parallel: Optional[int] = None
+
+
+class RunChapterPipelineAllResponse(BaseModel):
+    chapter_run_id: str
+    topics_queued: int
+    skipped_topics: List[str] = []
+
+
+class StageCountsByState(BaseModel):
+    done: int = 0
+    warning: int = 0
+    running: int = 0
+    ready: int = 0
+    blocked: int = 0
+    failed: int = 0
+
+
+class ChapterPipelineTopicSummary(BaseModel):
+    topic_key: str
+    topic_title: str
+    guideline_id: str
+    stage_counts: StageCountsByState
+    is_fully_done: bool
+
+
+class ChapterPipelineTotals(BaseModel):
+    topics_total: int
+    topics_fully_done: int
+    topics_partial: int
+    topics_not_started: int
+
+
+class ChapterPipelineSummaryResponse(BaseModel):
+    chapter_id: str
+    topics: List[ChapterPipelineTopicSummary]
+    chapter_totals: ChapterPipelineTotals
+
+
+class FanOutJobResponse(BaseModel):
+    launched: int
+    job_ids: List[str]
+    skipped_guidelines: List[str] = []

@@ -272,7 +272,7 @@ export async function syncChapter(
 export async function generateExplanations(
   bookId: string,
   opts?: { chapterId?: string; guidelineId?: string; force?: boolean; mode?: string; reviewRounds?: number },
-): Promise<ProcessingJobResponseV2> {
+): Promise<FanOutJobResponse> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
@@ -280,7 +280,7 @@ export async function generateExplanations(
   if (opts?.mode) params.set('mode', opts.mode);
   if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<ProcessingJobResponseV2>(
+  return apiFetch<FanOutJobResponse>(
     `/admin/v2/books/${bookId}/generate-explanations${qs}`,
     { method: 'POST' }
   );
@@ -688,14 +688,14 @@ export async function getVisualStatus(
 export async function generateVisuals(
   bookId: string,
   opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
-): Promise<ProcessingJobResponseV2> {
+): Promise<FanOutJobResponse> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.force) params.set('force', 'true');
   if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<ProcessingJobResponseV2>(
+  return apiFetch<FanOutJobResponse>(
     `/admin/v2/books/${bookId}/generate-visuals${qs}`,
     { method: 'POST' }
   );
@@ -768,14 +768,14 @@ export async function getCheckInStatus(
 export async function generateCheckIns(
   bookId: string,
   opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
-): Promise<ProcessingJobResponseV2> {
+): Promise<FanOutJobResponse> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.force) params.set('force', 'true');
   if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<ProcessingJobResponseV2>(
+  return apiFetch<FanOutJobResponse>(
     `/admin/v2/books/${bookId}/generate-check-ins${qs}`,
     { method: 'POST' }
   );
@@ -838,14 +838,14 @@ export async function getPracticeBankStatus(
 export async function generatePracticeBanks(
   bookId: string,
   opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
-): Promise<ProcessingJobResponseV2> {
+): Promise<FanOutJobResponse> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.force) params.set('force', 'true');
   if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<ProcessingJobResponseV2>(
+  return apiFetch<FanOutJobResponse>(
     `/admin/v2/books/${bookId}/generate-practice-banks${qs}`,
     { method: 'POST' }
   );
@@ -877,13 +877,13 @@ export async function getPracticeBank(
 export async function generateAudio(
   bookId: string,
   opts?: { chapterId?: string; guidelineId?: string; confirmSkipReview?: boolean },
-): Promise<ProcessingJobResponseV2> {
+): Promise<FanOutJobResponse> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.confirmSkipReview) params.set('confirm_skip_review', 'true');
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<ProcessingJobResponseV2>(
+  return apiFetch<FanOutJobResponse>(
     `/admin/v2/books/${bookId}/generate-audio${qs}`,
     { method: 'POST' }
   );
@@ -894,13 +894,13 @@ export async function generateAudio(
 export async function generateAudioReview(
   bookId: string,
   opts?: { chapterId?: string; guidelineId?: string; language?: string },
-): Promise<ProcessingJobResponseV2> {
+): Promise<FanOutJobResponse> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
   if (opts?.language) params.set('language', opts.language);
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<ProcessingJobResponseV2>(
+  return apiFetch<FanOutJobResponse>(
     `/admin/v2/books/${bookId}/generate-audio-review${qs}`,
     { method: 'POST' }
   );
@@ -922,4 +922,148 @@ export async function getLatestAudioReviewJob(
     if (err instanceof ApiError && err.status === 404) return null;
     throw err;
   }
+}
+
+// ===== Topic Pipeline Dashboard =====
+
+export type StageId =
+  | 'explanations'
+  | 'visuals'
+  | 'check_ins'
+  | 'practice_bank'
+  | 'audio_review'
+  | 'audio_synthesis';
+
+export type StageState =
+  | 'done'
+  | 'warning'
+  | 'running'
+  | 'ready'
+  | 'blocked'
+  | 'failed';
+
+export type QualityLevel = 'fast' | 'balanced' | 'thorough';
+
+export interface StageStatus {
+  stage_id: StageId;
+  state: StageState;
+  summary: string;
+  warnings: string[];
+  blocked_by?: StageId | null;
+  is_stale: boolean;
+  last_job_id?: string | null;
+  last_job_status?: string | null;
+  last_job_error?: string | null;
+  last_job_completed_at?: string | null;
+}
+
+export interface TopicPipelineStatus {
+  topic_key: string;
+  topic_title: string;
+  guideline_id: string;
+  chapter_id: string;
+  chapter_preflight_ok: boolean;
+  pipeline_run_id?: string | null;
+  stages: StageStatus[];
+}
+
+export interface RunPipelineRequest {
+  quality_level?: QualityLevel;
+  force?: boolean;
+}
+
+export interface RunPipelineResponse {
+  pipeline_run_id: string;
+  stages_to_run: StageId[];
+  message?: string;
+}
+
+export interface RunChapterPipelineAllRequest {
+  quality_level?: QualityLevel;
+  skip_done?: boolean;
+  max_parallel?: number;
+}
+
+export interface RunChapterPipelineAllResponse {
+  chapter_run_id: string;
+  topics_queued: number;
+  skipped_topics?: string[];
+}
+
+export interface StageCountsByState {
+  done: number;
+  warning: number;
+  running: number;
+  ready: number;
+  blocked: number;
+  failed: number;
+}
+
+export interface ChapterPipelineTopicSummary {
+  topic_key: string;
+  topic_title: string;
+  guideline_id: string;
+  stage_counts: StageCountsByState;
+  is_fully_done: boolean;
+}
+
+export interface ChapterPipelineTotals {
+  topics_total: number;
+  topics_fully_done: number;
+  topics_partial: number;
+  topics_not_started: number;
+}
+
+export interface ChapterPipelineSummary {
+  chapter_id: string;
+  topics: ChapterPipelineTopicSummary[];
+  chapter_totals: ChapterPipelineTotals;
+}
+
+export interface FanOutJobResponse {
+  launched: number;
+  job_ids: string[];
+  skipped_guidelines?: string[];
+}
+
+export async function getTopicPipeline(
+  bookId: string,
+  chapterId: string,
+  topicKey: string,
+): Promise<TopicPipelineStatus> {
+  return apiFetch<TopicPipelineStatus>(
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/topics/${encodeURIComponent(topicKey)}/pipeline`
+  );
+}
+
+export async function runTopicPipeline(
+  bookId: string,
+  chapterId: string,
+  topicKey: string,
+  body: RunPipelineRequest,
+): Promise<RunPipelineResponse> {
+  return apiFetch<RunPipelineResponse>(
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/topics/${encodeURIComponent(topicKey)}/run-pipeline`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export async function getChapterPipelineSummary(
+  bookId: string,
+  chapterId: string,
+): Promise<ChapterPipelineSummary> {
+  return apiFetch<ChapterPipelineSummary>(
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/pipeline-summary`
+  );
+}
+
+export async function runChapterPipelineAll(
+  bookId: string,
+  chapterId: string,
+  body: RunChapterPipelineAllRequest,
+): Promise<RunChapterPipelineAllResponse> {
+  return apiFetch<RunChapterPipelineAllResponse>(
+    `/admin/v2/books/${bookId}/chapters/${chapterId}/run-pipeline-all`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
 }

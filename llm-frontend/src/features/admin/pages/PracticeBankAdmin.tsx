@@ -272,15 +272,25 @@ export default function PracticeBankAdmin() {
   const handleGenerate = async (guidelineId?: string, force = false) => {
     if (!bookId || !chapterId) return;
     try {
-      const job = await generatePracticeBanks(bookId, {
+      const fanOut = await generatePracticeBanks(bookId, {
         chapterId: guidelineId ? undefined : chapterId,
         guidelineId,
         force,
         reviewRounds,
       });
+      if (fanOut.launched === 0) {
+        setError(
+          fanOut.skipped_guidelines && fanOut.skipped_guidelines.length
+            ? `All ${fanOut.skipped_guidelines.length} topic(s) already have a job in flight.`
+            : 'Nothing to run.'
+        );
+        return;
+      }
+      const job = await getPracticeBankJobStatus(
+        bookId,
+        guidelineId ? { guidelineId } : { chapterId },
+      );
       if (guidelineId) {
-        // Record in sessionStorage so a mid-generation page reload resumes
-        // polling without an N+1 probe across every topic in the chapter.
         const storageKey = `practice-bank-active-topics:${bookId}:${chapterId}`;
         try {
           const current: string[] = JSON.parse(sessionStorage.getItem(storageKey) || '[]');

@@ -10,14 +10,16 @@ import {
   generateCheckIns, getCheckInJobStatus, getCheckInStatus,
   generatePracticeBanks, getPracticeBankJobStatus, getPracticeBankStatus,
   generateAudio, generateAudioReview,
+  getChapterPipelineSummary, runChapterPipelineAll,
   ApiError,
   TopicCheckInStatusV2,
   TopicPracticeBankStatusV2,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
   ProcessingJobResponseV2, ChapterTopicResponseV2, PageDetailResponseV2,
   SyncResponseV2, TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
-  ExplanationVariantV2,
+  ExplanationVariantV2, ChapterPipelineSummary, QualityLevel,
 } from '../api/adminApiV2';
+import QualitySelector from '../components/QualitySelector';
 
 const POLL_INTERVAL = 3000;
 
@@ -39,6 +41,9 @@ const BookV2Detail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
+  const [pipelineSummaries, setPipelineSummaries] = useState<Record<string, ChapterPipelineSummary>>({});
+  const [pipelineQualityOpenFor, setPipelineQualityOpenFor] = useState<string | null>(null);
+  const [pipelineForce, setPipelineForce] = useState<boolean>(false);
   const [chapterPages, setChapterPages] = useState<Record<string, PageResponseV2[]>>({});
   const [chapterJobs, setChapterJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const [chapterTopics, setChapterTopics] = useState<Record<string, ChapterTopicResponseV2[]>>({});
@@ -329,6 +334,35 @@ const BookV2Detail: React.FC = () => {
     if (ch.status === 'chapter_completed' && !practiceBankStatus[chId]) {
       loadPracticeBankStatus(chId);
     }
+    if (ch.status === 'chapter_completed' && !pipelineSummaries[chId]) {
+      try {
+        const summary = await getChapterPipelineSummary(id!, chId);
+        setPipelineSummaries(prev => ({ ...prev, [chId]: summary }));
+      } catch { /* ignore — chip just won't appear */ }
+    }
+  };
+
+  const reloadPipelineSummary = async (chId: string) => {
+    if (!id) return;
+    try {
+      const summary = await getChapterPipelineSummary(id, chId);
+      setPipelineSummaries(prev => ({ ...prev, [chId]: summary }));
+    } catch { /* ignore */ }
+  };
+
+  const handleRunChapterPipelineAll = async (ch: ChapterResponseV2, quality: QualityLevel) => {
+    if (!id) return;
+    setPipelineQualityOpenFor(null);
+    try {
+      await runChapterPipelineAll(id, ch.id, {
+        quality_level: quality,
+        skip_done: !pipelineForce,
+      });
+      // Refresh summary after a short delay so running stages are visible.
+      setTimeout(() => reloadPipelineSummary(ch.id), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chapter pipeline run failed');
+    }
   };
 
   const handleUpload = async (ch: ChapterResponseV2, files: FileList) => {
@@ -430,12 +464,37 @@ const BookV2Detail: React.FC = () => {
     }
   };
 
+  const _handleFanOut = async (
+    ch: ChapterResponseV2,
+    fanOut: { launched: number; job_ids: string[]; skipped_guidelines?: string[] },
+    jobType: string,
+    setJobs: (updater: (prev: Record<string, ProcessingJobResponseV2>) => Record<string, ProcessingJobResponseV2>) => void,
+    startPolling: (chapterId: string) => void,
+    failureLabel: string,
+  ) => {
+    if (!id) return;
+    if (fanOut.launched === 0) {
+      setError(
+        fanOut.skipped_guidelines && fanOut.skipped_guidelines.length
+          ? `${failureLabel}: all ${fanOut.skipped_guidelines.length} topic(s) already have a job in flight.`
+          : `${failureLabel}: nothing to run.`
+      );
+      return;
+    }
+    try {
+      const job = await getLatestJobV2(id, ch.id, jobType);
+      setJobs(prev => ({ ...prev, [ch.id]: job }));
+      startPolling(ch.id);
+    } catch {
+      startPolling(ch.id);
+    }
+  };
+
   const handleGenerateExplanations = async (ch: ChapterResponseV2, force = false) => {
     if (!id) return;
     try {
-      const job = await generateExplanations(id, { chapterId: ch.id, force });
-      setExplanationJobs(prev => ({ ...prev, [ch.id]: job }));
-      startExplanationPolling(ch.id);
+      const fanOut = await generateExplanations(id, { chapterId: ch.id, force });
+      await _handleFanOut(ch, fanOut, 'v2_explanation_generation', setExplanationJobs, startExplanationPolling, 'Explanation generation');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Explanation generation failed');
     }
@@ -445,9 +504,8 @@ const BookV2Detail: React.FC = () => {
     if (!id) return;
     try {
       const reviewRounds = checkInReviewRounds[ch.id] ?? 1;
-      const job = await generateCheckIns(id, { chapterId: ch.id, force, reviewRounds });
-      setCheckInJobs(prev => ({ ...prev, [ch.id]: job }));
-      startCheckInPolling(ch.id);
+      const fanOut = await generateCheckIns(id, { chapterId: ch.id, force, reviewRounds });
+      await _handleFanOut(ch, fanOut, 'v2_check_in_enrichment', setCheckInJobs, startCheckInPolling, 'Check-in enrichment');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Check-in enrichment failed');
     }
@@ -457,9 +515,8 @@ const BookV2Detail: React.FC = () => {
     if (!id) return;
     try {
       const reviewRounds = practiceBankReviewRounds[ch.id] ?? 1;
-      const job = await generatePracticeBanks(id, { chapterId: ch.id, force, reviewRounds });
-      setPracticeBankJobs(prev => ({ ...prev, [ch.id]: job }));
-      startPracticeBankPolling(ch.id);
+      const fanOut = await generatePracticeBanks(id, { chapterId: ch.id, force, reviewRounds });
+      await _handleFanOut(ch, fanOut, 'v2_practice_bank_generation', setPracticeBankJobs, startPracticeBankPolling, 'Practice bank generation');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Practice bank generation failed');
     }
@@ -468,9 +525,8 @@ const BookV2Detail: React.FC = () => {
   const handleGenerateAudio = async (ch: ChapterResponseV2) => {
     if (!id) return;
     try {
-      const job = await generateAudio(id, { chapterId: ch.id });
-      setAudioJobs(prev => ({ ...prev, [ch.id]: job }));
-      startAudioPolling(ch.id);
+      const fanOut = await generateAudio(id, { chapterId: ch.id });
+      await _handleFanOut(ch, fanOut, 'v2_audio_generation', setAudioJobs, startAudioPolling, 'Audio generation');
     } catch (err) {
       if (
         err instanceof ApiError &&
@@ -484,9 +540,8 @@ const BookV2Detail: React.FC = () => {
         const ok = confirm(dialogMessage);
         if (!ok) return;
         try {
-          const job = await generateAudio(id, { chapterId: ch.id, confirmSkipReview: true });
-          setAudioJobs(prev => ({ ...prev, [ch.id]: job }));
-          startAudioPolling(ch.id);
+          const fanOut = await generateAudio(id, { chapterId: ch.id, confirmSkipReview: true });
+          await _handleFanOut(ch, fanOut, 'v2_audio_generation', setAudioJobs, startAudioPolling, 'Audio generation');
         } catch (err2) {
           setError(err2 instanceof Error ? err2.message : 'Audio generation failed');
         }
@@ -499,9 +554,8 @@ const BookV2Detail: React.FC = () => {
   const handleGenerateAudioReview = async (ch: ChapterResponseV2) => {
     if (!id) return;
     try {
-      const job = await generateAudioReview(id, { chapterId: ch.id });
-      setAudioReviewJobs(prev => ({ ...prev, [ch.id]: job }));
-      startAudioReviewPolling(ch.id);
+      const fanOut = await generateAudioReview(id, { chapterId: ch.id });
+      await _handleFanOut(ch, fanOut, 'v2_audio_text_review', setAudioReviewJobs, startAudioReviewPolling, 'Audio review');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Audio review failed');
     }
@@ -522,8 +576,15 @@ const BookV2Detail: React.FC = () => {
   const handleGenerateTopicExplanation = async (guidelineId: string, chapterId: string, force = false) => {
     if (!id) return;
     try {
-      const job = await generateExplanations(id, { guidelineId, force });
-      setTopicExplJobs(prev => ({ ...prev, [guidelineId]: job }));
+      const fanOut = await generateExplanations(id, { guidelineId, force });
+      if (fanOut.launched === 0) {
+        setError('Topic explanation generation: nothing to run.');
+        return;
+      }
+      try {
+        const job = await getExplanationJobStatus(id, { guidelineId });
+        setTopicExplJobs(prev => ({ ...prev, [guidelineId]: job }));
+      } catch { /* start polling anyway */ }
       startTopicExplPolling(guidelineId, chapterId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Topic explanation generation failed');
@@ -753,8 +814,45 @@ const BookV2Detail: React.FC = () => {
                     )}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
                   <span style={{ fontSize: '13px', color: '#6B7280' }}>{ch.uploaded_page_count}/{ch.total_pages} pages</span>
+                  {pipelineSummaries[ch.id] && (() => {
+                    const s = pipelineSummaries[ch.id];
+                    const t = s.chapter_totals;
+                    return (
+                      <span
+                        title="Pipeline status — topics fully done / partial / not started"
+                        style={{ backgroundColor: '#EEF2FF', color: '#3730A3', padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 }}
+                      >
+                        {t.topics_total} topics · {t.topics_fully_done} done · {t.topics_partial} partial · {t.topics_not_started} not started
+                      </span>
+                    );
+                  })()}
+                  {ch.status === 'chapter_completed' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPipelineQualityOpenFor(prev => (prev === ch.id ? null : ch.id));
+                        }}
+                        style={{
+                          fontSize: 11, fontWeight: 600, color: 'white',
+                          backgroundColor: '#4F46E5', border: 'none',
+                          padding: '3px 10px', borderRadius: 10, cursor: 'pointer',
+                        }}
+                      >
+                        ▶ Run all topics
+                      </button>
+                      <QualitySelector
+                        open={pipelineQualityOpenFor === ch.id}
+                        onClose={() => setPipelineQualityOpenFor(null)}
+                        onPick={(quality) => handleRunChapterPipelineAll(ch, quality)}
+                        force={pipelineForce}
+                        onForceChange={setPipelineForce}
+                      />
+                    </>
+                  )}
                   <span style={{ backgroundColor: badge.bg, color: badge.color, padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>
                     {badge.label}
                   </span>
@@ -1364,6 +1462,25 @@ const BookV2Detail: React.FC = () => {
                                 <span style={{ fontSize: '12px', color: '#6B7280' }}>
                                   pp. {topic.source_page_start}-{topic.source_page_end}
                                 </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/admin/books-v2/${id}/pipeline/${ch.id}/${encodeURIComponent(topic.topic_key)}`);
+                                  }}
+                                  style={{
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    color: '#4F46E5',
+                                    backgroundColor: '#EEF2FF',
+                                    border: '1px solid #C7D2FE',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Pipeline →
+                                </button>
                               </div>
                             </div>
                             {isTopicExpanded && (

@@ -146,6 +146,9 @@ def migrate():
         # Rebuild paused-session unique index to include mode (teach_me + practice can both be paused)
         _apply_practice_mode_support(db_manager)
 
+        # Topic Pipeline Dashboard — guideline_id + split active-job indexes
+        _apply_chapter_jobs_guideline_id(db_manager)
+
         # Practice v2 tables (create_all handles base tables; this adds the partial
         # unique index + seeds practice_bank_generator / practice_grader LLM configs)
         _apply_practice_tables(db_manager)
@@ -229,6 +232,79 @@ def _apply_learning_modes_columns(db_manager):
         conn.execute(text("UPDATE sessions SET mode = 'teach_me' WHERE mode IS NULL"))
 
         conn.commit()
+
+
+def _apply_chapter_jobs_guideline_id(db_manager):
+    """Add guideline_id column + split active-job unique indexes on chapter_processing_jobs.
+
+    The column was previously overloaded: post-sync jobs stored `guideline_id`
+    in the `chapter_id` column. This migration adds a native `guideline_id`
+    column, backfills it for recoverable historical rows, and splits
+    `idx_chapter_active_job` into two partial unique indexes:
+      - chapter-level: `(chapter_id)` WHERE status IN (pending, running) AND guideline_id IS NULL
+      - topic-level:   `(chapter_id, guideline_id)` WHERE ... AND guideline_id IS NOT NULL
+
+    Idempotent. Historical rows' `chapter_id` is NOT rewritten — the
+    recovery join is brittle and historical jobs are terminal.
+    """
+    inspector = inspect(db_manager.engine)
+
+    if "chapter_processing_jobs" not in inspector.get_table_names():
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("chapter_processing_jobs")}
+    existing_indexes = {idx["name"] for idx in inspector.get_indexes("chapter_processing_jobs")}
+
+    with db_manager.engine.connect() as conn:
+        # 1. Add guideline_id column
+        if "guideline_id" not in existing_columns:
+            print("  Adding guideline_id column to chapter_processing_jobs...")
+            conn.execute(text(
+                "ALTER TABLE chapter_processing_jobs ADD COLUMN guideline_id VARCHAR"
+            ))
+            print("  ✓ guideline_id column added")
+
+        # 2. Backfill guideline_id for historical post-sync rows.
+        #    For those rows, chapter_id overloaded stored a guideline UUID. We
+        #    copy it to guideline_id iff that value resolves to a
+        #    teaching_guidelines.id.
+        post_sync_types = (
+            "'v2_explanation_generation', 'v2_visual_enrichment', "
+            "'v2_check_in_enrichment', 'v2_practice_bank_generation', "
+            "'v2_audio_text_review', 'v2_audio_generation'"
+        )
+        backfill_sql = (
+            "UPDATE chapter_processing_jobs SET guideline_id = chapter_id "
+            f"WHERE job_type IN ({post_sync_types}) "
+            "AND guideline_id IS NULL "
+            "AND EXISTS (SELECT 1 FROM teaching_guidelines tg "
+            "            WHERE tg.id = chapter_processing_jobs.chapter_id)"
+        )
+        result = conn.execute(text(backfill_sql))
+        if result.rowcount:
+            print(f"  Backfilled guideline_id for {result.rowcount} historical post-sync rows")
+
+        # 3. Replace single active-job index with two partial unique indexes.
+        if "idx_chapter_active_job" in existing_indexes:
+            print("  Dropping legacy idx_chapter_active_job...")
+            conn.execute(text("DROP INDEX IF EXISTS idx_chapter_active_job"))
+
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_chapter_active_chapter_job "
+            "ON chapter_processing_jobs (chapter_id) "
+            "WHERE status IN ('pending', 'running') AND guideline_id IS NULL"
+        ))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_chapter_active_topic_job "
+            "ON chapter_processing_jobs (chapter_id, guideline_id) "
+            "WHERE status IN ('pending', 'running') AND guideline_id IS NOT NULL"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_chapter_jobs_guideline "
+            "ON chapter_processing_jobs (guideline_id)"
+        ))
+        conn.commit()
+        print("  ✓ chapter_processing_jobs guideline_id migration applied")
 
 
 def _apply_practice_mode_support(db_manager):

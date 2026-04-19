@@ -245,13 +245,25 @@ export default function ExplanationAdmin() {
   const handleGenerate = async (guidelineId?: string, mode = 'generate', force = false) => {
     if (!bookId || !chapterId) return;
     try {
-      const job = await generateExplanations(bookId, {
+      const fanOut = await generateExplanations(bookId, {
         chapterId: guidelineId ? undefined : chapterId,
         guidelineId,
         force,
         mode,
         reviewRounds,
       });
+      if (fanOut.launched === 0) {
+        setError(
+          fanOut.skipped_guidelines && fanOut.skipped_guidelines.length
+            ? `All ${fanOut.skipped_guidelines.length} topic(s) already have a job in flight.`
+            : 'Nothing to run.'
+        );
+        return;
+      }
+      const job = await getExplanationJobStatus(
+        bookId,
+        guidelineId ? { guidelineId } : { chapterId },
+      );
       if (guidelineId) {
         setTopicJobs(prev => ({ ...prev, [guidelineId]: job }));
         startTopicPolling(guidelineId);
