@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from shared.services.llm_service import LLMService, LLMServiceError
+from shared.services.llm_service import LLMService
 from shared.models.entities import TeachingGuideline, TopicExplanation
 from shared.repositories.explanation_repository import ExplanationRepository
 
@@ -71,10 +71,33 @@ class AnimationEnrichmentService:
         self.llm = llm_service
         self.code_llm = code_gen_llm or llm_service
         self.repo = ExplanationRepository(db)
+        self._preflight_done = False
 
         self._decision_schema = LLMService.make_schema_strict(
             DecisionOutput.model_json_schema()
         )
+
+    def _ensure_preflight(self) -> None:
+        """Check the frontend dev server is reachable — needed by the stage-7
+        overlap gate. Idempotent per service instance. Raises RuntimeError with
+        a human-actionable message if unreachable so both enrich_chapter and
+        enrich_guideline fail fast rather than silently passing every card
+        through an unrunning overlap check (layout_warning would be meaningless).
+        """
+        if self._preflight_done:
+            return
+        from book_ingestion_v2.services.visual_render_harness import (
+            VisualRenderHarness, FRONTEND_URL,
+        )
+        ok, err = VisualRenderHarness.preflight()
+        if not ok:
+            raise RuntimeError(
+                f"Visual enrichment requires the frontend dev server at "
+                f"{FRONTEND_URL} (needed for the stage-7 overlap gate). "
+                f"Start it with `cd llm-frontend && npm run dev`, then retry. "
+                f"Preflight error: {err}"
+            )
+        self._preflight_done = True
 
     # ─── Public API ─────────────────────────────────────────────────────
 
@@ -96,6 +119,7 @@ class AnimationEnrichmentService:
         Returns: {"enriched": int, "skipped": int, "failed": int, "errors": [str]}
         """
         review_rounds = max(0, min(review_rounds, 5))
+        self._ensure_preflight()
         explanations = self.repo.get_by_guideline_id(guideline.id)
         if not explanations:
             return {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
@@ -134,6 +158,8 @@ class AnimationEnrichmentService:
     ) -> dict:
         """Enrich all guidelines in a chapter (or book) with visuals."""
         review_rounds = max(0, min(review_rounds, 5))
+        self._ensure_preflight()
+
         query = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.book_id == book_id,
             TeachingGuideline.review_status == "APPROVED",
@@ -278,12 +304,23 @@ class AnimationEnrichmentService:
                     stage=f"refine_{round_num}",
                 )
 
+            # Post-refine overlap gate — render in headless Chromium, walk the
+            # Pixi display tree, compute bbox overlaps. If overlap, one extra
+            # targeted refine round with the collision report. If overlap
+            # persists, store with layout_warning=true so the student-facing
+            # chip renders.
+            pixi_code, layout_warning = self._overlap_gate(
+                pixi_code, decision, card, guideline,
+                explanation=explanation, stage_collector=stage_collector,
+            )
+
             card["visual_explanation"] = {
                 "output_type": decision.decision,
                 "title": decision.title,
                 "visual_summary": decision.visual_summary,
                 "visual_spec": decision.visual_spec,
                 "pixi_code": pixi_code,
+                "layout_warning": layout_warning,
             }
             enriched_count += 1
 
@@ -330,8 +367,15 @@ class AnimationEnrichmentService:
         card: dict,
         guideline: TeachingGuideline,
         current_code: str,
+        *,
+        collision_report: Optional[str] = None,
     ) -> Optional[str]:
-        """Single review-refine pass: LLM reviews the current code and returns an improved version."""
+        """Single review-refine pass: LLM reviews the current code and returns an improved version.
+
+        When collision_report is provided, it's injected at {collision_report} in
+        the prompt so the refine pass can target specific overlapping pairs rather
+        than relying on the LLM to read pixi source and intuit overlap.
+        """
         topic = guideline.topic_title or guideline.topic
         grade = f"Grade {guideline.grade}" if guideline.grade else "Grade 3"
 
@@ -342,6 +386,7 @@ class AnimationEnrichmentService:
             .replace("{visual_spec}", decision.visual_spec or "")
             .replace("{output_type}", decision.decision)
             .replace("{current_code}", current_code)
+            .replace("{collision_report}", collision_report or "(none)")
         )
 
         try:
@@ -352,9 +397,107 @@ class AnimationEnrichmentService:
             )
             code = result["output_text"]
             return self._strip_markdown_fences(code)
-        except (LLMServiceError, Exception) as e:
+        except Exception as e:
             logger.error(f"Visual review-refine failed for card {decision.card_idx}: {e}")
             return None
+
+    def _overlap_gate(
+        self,
+        pixi_code: str,
+        decision: "VisualDecision",
+        card: dict,
+        guideline: TeachingGuideline,
+        *,
+        explanation: "TopicExplanation",
+        stage_collector: Optional[list],
+    ) -> tuple[str, bool]:
+        """Render → detect overlap → if overlap, one extra targeted refine round → re-check.
+
+        Returns (final_code, layout_warning). layout_warning=True means overlap
+        persists after the extra round; we store the code anyway so the
+        student-facing chip can render.
+
+        A harness failure (playwright not installed, localhost unreachable, etc.)
+        does NOT set the warning flag — we don't false-flag cards when the check
+        itself failed.
+        """
+        from book_ingestion_v2.services.visual_overlap_detector import (
+            detect_overlaps, format_collision_report,
+        )
+        from book_ingestion_v2.services.visual_render_harness import VisualRenderHarness
+
+        harness = VisualRenderHarness()
+        result = harness.render(pixi_code, output_type=decision.decision)
+        if not result.ok:
+            logger.warning(
+                f"Overlap gate: render failed for card {decision.card_idx} "
+                f"({result.error}) — skipping overlap check, not flagging"
+            )
+            self._collect_snapshot(
+                stage_collector, guideline, explanation, decision, pixi_code,
+                stage="overlap_gate_skipped",
+            )
+            return pixi_code, False
+
+        overlaps = detect_overlaps(result.bounds)
+        if not overlaps:
+            self._collect_snapshot(
+                stage_collector, guideline, explanation, decision, pixi_code,
+                stage="overlap_gate_clean",
+            )
+            return pixi_code, False
+
+        collision_report = format_collision_report(overlaps)
+        logger.info(
+            f"Overlap detected on card {decision.card_idx}: {len(overlaps)} pairs — "
+            f"running targeted refine round"
+        )
+
+        refined = self._review_and_refine_code(
+            decision, card, guideline, pixi_code, collision_report=collision_report,
+        )
+        if not refined or not self._validate_code(refined):
+            logger.info(
+                f"Targeted refine returned no valid code for card {decision.card_idx} "
+                f"— storing original with layout_warning=True"
+            )
+            self._collect_snapshot(
+                stage_collector, guideline, explanation, decision, pixi_code,
+                stage="overlap_gate_refine_failed",
+            )
+            return pixi_code, True
+
+        # Re-render, re-check
+        result2 = harness.render(refined, output_type=decision.decision)
+        if not result2.ok:
+            logger.warning(
+                f"Re-render failed after targeted refine for card {decision.card_idx} "
+                f"({result2.error}) — storing refined code with layout_warning=True"
+            )
+            self._collect_snapshot(
+                stage_collector, guideline, explanation, decision, refined,
+                stage="overlap_gate_rerender_failed",
+            )
+            return refined, True
+
+        overlaps2 = detect_overlaps(result2.bounds)
+        if overlaps2:
+            logger.info(
+                f"Overlap persists on card {decision.card_idx} after targeted refine "
+                f"({len(overlaps2)} pairs) — storing with layout_warning=True"
+            )
+            self._collect_snapshot(
+                stage_collector, guideline, explanation, decision, refined,
+                stage="overlap_gate_persists",
+            )
+            return refined, True
+
+        logger.info(f"Targeted refine fixed overlaps on card {decision.card_idx}")
+        self._collect_snapshot(
+            stage_collector, guideline, explanation, decision, refined,
+            stage="overlap_gate_fixed",
+        )
+        return refined, False
 
     def _decide_and_spec(
         self,
@@ -416,7 +559,7 @@ class AnimationEnrichmentService:
 
             return [VisualDecision(**d) for d in decisions_list]
 
-        except (LLMServiceError, json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.error(f"Visual decision failed for {topic}: {e}")
             return []
 
@@ -477,7 +620,7 @@ class AnimationEnrichmentService:
             )
             code = result["output_text"]
             return self._strip_markdown_fences(code)
-        except (LLMServiceError, Exception) as e:
+        except Exception as e:
             logger.error(f"Code generation failed for card {decision.card_idx}: {e}")
             return None
 

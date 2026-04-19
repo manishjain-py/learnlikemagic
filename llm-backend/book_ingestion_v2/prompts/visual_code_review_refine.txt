@@ -22,6 +22,10 @@ Read the code as if you are the student watching the visual. Find anything that 
 2. **Spec adherence** — does the code match the visual spec? If the spec asks for a progressive reveal but the code shows everything at once, fix it.
 3. **Pedagogical clarity** — progressive reveal (build step-by-step, not all at once), max 5 distinct visual groups on screen, max 10 words of text visible at any moment, use color to encode meaning.
 4. **Readability** — all labels fontSize >= 20; key numbers >= 28; high contrast; no overlapping text.
+4b. **Specific overlaps detected by the renderer** — if a collision report is provided below, these exact pairs were flagged by running the code in a real browser and computing bounding-box overlap. FIX THESE PAIRS SPECIFICALLY — shorten labels, reposition, or move to a new line:
+
+{collision_report}
+
 5. **Animation pacing** (if animated) — min 1.5s per step, 3-8s total, pause 2+s at end state, use easing not linear.
 6. **Technical correctness** — runs under `new Function('app', 'PIXI', code)`; no imports; uses `app.stage.addChild(...)`; uses hex colors `0xff0000`; uses Pixi.js v8 API (`g.rect(); g.fill(color)`, `new PIXI.Text({text, style})`); no calls to `new PIXI.Application()` or `app.init()`.
 7. **Scope** — code under 4000 characters. Simpler is better.

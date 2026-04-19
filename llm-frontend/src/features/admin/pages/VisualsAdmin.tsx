@@ -371,6 +371,17 @@ export default function VisualsAdmin() {
               <span style={{ fontSize: '12px', color: '#9CA3AF' }}>{i + 1}</span>
               <span style={{ fontSize: '13px', fontWeight: 500 }}>{t.topic_title}</span>
               <StatusBadge total={t.total_cards} withVisuals={t.cards_with_visuals} hasExplanations={t.has_explanations} />
+              {(t.layout_warning_count ?? 0) > 0 && (
+                <span
+                  title={`${t.layout_warning_count} card(s) have persistent layout overlap detected by the render harness`}
+                  style={{
+                    fontSize: '10px', fontWeight: 600, padding: '2px 6px',
+                    borderRadius: '8px', backgroundColor: '#FEF3C7', color: '#92400E',
+                  }}
+                >
+                  ⚠ {t.layout_warning_count} overlap
+                </span>
+              )}
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {t.has_explanations && (
                   <>

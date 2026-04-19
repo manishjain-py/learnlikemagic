@@ -224,6 +224,39 @@ def get_latest_explanation_job(
         )
 
 
+@router.get("/audio-review-jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_audio_review_job(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Chapter ID (omit for book-wide job)"),
+    guideline_id: Optional[str] = Query(None, description="Guideline ID for single-topic job"),
+    db: Session = Depends(get_db),
+):
+    """Latest audio text review job for a topic, chapter, or book.
+
+    Uses the existing ChapterJobService.get_latest_job (which already supports
+    optional job_type filtering + stale detection). No new service method.
+    """
+    try:
+        lock_chapter_id = guideline_id or chapter_id or book_id
+        job_service = ChapterJobService(db)
+        result = job_service.get_latest_job(
+            lock_chapter_id,
+            job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+        )
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No audio text review jobs found",
+            )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+        )
+
+
 @router.get("/explanation-jobs/{job_id}/stages")
 def get_job_stage_snapshots(
     book_id: str,
@@ -478,6 +511,10 @@ def generate_audio(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
     guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
+    confirm_skip_review: bool = Query(
+        False,
+        description="Skip soft guardrail that requires a prior audio text review job for this scope",
+    ),
     db: Session = Depends(get_db),
 ):
     """Generate pre-computed TTS audio for explanation card lines and upload to S3.
@@ -485,6 +522,11 @@ def generate_audio(
     Runs as a background job. Requires explanations to already exist.
     Idempotent — skips lines that already have audio_url.
     Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+
+    Soft guardrail: if no completed audio_text_review job exists for the
+    resolved scope and confirm_skip_review is False, returns HTTP 409 with
+    detail={"code":"no_audio_review","requires_confirmation":true,...} so the
+    frontend can show a confirm dialog and re-call with confirm_skip_review=true.
     """
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
     from shared.models.entities import TeachingGuideline
@@ -521,6 +563,50 @@ def generate_audio(
             lock_chapter_id = chapter_id or book_id
 
         job_service = ChapterJobService(db)
+
+        # Soft guardrail: warn the admin if no usable audio text review has run.
+        # The 409 detail distinguishes between "never run", "last run failed",
+        # and "run is still in progress" so the frontend dialog can reflect
+        # the actual state (not a blanket "no review has run" message).
+        if not confirm_skip_review:
+            latest_review = job_service.get_latest_job(
+                lock_chapter_id,
+                job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+            )
+            guardrail_code: Optional[str] = None
+            guardrail_message: Optional[str] = None
+            if latest_review is None:
+                guardrail_code = "no_audio_review"
+                guardrail_message = (
+                    "No audio text review has run for this chapter. "
+                    "MP3s will be synthesized on unreviewed text. Proceed anyway?"
+                )
+            elif latest_review.status == "failed":
+                guardrail_code = "audio_review_failed"
+                guardrail_message = (
+                    "The most recent audio text review failed — you can retry "
+                    "the review, or proceed with audio generation on unreviewed "
+                    "text. Proceed anyway?"
+                )
+            elif latest_review.status in ("pending", "running"):
+                guardrail_code = "audio_review_in_progress"
+                guardrail_message = (
+                    f"An audio text review is currently {latest_review.status}. "
+                    "Wait for it to finish, or proceed anyway on unreviewed text?"
+                )
+            # completed / completed_with_errors — no guardrail, fall through
+
+            if guardrail_message:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": guardrail_code,
+                        "message": guardrail_message,
+                        "requires_confirmation": True,
+                        "review_status": latest_review.status if latest_review else None,
+                    },
+                )
+
         job_id = job_service.acquire_lock(
             book_id=book_id,
             chapter_id=lock_chapter_id,
@@ -619,6 +705,184 @@ def _run_audio_generation(
 
     except Exception as e:
         logger.error(f"Audio generation job {job_id} failed: {e}")
+        job_service.release_lock(job_id, status="failed", error=str(e))
+
+
+# ─────────────────────────── Audio Text Review ────────────────────────────
+
+
+@router.post(
+    "/generate-audio-review",
+    response_model=ProcessingJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def generate_audio_review(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope review"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic review"),
+    language: Optional[str] = Query(
+        None,
+        description="Override language for reviewer (en|hi|hinglish). Defaults to 'en'.",
+    ),
+    db: Session = Depends(get_db),
+):
+    """Review audio text strings on explanation + check-in cards. Applies surgical revisions.
+
+    Runs as a background job. Requires explanations to already exist.
+    Clears audio_url on revised lines so next /generate-audio run re-synthesizes only those.
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            total_items = 1
+            lock_chapter_id = guideline_id
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=lock_chapter_id,
+            job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+            total_items=total_items,
+        )
+
+        run_in_background_v2(
+            _run_audio_text_review, job_id, book_id,
+            chapter_id or "", guideline_id or "", language or "",
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Audio text review failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+        )
+
+
+def _run_audio_text_review(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", language: str = "",
+):
+    """Background task — builds LLMService from DB config (same pattern as
+    check-in enrichment) and injects it into AudioTextReviewService."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.audio_text_review_service import (
+        AudioTextReviewService, DEFAULT_LANGUAGE,
+    )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    job_service = ChapterJobService(db)
+    try:
+        settings = get_settings()
+
+        llm_config_svc = LLMConfigService(db)
+        try:
+            config = llm_config_svc.get_config("audio_text_review")
+        except Exception:
+            config = llm_config_svc.get_config("explanation_generator")
+
+        llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            provider=config["provider"],
+            model_id=config["model_id"],
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        )
+
+        service = AudioTextReviewService(
+            db, llm_service, language=language or DEFAULT_LANGUAGE,
+        )
+
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                result = {"completed": 0, "failed": 1, "errors": ["guideline not found"]}
+            else:
+                topic = guideline.topic_title or guideline.topic
+                job_service.update_progress(
+                    job_id, current_item=topic, completed=0, failed=0,
+                )
+                heartbeat_fn = lambda: job_service.update_progress(
+                    job_id, current_item=topic, completed=0, failed=0,
+                )
+                stage_collector: list = []
+                per_guideline = service.review_guideline(
+                    guideline,
+                    heartbeat_fn=heartbeat_fn,
+                    stage_collector=stage_collector,
+                )
+                if stage_collector:
+                    try:
+                        job_service.append_stage_snapshots(job_id, stage_collector)
+                    except Exception as snap_err:
+                        logger.warning(
+                            f"append_stage_snapshots failed for job {job_id}: {snap_err}"
+                        )
+                result = {
+                    "completed": 0 if per_guideline["failed"] else 1,
+                    "failed": per_guideline["failed"],
+                    "errors": per_guideline["errors"][:10],
+                    "cards_reviewed": per_guideline["cards_reviewed"],
+                    "cards_revised": per_guideline["cards_revised"],
+                }
+        else:
+            result = service.review_chapter(
+                book_id, chapter_id or None,
+                job_service=job_service, job_id=job_id,
+            )
+
+        final_status = (
+            "completed" if result.get("failed", 0) == 0 else "completed_with_errors"
+        )
+        job_service.update_progress(
+            job_id,
+            completed=result.get("completed", 0),
+            failed=result.get("failed", 0),
+            detail=_json.dumps(result),
+        )
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception as e:
+        logger.error(f"Audio text review job {job_id} failed: {e}")
         job_service.release_lock(job_id, status="failed", error=str(e))
 
 
@@ -979,20 +1243,23 @@ def get_visual_status(
             explanations = repo.get_by_guideline_id(g.id)
             total_cards = 0
             cards_with_visuals = 0
+            layout_warning_count = 0
             for expl in explanations:
                 cards = expl.cards_json or []
                 total_cards += len(cards)
-                cards_with_visuals += sum(
-                    1 for c in cards
-                    if isinstance(c.get("visual_explanation"), dict)
-                    and c["visual_explanation"].get("pixi_code")
-                )
+                for c in cards:
+                    visual = c.get("visual_explanation")
+                    if isinstance(visual, dict) and visual.get("pixi_code"):
+                        cards_with_visuals += 1
+                        if visual.get("layout_warning") is True:
+                            layout_warning_count += 1
             topics.append(TopicVisualStatus(
                 guideline_id=g.id,
                 topic_title=g.topic_title or g.topic,
                 topic_key=g.topic_key,
                 total_cards=total_cards,
                 cards_with_visuals=cards_with_visuals,
+                layout_warning_count=layout_warning_count,
                 has_explanations=len(explanations) > 0,
             ))
 

@@ -68,6 +68,7 @@ import PracticeRunnerPage from './pages/PracticeRunnerPage';
 import PracticeResultsPage from './pages/PracticeResultsPage';
 import PixiJsPocPage from './features/admin/pages/PixiJsPocPage';
 import InteractiveVisualsPocPage from './features/admin/pages/InteractiveVisualsPocPage';
+import VisualRenderPreview from './features/admin/pages/VisualRenderPreview';
 import FeatureFlagsPage from './features/admin/pages/FeatureFlagsPage';
 import AdminIssuesPage from './features/admin/pages/AdminIssuesPage';
 import AdminLayout from './features/admin/components/AdminLayout';
@@ -161,6 +162,7 @@ function App() {
             <Route path="books-v2/:bookId/practice-banks/:chapterId" element={<PracticeBankAdmin />} />
             <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
             <Route path="interactive-poc" element={<InteractiveVisualsPocPage />} />
+            <Route path="visual-render-preview/:id" element={<VisualRenderPreview />} />
             <Route path="feature-flags" element={<FeatureFlagsPage />} />
             <Route path="issues" element={<AdminIssuesPage />} />
           </Route>

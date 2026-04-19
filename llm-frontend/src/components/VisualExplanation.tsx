@@ -127,6 +127,20 @@ export default function VisualExplanation({ visual, autoStart }: Props) {
         />
       </div>
       {error && <div className="visual-error">{error}</div>}
+      {visual.layout_warning && (
+        <div
+          style={{
+            fontSize: 12,
+            color: '#888',
+            marginTop: 6,
+            fontStyle: 'italic',
+            textAlign: 'center',
+            padding: '4px 8px',
+          }}
+        >
+          Note: this picture might have some overlap — we're improving it.
+        </div>
+      )}
       {visual.narration && <div className="visual-narration">{visual.narration}</div>}
       <button className="visual-replay-btn" onClick={replay} title="Replay">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

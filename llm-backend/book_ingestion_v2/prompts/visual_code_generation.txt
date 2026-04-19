@@ -26,6 +26,7 @@ You are an expert Pixi.js v8 developer generating educational visuals for childr
 - Progressive reveal: build the scene element by element, not all at once.
 - For animations: minimum 1.5s per step, 3-8s total, pause 2+s at end state.
 - Use easing for smooth motion (ease-in-out, not linear).
+- **Avoid crowding.** When positioning multiple adjacent text labels in a single row (group labels, axis ticks, legend items), make sure each label's rendered width fits within its visual region. If a label would be wider than its region (e.g., "Thousands Period" above a 3-digit group), use a shorter word ("Thousands"), wrap to two lines, or move it below the region. Overlapping labels render as unreadable garbled text.
 
 ## Card Context
 

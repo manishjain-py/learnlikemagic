@@ -76,6 +76,7 @@ export interface VisualExplanation {
   output_type?: 'image' | 'animation';
   title?: string;
   narration?: string;
+  layout_warning?: boolean; // True when stage-7 overlap gate detected persistent overlap
   // Legacy fields from old SVG-based visuals (backward compat)
   scene_type?: string;
 }

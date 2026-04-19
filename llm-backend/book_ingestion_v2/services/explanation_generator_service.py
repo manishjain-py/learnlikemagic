@@ -189,14 +189,11 @@ class ExplanationGeneratorService:
 
                 cards_dicts = [_card_output_to_dict(c) for c in cards]
 
-                # Generate TTS audio and upload to S3 (best-effort — lines
-                # without audio_url fall back to real-time TTS on the frontend)
-                try:
-                    from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
-                    audio_svc = AudioGenerationService()
-                    audio_svc.generate_for_cards(cards_dicts, guideline.id, config["key"])
-                except Exception as audio_err:
-                    logger.warning(f"Audio generation failed for {topic}/{config['key']}, cards saved without audio: {audio_err}")
+                # MP3 synthesis moved out of stage 5. The admin now runs the
+                # audio text review stage (surgical rewrites of `audio` strings)
+                # before the standalone /generate-audio job synthesizes MP3s.
+                # Admin can still skip review and go straight to synth via the
+                # soft-guardrail confirm dialog on the Audio button.
 
                 explanation = self.repo.upsert(
                     guideline_id=guideline.id,

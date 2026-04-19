@@ -4,6 +4,7 @@ import {
   getBookV2, generateExplanations, getExplanationJobStatus,
   getExplanationStatus, getTopicExplanations, deleteExplanations,
   getJobStageSnapshots,
+  generateAudioReview,
   BookV2DetailResponse, ProcessingJobResponseV2,
   TopicExplanationStatusV2, TopicExplanationsDetailResponseV2,
   ExplanationCardV2, StageSnapshotV2,
@@ -274,6 +275,19 @@ export default function ExplanationAdmin() {
     }
   };
 
+  const handleReviewAudio = async (guidelineId: string, title: string) => {
+    if (!bookId) return;
+    try {
+      await generateAudioReview(bookId, { guidelineId });
+      alert(
+        `Audio review started for "${title}". ` +
+        `Watch progress on the Book detail page or poll /audio-review-jobs/latest.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start audio review');
+    }
+  };
+
   const handleViewExplanations = async (guidelineId: string) => {
     if (!bookId) return;
     try {
@@ -432,6 +446,9 @@ export default function ExplanationAdmin() {
                     </button>
                     <button onClick={() => handleViewStages(t.guideline_id, t.topic_title)} title="View pipeline stages from last job" style={actionBtn('#0891B2', false)}>
                       Stages
+                    </button>
+                    <button onClick={() => handleReviewAudio(t.guideline_id, t.topic_title)} title="Run audio text review on this topic's cards" style={actionBtn('#0F766E', false)}>
+                      Review audio
                     </button>
                     <button onClick={() => handleDelete(t.guideline_id, t.topic_title)} title="Delete all explanations for this topic" style={actionBtn('#DC2626', false)}>
                       Delete

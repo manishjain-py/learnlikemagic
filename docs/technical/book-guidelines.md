@@ -34,10 +34,19 @@ Sync to teaching_guidelines table
 Pre-Computed Explanations (LLM generate → review-and-refine N rounds per variant)
     |
     v
-Visual Enrichment (LLM decide+spec → generate PixiJS code → validate → store)
+Visual Enrichment (LLM decide+spec → generate PixiJS code → validate → store;
+                   post-refine programmatic overlap check on rendered output)
     |
     v
 Check-In Enrichment (LLM generates 2-N inline interactive activities, validates, inserts)
+    |
+    v
+Audio Text Review (LLM reviews `audio` strings per card; surgical revisions only;
+                   clears audio_url on revised lines so synth re-generates them)
+    |
+    v
+Audio Synthesis (Google Cloud TTS per explanation line → S3 upload → stamp audio_url;
+                 standalone admin job with soft-guardrail confirm if no prior review)
     |
     v
 Refresher Topic Generation (LLM identifies prerequisites, builds "Get Ready" topic + cards)
@@ -341,6 +350,8 @@ Sync is idempotent: deletes existing guidelines for the chapter before creating 
 | GET | `/visual-status` | Per-topic visual coverage for a chapter (query: `chapter_id`) |
 | GET | `/visual-jobs/latest` | Latest visual job (query: `chapter_id` or `guideline_id`) |
 | DELETE | `/visuals` | Strip visuals from a topic's explanations (query: `guideline_id`) |
+| **Audio (TTS)** | | |
+| POST | `/generate-audio` | Generate TTS audio for explanation card lines via Google Cloud TTS and upload to S3 (query: `chapter_id`, `guideline_id`). Idempotent — skips lines that already have `audio_url`. |
 | **Check-ins** | | |
 | POST | `/generate-check-ins` | Generate inline check-in cards (query: `chapter_id`, `guideline_id`, `force`) |
 | GET | `/check-in-status` | Per-topic check-in counts for a chapter (query: `chapter_id`) |
@@ -450,6 +461,137 @@ Checks if cards already have `visual_explanation.pixi_code`. Skips unless `force
 ### Background Job
 
 Runs as a background job with `v2_visual_enrichment` job type. Endpoint table is consolidated above in [Sync to Teaching Guidelines](#sync-to-teaching-guidelines).
+
+### Visual Rendering Review (post-refine overlap gate)
+
+A sub-stage of stage 7 (not a separate numbered stage). Catches a defect class that `visual_code_review_refine.txt` cannot enforce from source — LLMs cannot compute text bounding boxes from Pixi code. Observed defect: a place-value diagram for `5,23,476` rendered as `"Lakhs PeTioodsands Period"` because adjacent labels exceeded their group widths.
+
+**Approach (no vision LLM in v1):**
+
+1. **Preventive prompt** — `visual_code_generation.txt` carries one general rule about crowded adjacent labels. Revertible in one commit if quality regresses.
+2. **Programmatic overlap check** — after the last existing review-refine round, the harness renders the Pixi code and checks for overlap.
+3. **One targeted refine round** — when overlap is detected, `{collision_report}` is substituted into `visual_code_review_refine.txt` with specific coord + IoU data for the refiner to fix.
+4. **Retry exhaustion** — if overlap persists after the targeted round, the code is stored anyway with `visual_explanation.layout_warning = true`, and the student UI renders a subdued chip ("Note: this picture might have some overlap — we're improving it").
+
+**Components:**
+
+| File | Role |
+|---|---|
+| `services/visual_render_harness.py` | Playwright wrapper. `render()` stashes code via the preview store, navigates Playwright to the admin preview page, waits for `data-pixi-state="ready"`, walks `app.stage` via `page.evaluate()`, returns bounds. `preflight()` HEADs localhost:3000 as a fail-fast check at job start. |
+| `services/visual_preview_store.py` | In-memory TTL store keyed by random `secrets.token_urlsafe(24)`. Closes the reflected-XSS vector of carrying executable pixi code in a URL query. 2-minute TTL, 256-entry cap with LRU eviction. |
+| `api/visual_preview_routes.py` | `POST /admin/v2/visual-preview/prepare` (harness stashes code, gets id) and `GET /admin/v2/visual-preview/{id}` (preview page fetches code by id). |
+| `services/visual_overlap_detector.py` | Pure-Python IoU math over a bounds list. Uses `min(area_a, area_b)` as the denominator so a small label fully inside a large box reports IoU=1.0. Flags Text-on-Text and Text-on-dense-Graphics; ignores Graphics-on-Graphics. |
+| `frontend/src/features/admin/pages/VisualRenderPreview.tsx` | Admin-only React page at `/admin/visual-render-preview/:id`. Fetches code from the preview store, mounts Pixi directly (no sandboxed iframe — Playwright can't reach into one), exposes `window.__pixiApp` for `page.evaluate()`. |
+
+**IoU threshold:** default `0.05`. Only pairs above this are flagged.
+
+**Harness failure mode discipline:** if the harness fails (playwright not installed, localhost unreachable mid-job, Pixi threw), the post-refine gate passes the code through WITHOUT setting `layout_warning=true`. We don't false-flag cards when the check itself failed. A job-level preflight catches the steady-state missing-frontend case up front.
+
+**Dev prerequisite:** the frontend dev server must be running at `http://localhost:3000` when the stage-7 job runs. Playwright + Chromium installed locally. See `docs/technical/dev-workflow.md` for setup commands.
+
+**Admin observability:** `/visual-status` response gains `layout_warning_count` per topic; `VisualsAdmin` renders a small amber chip on affected topics.
+
+**Tests:**
+
+- `tests/unit/test_visual_overlap_detector.py` — 14 pure-geometry unit tests
+- `tests/unit/test_visual_preview_store.py` — 9 unit tests (put/get, TTL, LRU, singleton)
+- `tests/integration/test_visual_render_harness.py` — 5 integration tests skip-guarded on playwright + localhost availability; includes the observed place-value defect reproduction
+
+---
+
+## Audio Text Review
+
+**Service:** `book_ingestion_v2/services/audio_text_review_service.py` (`AudioTextReviewService`)
+
+Per-card LLM reviewer that catches defects in the `audio` strings on explanation + check-in cards before TTS synthesis runs. Surgical scope — can only rewrite individual audio strings. Cannot edit `display` text, cannot split/merge/drop lines, cannot reshape cards. Runs after stage 5 (explanations) and stage 8 (check-ins), before stage 10 (TTS synth).
+
+### Defect Classes Caught
+
+| Defect | Example |
+|---|---|
+| Symbol / markdown leak | `audio`: `"5+3=8"` or `"**bold**"` |
+| Visual-only reference | `audio`: `"as you can see in the diagram"` |
+| Run-on pacing | Single audio line > 35 words |
+| Cross-line redundancy | Line 2 re-states line 1 verbatim |
+| Hinglish / Indian place-value | `"1,23,456"` read as `"one hundred twenty-three thousand"` instead of `"one lakh twenty-three thousand"` |
+
+### Pipeline Per Card
+
+1. **LLM call**: `audio_text_review.txt` + `_system.txt`, with `{card_json}` stripped of `audio_url` (the reviewer has no use for it). Returns `CardReviewOutput` — zero or more `AudioLineRevision` entries.
+2. **Validation**: Drops revisions whose `revised_audio` still contains banned patterns (markdown, standalone `=`, emoji). Logs each drop with card/line identifier.
+3. **Drift guard**: Each revision's `original_audio` must match the current card value exactly; otherwise the revision is dropped (`logger.info`) — prevents clobbering concurrent admin edits.
+4. **Apply**: For `kind="line"`, writes `line.audio = revised_audio` AND `line.audio_url = None`. For `kind="check_in_text"`, writes top-level `card.audio_text = revised_audio`. Clearing `audio_url` is the contract with stage 10 (`audio_generation_service.py:82` skips lines with `audio_url` set), so re-synthesis is automatic and idempotent for only the revised lines.
+5. **Snapshot**: Each card's review is captured in `stage_snapshots_json` with `revisions_proposed` + `revisions_applied` counts, for the admin stage viewer.
+
+### LLM Config
+
+`audio_text_review` in `llm_config` table, with fallback to `explanation_generator` if the primary key is missing. Claude Code is recommended for cost.
+
+### Entry Points
+
+- `review_guideline(guideline, *, variant_keys=None, ...)` — review all variants for a single topic
+- `review_chapter(book_id, chapter_id=None, *, job_service=None, job_id=None)` — iterate approved guidelines, drive a job
+
+### Triggers
+
+- **Per-book / per-chapter**: `POST /admin/v2/books/{book_id}/generate-audio-review?chapter_id=&guideline_id=&language=` — kicks off a `v2_audio_text_review` background job.
+- **Per-topic**: Same endpoint with `guideline_id` set, or the `Review audio` button on each topic row in `ExplanationAdmin`.
+- **Stage-10 soft guardrail**: If admin clicks `Audio` without a prior completed review for the scope, `POST /generate-audio` returns HTTP 409 with `{code:"no_audio_review", requires_confirmation:true}` and the frontend shows a confirm dialog. Admin can re-call with `?confirm_skip_review=true` to bypass.
+
+### Observability
+
+- `stage_snapshots_json` entries on the job row, viewable via the existing stage viewer
+- `GET /admin/v2/books/{book_id}/audio-review-jobs/latest` mirrors `/explanation-jobs/latest` for this job type
+
+### Gold / Defective Test Fixtures
+
+- `tests/fixtures/audio_review/defective_set.json` — 20 handcrafted cards with deliberate single-defect injections (symbol-leak, visual-only, run-on, redundancy, hinglish)
+- `tests/fixtures/audio_review/clean_set.json` — 20 known-clean cards, reviewer should return empty revisions
+- `tests/manual/audio_review_gold_eval.py` — manual-run script measuring PRD SC2/SC3 against these sets
+
+---
+
+## Audio Synthesis (TTS)
+
+**Service:** `book_ingestion_v2/services/audio_generation_service.py` (`AudioGenerationService`)
+
+Synthesizes pre-computed TTS audio for every `audio` line in every explanation card and uploads each MP3 to S3. Decoupled from explanation generation — writes back the public URL as `audio_url` on each line in `topic_explanations.cards_json`. Not an LLM stage.
+
+### Provider
+
+Google Cloud TTS via API key (`GOOGLE_CLOUD_TTS_API_KEY`). Voice map:
+
+| Language | Language code | Voice name |
+|---|---|---|
+| `en` | `en-US` | `en-US-Chirp3-HD-Kore` |
+| `hi` | `hi-IN` | `hi-IN-Chirp3-HD-Kore` |
+| `hinglish` (default) | `hi-IN` | `hi-IN-Chirp3-HD-Kore` |
+
+Audio encoding: MP3.
+
+### Pipeline
+
+1. **Load cards**: Read `topic_explanations.cards_json` for the scoped guidelines.
+2. **Per line**: Skip if `line.audio_url` already set (idempotent) or `line.audio` is empty. Otherwise call Google Cloud TTS with `SynthesisInput(text=line.audio)`.
+3. **Upload**: Write MP3 bytes to S3 at `audio/{guideline_id}/{variant_key}/{card_idx}/{line_idx}.mp3` (content-type `audio/mpeg`).
+4. **Stamp URL**: Set `line.audio_url = https://{bucket}.s3.{region}.amazonaws.com/{key}` and `flag_modified(explanation, "cards_json")`, commit.
+
+### Trigger
+
+- **Standalone admin job**: `POST /generate-audio?confirm_skip_review=false|true` with scoping `guideline_id` > `chapter_id` > book-wide. MP3 synth is always explicit — no inline call at the end of stage 5 anymore. If no completed audio text review exists for the scope, the endpoint returns HTTP 409 with a `requires_confirmation` flag so the frontend can confirm before proceeding.
+
+### Entry Points
+
+- `generate_for_cards(cards_json, guideline_id, variant_key)`: mutate cards list in place, return it
+- `generate_for_topic_explanation(explanation, dry_run=False)`: read cards from a `TopicExplanation` ORM object; `dry_run=True` only counts lines
+
+### Background Job
+
+Runs as a background job with `v2_audio_generation` job type. Per-topic granularity — one `completed`/`failed` increment per guideline, final status is `completed` if zero failures else `completed_with_errors`. Errors (truncated to first 10) are surfaced in job `detail`.
+
+### Skip Logic
+
+Idempotent at line granularity: a line with `audio_url` already set is always skipped. No `force` flag — to regenerate audio for a line, clear its `audio_url` first.
 
 ---
 

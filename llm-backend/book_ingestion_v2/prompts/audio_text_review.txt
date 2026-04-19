@@ -1,0 +1,17 @@
+You are reviewing audio text for a Grade {grade} student learning about {topic_title}.
+
+Target language for this card: {language}  (en = English, hi = Hindi, hinglish = mix)
+
+Review the `audio` string on every line of the card below. For each defective audio string, emit a revision. For clean strings, emit nothing. Follow the defect checklist and output rules from your system instructions — do not restate them here.
+
+## Card
+
+{card_json}
+
+## Output (strict JSON)
+
+Your response must be valid JSON matching this schema:
+
+{output_schema}
+
+Return ONLY the JSON — no markdown fences, no prose, no explanation outside the object.
