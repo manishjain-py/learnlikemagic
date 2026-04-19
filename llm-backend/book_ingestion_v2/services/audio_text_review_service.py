@@ -151,21 +151,24 @@ class AudioTextReviewService:
         errors: list[str] = []
         total_cards_reviewed = 0
         total_cards_revised = 0
+        current_topic = ""
 
         def _hb():
             if job_service and job_id:
                 try:
                     job_service.update_progress(
-                        job_id, completed=completed, failed=failed,
+                        job_id, current_item=current_topic,
+                        completed=completed, failed=failed,
                     )
                 except Exception:
                     pass
 
         for guideline in guidelines:
-            topic = guideline.topic_title or guideline.topic
+            current_topic = guideline.topic_title or guideline.topic
             if job_service and job_id:
                 job_service.update_progress(
-                    job_id, current_item=topic, completed=completed, failed=failed,
+                    job_id, current_item=current_topic,
+                    completed=completed, failed=failed,
                 )
             try:
                 per_guideline = self.review_guideline(
@@ -182,7 +185,7 @@ class AudioTextReviewService:
                     completed += 1
             except Exception as e:
                 failed += 1
-                errors.append(f"{topic}: {e}")
+                errors.append(f"{current_topic}: {e}")
                 logger.exception(
                     f"Audio text review failed for guideline {guideline.id}"
                 )
