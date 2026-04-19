@@ -816,7 +816,26 @@ def _run_audio_text_review(
             if not guideline:
                 result = {"completed": 0, "failed": 1, "errors": ["guideline not found"]}
             else:
-                per_guideline = service.review_guideline(guideline)
+                topic = guideline.topic_title or guideline.topic
+                job_service.update_progress(
+                    job_id, current_item=topic, completed=0, failed=0,
+                )
+                heartbeat_fn = lambda: job_service.update_progress(
+                    job_id, current_item=topic, completed=0, failed=0,
+                )
+                stage_collector: list = []
+                per_guideline = service.review_guideline(
+                    guideline,
+                    heartbeat_fn=heartbeat_fn,
+                    stage_collector=stage_collector,
+                )
+                if stage_collector:
+                    try:
+                        job_service.append_stage_snapshots(job_id, stage_collector)
+                    except Exception as snap_err:
+                        logger.warning(
+                            f"append_stage_snapshots failed for job {job_id}: {snap_err}"
+                        )
                 result = {
                     "completed": 0 if per_guideline["failed"] else 1,
                     "failed": per_guideline["failed"],
