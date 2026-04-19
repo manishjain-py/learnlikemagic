@@ -103,24 +103,40 @@ class TopicPipelineStatusService:
             stages=stages,
         )
 
+    def get_chapter_topic_statuses(
+        self, book_id: str, chapter_id: str
+    ) -> list[TopicPipelineStatusResponse]:
+        """Return full per-topic status for every APPROVED guideline in the chapter.
+
+        Shared by `get_chapter_summary` (for the BookV2Detail chip) and the
+        chapter-level orchestrator (to derive `stages_to_run`). Computing
+        full per-topic status once and reusing it avoids a 2N per-chapter
+        query pass.
+        """
+        guidelines = self._load_chapter_guidelines(book_id, chapter_id)
+        statuses: list[TopicPipelineStatusResponse] = []
+        for guideline in guidelines:
+            topic_key = guideline.topic_key or guideline.topic
+            try:
+                statuses.append(
+                    self.get_pipeline_status(book_id, chapter_id, topic_key)
+                )
+            except LookupError:
+                continue
+        return statuses
+
     def get_chapter_summary(
         self, book_id: str, chapter_id: str
     ) -> ChapterPipelineSummaryResponse:
         """Aggregate per-topic rollups for all approved guidelines in a chapter."""
-        guidelines = self._load_chapter_guidelines(book_id, chapter_id)
+        statuses = self.get_chapter_topic_statuses(book_id, chapter_id)
 
         topic_summaries: list[ChapterPipelineTopicSummary] = []
         fully_done = 0
         partial = 0
         not_started = 0
 
-        for guideline in guidelines:
-            topic_key = guideline.topic_key or guideline.topic
-            try:
-                status = self.get_pipeline_status(book_id, chapter_id, topic_key)
-            except LookupError:
-                continue
-
+        for status in statuses:
             counts = _tally_stage_counts(status.stages)
             is_fully_done = all(s.state == "done" for s in status.stages)
             any_artifact = any(
@@ -136,9 +152,9 @@ class TopicPipelineStatusService:
 
             topic_summaries.append(
                 ChapterPipelineTopicSummary(
-                    topic_key=topic_key,
-                    topic_title=guideline.topic_title or guideline.topic,
-                    guideline_id=guideline.id,
+                    topic_key=status.topic_key,
+                    topic_title=status.topic_title,
+                    guideline_id=status.guideline_id,
                     stage_counts=counts,
                     is_fully_done=is_fully_done,
                 )

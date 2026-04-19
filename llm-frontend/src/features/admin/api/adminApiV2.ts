@@ -970,7 +970,6 @@ export interface TopicPipelineStatus {
 export interface RunPipelineRequest {
   quality_level?: QualityLevel;
   force?: boolean;
-  confirm_skip_review?: boolean;
 }
 
 export interface RunPipelineResponse {

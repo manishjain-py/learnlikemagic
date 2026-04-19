@@ -123,6 +123,66 @@ class TestLockSemantics:
             )
 
 
+class TestPipelineRunIdObservability:
+    def test_record_pipeline_run_id_writes_detail(self, db_session):
+        ids = _ids(db_session)
+        svc = ChapterJobService(db_session)
+        jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            guideline_id=ids["g1"],
+        )
+        svc.record_pipeline_run_id(jid, "pipeline-xyz")
+        job = svc.get_job(jid)
+        assert job is not None
+        assert job.progress_detail == {"pipeline_run_id": "pipeline-xyz"}
+
+    def test_update_progress_preserves_pipeline_run_id(self, db_session):
+        import json
+        ids = _ids(db_session)
+        svc = ChapterJobService(db_session)
+        jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            guideline_id=ids["g1"],
+        )
+        svc.record_pipeline_run_id(jid, "pipeline-xyz")
+        svc.start_job(jid)
+        svc.update_progress(
+            jid,
+            current_item="topic-a",
+            completed=1,
+            failed=0,
+            detail=json.dumps({"generated": 1, "failed": 0, "errors": []}),
+        )
+        job = svc.get_job(jid)
+        assert job is not None
+        assert isinstance(job.progress_detail, dict)
+        assert job.progress_detail.get("pipeline_run_id") == "pipeline-xyz"
+        assert job.progress_detail.get("generated") == 1
+
+    def test_update_progress_does_not_override_explicit_pipeline_run_id(self, db_session):
+        import json
+        ids = _ids(db_session)
+        svc = ChapterJobService(db_session)
+        jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            guideline_id=ids["g1"],
+        )
+        svc.record_pipeline_run_id(jid, "old")
+        svc.start_job(jid)
+        svc.update_progress(
+            jid,
+            detail=json.dumps({"pipeline_run_id": "new", "generated": 1}),
+        )
+        job = svc.get_job(jid)
+        assert job.progress_detail.get("pipeline_run_id") == "new"
+
+
 class TestGetLatestJob:
     def test_get_latest_job_filters_by_guideline_id(self, db_session):
         ids = _ids(db_session)

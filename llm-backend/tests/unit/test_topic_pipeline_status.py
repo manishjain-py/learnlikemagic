@@ -448,3 +448,18 @@ class TestChapterSummary:
         assert topic.topic_key == seed_book_chapter_topic["topic_key"]
         counts = topic.stage_counts
         assert counts.done + counts.warning + counts.running + counts.ready + counts.blocked + counts.failed == 6
+
+    def test_chapter_topic_statuses_returns_full_statuses(self, db_session, seed_book_chapter_topic):
+        gid = seed_book_chapter_topic["guideline_id"]
+        _add_explanation(db_session, gid, [{"card_type": "explain"}])
+
+        svc = TopicPipelineStatusService(db_session)
+        statuses = svc.get_chapter_topic_statuses(
+            seed_book_chapter_topic["book_id"],
+            seed_book_chapter_topic["chapter_id"],
+        )
+        assert len(statuses) == 1
+        s = statuses[0]
+        assert s.topic_key == seed_book_chapter_topic["topic_key"]
+        assert s.guideline_id == gid
+        assert len(s.stages) == 6

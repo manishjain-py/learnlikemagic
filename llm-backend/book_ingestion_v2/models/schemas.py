@@ -414,7 +414,6 @@ class TopicPipelineStatusResponse(BaseModel):
 class RunPipelineRequest(BaseModel):
     quality_level: QualityLevel = "balanced"
     force: bool = False
-    confirm_skip_review: bool = False
 
 
 class RunPipelineResponse(BaseModel):

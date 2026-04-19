@@ -24,6 +24,7 @@ from typing import Callable, Iterable, Optional
 
 from sqlalchemy.orm import Session
 
+from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD
 from book_ingestion_v2.models.schemas import QualityLevel, StageId
 from book_ingestion_v2.services.chapter_job_service import (
     ChapterJobLockError,
@@ -65,6 +66,11 @@ PIPELINE_LAYERS: list[list[StageId]] = [
 ]
 
 POLL_INTERVAL_SEC = 5
+# Cap wall-time spent polling a single stage's job. Two heartbeat thresholds
+# beyond the last heartbeat means no realistic recovery is possible — the
+# backing thread has died without releasing the lock (OOM kill, process crash,
+# BaseException that escaped `run_in_background_v2`'s `except Exception`).
+MAX_POLL_WALL_TIME_SEC = 2 * HEARTBEAT_STALE_THRESHOLD
 _TERMINAL_OK = {"completed", "completed_with_errors"}
 _TERMINAL = _TERMINAL_OK | {"failed"}
 
@@ -165,6 +171,16 @@ class TopicPipelineOrchestrator:
                     f"for {stage} on guideline={self.guideline_id}: {e}"
                 )
                 return "failed"
+            # Tag observability BEFORE polling begins. `update_progress`
+            # preserves this key on subsequent detail overwrites.
+            try:
+                ChapterJobService(db).record_pipeline_run_id(
+                    job_id, self.pipeline_run_id
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not tag pipeline_run_id on job {job_id}: {e}"
+                )
             return self._poll_to_terminal(db, job_id)
         finally:
             db.close()
@@ -188,7 +204,18 @@ class TopicPipelineOrchestrator:
         return kwargs
 
     def _poll_to_terminal(self, db: Session, job_id: str) -> str:
+        """Poll the stage job's DB row until it reaches a terminal state.
+
+        Bounded by `MAX_POLL_WALL_TIME_SEC` (2 × heartbeat threshold). If the
+        cap is hit, we proactively release the job as failed — the backing
+        daemon thread has almost certainly died without releasing the lock
+        (OOM kill, process crash, or a BaseException that escaped
+        `run_in_background_v2`'s `except Exception` guard). `get_job` itself
+        does no stale-detection, so without this timeout the orchestrator
+        would spin forever.
+        """
         job_service = ChapterJobService(db)
+        start = time.monotonic()
         while True:
             job = job_service.get_job(job_id)
             if job and job.status in _TERMINAL:
@@ -197,6 +224,27 @@ class TopicPipelineOrchestrator:
                     f"terminal={job.status}"
                 )
                 return job.status
+            if time.monotonic() - start > MAX_POLL_WALL_TIME_SEC:
+                logger.warning(
+                    f"Pipeline {self.pipeline_run_id} job {job_id} "
+                    f"poll timeout after {MAX_POLL_WALL_TIME_SEC}s — "
+                    f"marking failed"
+                )
+                try:
+                    job_service.release_lock(
+                        job_id,
+                        status="failed",
+                        error=(
+                            f"Orchestrator poll timeout ({MAX_POLL_WALL_TIME_SEC}s) — "
+                            "backing thread likely crashed without releasing the lock."
+                        ),
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to release timed-out job {job_id}: {e}",
+                        exc_info=True,
+                    )
+                return "failed"
             time.sleep(POLL_INTERVAL_SEC)
 
 
@@ -248,36 +296,27 @@ def run_chapter_pipeline_all(
 
     chapter_run_id = str(uuid.uuid4())
 
+    # Single-read: load full per-topic statuses once, derive everything else
+    # from the same snapshot. Previous revision made 2N reads per chapter.
     session = session_factory()
     try:
         svc = TopicPipelineStatusService(session)
-        summary = svc.get_chapter_summary(book_id, chapter_id)
+        statuses = svc.get_chapter_topic_statuses(book_id, chapter_id)
     finally:
         session.close()
 
     topics_to_run: list[tuple[str, str, list[StageId]]] = []  # (guideline_id, topic_key, stages)
     skipped: list[str] = []
-    for t in summary.topics:
-        # Re-fetch full per-topic status so we can derive stages_to_run.
-        inner = session_factory()
-        try:
-            inner_svc = TopicPipelineStatusService(inner)
-            try:
-                full = inner_svc.get_pipeline_status(
-                    book_id, chapter_id, t.topic_key
-                )
-            except LookupError:
-                continue
-        finally:
-            inner.close()
-        stages = stages_to_run_from_status(full.stages, force=force)
+    for status in statuses:
+        is_fully_done = all(s.state == "done" for s in status.stages)
+        if skip_done and is_fully_done and not force:
+            skipped.append(status.topic_key)
+            continue
+        stages = stages_to_run_from_status(status.stages, force=force)
         if not stages:
-            skipped.append(t.topic_key)
+            skipped.append(status.topic_key)
             continue
-        if skip_done and t.is_fully_done and not force:
-            skipped.append(t.topic_key)
-            continue
-        topics_to_run.append((t.guideline_id, t.topic_key, stages))
+        topics_to_run.append((status.guideline_id, status.topic_key, stages))
 
     def _run_one_topic(gid: str, topic_key: str, stages: list[StageId]) -> dict:
         orch = TopicPipelineOrchestrator(

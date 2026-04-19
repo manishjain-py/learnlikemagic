@@ -197,7 +197,14 @@ class ChapterJobService:
         last_completed_item: Optional[str] = None,
         detail: Optional[str] = None,
     ):
-        """Update job progress + heartbeat. Uses absolute values for idempotency."""
+        """Update job progress + heartbeat. Uses absolute values for idempotency.
+
+        Preserves `pipeline_run_id` across detail overwrites — callers
+        (stage `_run_*` tasks) write their own payload into `detail`; without
+        this merge the orchestrator's observability tag would be clobbered at
+        stage completion.
+        """
+        import json
         job = self.db.query(ChapterProcessingJob).filter(
             ChapterProcessingJob.id == job_id
         ).first()
@@ -212,8 +219,48 @@ class ChapterJobService:
         if last_completed_item is not None:
             job.last_completed_item = last_completed_item
         if detail is not None:
+            pipeline_run_id = None
+            if job.progress_detail:
+                try:
+                    prev = json.loads(job.progress_detail)
+                    if isinstance(prev, dict):
+                        pipeline_run_id = prev.get("pipeline_run_id")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if pipeline_run_id:
+                try:
+                    new_detail = json.loads(detail)
+                    if isinstance(new_detail, dict) and "pipeline_run_id" not in new_detail:
+                        new_detail["pipeline_run_id"] = pipeline_run_id
+                        detail = json.dumps(new_detail)
+                except (json.JSONDecodeError, TypeError):
+                    pass
             job.progress_detail = detail
 
+        self.db.commit()
+
+    def record_pipeline_run_id(self, job_id: str, pipeline_run_id: str):
+        """Tag the job's progress_detail with {pipeline_run_id} for observability.
+
+        Called by the orchestrator right after `acquire_lock` + launcher,
+        before the job transitions to running. Unlike `update_progress`,
+        this method ignores job status and merges (not overwrites) into
+        whatever `progress_detail` already holds.
+        """
+        import json
+        job = self.db.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id
+        ).first()
+        if not job:
+            return
+        try:
+            existing = json.loads(job.progress_detail) if job.progress_detail else {}
+            if not isinstance(existing, dict):
+                existing = {"raw": existing}
+        except (json.JSONDecodeError, TypeError):
+            existing = {}
+        existing["pipeline_run_id"] = pipeline_run_id
+        job.progress_detail = json.dumps(existing)
         self.db.commit()
 
     def release_lock(
