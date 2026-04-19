@@ -53,13 +53,23 @@ _BOUNDS_WALK_JS = """() => {
       };
       if (entry.type === 'Text') entry.text = obj.text || '';
       if (entry.type === 'Graphics') {
-        // Heuristic: a Graphics is "dense" if it has at least one fill with alpha > 0.
-        // Different Pixi versions expose this differently; we accept a conservative
-        // default of true if we can't introspect (errs on the side of flagging).
+        // Heuristic: a Graphics is "dense" if it has at least one fill instruction.
+        // Different Pixi versions expose this differently; we try v8 first (what
+        // this codebase uses), then fall back to v7/v6 shapes. Conservative
+        // default of true when we can't introspect — errs on the side of flagging.
         let dense = true;
         try {
-          const fills = obj.geometry?.drawCalls ?? obj.graphicsData ?? null;
-          if (fills && fills.length === 0) dense = false;
+          // Pixi v8: GraphicsContext with instructions[]. Each has action: 'fill'|'stroke'|'texture'|...
+          const v8Instructions = obj.context && Array.isArray(obj.context.instructions)
+            ? obj.context.instructions
+            : null;
+          if (v8Instructions) {
+            dense = v8Instructions.some(function (ins) { return ins && ins.action === 'fill'; });
+          } else {
+            // Pixi v7: geometry.drawCalls. Pixi v6: graphicsData.
+            const fills = (obj.geometry && obj.geometry.drawCalls) || obj.graphicsData || null;
+            if (fills && fills.length === 0) dense = false;
+          }
           if (obj.alpha === 0) dense = false;
         } catch (_) { dense = true; }
         entry.dense = dense;
