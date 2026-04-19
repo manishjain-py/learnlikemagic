@@ -58,9 +58,20 @@ QUALITY_ROUNDS: dict[QualityLevel, dict[StageId, int]] = {
 }
 
 # DAG layers — each layer runs serially; items within a layer run in parallel.
+#
+# **Serialized within a topic.** The partial unique index
+# `idx_chapter_active_topic_job` enforces at most one active job per
+# `(chapter_id, guideline_id)`, so ②③④ cannot actually run concurrently for
+# the same topic — a second launch hits `ChapterJobLockError`. The lock is
+# load-bearing: ② visuals and ③ check-ins both mutate the same
+# `topic_explanations.cards_json` row in-place; concurrent writes would race.
+# We keep the per-topic serialization and rely on cross-topic parallelism
+# (chapter runner spawns multiple orchestrators) for throughput.
 PIPELINE_LAYERS: list[list[StageId]] = [
     ["explanations"],
-    ["visuals", "check_ins", "practice_bank"],
+    ["visuals"],
+    ["check_ins"],
+    ["practice_bank"],
     ["audio_review"],
     ["audio_synthesis"],
 ]

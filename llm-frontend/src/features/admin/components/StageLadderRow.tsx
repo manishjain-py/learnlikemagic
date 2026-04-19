@@ -12,7 +12,6 @@ interface StageLabel {
   number: string;
   title: string;
   adminPath: (bookId: string, chapterId: string) => string;
-  parallelWith?: StageId[];
 }
 
 const STAGE_LABELS: Record<StageId, StageLabel> = {
@@ -25,19 +24,16 @@ const STAGE_LABELS: Record<StageId, StageLabel> = {
     number: '②',
     title: 'Visuals',
     adminPath: (b, c) => `/admin/books-v2/${b}/visuals/${c}`,
-    parallelWith: ['check_ins', 'practice_bank'],
   },
   check_ins: {
     number: '③',
     title: 'Check-ins',
     adminPath: (b, c) => `/admin/books-v2/${b}/check-ins/${c}`,
-    parallelWith: ['visuals', 'practice_bank'],
   },
   practice_bank: {
     number: '④',
     title: 'Practice bank',
     adminPath: (b, c) => `/admin/books-v2/${b}/practice-banks/${c}`,
-    parallelWith: ['visuals', 'check_ins'],
   },
   audio_review: {
     number: '⑤',
@@ -161,13 +157,6 @@ const StageLadderRow: React.FC<StageLadderRowProps> = ({
               }}
             >
               Stale
-            </span>
-          )}
-          {meta.parallelWith && (
-            <span style={{ fontSize: '11px', color: '#6B7280' }}>
-              parallel with {meta.parallelWith
-                .map((s) => STAGE_LABELS[s].number)
-                .join(' ')}
             </span>
           )}
         </div>

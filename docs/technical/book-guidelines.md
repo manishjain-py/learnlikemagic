@@ -680,8 +680,15 @@ The `/landing` endpoint reads the refresher's `metadata_json` to surface prerequ
 **6-stage ladder in DAG order:**
 
 ```
-① Explanations → (② Visuals ∥ ③ Check-ins ∥ ④ Practice bank) → ⑤ Audio review → ⑥ Audio synthesis
+① Explanations → ② Visuals → ③ Check-ins → ④ Practice bank → ⑤ Audio review → ⑥ Audio synthesis
 ```
+
+Stages are **serialized within a topic** — the partial unique index
+`idx_chapter_active_topic_job` enforces at most one active job per
+`(chapter_id, guideline_id)`, and ②③⑥ all mutate
+`topic_explanations.cards_json` in-place, so concurrent writes would race.
+Cross-topic parallelism (chapter runner spawns multiple orchestrators) is
+where throughput comes from.
 
 **Stage states (six):** `done` / `warning` / `running` / `ready` / `blocked` / `failed`.
 
