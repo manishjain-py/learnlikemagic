@@ -212,6 +212,8 @@ If the frontend isn't running when you trigger stage 7, the job fails fast with 
 
 **Skipping the dependency:** Developers who don't touch the ingestion pipeline can safely skip the Playwright install — the render harness returns `ok=False, error="playwright not installed"` when the library is missing, and every other part of the codebase runs fine without it.
 
+**Runtime expectations:** every enriched visual card costs one Playwright render; cards that trigger the overlap gate cost a second render after the targeted refine. A 20-card chapter where half overlap is therefore ~30 renders × a few seconds of Chromium cold-boot each — a few minutes of pure harness time *in addition to* the LLM work. Jobs that look stalled during stage 7 are usually mid-render, not hung.
+
 ---
 
 ## Deployment
