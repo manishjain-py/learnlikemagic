@@ -46,8 +46,13 @@ _BOUNDS_WALK_JS = """() => {
     let b;
     try { b = obj.getBounds(); } catch (_) { b = null; }
     if (b && isFinite(b.x) && isFinite(b.y) && isFinite(b.width) && isFinite(b.height)) {
+      // Pixi v8 internally names some classes with an underscore prefix
+      // (_Graphics, _Container, etc.) but exports them unprefixed. Strip
+      // the prefix so downstream detection matches the public type name.
+      const rawType = obj.constructor ? obj.constructor.name : 'Unknown';
+      const type = rawType.replace(/^_+/, '') || 'Unknown';
       const entry = {
-        type: obj.constructor ? obj.constructor.name : 'Unknown',
+        type: type,
         alpha: obj.alpha ?? 1,
         bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
       };
