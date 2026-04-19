@@ -104,8 +104,10 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _REVIEW_PROMPT = (_PROMPTS_DIR / "audio_text_review.txt").read_text()
 _REVIEW_SYSTEM_FILE = str(_PROMPTS_DIR / "audio_text_review_system.txt")
 
-LLM_CONFIG_KEY = "audio_text_review"   # Falls back to "explanation_generator" if missing
-FALLBACK_CONFIG_KEY = "explanation_generator"
+LLM_CONFIG_KEY = "audio_text_review"          # Configured via LLMConfigService in the route
+FALLBACK_CONFIG_KEY = "explanation_generator"  # Route falls back to this if the primary key is missing
+
+DEFAULT_LANGUAGE = "en"  # Default to English. Admin can override per-job via the endpoint query param.
 
 # Banned patterns in revised_audio (validated before accepting a revision)
 _BANNED_PATTERNS = [
@@ -122,7 +124,9 @@ class AudioLineRevision(BaseModel):
         default=None,
         description="0-based line index within the card. NULL for check-in cards (single audio_text).",
     )
-    kind: Literal["explanation_line", "check_in"] = Field(description="Card type")
+    kind: Literal["line", "check_in_text"] = Field(
+        description="'line' = one entry in a card's lines[].audio; 'check_in_text' = top-level audio_text on a check_in card",
+    )
     original_audio: str = Field(description="Current audio string (for audit)")
     revised_audio: str = Field(description="New audio string")
     reason: str = Field(description="Why this revision — cite the specific defect class")
@@ -139,12 +143,17 @@ class CardReviewOutput(BaseModel):
 
 
 class AudioTextReviewService:
-    """Service entry point for audio text review stage."""
+    """Service entry point for audio text review stage.
 
-    def __init__(self, db: DBSession, llm: Optional[LLMService] = None):
+    Mirrors CheckInEnrichmentService: the route constructs LLMService from
+    LLMConfigService and injects it here. This service does NOT build its own.
+    """
+
+    def __init__(self, db: DBSession, llm_service: LLMService, *, language: str = DEFAULT_LANGUAGE):
         self.db = db
         self.repo = ExplanationRepository(db)
-        self.llm = llm or LLMService.from_db(db, LLM_CONFIG_KEY, fallback_key=FALLBACK_CONFIG_KEY)
+        self.llm = llm_service
+        self.language = language
 
     def review_guideline(
         self,
@@ -287,7 +296,11 @@ class AudioTextReviewService:
         """Call LLM on a single card."""
         topic = guideline.topic_title or guideline.topic
         grade = str(guideline.grade) if guideline.grade else "3"
-        language = (guideline.metadata_json or {}).get("language", "en")
+        # Language comes from the service constructor (route accepts optional override).
+        # No per-topic language plumbing exists today — we default to "en". Admin can
+        # override via the /generate-audio-review?language= query param when reviewing
+        # Hindi or Hinglish content. If a per-book language field is added later, route
+        # code should read it and pass it here.
 
         # Strip `audio_url` before sending to the reviewer — not useful context, reduces tokens
         card_for_prompt = self._strip_audio_urls(card)
@@ -295,12 +308,12 @@ class AudioTextReviewService:
         prompt = (_REVIEW_PROMPT
             .replace("{topic_title}", topic)
             .replace("{grade}", grade)
-            .replace("{language}", language)
+            .replace("{language}", self.language)
             .replace("{card_json}", json.dumps(card_for_prompt, indent=2))
             .replace("{output_schema}", json.dumps(CardReviewOutput.model_json_schema(), indent=2))
         )
 
-        system_file = _REVIEW_SYSTEM_FILE if self.llm.provider == "claude_code" else None
+        system_prompt_file = _REVIEW_SYSTEM_FILE if self.llm.provider == "claude_code" else None
 
         try:
             response = self.llm.call(
@@ -308,7 +321,7 @@ class AudioTextReviewService:
                 reasoning_effort="medium",
                 json_schema=CardReviewOutput.model_json_schema(),
                 schema_name="CardReviewOutput",
-                system_file=system_file,
+                system_prompt_file=system_prompt_file,
             )
             parsed = self.llm.parse_json_response(response["output_text"])
             return CardReviewOutput.model_validate(parsed)
@@ -334,24 +347,41 @@ class AudioTextReviewService:
     def _apply_revisions(self, card: dict, revisions: list[AudioLineRevision]) -> int:
         """Apply valid revisions to the card dict in place. Clear audio_url on changed lines.
 
-        Returns number of revisions actually applied.
+        Returns number of revisions actually applied. Drops on structural mismatch or drift,
+        with a log line so operators can diagnose why a revision didn't stick.
         """
         applied = 0
         for rev in revisions:
-            if rev.kind == "check_in":
+            if rev.kind == "check_in_text":
                 if card.get("card_type") != "check_in":
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} kind=check_in_text — "
+                        f"card_type is '{card.get('card_type')}', not 'check_in'"
+                    )
                     continue
                 if card.get("audio_text") != rev.original_audio:
-                    continue  # drift; don't apply
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} kind=check_in_text — "
+                        f"drift detected (original_audio mismatch)"
+                    )
+                    continue
                 card["audio_text"] = rev.revised_audio
                 applied += 1
-            else:  # explanation_line
+            else:  # "line"
                 lines = card.get("lines") or []
                 if rev.line_idx is None or rev.line_idx >= len(lines):
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} line_idx={rev.line_idx} — "
+                        f"line index out of range (card has {len(lines)} lines)"
+                    )
                     continue
                 line = lines[rev.line_idx]
                 if line.get("audio") != rev.original_audio:
-                    continue  # drift
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} line_idx={rev.line_idx} — "
+                        f"drift detected (original_audio mismatch)"
+                    )
+                    continue
                 line["audio"] = rev.revised_audio
                 line["audio_url"] = None  # invalidate MP3 so stage 6 re-synths only this line
                 applied += 1
@@ -391,7 +421,8 @@ class AudioTextReviewService:
 
 **Design notes:**
 
-- **Drift guard** — `_apply_revisions` compares `original_audio` against the current card value before overwriting. If the reviewer's view is stale (e.g., admin edited the card between review start and apply), the revision is silently dropped. Prevents clobbering concurrent edits.
+- **Drift guard** — `_apply_revisions` compares `original_audio` against the current card value before overwriting. If the reviewer's view is stale (e.g., admin edited the card between review start and apply), the revision is dropped with a `logger.info` line so operators can diagnose why. Prevents clobbering concurrent edits.
+- **`kind` discriminator** — `"line"` = one entry inside `card["lines"][i].audio` (explanation-style cards); `"check_in_text"` = the top-level `card["audio_text"]` field on check-in cards. Kept separate from `card_type` to avoid enum drift — this is a revision-shape discriminator, not a card-shape one.
 - **`audio_url` invalidation is the contract with stage 6** — `AudioGenerationService` already skips lines with `audio_url` set (`audio_generation_service.py:82`). Clearing the URL on revised lines makes re-synthesis automatic and idempotent.
 - **Validation is aggressive** — bans markdown, emoji, and equations-with-`=` that should never appear in spoken text. Not exhaustive (reviewer can still produce subtle issues), but catches the canonical defect class that motivated the feature.
 
@@ -486,6 +517,7 @@ def generate_audio_review(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope review"),
     guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic review"),
+    language: Optional[str] = Query(None, description="Override language for reviewer (en|hi|hinglish). Defaults to 'en'."),
     db: Session = Depends(get_db),
 ):
     """Review audio text strings in explanation + check-in cards. Applies surgical revisions.
@@ -504,17 +536,44 @@ def generate_audio_review(
         job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
         total_items=total_items,
     )
-    run_in_background_v2(_run_audio_text_review, job_id, book_id, chapter_id or "", guideline_id or "")
+    run_in_background_v2(
+        _run_audio_text_review, job_id, book_id,
+        chapter_id or "", guideline_id or "", language or "",
+    )
     return job_service.get_job(job_id)
 
 
 def _run_audio_text_review(
-    db: Session, job_id: str, book_id: str, chapter_id: str, guideline_id: str = "",
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", language: str = "",
 ):
-    from book_ingestion_v2.services.audio_text_review_service import AudioTextReviewService
+    """Background task — builds LLMService from DB config (same pattern as check-in enrichment)
+    and injects it into AudioTextReviewService.
+    """
+    from book_ingestion_v2.services.audio_text_review_service import AudioTextReviewService, DEFAULT_LANGUAGE
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.models.entities import TeachingGuideline
+    from config import get_settings
+
+    settings = get_settings()
     job_service = ChapterJobService(db)
     try:
-        service = AudioTextReviewService(db)
+        # LLM config — primary key with fallback, mirroring check-in enrichment (sync_routes.py:1289-1301)
+        llm_config_svc = LLMConfigService(db)
+        try:
+            config = llm_config_svc.get_config("audio_text_review")
+        except Exception:
+            config = llm_config_svc.get_config("explanation_generator")
+
+        llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            provider=config["provider"],
+            model_id=config["model_id"],
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        )
+
+        service = AudioTextReviewService(db, llm_service, language=language or DEFAULT_LANGUAGE)
         if guideline_id:
             guideline = db.query(TeachingGuideline).filter(TeachingGuideline.id == guideline_id).first()
             result = service.review_guideline(guideline) if guideline else {"failed": 1, "errors": ["guideline not found"]}
@@ -534,7 +593,11 @@ def get_latest_audio_review_job(
     guideline_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Mirrors /explanation-jobs/latest for audio text review job scope."""
+    """Mirrors /explanation-jobs/latest for audio text review job scope.
+
+    Internally just calls ChapterJobService.get_latest_job(chapter_id, job_type=AUDIO_TEXT_REVIEW)
+    after resolving chapter_id from book_id/guideline_id. No new service method needed.
+    """
     # same scope resolution as other job lookup endpoints
     ...
 ```
@@ -552,12 +615,13 @@ def generate_audio(
     confirm_skip_review: bool = Query(False, description="Skip soft guardrail that requires a prior audio text review job"),
     db: Session = Depends(get_db),
 ):
-    # (existing scoping logic)
+    # (existing scoping logic, which resolves lock_chapter_id from book_id + chapter_id/guideline_id)
 
-    # NEW: soft guardrail
+    # NEW: soft guardrail — reuse existing get_latest_job (chapter_job_service.py:163)
+    # which already supports job_type filtering and stale detection.
     if not confirm_skip_review:
-        latest_review = ChapterJobService(db).get_latest_by_type(
-            book_id=book_id, chapter_id=lock_chapter_id,
+        latest_review = ChapterJobService(db).get_latest_job(
+            chapter_id=lock_chapter_id,
             job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
         )
         if latest_review is None or latest_review.status not in ("completed", "completed_with_errors"):
@@ -574,7 +638,7 @@ def generate_audio(
 
 **Deviation from the PRD's original "HTTP 200 with warning flag":** we use HTTP 409 instead because it fits FastAPI/HTTPException idioms; the frontend dialog reads the `requires_confirmation: true` flag from the response detail and re-calls with `confirm_skip_review=true`. Same UX, cleaner backend semantics.
 
-`ChapterJobService.get_latest_by_type` is a thin addition mirroring existing `get_latest_job` but filtered by `job_type`. Place in `chapter_job_service.py`.
+**No new service method needed.** The existing `ChapterJobService.get_latest_job(chapter_id, job_type=...)` at `chapter_job_service.py:163` already takes an optional `job_type` filter and performs stale detection. Earlier plan draft proposed a new `get_latest_by_type` method — dropped as redundant.
 
 ### 2.8 Frontend changes
 
@@ -650,7 +714,29 @@ const handleGenerateAudio = async (ch: ChapterResponseV2) => {
 
 Add a per-topic `[Review audio]` button alongside existing per-topic actions, scoped by `guidelineId`. Same pattern as chapter-level.
 
-### 2.9 Tests
+### 2.9 Gold / defective test sets
+
+PRD success criteria SC2 (≥80% defect catch) and SC3 (≥90% no-false-rewrite) aren't testable without fixed reference sets. Building them:
+
+**Defective set (for SC2 — "catches defects"):** 20 cards, handcrafted from known-failing patterns rather than harvested blindly from prod data. Each card carries a deliberate single-defect-class injection so the acceptance signal is unambiguous. Fixture file: `llm-backend/tests/fixtures/audio_review/defective_set.json`. Composition:
+
+| Defect class | Count | Source |
+|---|---|---|
+| Symbol/markdown leak (e.g. `"5+3=8"`, `"**bold**"`) | 6 | Harvested from real ingested content where the defect was observed, anonymized |
+| Visual-only reference (e.g. `"as you can see in the diagram"`) | 5 | Harvested from stage-5 outputs + 2 handcrafted edge cases |
+| Run-on pacing (40+ word single line) | 4 | Harvested from observed long lines |
+| Cross-line redundancy (line 2 restates line 1) | 3 | Handcrafted from real cards where this was flagged manually |
+| Hinglish quirk (English math term mid-Hindi audio) | 2 | Handcrafted against Chirp3 hi-IN failure modes |
+
+**Clean set (for SC3 — "doesn't over-rewrite"):** 20 cards sampled from already-reviewed-and-approved ingested content. Selection rule: cards that passed stage-5 review-refine with no audio-touching revisions AND were spot-checked by hand. Fixture file: `llm-backend/tests/fixtures/audio_review/clean_set.json`.
+
+**Evaluation script:** `llm-backend/tests/manual/audio_review_gold_eval.py` — iterates fixtures, runs `AudioTextReviewService._review_card`, asserts:
+- SC2: ≥16/20 defective cards return a non-empty revisions list whose `revised_audio` cleans the target defect
+- SC3: ≥18/20 clean cards return an empty revisions list
+
+Run on-demand, not in CI (depends on LLM spend). Document in `docs/technical/book-guidelines.md`.
+
+### 2.10 Tests
 
 `llm-backend/tests/unit/test_audio_text_review.py`:
 
@@ -658,9 +744,9 @@ Add a per-topic `[Review audio]` button alongside existing per-topic actions, sc
 2. **`test_review_card_applies_symbol_leak_fix`** — mock LLM returns a revision changing `"5+3=8"` → `"five plus three equals eight"`; assert line's `audio` updated and `audio_url` cleared.
 3. **`test_apply_revisions_clears_audio_url_only_on_changed_lines`** — card with 3 lines (2 with `audio_url` set); reviewer revises line 1 only; assert line 1 has `audio_url=None`, line 2 still has its URL, line 3 unchanged.
 4. **`test_validate_revision_drops_banned_patterns`** — construct revisions with `revised_audio` containing `**bold**`, `x=5`, emoji; assert each returns `False` from `_validate_revision`.
-5. **`test_apply_revisions_drops_on_drift`** — mock reviewer output has `original_audio="old text"` but card line's audio is actually `"other text"`; assert revision is NOT applied (drift guard).
+5. **`test_apply_revisions_drops_on_drift`** — mock reviewer output has `original_audio="old text"` but card line's audio is actually `"other text"`; assert revision is NOT applied (drift guard) and a `logger.info` line is emitted naming card_idx + line_idx.
 6. **`test_review_card_returns_none_on_llm_error`** — mock LLM raises `LLMServiceError`; assert `_review_card` returns `None`; assert `_review_variant` continues with remaining cards.
-7. **`test_check_in_revision_applies_to_audio_text_field`** — mock LLM returns revision with `kind="check_in"`, `line_idx=None`; assert card's top-level `audio_text` is updated (not `lines[].audio`).
+7. **`test_check_in_revision_applies_to_audio_text_field`** — mock LLM returns revision with `kind="check_in_text"`, `line_idx=None`; assert card's top-level `audio_text` is updated (not `lines[].audio`).
 8. **`test_stage_snapshots_capture_revisions`** — run `_review_variant` with a stage_collector; assert entries have `stage="audio_text_review"`, `revisions_proposed` count matches, `revisions_applied` count matches.
 
 Mock pattern: `unittest.mock.patch` on `LLMService.call` and `LLMService.parse_json_response`, matching existing test style in `test_check_in_enrichment.py`.
@@ -672,7 +758,7 @@ Mock pattern: `unittest.mock.patch` on `LLMService.call` and `LLMService.parse_j
 4. Click `[Audio]` (stage 6). Confirm no soft guardrail since review is complete.
 5. Check S3: only lines with revised audio have new MP3s (by timestamp); other MP3s unchanged.
 
-### 2.10 Phase 1 implementation order
+### 2.11 Phase 1 implementation order
 
 Natural commit boundaries:
 
@@ -683,11 +769,12 @@ Natural commit boundaries:
 | `feat: add AudioTextReviewService` | new service file | Prompts |
 | `feat: wire /generate-audio-review endpoint + background task` | `sync_routes.py` | Service |
 | `feat: wire /audio-review-jobs/latest endpoint` | `sync_routes.py` | Endpoint |
-| `feat: stage-6 soft guardrail + chapter_job_service.get_latest_by_type` | `sync_routes.py`, `chapter_job_service.py` | — |
+| `feat: stage-6 soft guardrail (uses existing ChapterJobService.get_latest_job)` | `sync_routes.py` | — |
 | `refactor: remove inline MP3 synth from stage 5` | `explanation_generator_service.py` | Review endpoint working end-to-end |
 | `feat: audio review frontend — API client + BookV2Detail trigger + soft-guardrail dialog` | frontend files | Backend endpoints |
 | `feat: audio review per-topic trigger on ExplanationAdmin` | `ExplanationAdmin.tsx` | API client |
 | `test: audio text review service unit tests` | new test file | Service |
+| `test: audio review gold / defective fixture sets + manual eval script` | fixture JSON + eval script | Service + prompts |
 | `docs: update principles + technical docs for new pipeline ordering` | docs | All backend work |
 
 **Refactor is intentionally last in the backend sequence** — we don't want stage 5 to break production before the reviewer is available end-to-end. Admin can manually run `/generate-audio` (existing endpoint) to cover the gap.
@@ -702,21 +789,23 @@ Natural commit boundaries:
 
 | File | Change |
 |------|--------|
-| `llm-backend/book_ingestion_v2/services/visual_render_harness.py` | **NEW** — Playwright wrapper: render code, extract bounds, screenshot |
+| `llm-backend/book_ingestion_v2/services/visual_render_harness.py` | **NEW** — Playwright wrapper: POSTs code to preview-prepare endpoint, navigates to id-keyed preview URL, extracts bounds, screenshots |
 | `llm-backend/book_ingestion_v2/services/visual_overlap_detector.py` | **NEW** — pure-Python utility: bounds list → overlap report |
-| `llm-backend/book_ingestion_v2/services/animation_enrichment_service.py` | Add post-refine gate calling render harness + overlap detector; one extra targeted refine round; set `layout_warning` on retry exhaustion |
+| `llm-backend/book_ingestion_v2/services/animation_enrichment_service.py` | Add post-refine gate calling render harness + overlap detector; one extra targeted refine round; set `layout_warning` on retry exhaustion. Job-start fail-fast probe on frontend dev server reachability |
+| `llm-backend/book_ingestion_v2/services/visual_preview_store.py` | **NEW** — in-memory TTL store (short-lived, id → pixi_code). No DB; wiped on process restart |
+| `llm-backend/book_ingestion_v2/api/sync_routes.py` | Add `POST /admin/v2/visual-preview/prepare` (returns `{id}`), `GET /admin/v2/visual-preview/{id}` (returns code for the admin page to fetch). Extend `/visual-status` response with `layout_warning_count` per topic |
 | `llm-backend/book_ingestion_v2/prompts/visual_code_generation.txt` | Add ONE general rule (no templates) about crowded adjacent elements |
 | `llm-backend/book_ingestion_v2/prompts/visual_code_review_refine.txt` | Add `{collision_report}` placeholder for the targeted refine round |
-| `llm-backend/book_ingestion_v2/api/sync_routes.py` | Extend `/visual-status` response with `layout_warning_count` per topic |
 | `llm-backend/tests/unit/test_visual_overlap_detector.py` | **NEW** — pure-python unit tests |
+| `llm-backend/tests/unit/test_visual_preview_store.py` | **NEW** — TTL expiry, id isolation, cap on entries |
 | `llm-backend/tests/integration/test_visual_render_harness.py` | **NEW** — integration test that actually drives Playwright |
 
 #### Frontend
 
 | File | Change |
 |------|--------|
-| `llm-frontend/src/features/admin/pages/VisualRenderPreview.tsx` | **NEW** — admin-only preview route that boots Pixi directly (no sandboxed iframe), exposes `window.__pixiApp`, signals ready via `data-pixi-state` attribute |
-| `llm-frontend/src/App.tsx` | Add route `/admin/visual-render-preview` |
+| `llm-frontend/src/features/admin/pages/VisualRenderPreview.tsx` | **NEW** — admin-only preview route at `/admin/visual-render-preview/:id`; fetches code from `GET /admin/v2/visual-preview/{id}`, mounts Pixi directly (no sandboxed iframe), exposes `window.__pixiApp`, signals ready via `data-pixi-state` |
+| `llm-frontend/src/App.tsx` | Add route `/admin/visual-render-preview/:id` |
 | `llm-frontend/src/components/VisualExplanation.tsx` | Render subdued chip when `visual.layout_warning === true` |
 | `llm-frontend/src/api.ts` | Extend `VisualExplanation` type with `layout_warning?: boolean` |
 | `llm-frontend/src/features/admin/pages/TopicsAdmin.tsx` | Render badge on topics with `layout_warning_count > 0` |
@@ -735,16 +824,124 @@ Natural commit boundaries:
 
 No templates. No prescriptive layouts. Revert is one-line if quality regresses.
 
-### 3.3 New admin preview route
+### 3.3 New admin preview route (id-keyed, not URL-carried)
+
+**Security design:** Earlier drafts proposed `?code=base64(...)` in the URL + `new Function(...)` — that is textbook reflected XSS. A crafted URL handed to an authenticated admin would execute arbitrary JS under their session. This plan instead stores the pixi code in a short-lived server-side store keyed by a random id, then the harness navigates to a preview URL carrying only the id. The URL is useless without a matching server-side entry, which expires on a short TTL.
+
+#### Backend preview store + endpoints
+
+`llm-backend/book_ingestion_v2/services/visual_preview_store.py`:
+
+```python
+"""Short-lived in-memory store mapping random ids → pixi code.
+
+Used by the Visual Rendering Review pipeline:
+ 1. Harness calls POST /admin/v2/visual-preview/prepare with the code → gets an id
+ 2. Harness navigates Playwright to /admin/visual-render-preview/{id}
+ 3. The admin page fetches GET /admin/v2/visual-preview/{id} to load the code
+ 4. Entry expires after TTL_SECONDS or on LRU eviction at MAX_ENTRIES
+
+No DB — lost on process restart, which is fine because these are per-job ephemerals.
+"""
+import secrets
+import time
+from dataclasses import dataclass
+from threading import Lock
+
+TTL_SECONDS = 120        # generous — allows for Playwright launch + navigation
+MAX_ENTRIES = 256        # cap memory; LRU eviction if exceeded
+
+
+@dataclass
+class _Entry:
+    code: str
+    output_type: str
+    created_at: float
+
+
+class VisualPreviewStore:
+    """Thread-safe singleton. One instance per process."""
+
+    def __init__(self):
+        self._entries: dict[str, _Entry] = {}
+        self._lock = Lock()
+
+    def put(self, code: str, output_type: str) -> str:
+        """Store code under a random 32-char id. Returns the id."""
+        with self._lock:
+            self._expire_locked()
+            if len(self._entries) >= MAX_ENTRIES:
+                # Evict oldest
+                oldest_id = min(self._entries, key=lambda k: self._entries[k].created_at)
+                self._entries.pop(oldest_id, None)
+            preview_id = secrets.token_urlsafe(24)
+            self._entries[preview_id] = _Entry(code=code, output_type=output_type, created_at=time.time())
+            return preview_id
+
+    def get(self, preview_id: str) -> _Entry | None:
+        with self._lock:
+            self._expire_locked()
+            return self._entries.get(preview_id)
+
+    def _expire_locked(self):
+        cutoff = time.time() - TTL_SECONDS
+        stale = [k for k, v in self._entries.items() if v.created_at < cutoff]
+        for k in stale:
+            self._entries.pop(k, None)
+
+
+_singleton: VisualPreviewStore | None = None
+
+
+def get_preview_store() -> VisualPreviewStore:
+    global _singleton
+    if _singleton is None:
+        _singleton = VisualPreviewStore()
+    return _singleton
+```
+
+Endpoints in `sync_routes.py`:
+
+```python
+@router.post("/visual-preview/prepare")
+def prepare_visual_preview(payload: dict, db: Session = Depends(get_db)):
+    """Admin-only: stash pixi code under a random id. Returns {id}.
+
+    Admin authentication is enforced by the existing router-level dependency
+    (same as every other /admin/v2/* endpoint).
+    """
+    code = payload.get("pixi_code") or ""
+    output_type = payload.get("output_type") or "static_visual"
+    if not code:
+        raise HTTPException(status_code=400, detail="pixi_code required")
+    preview_id = get_preview_store().put(code=code, output_type=output_type)
+    return {"id": preview_id}
+
+
+@router.get("/visual-preview/{preview_id}")
+def fetch_visual_preview(preview_id: str, db: Session = Depends(get_db)):
+    """Admin-only: fetch the stashed code for a preview id. 404 if missing/expired."""
+    entry = get_preview_store().get(preview_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="preview not found or expired")
+    return {"pixi_code": entry.code, "output_type": entry.output_type}
+```
+
+#### Frontend preview page
 
 `llm-frontend/src/features/admin/pages/VisualRenderPreview.tsx`:
 
 ```tsx
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 /**
  * Admin-only preview route for the Visual Rendering Review pipeline.
+ *
+ * Security: the pixi code is loaded from GET /admin/v2/visual-preview/{id}, NOT from
+ * the URL. The URL carries only the id — useless without a matching server-side entry.
+ * Entries expire after 2 minutes. This eliminates the reflected-XSS vector where a
+ * crafted ?code=... URL could execute arbitrary JS in an admin session.
  *
  * Differences from student-facing VisualExplanation.tsx:
  * - Mounts Pixi directly on the page (no sandboxed iframe) so Playwright
@@ -755,17 +952,19 @@ import { useSearchParams } from 'react-router-dom';
  * Admin-only — relies on route-level auth. Never exposed to students.
  */
 export default function VisualRenderPreview() {
-  const [params] = useSearchParams();
-  const code = atob(params.get('code') || '');
-  const outputType = params.get('output_type') || 'static_visual';
+  const { id } = useParams<{ id: string }>();
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !id) return;
     let app: any;
     (async () => {
       try {
+        const res = await fetch(`/api/admin/v2/visual-preview/${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error(`preview fetch failed: ${res.status}`);
+        const { pixi_code: code, output_type: outputType } = await res.json();
+
         // @ts-ignore
         const PIXI = (await import('pixi.js')).default ?? (await import('pixi.js'));
         app = new PIXI.Application();
@@ -783,18 +982,18 @@ export default function VisualRenderPreview() {
       }
     })();
     return () => { app?.destroy?.(); };
-  }, [code, outputType]);
+  }, [id]);
 
   return <div ref={canvasRef} data-pixi-state={state} style={{ width: 500, height: 350 }} />;
 }
 ```
 
-**Deviation:** student-facing `VisualExplanation.tsx` uses a sandboxed iframe for XSS mitigation. The admin preview route mounts Pixi directly because (a) Playwright can't easily reach into a sandboxed iframe's `window` object, and (b) admin is running trusted LLM output in their own browser session. The Pixi rendering itself is identical — only the security wrapper differs. Document this trade-off in the file header.
+**Why mount Pixi directly instead of using the student iframe:** Playwright can't easily reach into a sandboxed iframe's `window` object to call `getBounds()` via `page.evaluate`. The admin preview is the only surface that skips the sandbox; it's behind admin auth, it runs LLM output we just generated, and the URL carries only an id so a shared URL does nothing without a live session. Document this trade-off in the file header (already included above).
 
 Add route to `App.tsx`:
 
 ```tsx
-<Route path="/admin/visual-render-preview" element={<VisualRenderPreview />} />
+<Route path="/admin/visual-render-preview/:id" element={<VisualRenderPreview />} />
 ```
 
 ### 3.4 Render harness
@@ -804,15 +1003,17 @@ Add route to `App.tsx`:
 ```python
 """Render Pixi code in headless Chrome, extract bounds + screenshot.
 
-Uses playwright-python. Points at http://localhost:3000/admin/visual-render-preview
-(the admin preview route). Fidelity-close-enough to the student-facing sandboxed
-iframe: Pixi rendering is identical, only the security wrapper differs.
+Uses playwright-python. Stashes code server-side via the admin preview-prepare
+endpoint, then navigates to the id-keyed preview page. Fidelity-close-enough to
+the student-facing sandboxed iframe: Pixi rendering is identical, only the
+security wrapper differs.
 """
-import base64
 import logging
 from pathlib import Path
 from typing import Literal, Optional
 from pydantic import BaseModel
+
+from book_ingestion_v2.services.visual_preview_store import get_preview_store
 
 logger = logging.getLogger(__name__)
 
@@ -850,8 +1051,10 @@ class VisualRenderHarness:
         except ImportError:
             return RenderResult(ok=False, error="playwright not installed")
 
-        encoded = base64.b64encode(pixi_code.encode()).decode()
-        url = f"{FRONTEND_URL}/admin/visual-render-preview?code={encoded}&output_type={output_type}"
+        # Stash code via same-process preview store — the admin page fetches it
+        # back by id. Avoids putting executable code in the URL.
+        preview_id = get_preview_store().put(code=pixi_code, output_type=output_type)
+        url = f"{FRONTEND_URL}/admin/visual-render-preview/{preview_id}"
 
         try:
             with sync_playwright() as p:
@@ -898,11 +1101,34 @@ class VisualRenderHarness:
         except Exception as e:
             logger.exception(f"Render harness failed: {e}")
             return RenderResult(ok=False, error=str(e))
+
+    @staticmethod
+    def preflight(timeout_seconds: float = 3.0) -> tuple[bool, Optional[str]]:
+        """Fail-fast probe — HEAD the frontend root before a long-running job starts.
+
+        Returns (ok, error). Called once at the top of a visual-enrichment job so the
+        admin sees a clear error in seconds, rather than silently passing 30 cards
+        through an unrunning check.
+        """
+        import urllib.request
+        import urllib.error
+        try:
+            req = urllib.request.Request(FRONTEND_URL, method="HEAD")
+            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+                if 200 <= resp.status < 500:  # any non-server-error counts as "up"
+                    return True, None
+                return False, f"frontend returned HTTP {resp.status}"
+        except urllib.error.URLError as e:
+            return False, f"frontend unreachable at {FRONTEND_URL}: {e.reason}"
+        except Exception as e:
+            return False, f"preflight failed: {e}"
 ```
 
 **`playwright-python`** goes in `requirements.txt`. Install via `pip install playwright && playwright install chromium`. Document in `docs/technical/dev-workflow.md`.
 
-**Dependency:** requires frontend dev server running on `localhost:3000`. Document this as a prerequisite for running visual enrichment jobs. If the harness fails to reach the URL, the post-refine gate logs a warning and passes through the original code WITHOUT setting `layout_warning=true` (don't false-flag when the check itself failed).
+**Dependency:** requires frontend dev server running on `localhost:3000`. Documented as a prerequisite for running visual enrichment jobs. The animation enrichment service calls `VisualRenderHarness.preflight()` once at the top of a job and fails the whole job with a clear error if the frontend isn't reachable — far better than silently passing N cards through an unrunning overlap check.
+
+**Per-card failure mode** (distinct from preflight): if the harness fails mid-job for a single card (e.g., Playwright timeout, dev server crashed partway through), the post-refine gate logs a warning and passes through the original code WITHOUT setting `layout_warning=true` (don't false-flag when the check itself failed).
 
 ### 3.5 Overlap detector
 
@@ -999,6 +1225,19 @@ def format_collision_report(overlaps: list[OverlapPair]) -> str:
 ```
 
 ### 3.6 Integration into stage 7
+
+**Job-start preflight.** At the top of `AnimationEnrichmentService.enrich_chapter` (or wherever the job entry-point lives), call `VisualRenderHarness.preflight()` once. If it returns `ok=False`, fail the whole job with a clear message — don't process any cards. The admin sees the error in seconds, not after 30 silent pass-throughs:
+
+```python
+def enrich_chapter(self, ...):
+    ok, err = VisualRenderHarness.preflight()
+    if not ok:
+        raise RuntimeError(
+            f"Visual enrichment requires the frontend dev server on {FRONTEND_URL}. "
+            f"Start it with `cd llm-frontend && npm run dev`, then retry. Error: {err}"
+        )
+    # (existing per-guideline loop)
+```
 
 `animation_enrichment_service.py` — modify `_enrich_variant` (lines 281–287 area) to add the post-refine gate just before storing `visual_explanation`:
 
@@ -1171,10 +1410,11 @@ In a manual QA script (not automated): run stage 7 on a fixture topic known to p
 | Commit | What | Depends on |
 |---|---|---|
 | `feat: visual_overlap_detector pure-python utility + tests` | new file + unit tests | — |
-| `feat: VisualRenderPreview admin route` | new page + App.tsx route | — |
-| `feat: visual_render_harness (Playwright wrapper)` | new service | Admin preview route running |
+| `feat: visual_preview_store (ttl id → code map) + endpoints + tests` | store + sync_routes endpoints + unit tests | — |
+| `feat: VisualRenderPreview admin route (id-keyed, fetches from preview store)` | new page + App.tsx route | Preview-store endpoints |
+| `feat: visual_render_harness (Playwright wrapper) with preflight` | new service | Admin preview route running |
 | `chore: add playwright to requirements; install docs` | `requirements.txt`, dev-workflow.md | — |
-| `feat: stage 7 post-refine gate + layout_warning flag` | `animation_enrichment_service.py`, prompt update | Harness + detector |
+| `feat: stage 7 preflight + post-refine gate + layout_warning flag` | `animation_enrichment_service.py`, prompt update | Harness + detector |
 | `feat: add one general rule to visual_code_generation prompt` | prompt file | — |
 | `feat: student-facing layout_warning chip + type extension` | `VisualExplanation.tsx`, `api.ts` | Backend writes flag |
 | `feat: /visual-status layout_warning_count + admin badge` | `sync_routes.py`, `TopicsAdmin.tsx` | Backend writes flag |
@@ -1195,12 +1435,13 @@ Add a row to the seed data or admin-docs for LLM config keys:
 
 ### 4.2 Documentation updates
 
-1. `docs/principles/book-ingestion-pipeline.md` — renumber stages:
-   - 6 becomes Audio Text Review (NEW)
-   - Visual Enrichment stays at 7 (post-refine gate is an internal sub-step)
+1. `docs/principles/book-ingestion-pipeline.md` — renumber stages **as part of Phase 1** (the docs commit at the end of §2.11). PR #105 only added the existing Audio Generation stage at position 6; the renumbering below ships when Audio Text Review lands, not before:
+   - Current stage 6 (Audio Generation / TTS synth) moves to stage 10 at the tail
+   - NEW stage 6: Audio Text Review
+   - Visual Enrichment stays at 7 (post-refine gate is an internal sub-step of 7, not a new numbered stage)
    - Check-in Enrichment stays at 8
    - Practice Bank stays at 9
-   - Audio Synthesis (was stage 6) moves to stage 10 at the tail
+   - Final stage 10: Audio Synthesis (was stage 6)
 
 2. `docs/technical/book-guidelines.md`:
    - New "Audio Text Review" section parallel to "Audio Generation (TTS)"
@@ -1255,3 +1496,23 @@ Ingestion pipeline runs on localhost per `feedback_ingestion_localhost.md`. No A
 - Display text edits
 - New agent files
 - Visual review for check-in card visuals (currently check-ins don't carry `visual_explanation`)
+
+---
+
+## 7. Revision Log
+
+Applied in response to `impl-plan-review.md`:
+
+| # | Fix | Section |
+|---|---|---|
+| 1 | Stop reading `metadata_json` as a dict (it's a `Text` column storing a JSON string) — language now comes from the service constructor, with a route-level `language` query param override | §2.2, §2.6 |
+| 2 | Drop the fictitious `LLMService.from_db(...)` classmethod — route now builds `LLMService` via `LLMConfigService.get_config(...)` and injects it into `AudioTextReviewService(db, llm_service, ...)`, matching `CheckInEnrichmentService` | §2.2, §2.6 |
+| 3 | Language sourcing: defaults to `"en"`; admin overrides via `/generate-audio-review?language=` | §2.2, §2.6 |
+| 4 | `get_latest_by_type` removed — soft guardrail uses existing `ChapterJobService.get_latest_job(chapter_id, job_type=...)` | §2.7 |
+| 5 | Admin preview route is now **id-keyed**: code is POSTed to a short-lived server-side store (`VisualPreviewStore`), preview URL carries only the id. Eliminates the reflected-XSS vector from the earlier `?code=base64(...)` draft | §3.1, §3.3, §3.4 |
+| 6 | Render harness gains a `preflight()` HEAD probe; stage-7 entry point fails the whole job fast if `localhost:3000` is down, rather than silently passing cards through an unrunning check | §3.4, §3.6 |
+| 7 | Gold/test set sourcing spelled out (fixtures + composition + eval script), making PRD success criteria SC2 and SC3 testable | §2.9 |
+| 8 | Kwarg fix: `LLMService.call(...)` takes `system_prompt_file`, not `system_file` | §2.2 |
+| 9 | `kind` values renamed `explanation_line → line` and `check_in → check_in_text` to avoid overloading `card_type` vocabulary | §2.2, §2.10 |
+| 10 | `_apply_revisions` now logs each drop with the card/line identifier + reason (structural mismatch vs drift) instead of silently `continue`-ing | §2.2, §2.10 |
+| 11 | Pipeline renumbering in `book-ingestion-pipeline.md` is explicitly scoped to Phase 1 (ships with Audio Text Review), not retroactively in PR #105 | §4.2 |
