@@ -55,6 +55,12 @@ git checkout -b feature/your-feature
 cd llm-backend && source venv/bin/activate
 make run  # http://localhost:8000, docs at /docs
 
+# 3a. (Optional, only for stage-7 visual rendering review)
+#     Install Playwright + Chromium for the ingestion pipeline's overlap check.
+#     See "Visual Rendering Review (stage 7)" below.
+pip install -r requirements.txt
+playwright install chromium
+
 # 4. Run frontend (separate terminal)
 cd llm-frontend && npm run dev  # http://localhost:3000
 
@@ -180,6 +186,31 @@ curl -X POST http://localhost:8000/sessions \
 If adding columns to an existing table, you must also add an `ALTER TABLE` migration in `db.py` with a column existence check. See `_apply_learning_modes_columns()` for the pattern.
 
 See `docs/technical/architecture-overview.md` for detailed file structure and conventions.
+
+---
+
+## Visual Rendering Review (stage 7)
+
+Stage 7 of the book ingestion pipeline runs a programmatic overlap check on generated pixi visuals. The check uses Playwright + headless Chromium to render the pixi code against the live frontend's admin preview page, then walks the Pixi display tree to compute bounding-box overlaps.
+
+**Local prerequisites (admin-only, needed when running stage-7 jobs):**
+
+```bash
+# 1. Install the Python library (already in requirements.txt)
+cd llm-backend && source venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Install the Chromium driver that Playwright controls
+playwright install chromium
+
+# 3. Make sure the frontend dev server is running (stage-7 navigates to
+#    http://localhost:3000/admin/visual-render-preview/{id})
+cd llm-frontend && npm run dev
+```
+
+If the frontend isn't running when you trigger stage 7, the job fails fast with a clear error message (`VisualRenderHarness.preflight()`) rather than silently passing cards through an unrunning overlap check.
+
+**Skipping the dependency:** Developers who don't touch the ingestion pipeline can safely skip the Playwright install — the render harness returns `ok=False, error="playwright not installed"` when the library is missing, and every other part of the codebase runs fine without it.
 
 ---
 
