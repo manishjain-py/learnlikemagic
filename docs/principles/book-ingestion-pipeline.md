@@ -17,16 +17,17 @@ Use Claude Code (subprocess) for LLM work — direct API calls are way too expen
 3. **Finalization** — merge per-chunk guidelines, consolidate/dedup/reorder topics, generate curriculum context
 4. **Sync** — write finalized topics to teaching guidelines DB
 5. **Explanation Generation** — pre-compute explanation card sets per topic (generate → review-refine)
-6. **Audio Generation** — synthesize TTS audio for every explanation line via Google Cloud TTS, upload to S3, stamp `audio_url` onto each line (idempotent; also runs inline at end of stage 5)
-7. **Visual Enrichment** — decide which explanation cards need visuals, generate PixiJS code for interactive animations (review-refine)
+6. **Audio Text Review** — LLM reviews every `audio` string on explanation + check-in cards; emits surgical revisions (no display edits, no line reshape); clears `audio_url` on revised lines so stage 10 re-synthesizes only those
+7. **Visual Enrichment** — decide which explanation cards need visuals, generate PixiJS code for interactive animations (review-refine), includes post-refine programmatic overlap check
 8. **Check-in Enrichment** — generate interactive check-in activities at concept boundaries inside explanation cards (11 activity types, light+heavy pairs, review-refine)
 9. **Practice Bank Generation** — generate per-topic practice question banks (30-40 questions across 12 formats, review-refine, structural validation, top-up)
+10. **Audio Synthesis** — synthesize TTS audio for every explanation line via Google Cloud TTS, upload to S3, stamp `audio_url` onto each line (idempotent). Soft guardrail warns when no stage-6 review has run for the scope.
 
-Stages 6, 7, 8, and 9 are decoupled — all consume explanations and can run in parallel. Stage 8 can optionally wait for stage 7 (visuals) if check-ins reference visual content. Stage 6 is not an LLM call (Google Cloud TTS), so it does not compete with the LLM-heavy stages for Claude Code throughput.
+Stages 7, 8, and 9 are decoupled — all consume explanations and can run in parallel. Stage 8 can optionally wait for stage 7 (visuals) if check-ins reference visual content. Stage 6 (audio text review) runs after stages 5 AND 8 so it sees the final audio strings. Stage 10 (TTS synth) is not an LLM call and does not compete with the LLM-heavy stages for Claude Code throughput.
 
 ## 1. Heavy Stages Run as Background Jobs
 
-Any stage that calls an LLM, a TTS provider, or processes multiple items must run as a background job — never inline in an API request. Stages 1 (bulk OCR), 2, 3, 5, 6, 7, 8, and 9 qualify. Stage 4 (sync) is fast enough to run synchronously.
+Any stage that calls an LLM, a TTS provider, or processes multiple items must run as a background job — never inline in an API request. Stages 1 (bulk OCR), 2, 3, 5, 6, 7, 8, 9, and 10 qualify. Stage 4 (sync) is fast enough to run synchronously.
 
 ## 2. Every Stage Has an Admin UI Page
 

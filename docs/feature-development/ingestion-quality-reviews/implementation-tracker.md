@@ -10,22 +10,22 @@ Live tracker for PR #105 implementation work. Updated after each commit lands.
 
 ---
 
-## Phase 1 — Audio Text Review
+## Phase 1 — Audio Text Review ✅ complete
 
 | # | Commit | Status | Notes |
 |---|---|---|---|
-| 1.1 | `feat: add V2JobType.AUDIO_TEXT_REVIEW constant` | ⬜ | Smallest change, unblocks everything |
-| 1.2 | `feat: add audio text review prompt files` | ⬜ | `audio_text_review.txt`, `_system.txt` |
-| 1.3 | `feat: add AudioTextReviewService` | ⬜ | Per-card LLM call, surgical revisions, drift guard |
-| 1.4 | `feat: wire /generate-audio-review endpoint + background task` | ⬜ | Mirrors `/generate-audio` |
-| 1.5 | `feat: wire /audio-review-jobs/latest endpoint` | ⬜ | Mirrors `/explanation-jobs/latest` |
-| 1.6 | `feat: stage-6 soft guardrail on /generate-audio` | ⬜ | 409 w/ `requires_confirmation` when no prior review job |
-| 1.7 | `refactor: remove inline MP3 synth from stage 5` | ⬜ | Riskiest; ship LAST |
-| 1.8 | `feat: audio review frontend — API client + BookV2Detail trigger + dialog` | ⬜ | |
-| 1.9 | `feat: audio review per-topic trigger on ExplanationAdmin` | ⬜ | |
-| 1.10 | `test: audio text review service unit tests` | ⬜ | |
-| 1.11 | `test: audio review gold / defective fixture sets + eval script` | ⬜ | |
-| 1.12 | `docs: update principles + technical docs for new pipeline ordering` | ⬜ | |
+| 1.1 | `feat: add V2JobType.AUDIO_TEXT_REVIEW constant` | ✅ | Smallest change, unblocks everything |
+| 1.2 | `feat: add audio text review prompt files` | ✅ | `audio_text_review.txt`, `_system.txt` |
+| 1.3 | `feat: add AudioTextReviewService` | ✅ | Per-card LLM call, surgical revisions, drift guard |
+| 1.4 | `feat: wire /generate-audio-review endpoint + background task` | ✅ | Mirrors `/generate-audio` |
+| 1.5 | `feat: wire /audio-review-jobs/latest endpoint` | ✅ | Mirrors `/explanation-jobs/latest` |
+| 1.6 | `feat: stage-6 soft guardrail on /generate-audio` | ✅ | 409 w/ `requires_confirmation` when no prior review job |
+| 1.7 | `refactor: remove inline MP3 synth from stage 5` | ✅ | Riskiest; shipped LAST |
+| 1.8 | `feat: audio review frontend — API client + BookV2Detail trigger + dialog` | ✅ | ApiError class + 409 dialog flow |
+| 1.9 | `feat: audio review per-topic trigger on ExplanationAdmin` | ✅ | |
+| 1.10 | `test: audio text review service unit tests` | ✅ | 18 tests pass |
+| 1.11 | `test: audio review gold / defective fixture sets + eval script` | ✅ | 20+20 fixtures, manual eval script |
+| 1.12 | `docs: update principles + technical docs for new pipeline ordering` | ✅ | 10-stage pipeline + Audio Text Review section |
 
 ## Phase 2 — Visual Rendering Review
 
@@ -48,3 +48,13 @@ Live tracker for PR #105 implementation work. Updated after each commit lands.
 ## Change log
 
 _Appended as commits land. Most recent first._
+
+### 2026-04-19 — Phase 1 complete
+
+All 12 Phase 1 commits landed in commit order. Backend: job-type + prompts +
+service + endpoints + soft guardrail + stage-5 MP3 call removal. Frontend:
+ApiError class + generateAudioReview API + BookV2Detail Review-audio button
++ 409 dialog + ExplanationAdmin per-topic trigger. Tests: 18 unit tests
+(all pass), 20-card defective + 20-card clean fixtures + manual eval script.
+Docs: principles renumbered to 10-stage pipeline, book-guidelines.md gains
+Audio Text Review section + updated TTS synth trigger section.

@@ -34,14 +34,19 @@ Sync to teaching_guidelines table
 Pre-Computed Explanations (LLM generate → review-and-refine N rounds per variant)
     |
     v
-Audio Generation (Google Cloud TTS per explanation line → S3 upload → stamp audio_url;
-                  runs inline at end of explanation generation AND as a standalone admin job)
-    |
-    v
-Visual Enrichment (LLM decide+spec → generate PixiJS code → validate → store)
+Visual Enrichment (LLM decide+spec → generate PixiJS code → validate → store;
+                   post-refine programmatic overlap check on rendered output)
     |
     v
 Check-In Enrichment (LLM generates 2-N inline interactive activities, validates, inserts)
+    |
+    v
+Audio Text Review (LLM reviews `audio` strings per card; surgical revisions only;
+                   clears audio_url on revised lines so synth re-generates them)
+    |
+    v
+Audio Synthesis (Google Cloud TTS per explanation line → S3 upload → stamp audio_url;
+                 standalone admin job with soft-guardrail confirm if no prior review)
     |
     v
 Refresher Topic Generation (LLM identifies prerequisites, builds "Get Ready" topic + cards)
@@ -459,7 +464,59 @@ Runs as a background job with `v2_visual_enrichment` job type. Endpoint table is
 
 ---
 
-## Audio Generation (TTS)
+## Audio Text Review
+
+**Service:** `book_ingestion_v2/services/audio_text_review_service.py` (`AudioTextReviewService`)
+
+Per-card LLM reviewer that catches defects in the `audio` strings on explanation + check-in cards before TTS synthesis runs. Surgical scope — can only rewrite individual audio strings. Cannot edit `display` text, cannot split/merge/drop lines, cannot reshape cards. Runs after stage 5 (explanations) and stage 8 (check-ins), before stage 10 (TTS synth).
+
+### Defect Classes Caught
+
+| Defect | Example |
+|---|---|
+| Symbol / markdown leak | `audio`: `"5+3=8"` or `"**bold**"` |
+| Visual-only reference | `audio`: `"as you can see in the diagram"` |
+| Run-on pacing | Single audio line > 35 words |
+| Cross-line redundancy | Line 2 re-states line 1 verbatim |
+| Hinglish / Indian place-value | `"1,23,456"` read as `"one hundred twenty-three thousand"` instead of `"one lakh twenty-three thousand"` |
+
+### Pipeline Per Card
+
+1. **LLM call**: `audio_text_review.txt` + `_system.txt`, with `{card_json}` stripped of `audio_url` (the reviewer has no use for it). Returns `CardReviewOutput` — zero or more `AudioLineRevision` entries.
+2. **Validation**: Drops revisions whose `revised_audio` still contains banned patterns (markdown, standalone `=`, emoji). Logs each drop with card/line identifier.
+3. **Drift guard**: Each revision's `original_audio` must match the current card value exactly; otherwise the revision is dropped (`logger.info`) — prevents clobbering concurrent admin edits.
+4. **Apply**: For `kind="line"`, writes `line.audio = revised_audio` AND `line.audio_url = None`. For `kind="check_in_text"`, writes top-level `card.audio_text = revised_audio`. Clearing `audio_url` is the contract with stage 10 (`audio_generation_service.py:82` skips lines with `audio_url` set), so re-synthesis is automatic and idempotent for only the revised lines.
+5. **Snapshot**: Each card's review is captured in `stage_snapshots_json` with `revisions_proposed` + `revisions_applied` counts, for the admin stage viewer.
+
+### LLM Config
+
+`audio_text_review` in `llm_config` table, with fallback to `explanation_generator` if the primary key is missing. Claude Code is recommended for cost.
+
+### Entry Points
+
+- `review_guideline(guideline, *, variant_keys=None, ...)` — review all variants for a single topic
+- `review_chapter(book_id, chapter_id=None, *, job_service=None, job_id=None)` — iterate approved guidelines, drive a job
+
+### Triggers
+
+- **Per-book / per-chapter**: `POST /admin/v2/books/{book_id}/generate-audio-review?chapter_id=&guideline_id=&language=` — kicks off a `v2_audio_text_review` background job.
+- **Per-topic**: Same endpoint with `guideline_id` set, or the `Review audio` button on each topic row in `ExplanationAdmin`.
+- **Stage-10 soft guardrail**: If admin clicks `Audio` without a prior completed review for the scope, `POST /generate-audio` returns HTTP 409 with `{code:"no_audio_review", requires_confirmation:true}` and the frontend shows a confirm dialog. Admin can re-call with `?confirm_skip_review=true` to bypass.
+
+### Observability
+
+- `stage_snapshots_json` entries on the job row, viewable via the existing stage viewer
+- `GET /admin/v2/books/{book_id}/audio-review-jobs/latest` mirrors `/explanation-jobs/latest` for this job type
+
+### Gold / Defective Test Fixtures
+
+- `tests/fixtures/audio_review/defective_set.json` — 20 handcrafted cards with deliberate single-defect injections (symbol-leak, visual-only, run-on, redundancy, hinglish)
+- `tests/fixtures/audio_review/clean_set.json` — 20 known-clean cards, reviewer should return empty revisions
+- `tests/manual/audio_review_gold_eval.py` — manual-run script measuring PRD SC2/SC3 against these sets
+
+---
+
+## Audio Synthesis (TTS)
 
 **Service:** `book_ingestion_v2/services/audio_generation_service.py` (`AudioGenerationService`)
 
@@ -484,10 +541,9 @@ Audio encoding: MP3.
 3. **Upload**: Write MP3 bytes to S3 at `audio/{guideline_id}/{variant_key}/{card_idx}/{line_idx}.mp3` (content-type `audio/mpeg`).
 4. **Stamp URL**: Set `line.audio_url = https://{bucket}.s3.{region}.amazonaws.com/{key}` and `flag_modified(explanation, "cards_json")`, commit.
 
-### Triggers (two paths)
+### Trigger
 
-- **Inline at end of stage 5**: Called automatically at the end of `ExplanationGeneratorService` generation per variant. Non-fatal — if TTS fails, cards are still saved and the frontend falls back to real-time TTS.
-- **Standalone admin job**: `POST /generate-audio` with scoping `guideline_id` > `chapter_id` > book-wide. Useful when explanations were generated before audio was wired up, or after editing card text.
+- **Standalone admin job**: `POST /generate-audio?confirm_skip_review=false|true` with scoping `guideline_id` > `chapter_id` > book-wide. MP3 synth is always explicit — no inline call at the end of stage 5 anymore. If no completed audio text review exists for the scope, the endpoint returns HTTP 409 with a `requires_confirmation` flag so the frontend can confirm before proceeding.
 
 ### Entry Points
 
