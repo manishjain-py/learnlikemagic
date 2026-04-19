@@ -4,6 +4,23 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+/**
+ * Error thrown by apiFetch. Preserves the HTTP status and parsed `detail` so
+ * callers can branch on structured error payloads (e.g., 409 with a
+ * requires_confirmation flag for the stage-6 soft guardrail).
+ */
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(message: string, status: number, detail: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit
@@ -19,8 +36,13 @@ async function apiFetch<T>(
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || `API error: ${response.status}`);
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    const detail = body?.detail;
+    const message =
+      typeof detail === 'string'
+        ? detail
+        : detail?.message || `API error: ${response.status}`;
+    throw new ApiError(message, response.status, detail);
   }
 
   return response.json();
@@ -853,14 +875,50 @@ export async function getPracticeBank(
 
 export async function generateAudio(
   bookId: string,
-  opts?: { chapterId?: string; guidelineId?: string },
+  opts?: { chapterId?: string; guidelineId?: string; confirmSkipReview?: boolean },
 ): Promise<ProcessingJobResponseV2> {
   const params = new URLSearchParams();
   if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
   if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.confirmSkipReview) params.set('confirm_skip_review', 'true');
   const qs = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<ProcessingJobResponseV2>(
     `/admin/v2/books/${bookId}/generate-audio${qs}`,
     { method: 'POST' }
   );
+}
+
+// ===== Audio Text Review =====
+
+export async function generateAudioReview(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; language?: string },
+): Promise<ProcessingJobResponseV2> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.language) params.set('language', opts.language);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<ProcessingJobResponseV2>(
+    `/admin/v2/books/${bookId}/generate-audio-review${qs}`,
+    { method: 'POST' }
+  );
+}
+
+export async function getLatestAudioReviewJob(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
+): Promise<ProcessingJobResponseV2 | null> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  try {
+    return await apiFetch<ProcessingJobResponseV2>(
+      `/admin/v2/books/${bookId}/audio-review-jobs/latest${qs}`
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
 }

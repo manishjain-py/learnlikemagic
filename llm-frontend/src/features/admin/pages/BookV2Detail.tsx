@@ -9,7 +9,8 @@ import {
   bulkOcrRetry, bulkOcrRerun, generateRefresher,
   generateCheckIns, getCheckInJobStatus, getCheckInStatus,
   generatePracticeBanks, getPracticeBankJobStatus, getPracticeBankStatus,
-  generateAudio,
+  generateAudio, generateAudioReview,
+  ApiError,
   TopicCheckInStatusV2,
   TopicPracticeBankStatusV2,
   BookV2DetailResponse, ChapterResponseV2, PageResponseV2,
@@ -68,6 +69,7 @@ const BookV2Detail: React.FC = () => {
   const [practiceBankStatus, setPracticeBankStatus] = useState<Record<string, TopicPracticeBankStatusV2[]>>({});
   const [practiceBankReviewRounds, setPracticeBankReviewRounds] = useState<Record<string, number>>({});
   const [audioJobs, setAudioJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
+  const [audioReviewJobs, setAudioReviewJobs] = useState<Record<string, ProcessingJobResponseV2>>({});
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const pollingDoneRef = useRef<Set<string>>(new Set());
   const explPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -76,6 +78,7 @@ const BookV2Detail: React.FC = () => {
   const checkInPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const practiceBankPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const audioPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const audioReviewPollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     if (id) loadBook(true);
@@ -87,6 +90,7 @@ const BookV2Detail: React.FC = () => {
       Object.values(checkInPollingRef.current).forEach(clearInterval);
       Object.values(practiceBankPollingRef.current).forEach(clearInterval);
       Object.values(audioPollingRef.current).forEach(clearInterval);
+      Object.values(audioReviewPollingRef.current).forEach(clearInterval);
     };
   }, [id]);
 
@@ -260,6 +264,22 @@ const BookV2Detail: React.FC = () => {
     };
     poll();
     audioPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
+  }, [id]);
+
+  const startAudioReviewPolling = useCallback((chapterId: string) => {
+    if (!id || audioReviewPollingRef.current[chapterId]) return;
+    const poll = async () => {
+      try {
+        const job = await getLatestJobV2(id!, chapterId, 'v2_audio_text_review');
+        setAudioReviewJobs(prev => ({ ...prev, [chapterId]: job }));
+        if (['completed', 'failed', 'completed_with_errors'].includes(job.status)) {
+          clearInterval(audioReviewPollingRef.current[chapterId]);
+          delete audioReviewPollingRef.current[chapterId];
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    audioReviewPollingRef.current[chapterId] = setInterval(poll, POLL_INTERVAL);
   }, [id]);
 
   const loadExplanationStatus = useCallback(async (chapterId: string) => {
@@ -452,7 +472,37 @@ const BookV2Detail: React.FC = () => {
       setAudioJobs(prev => ({ ...prev, [ch.id]: job }));
       startAudioPolling(ch.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Audio generation failed');
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        (err.detail as { requires_confirmation?: boolean })?.requires_confirmation
+      ) {
+        const ok = confirm(
+          "No audio text review has run for this chapter. " +
+          "The MP3s will be synthesized on unreviewed text. Proceed anyway?"
+        );
+        if (!ok) return;
+        try {
+          const job = await generateAudio(id, { chapterId: ch.id, confirmSkipReview: true });
+          setAudioJobs(prev => ({ ...prev, [ch.id]: job }));
+          startAudioPolling(ch.id);
+        } catch (err2) {
+          setError(err2 instanceof Error ? err2.message : 'Audio generation failed');
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Audio generation failed');
+      }
+    }
+  };
+
+  const handleGenerateAudioReview = async (ch: ChapterResponseV2) => {
+    if (!id) return;
+    try {
+      const job = await generateAudioReview(id, { chapterId: ch.id });
+      setAudioReviewJobs(prev => ({ ...prev, [ch.id]: job }));
+      startAudioReviewPolling(ch.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Audio review failed');
     }
   };
 
@@ -1046,6 +1096,12 @@ const BookV2Detail: React.FC = () => {
                                   {practiceBankJobs[ch.id].current_item || 'Starting...'}
                                 </span>
                               )}
+                              <button onClick={() => handleGenerateAudioReview(ch)} style={manageLinkStyle}>Review audio</button>
+                              {audioReviewJobs[ch.id] && ['pending', 'running'].includes(audioReviewJobs[ch.id].status) && (
+                                <span style={{ fontSize: '11px', color: '#0F766E' }}>
+                                  {audioReviewJobs[ch.id].current_item || 'Starting...'}
+                                </span>
+                              )}
                               <button onClick={() => handleGenerateAudio(ch)} style={manageLinkStyle}>Audio</button>
                               {audioJobs[ch.id] && ['pending', 'running'].includes(audioJobs[ch.id].status) && (
                                 <span style={{ fontSize: '11px', color: '#7C3AED' }}>
@@ -1156,6 +1212,42 @@ const BookV2Detail: React.FC = () => {
                           {pj.status === 'failed' && pj.error_message
                             ? `Practice bank generation failed: ${pj.error_message}`
                             : `Practice banks: ${detail?.generated ?? pj.completed_items} generated, ${detail?.skipped ?? 0} skipped, ${detail?.failed ?? pj.failed_items} failed.`}
+                          {detail?.errors && detail.errors.length > 0 && (
+                            <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
+                              {detail.errors.map((e, i) => <li key={i}>{e}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* Audio review progress/result banner */}
+                  {audioReviewJobs[ch.id] && (() => {
+                    const aj = audioReviewJobs[ch.id];
+                    const isRunning = ['pending', 'running'].includes(aj.status);
+                    const isDone = ['completed', 'completed_with_errors', 'failed'].includes(aj.status);
+                    const detail = aj.progress_detail as { cards_reviewed?: number; cards_revised?: number; failed?: number; errors?: string[] } | undefined;
+                    if (isRunning) return (
+                      <div style={{ marginTop: '12px', backgroundColor: '#CCFBF1', color: '#0F766E', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                        Reviewing audio text{aj.current_item ? `: ${aj.current_item}` : '...'}
+                        {aj.total_items ? ` (${aj.completed_items + aj.failed_items}/${aj.total_items})` : ''}
+                      </div>
+                    );
+                    if (isDone) {
+                      const hasErrors = aj.status === 'failed' || (detail?.errors && detail.errors.length > 0);
+                      return (
+                        <div style={{
+                          marginTop: '12px',
+                          backgroundColor: hasErrors ? '#FEF3C7' : '#CCFBF1',
+                          color: hasErrors ? '#92400E' : '#0F766E',
+                          padding: '10px 14px', borderRadius: '6px', fontSize: '13px',
+                        }}>
+                          <button onClick={() => setAudioReviewJobs(prev => { const next = { ...prev }; delete next[ch.id]; return next; })} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>&times;</button>
+                          {aj.status === 'failed' && aj.error_message
+                            ? `Audio review failed: ${aj.error_message}`
+                            : `Audio review: ${detail?.cards_reviewed ?? aj.completed_items} cards reviewed, ${detail?.cards_revised ?? 0} revised.`}
                           {detail?.errors && detail.errors.length > 0 && (
                             <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
                               {detail.errors.map((e, i) => <li key={i}>{e}</li>)}
