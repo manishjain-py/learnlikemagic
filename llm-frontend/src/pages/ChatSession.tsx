@@ -151,6 +151,12 @@ export default function ChatSession() {
   // Typewriter: track which slide indices have been fully revealed
   const [revealedSlides, setRevealedSlides] = useState<Set<number>>(new Set());
   const [typewriterSkip, setTypewriterSkip] = useState<Set<number>>(new Set());
+  // Widget reveal sequence: a slide is "fullyReplayed" once the guided tour
+  // (scroll to ASCII box → auto-expand Pixi → play narration) has finished.
+  // In-memory only — resets on refresh. Revisits within the same session
+  // render widgets with the collapsed "See it" button instead of auto-expanded.
+  const [fullyReplayed, setFullyReplayed] = useState<Set<number>>(new Set());
+  const widgetSequenceRef = useRef<{ slideIdx: number; cancelled: boolean } | null>(null);
   // Check-in gate + struggle tracking — keyed by stable card_id, not mutable slide index
   const [completedCheckIns, setCompletedCheckIns] = useState<Set<string>>(new Set());
   const [checkInStruggles, setCheckInStruggles] = useState<Map<string, CheckInActivityResult>>(new Map());
@@ -313,6 +319,12 @@ export default function ChatSession() {
     // which makes late-arriving prefetches in playLineAudio/playTeacherAudio
     // discard themselves instead of playing over the new card.
     stopAudio();
+    // Cancel any in-flight widget reveal sequence — student has navigated
+    // away from the slide that was running it.
+    if (widgetSequenceRef.current) {
+      widgetSequenceRef.current.cancelled = true;
+      widgetSequenceRef.current = null;
+    }
     const slide = carouselSlides[currentSlideIdx];
     // Auto-play for message and check_in slides; explanation slides use per-line typewriter audio
     if (slide && (slide.type === 'message' || slide.type === 'check_in')) {
@@ -342,6 +354,15 @@ export default function ChatSession() {
         timers.push(setTimeout(() => prefetchAudio(line.audio, line.audio_url), batchIdx * BATCH_DELAY));
       }
     });
+
+    // Prefetch the visual-explanation narration so it's cached by the time
+    // the widget reveal sequence reaches the Pixi step (typewriter runs first,
+    // so we can queue this after the main line batches).
+    const narration = slide.visualExplanation?.narration?.trim();
+    if (narration) {
+      const narrationDelay = Math.ceil(slide.audioLines.length / BATCH_SIZE) * BATCH_DELAY + 200;
+      timers.push(setTimeout(() => prefetchAudio(narration), narrationDelay));
+    }
 
     // Look-ahead: also prefetch next slide's first few lines for smoother transition
     const nextSlide = carouselSlides[currentSlideIdx + 1];
@@ -384,6 +405,7 @@ export default function ChatSession() {
         cards.forEach((c: any, idx: number) => { if (c.simplifications?.length) preRevealed.add(idx); });
         if (preRevealed.size > 0) {
           setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
+          setFullyReplayed(prev => new Set([...prev, ...preRevealed]));
           setPreloadAnimateCards(preRevealed);
         }
       }
@@ -444,6 +466,7 @@ export default function ChatSession() {
             replayCards.forEach((c: any, idx: number) => { if (c.simplifications?.length) preRevealed.add(idx); });
             if (preRevealed.size > 0) {
               setRevealedSlides(prev => new Set([...prev, ...preRevealed]));
+              setFullyReplayed(prev => new Set([...prev, ...preRevealed]));
               setPreloadAnimateCards(preRevealed);
             }
 
@@ -879,6 +902,95 @@ export default function ChatSession() {
     }
   };
 
+  // Scroll a widget into the center of its .focus-slide scroll container.
+  // Mirrors the pattern TypewriterMarkdown uses for spotlight scrolling so the
+  // widget lands in the student's focus zone rather than near the bottom edge.
+  const scrollWidgetIntoFocus = (slideEl: HTMLElement, targetEl: HTMLElement) => {
+    const parentRect = slideEl.getBoundingClientRect();
+    const elRect = targetEl.getBoundingClientRect();
+    const scrollTarget = targetEl.offsetTop - (parentRect.height / 2) + (elRect.height / 2);
+    slideEl.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
+  };
+
+  // Run the guided widget-reveal tour after a card's typewriter + audio finish.
+  // Sequence: pause → scroll to ASCII visual (if any) → pause → auto-expand
+  // Pixi visual (if any) → play narration → mark fullyReplayed.
+  //
+  // fastMode: the student tapped to skip the typewriter. We still expand the
+  // widgets on mount (autoStart=true) but skip scroll/narration. The brief
+  // initial pause gives React one commit cycle so autoStart=true mounts the
+  // Pixi expanded BEFORE fullyReplayed flips it back to false.
+  //
+  // Cancels cleanly if the student navigates away or taps "I didn't understand".
+  const runWidgetRevealSequence = async (slideIdx: number, fastMode = false) => {
+    const slide = carouselSlides[slideIdx];
+    if (!slide || slide.type !== 'explanation') {
+      setFullyReplayed(prev => new Set(prev).add(slideIdx));
+      return;
+    }
+    const hasAscii = !!slide.visual;
+    const hasPixi = !!slide.visualExplanation?.pixi_code;
+    if (!hasAscii && !hasPixi) {
+      setFullyReplayed(prev => new Set(prev).add(slideIdx));
+      return;
+    }
+
+    const token = { slideIdx, cancelled: false };
+    widgetSequenceRef.current = token;
+    const cancelled = () =>
+      token.cancelled || widgetSequenceRef.current !== token;
+
+    const getSlideEl = () =>
+      (focusTrackRef.current?.children[slideIdx] as HTMLElement | undefined) || null;
+
+    // Initial pause. Even in fast mode we yield once so the component
+    // commits with autoStart=true before fullyReplayed is written below.
+    await new Promise(r => setTimeout(r, fastMode ? 50 : 400));
+    if (cancelled()) return;
+
+    if (!fastMode) {
+      // Step 1: ASCII visual box — scroll into focus, hold for reading.
+      if (hasAscii) {
+        const slideEl = getSlideEl();
+        const asciiEl = slideEl?.querySelector('.explanation-card-visual') as HTMLElement | null;
+        if (slideEl && asciiEl) {
+          scrollWidgetIntoFocus(slideEl, asciiEl);
+          asciiEl.classList.add('widget-focus-in');
+          setTimeout(() => asciiEl.classList.remove('widget-focus-in'), 1400);
+          await new Promise(r => setTimeout(r, 1800));
+          if (cancelled()) return;
+        }
+      }
+
+      // Step 2: Pixi visual — auto-expand (via fullyReplayed gate in render),
+      // scroll into focus, play narration.
+      if (hasPixi) {
+        // Wait one frame so the expanded canvas mounts before we measure/scroll.
+        await new Promise(r => requestAnimationFrame(() => r(null)));
+        if (cancelled()) return;
+
+        const slideEl = getSlideEl();
+        const pixiEl = slideEl?.querySelector('.visual-explanation:not(.visual-explanation--collapsed)') as HTMLElement | null;
+        if (slideEl && pixiEl) {
+          scrollWidgetIntoFocus(slideEl, pixiEl);
+          pixiEl.classList.add('widget-focus-in');
+          setTimeout(() => pixiEl.classList.remove('widget-focus-in'), 1400);
+        }
+
+        const narration = slide.visualExplanation?.narration?.trim();
+        if (narration) {
+          await playLineAudio(narration);
+        } else {
+          await new Promise(r => setTimeout(r, 2500));
+        }
+        if (cancelled()) return;
+      }
+    }
+
+    setFullyReplayed(prev => new Set(prev).add(slideIdx));
+    if (widgetSequenceRef.current === token) widgetSequenceRef.current = null;
+  };
+
   const handleFeedbackSubmit = async (action: 'continue' | 'restart') => {
     if (!sessionId || !feedbackText.trim()) return;
     setFeedbackSubmitting(true);
@@ -1101,6 +1213,13 @@ export default function ChatSession() {
 
     const currentCard = explanationCards[cardIdx];
     const baseCardIdx = currentCard.source_card_idx ?? cardIdx;
+
+    // Cancel any in-flight widget reveal tour — student just asked for
+    // simplification, so the original card's tour is no longer the focus.
+    if (widgetSequenceRef.current) {
+      widgetSequenceRef.current.cancelled = true;
+      widgetSequenceRef.current = null;
+    }
 
     setSimplifyJustAdded(false);
     setSimplifyLoading(true);
@@ -1376,7 +1495,17 @@ export default function ChatSession() {
                               isActive={i === currentSlideIdx}
                               skipAnimation={revealedSlides.has(i) || typewriterSkip.has(i) || sessionPhase !== 'card_phase'}
                               audioLines={slide.audioLines}
-                              onRevealComplete={() => setRevealedSlides(prev => new Set(prev).add(i))}
+                              onRevealComplete={() => {
+                                setRevealedSlides(prev => new Set(prev).add(i));
+                                if (i === currentSlideIdx) {
+                                  // fast mode: student tapped to skip — expand widgets
+                                  // immediately, no guided narration/scroll.
+                                  runWidgetRevealSequence(i, typewriterSkip.has(i));
+                                } else {
+                                  // Reveal happened on a non-active slide (rare); no tour needed.
+                                  setFullyReplayed(prev => new Set(prev).add(i));
+                                }
+                              }}
                               onBlockStart={(audioText: string, blockIdx: number) => {
                                 const offset = slide.title?.trim() ? 1 : 0;
                                 const curLine = slide.audioLines?.[blockIdx - offset];
@@ -1397,7 +1526,10 @@ export default function ChatSession() {
                             <pre className="explanation-card-visual">{slide.visual}</pre>
                           )}
                           {revealedSlides.has(i) && slide.visualExplanation && (
-                            <VisualExplanationComponent visual={slide.visualExplanation} />
+                            <VisualExplanationComponent
+                              visual={slide.visualExplanation}
+                              autoStart={!fullyReplayed.has(i) && i === currentSlideIdx}
+                            />
                           )}
                           {/* Inline simplification sections */}
                           {slide.simplifications?.map((simplification: any, sIdx: number) => {

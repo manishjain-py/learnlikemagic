@@ -3,6 +3,10 @@ import type { VisualExplanation as VisualExplanationType } from '../api';
 
 interface Props {
   visual: VisualExplanationType;
+  // When true, skip the collapsed "See it" button and render the Pixi canvas
+  // expanded on mount. Used during first-visit replay so the widget isn't
+  // hidden behind an extra tap. Parent is expected to handle scroll/narration.
+  autoStart?: boolean;
 }
 
 /**
@@ -12,8 +16,8 @@ interface Props {
  * cookies, localStorage, or navigation. This mitigates XSS risk from
  * executing LLM-generated code.
  */
-export default function VisualExplanation({ visual }: Props) {
-  const [started, setStarted] = useState(false);
+export default function VisualExplanation({ visual, autoStart }: Props) {
+  const [started, setStarted] = useState(!!autoStart);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -66,10 +70,14 @@ export default function VisualExplanation({ visual }: Props) {
     return () => window.removeEventListener('message', handler);
   }, [started]);
 
-  // Reset state when pixi_code changes (prop change cleanup)
+  // Reset state when pixi_code changes (prop change cleanup). autoStart is
+  // intentionally NOT a dep — it initialises `started` on mount via useState,
+  // and once expanded the widget should stay expanded even if the parent flips
+  // autoStart back to false (e.g. after the first-visit tour completes).
   useEffect(() => {
-    setStarted(false);
+    setStarted(!!autoStart);
     setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pixiCode]);
 
   const startAnimation = useCallback(() => {
