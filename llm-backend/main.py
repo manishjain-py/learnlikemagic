@@ -27,6 +27,7 @@ from book_ingestion_v2.api import toc_routes as v2_toc_routes
 from book_ingestion_v2.api import page_routes as v2_page_routes
 from book_ingestion_v2.api import processing_routes as v2_processing_routes
 from book_ingestion_v2.api import sync_routes as v2_sync_routes
+from book_ingestion_v2.api import visual_preview_routes as v2_visual_preview_routes
 
 # Validate configuration on startup
 validate_required_settings()
@@ -119,6 +120,7 @@ app.include_router(v2_toc_routes.router)    # Book Ingestion V2: /admin/v2/books
 app.include_router(v2_page_routes.router)   # Book Ingestion V2: /admin/v2/books/{id}/chapters/{id}/pages
 app.include_router(v2_processing_routes.router)  # Book Ingestion V2: processing, topics, jobs
 app.include_router(v2_sync_routes.router)        # Book Ingestion V2: sync + results
+app.include_router(v2_visual_preview_routes.router)  # Book Ingestion V2: visual preview store
 app.include_router(pixi_poc_router)              # Pixi.js PoC: code generation
 app.include_router(issue_routes.router)          # Issue reporting: /issues/*
 
