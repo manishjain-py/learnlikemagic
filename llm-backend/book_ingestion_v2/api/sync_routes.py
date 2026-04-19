@@ -511,6 +511,10 @@ def generate_audio(
     book_id: str,
     chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
     guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
+    confirm_skip_review: bool = Query(
+        False,
+        description="Skip soft guardrail that requires a prior audio text review job for this scope",
+    ),
     db: Session = Depends(get_db),
 ):
     """Generate pre-computed TTS audio for explanation card lines and upload to S3.
@@ -518,6 +522,11 @@ def generate_audio(
     Runs as a background job. Requires explanations to already exist.
     Idempotent — skips lines that already have audio_url.
     Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+
+    Soft guardrail: if no completed audio_text_review job exists for the
+    resolved scope and confirm_skip_review is False, returns HTTP 409 with
+    detail={"code":"no_audio_review","requires_confirmation":true,...} so the
+    frontend can show a confirm dialog and re-call with confirm_skip_review=true.
     """
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
     from shared.models.entities import TeachingGuideline
@@ -554,6 +563,29 @@ def generate_audio(
             lock_chapter_id = chapter_id or book_id
 
         job_service = ChapterJobService(db)
+
+        # Soft guardrail: warn the admin if no audio text review has run for this scope.
+        # Uses the existing get_latest_job(chapter_id, job_type=...) — no new service method.
+        if not confirm_skip_review:
+            latest_review = job_service.get_latest_job(
+                lock_chapter_id,
+                job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+            )
+            if latest_review is None or latest_review.status not in (
+                "completed", "completed_with_errors",
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "no_audio_review",
+                        "message": (
+                            "No completed audio text review job found for this scope. "
+                            "Run audio review first, or pass confirm_skip_review=true to skip."
+                        ),
+                        "requires_confirmation": True,
+                    },
+                )
+
         job_id = job_service.acquire_lock(
             book_id=book_id,
             chapter_id=lock_chapter_id,
