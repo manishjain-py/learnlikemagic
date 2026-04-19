@@ -31,7 +31,7 @@ The student has the conceptual foundation — your job is to CHECK understanding
 - `extend`: Apply concepts to new contexts or harder variations. Build on earlier practice.
 
 ## Rules
-- Use simple English throughout — the student is Indian, English is NOT their first language. Step descriptions and examples should use basic, everyday words. No idioms, no phrasal verbs, no complex grammar. Use Indian contexts where possible.
+- Use simple English throughout — the student is Indian, English is NOT their first language. Step descriptions and examples should use basic, everyday words. No idioms, no phrasal verbs, no complex grammar. Everyday Indian life is the baseline (rupees, cricket, familiar names, local number system, local formats). Write from inside the student's world — do NOT label their context as "the Indian way" or compare to a "Western / American / international" way. If a concept has a regional variant, teach their form as THE form. Only compare when the curriculum itself teaches comparison.
 - Do NOT re-explain what the cards covered. The student already read them.
 - REFERENCE the card analogies and examples in your steps. Build on them, don't introduce competing ones.
 - Start easy (check recall), progress to harder (apply, extend).

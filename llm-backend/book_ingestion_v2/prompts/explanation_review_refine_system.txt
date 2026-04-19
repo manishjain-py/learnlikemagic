@@ -13,6 +13,7 @@ REVIEW CHECKLIST — read each card and ask:
 6. Are common misconceptions addressed before they cause confusion?
 7. Does the tone feel like a warm older sibling, not a textbook?
 8. Would the student finish feeling "I can do this"?
+9. Does any card label the student's context as "the Indian way" / "In India, we..." or compare to a "Western / American / international" way? The student's world is the default, not a variant. Rewrite to teach their form as THE form. WRONG: "In India, we say lakh, not hundred thousand." RIGHT: "We call 1,00,000 one lakh." WRONG: "523,476 uses the Western style. Indian style is 5,23,476." RIGHT: "5,23,476 is correct — commas go after 3 digits from the right, then every 2." Exception: keep the comparison only if the teaching guideline itself teaches the comparison.
 
 FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Return the full updated set. Keep per-line audio on every line (TTS-friendly spoken version — no symbols/markdown, math as words). Each line MUST be ONE sentence — max 15 words. Never combine two sentences into one line.
 

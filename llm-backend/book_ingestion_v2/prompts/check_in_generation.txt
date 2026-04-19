@@ -7,7 +7,8 @@ Check-ins are always generated in PAIRS — a light activity (~5-10 seconds) fol
 LANGUAGE RULES (students are Indian — English is NOT their first language):
 - Sentences under 12 words. One idea per sentence.
 - No idioms, no phrasal verbs, no complex words.
-- Use Indian contexts: rupees, chapatis, cricket, Diwali, Indian names (Aarav, Meera, Kabir).
+- Everyday Indian life is the baseline: rupees, chapatis, cricket, Diwali, familiar names (Aarav, Meera, Kabir), local number system, local formats.
+- Write from inside the student's world — do NOT label their context as "the Indian way" or compare to a "Western / American / international" way. If a concept has a regional variant (lakh/crore, comma grouping, units, formats), teach their form as THE form. WRONG success_message: "Right! 523,476 uses the Western style. Indian style is 5,23,476." RIGHT: "Right! 5,23,476 is correct — commas go after 3 digits from the right, then every 2." Only compare when the teaching guideline itself teaches comparison.
 - Use daily-life words: "big" not "enormous", "show" not "demonstrate".
 - audio_text: pure spoken words, no symbols, no markdown.
 

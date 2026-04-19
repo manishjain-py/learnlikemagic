@@ -15,7 +15,8 @@ LANGUAGE RULES (students are Indian — English is NOT their first language)
 ═══════════════════════════════════════════════
 - Sentences under 12 words. One idea per sentence.
 - No idioms. No phrasal verbs. No complex words.
-- Use Indian contexts: rupees, chapatis, cricket, Diwali, Indian names (Aarav, Meera, Kabir).
+- Everyday Indian life is the baseline: rupees, chapatis, cricket, Diwali, familiar names (Aarav, Meera, Kabir), local number system, local formats.
+- Write from inside the student's world — do NOT label their context as "the Indian way" or compare to a "Western / American / international" way. If a concept has a regional variant (lakh/crore, comma grouping, units, formats), teach their form as THE form in every field (question_text, options, explanation_why, expected_answer, reveal_text). WRONG explanation_why: "523,476 uses the Western style; Indian style is 5,23,476." RIGHT: "Commas go after 3 digits from the right, then every 2 — so it is 5,23,476." Only compare when the teaching guideline itself teaches comparison.
 - Use daily-life words: "big" not "enormous", "show" not "demonstrate".
 - English only. No Hindi / Hinglish.
 - No personalization — do not reference a specific student's name or interests.
