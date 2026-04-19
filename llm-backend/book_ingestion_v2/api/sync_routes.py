@@ -622,6 +622,165 @@ def _run_audio_generation(
         job_service.release_lock(job_id, status="failed", error=str(e))
 
 
+# ─────────────────────────── Audio Text Review ────────────────────────────
+
+
+@router.post(
+    "/generate-audio-review",
+    response_model=ProcessingJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def generate_audio_review(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope review"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic review"),
+    language: Optional[str] = Query(
+        None,
+        description="Override language for reviewer (en|hi|hinglish). Defaults to 'en'.",
+    ),
+    db: Session = Depends(get_db),
+):
+    """Review audio text strings on explanation + check-in cards. Applies surgical revisions.
+
+    Runs as a background job. Requires explanations to already exist.
+    Clears audio_url on revised lines so next /generate-audio run re-synthesizes only those.
+    Scoping: guideline_id (single topic) > chapter_id (chapter) > book-wide.
+    """
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+    from shared.models.entities import TeachingGuideline
+
+    try:
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+                TeachingGuideline.book_id == book_id,
+            ).first()
+            if not guideline:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Guideline {guideline_id} not found in book {book_id}",
+                )
+            total_items = 1
+            lock_chapter_id = guideline_id
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                chapter_repo = ChapterRepository(db)
+                chapter = chapter_repo.get_by_id(chapter_id)
+                if not chapter or chapter.book_id != book_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Chapter {chapter_id} not found in book {book_id}",
+                    )
+                chapter_key = f"chapter-{chapter.chapter_number}"
+                query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            total_items = query.count()
+            lock_chapter_id = chapter_id or book_id
+
+        job_service = ChapterJobService(db)
+        job_id = job_service.acquire_lock(
+            book_id=book_id,
+            chapter_id=lock_chapter_id,
+            job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+            total_items=total_items,
+        )
+
+        run_in_background_v2(
+            _run_audio_text_review, job_id, book_id,
+            chapter_id or "", guideline_id or "", language or "",
+        )
+
+        return job_service.get_job(job_id)
+
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Audio text review failed for book {book_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+        )
+
+
+def _run_audio_text_review(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", language: str = "",
+):
+    """Background task — builds LLMService from DB config (same pattern as
+    check-in enrichment) and injects it into AudioTextReviewService."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.audio_text_review_service import (
+        AudioTextReviewService, DEFAULT_LANGUAGE,
+    )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    job_service = ChapterJobService(db)
+    try:
+        settings = get_settings()
+
+        llm_config_svc = LLMConfigService(db)
+        try:
+            config = llm_config_svc.get_config("audio_text_review")
+        except Exception:
+            config = llm_config_svc.get_config("explanation_generator")
+
+        llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            provider=config["provider"],
+            model_id=config["model_id"],
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        )
+
+        service = AudioTextReviewService(
+            db, llm_service, language=language or DEFAULT_LANGUAGE,
+        )
+
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                result = {"completed": 0, "failed": 1, "errors": ["guideline not found"]}
+            else:
+                per_guideline = service.review_guideline(guideline)
+                result = {
+                    "completed": 0 if per_guideline["failed"] else 1,
+                    "failed": per_guideline["failed"],
+                    "errors": per_guideline["errors"][:10],
+                    "cards_reviewed": per_guideline["cards_reviewed"],
+                    "cards_revised": per_guideline["cards_revised"],
+                }
+        else:
+            result = service.review_chapter(
+                book_id, chapter_id or None,
+                job_service=job_service, job_id=job_id,
+            )
+
+        final_status = (
+            "completed" if result.get("failed", 0) == 0 else "completed_with_errors"
+        )
+        job_service.update_progress(
+            job_id,
+            completed=result.get("completed", 0),
+            failed=result.get("failed", 0),
+            detail=_json.dumps(result),
+        )
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception as e:
+        logger.error(f"Audio text review job {job_id} failed: {e}")
+        job_service.release_lock(job_id, status="failed", error=str(e))
+
+
 def _run_explanation_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
     guideline_id: str = "", force_str: str = "False",
