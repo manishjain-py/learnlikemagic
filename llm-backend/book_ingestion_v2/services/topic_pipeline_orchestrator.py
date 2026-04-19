@@ -77,11 +77,12 @@ PIPELINE_LAYERS: list[list[StageId]] = [
 ]
 
 POLL_INTERVAL_SEC = 5
-# Cap wall-time spent polling a single stage's job. Two heartbeat thresholds
-# beyond the last heartbeat means no realistic recovery is possible — the
-# backing thread has died without releasing the lock (OOM kill, process crash,
-# BaseException that escaped `run_in_background_v2`'s `except Exception`).
-MAX_POLL_WALL_TIME_SEC = 2 * HEARTBEAT_STALE_THRESHOLD
+# Absolute upper bound on polling — pure safety net. Primary stale detection
+# is heartbeat-based via `ChapterJobService.is_job_heartbeat_stale`, which
+# catches a dead backing thread within `HEARTBEAT_STALE_THRESHOLD` (30 min).
+# This cap exists only to stop the orchestrator if a stage keeps heartbeating
+# forever. 4 hours is comfortably longer than any realistic real run.
+MAX_POLL_WALL_TIME_SEC = 4 * 60 * 60  # 4 hours
 _TERMINAL_OK = {"completed", "completed_with_errors"}
 _TERMINAL = _TERMINAL_OK | {"failed"}
 
@@ -217,13 +218,16 @@ class TopicPipelineOrchestrator:
     def _poll_to_terminal(self, db: Session, job_id: str) -> str:
         """Poll the stage job's DB row until it reaches a terminal state.
 
-        Bounded by `MAX_POLL_WALL_TIME_SEC` (2 × heartbeat threshold). If the
-        cap is hit, we proactively release the job as failed — the backing
-        daemon thread has almost certainly died without releasing the lock
-        (OOM kill, process crash, or a BaseException that escaped
-        `run_in_background_v2`'s `except Exception` guard). `get_job` itself
-        does no stale-detection, so without this timeout the orchestrator
-        would spin forever.
+        Two safety nets against orphaned jobs (backing thread died without
+        calling `release_lock` — OOM kill, process crash, or a BaseException
+        that escaped `run_in_background_v2`'s `except Exception`):
+
+        1. **Heartbeat staleness (primary).** Every iteration asks the service
+           whether the job's `heartbeat_at` is older than
+           `HEARTBEAT_STALE_THRESHOLD` (30 min). This catches a dead thread
+           within ~30 min regardless of how long the stage has been running.
+        2. **Absolute wall-time cap (fallback).** `MAX_POLL_WALL_TIME_SEC`
+           (4 hours) — stops truly runaway jobs that keep heartbeating forever.
         """
         job_service = ChapterJobService(db)
         start = time.monotonic()
@@ -235,24 +239,44 @@ class TopicPipelineOrchestrator:
                     f"terminal={job.status}"
                 )
                 return job.status
-            if time.monotonic() - start > MAX_POLL_WALL_TIME_SEC:
+
+            if job_service.is_job_heartbeat_stale(job_id):
                 logger.warning(
                     f"Pipeline {self.pipeline_run_id} job {job_id} "
-                    f"poll timeout after {MAX_POLL_WALL_TIME_SEC}s — "
-                    f"marking failed"
+                    f"heartbeat stale — marking failed"
                 )
                 try:
                     job_service.release_lock(
                         job_id,
                         status="failed",
                         error=(
-                            f"Orchestrator poll timeout ({MAX_POLL_WALL_TIME_SEC}s) — "
-                            "backing thread likely crashed without releasing the lock."
+                            "Heartbeat stale — backing thread likely died without "
+                            "releasing the lock."
                         ),
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to release timed-out job {job_id}: {e}",
+                        f"Failed to release stale job {job_id}: {e}",
+                        exc_info=True,
+                    )
+                return "failed"
+
+            if time.monotonic() - start > MAX_POLL_WALL_TIME_SEC:
+                logger.warning(
+                    f"Pipeline {self.pipeline_run_id} job {job_id} "
+                    f"hit absolute poll cap of {MAX_POLL_WALL_TIME_SEC}s — marking failed"
+                )
+                try:
+                    job_service.release_lock(
+                        job_id,
+                        status="failed",
+                        error=(
+                            f"Orchestrator absolute poll cap ({MAX_POLL_WALL_TIME_SEC}s) reached."
+                        ),
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to release capped job {job_id}: {e}",
                         exc_info=True,
                     )
                 return "failed"

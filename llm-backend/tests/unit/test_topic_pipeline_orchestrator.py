@@ -28,7 +28,12 @@ def ids():
 
 
 class TestPollToTerminal:
-    def test_timeout_marks_job_failed(self, db_session, ids, monkeypatch):
+    def test_heartbeat_stale_marks_job_failed(self, db_session, ids, monkeypatch):
+        """Primary stale-detection path — when the backing thread dies mid-run
+        and stops sending heartbeats, the orchestrator catches it."""
+        from datetime import datetime, timedelta
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+
         svc = ChapterJobService(db_session)
         job_id = svc.acquire_lock(
             book_id=ids["book_id"],
@@ -37,6 +42,43 @@ class TestPollToTerminal:
             guideline_id=ids["guideline_id"],
         )
         svc.start_job(job_id)
+
+        # Backdate heartbeat to beyond the stale threshold.
+        job_row = db_session.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id
+        ).first()
+        from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD
+        job_row.heartbeat_at = datetime.utcnow() - timedelta(
+            seconds=HEARTBEAT_STALE_THRESHOLD + 60,
+        )
+        db_session.commit()
+
+        monkeypatch.setattr(tpo, "POLL_INTERVAL_SEC", 0)
+
+        orch = tpo.TopicPipelineOrchestrator(
+            session_factory=lambda: db_session,
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            guideline_id=ids["guideline_id"],
+            quality_level="balanced",
+        )
+        result = orch._poll_to_terminal(db_session, job_id)
+        assert result == "failed"
+        job = svc.get_job(job_id)
+        assert job is not None
+        assert job.status == "failed"
+        assert job.error_message and "heartbeat" in job.error_message.lower()
+
+    def test_absolute_poll_cap_marks_job_failed(self, db_session, ids, monkeypatch):
+        """Fallback safety net — cap triggers even if heartbeats are fresh."""
+        svc = ChapterJobService(db_session)
+        job_id = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            guideline_id=ids["guideline_id"],
+        )
+        svc.start_job(job_id)  # fresh heartbeat at utcnow()
 
         monkeypatch.setattr(tpo, "POLL_INTERVAL_SEC", 0)
         monkeypatch.setattr(tpo, "MAX_POLL_WALL_TIME_SEC", 0)
@@ -53,7 +95,7 @@ class TestPollToTerminal:
         job = svc.get_job(job_id)
         assert job is not None
         assert job.status == "failed"
-        assert job.error_message and "timeout" in job.error_message.lower()
+        assert job.error_message and "poll cap" in job.error_message.lower()
 
     def test_returns_terminal_status(self, db_session, ids, monkeypatch):
         svc = ChapterJobService(db_session)

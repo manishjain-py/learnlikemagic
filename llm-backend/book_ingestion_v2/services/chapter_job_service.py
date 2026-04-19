@@ -294,6 +294,27 @@ class ChapterJobService:
             return None
         return self._to_response(job)
 
+    def is_job_heartbeat_stale(self, job_id: str) -> bool:
+        """True if the job's heartbeat is older than `HEARTBEAT_STALE_THRESHOLD`.
+
+        Used by the orchestrator's poll loop to detect dead backing threads
+        without relying on wall-time-since-orchestrator-start — the latter
+        false-fails healthy long runs whose backing thread is still making
+        steady progress. Cross-session visibility is enforced by expiring
+        the ORM cache before reading.
+        """
+        self.db.expire_all()
+        job = self.db.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id
+        ).first()
+        if not job:
+            return False
+        if job.status not in ("pending", "running"):
+            return False
+        if job.status == "pending":
+            return self._is_pending_stale(job)
+        return self._is_stale(job)
+
     def get_latest_job(
         self,
         chapter_id: str,
