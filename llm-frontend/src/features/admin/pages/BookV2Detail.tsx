@@ -477,10 +477,11 @@ const BookV2Detail: React.FC = () => {
         err.status === 409 &&
         (err.detail as { requires_confirmation?: boolean })?.requires_confirmation
       ) {
-        const ok = confirm(
+        const detail = err.detail as { message?: string };
+        const dialogMessage = detail.message ||
           "No audio text review has run for this chapter. " +
-          "The MP3s will be synthesized on unreviewed text. Proceed anyway?"
-        );
+          "The MP3s will be synthesized on unreviewed text. Proceed anyway?";
+        const ok = confirm(dialogMessage);
         if (!ok) return;
         try {
           const job = await generateAudio(id, { chapterId: ch.id, confirmSkipReview: true });

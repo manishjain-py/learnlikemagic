@@ -564,25 +564,46 @@ def generate_audio(
 
         job_service = ChapterJobService(db)
 
-        # Soft guardrail: warn the admin if no audio text review has run for this scope.
-        # Uses the existing get_latest_job(chapter_id, job_type=...) — no new service method.
+        # Soft guardrail: warn the admin if no usable audio text review has run.
+        # The 409 detail distinguishes between "never run", "last run failed",
+        # and "run is still in progress" so the frontend dialog can reflect
+        # the actual state (not a blanket "no review has run" message).
         if not confirm_skip_review:
             latest_review = job_service.get_latest_job(
                 lock_chapter_id,
                 job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
             )
-            if latest_review is None or latest_review.status not in (
-                "completed", "completed_with_errors",
-            ):
+            guardrail_code: Optional[str] = None
+            guardrail_message: Optional[str] = None
+            if latest_review is None:
+                guardrail_code = "no_audio_review"
+                guardrail_message = (
+                    "No audio text review has run for this chapter. "
+                    "MP3s will be synthesized on unreviewed text. Proceed anyway?"
+                )
+            elif latest_review.status == "failed":
+                guardrail_code = "audio_review_failed"
+                guardrail_message = (
+                    "The most recent audio text review failed — you can retry "
+                    "the review, or proceed with audio generation on unreviewed "
+                    "text. Proceed anyway?"
+                )
+            elif latest_review.status in ("pending", "running"):
+                guardrail_code = "audio_review_in_progress"
+                guardrail_message = (
+                    f"An audio text review is currently {latest_review.status}. "
+                    "Wait for it to finish, or proceed anyway on unreviewed text?"
+                )
+            # completed / completed_with_errors — no guardrail, fall through
+
+            if guardrail_message:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
-                        "code": "no_audio_review",
-                        "message": (
-                            "No completed audio text review job found for this scope. "
-                            "Run audio review first, or pass confirm_skip_review=true to skip."
-                        ),
+                        "code": guardrail_code,
+                        "message": guardrail_message,
                         "requires_confirmation": True,
+                        "review_status": latest_review.status if latest_review else None,
                     },
                 )
 
