@@ -71,10 +71,33 @@ class AnimationEnrichmentService:
         self.llm = llm_service
         self.code_llm = code_gen_llm or llm_service
         self.repo = ExplanationRepository(db)
+        self._preflight_done = False
 
         self._decision_schema = LLMService.make_schema_strict(
             DecisionOutput.model_json_schema()
         )
+
+    def _ensure_preflight(self) -> None:
+        """Check the frontend dev server is reachable — needed by the stage-7
+        overlap gate. Idempotent per service instance. Raises RuntimeError with
+        a human-actionable message if unreachable so both enrich_chapter and
+        enrich_guideline fail fast rather than silently passing every card
+        through an unrunning overlap check (layout_warning would be meaningless).
+        """
+        if self._preflight_done:
+            return
+        from book_ingestion_v2.services.visual_render_harness import (
+            VisualRenderHarness, FRONTEND_URL,
+        )
+        ok, err = VisualRenderHarness.preflight()
+        if not ok:
+            raise RuntimeError(
+                f"Visual enrichment requires the frontend dev server at "
+                f"{FRONTEND_URL} (needed for the stage-7 overlap gate). "
+                f"Start it with `cd llm-frontend && npm run dev`, then retry. "
+                f"Preflight error: {err}"
+            )
+        self._preflight_done = True
 
     # ─── Public API ─────────────────────────────────────────────────────
 
@@ -96,6 +119,7 @@ class AnimationEnrichmentService:
         Returns: {"enriched": int, "skipped": int, "failed": int, "errors": [str]}
         """
         review_rounds = max(0, min(review_rounds, 5))
+        self._ensure_preflight()
         explanations = self.repo.get_by_guideline_id(guideline.id)
         if not explanations:
             return {"enriched": 0, "skipped": 0, "failed": 0, "errors": []}
@@ -134,22 +158,7 @@ class AnimationEnrichmentService:
     ) -> dict:
         """Enrich all guidelines in a chapter (or book) with visuals."""
         review_rounds = max(0, min(review_rounds, 5))
-
-        # Fail-fast preflight: the post-refine overlap gate depends on the
-        # frontend dev server being up at localhost:3000. Fail the whole job
-        # with a clear message rather than silently passing N cards through
-        # an overlap check that can't actually run.
-        from book_ingestion_v2.services.visual_render_harness import (
-            VisualRenderHarness, FRONTEND_URL,
-        )
-        ok, err = VisualRenderHarness.preflight()
-        if not ok:
-            raise RuntimeError(
-                f"Visual enrichment requires the frontend dev server at "
-                f"{FRONTEND_URL} (needed for the stage-7 overlap gate). "
-                f"Start it with `cd llm-frontend && npm run dev`, then retry. "
-                f"Preflight error: {err}"
-            )
+        self._ensure_preflight()
 
         query = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.book_id == book_id,
