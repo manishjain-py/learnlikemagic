@@ -224,6 +224,39 @@ def get_latest_explanation_job(
         )
 
 
+@router.get("/audio-review-jobs/latest", response_model=ProcessingJobResponse)
+def get_latest_audio_review_job(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Chapter ID (omit for book-wide job)"),
+    guideline_id: Optional[str] = Query(None, description="Guideline ID for single-topic job"),
+    db: Session = Depends(get_db),
+):
+    """Latest audio text review job for a topic, chapter, or book.
+
+    Uses the existing ChapterJobService.get_latest_job (which already supports
+    optional job_type filtering + stale detection). No new service method.
+    """
+    try:
+        lock_chapter_id = guideline_id or chapter_id or book_id
+        job_service = ChapterJobService(db)
+        result = job_service.get_latest_job(
+            lock_chapter_id,
+            job_type=V2JobType.AUDIO_TEXT_REVIEW.value,
+        )
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No audio text review jobs found",
+            )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+        )
+
+
 @router.get("/explanation-jobs/{job_id}/stages")
 def get_job_stage_snapshots(
     book_id: str,
