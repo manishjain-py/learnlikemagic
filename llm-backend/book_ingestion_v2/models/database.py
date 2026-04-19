@@ -86,16 +86,19 @@ class ChapterPage(Base):
 
 class ChapterProcessingJob(Base):
     """
-    Background job tracking per chapter.
+    Background job tracking per chapter (chapter-level) or per topic (post-sync).
 
-    Tracks topic extraction and refinalization jobs with progress,
-    heartbeat for stale detection, and LLM audit fields.
+    Tracks all pipeline jobs with progress, heartbeat for stale detection,
+    and LLM audit fields. `guideline_id` is populated for post-sync topic-level
+    jobs and NULL for chapter-level jobs (OCR, extraction, finalization,
+    refresher). See ChapterJobService.acquire_lock for reader-writer semantics.
     """
     __tablename__ = "chapter_processing_jobs"
 
     id = Column(String, primary_key=True)
     book_id = Column(String, nullable=False)
     chapter_id = Column(String, nullable=False)  # References book_chapters.id
+    guideline_id = Column(String, nullable=True)  # NULL for chapter-level jobs
 
     # Job definition
     job_type = Column(String, nullable=False)       # v2_topic_extraction | v2_refinalization
@@ -127,12 +130,37 @@ class ChapterProcessingJob(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # At most one active job per chapter
-        Index("idx_chapter_active_job", "chapter_id",
-              unique=True,
-              postgresql_where=text("status IN ('pending', 'running')")),
+        # Chapter-level active job invariant — one active job per chapter where
+        # guideline_id is NULL (OCR, extraction, finalization, refresher).
+        Index(
+            "idx_chapter_active_chapter_job",
+            "chapter_id",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('pending', 'running') AND guideline_id IS NULL"
+            ),
+            sqlite_where=text(
+                "status IN ('pending', 'running') AND guideline_id IS NULL"
+            ),
+        ),
+        # Topic-level active job invariant — one active job per (chapter, guideline)
+        # for post-sync stages (explanations, visuals, check-ins, practice,
+        # audio-review, audio-synthesis).
+        Index(
+            "idx_chapter_active_topic_job",
+            "chapter_id",
+            "guideline_id",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('pending', 'running') AND guideline_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "status IN ('pending', 'running') AND guideline_id IS NOT NULL"
+            ),
+        ),
         Index("idx_chapter_jobs_book", "book_id"),
         Index("idx_chapter_jobs_chapter", "chapter_id"),
+        Index("idx_chapter_jobs_guideline", "guideline_id"),
     )
 
 

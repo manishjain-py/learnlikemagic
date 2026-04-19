@@ -63,6 +63,7 @@ import GuidelinesAdmin from './features/admin/pages/GuidelinesAdmin';
 import OCRAdmin from './features/admin/pages/OCRAdmin';
 import VisualsAdmin from './features/admin/pages/VisualsAdmin';
 import PracticeBankAdmin from './features/admin/pages/PracticeBankAdmin';
+import TopicPipelineDashboard from './features/admin/pages/TopicPipelineDashboard';
 import PracticeLandingPage from './pages/PracticeLandingPage';
 import PracticeRunnerPage from './pages/PracticeRunnerPage';
 import PracticeResultsPage from './pages/PracticeResultsPage';
@@ -160,6 +161,7 @@ function App() {
             <Route path="books-v2/:bookId/ocr/:chapterId" element={<OCRAdmin />} />
             <Route path="books-v2/:bookId/visuals/:chapterId" element={<VisualsAdmin />} />
             <Route path="books-v2/:bookId/practice-banks/:chapterId" element={<PracticeBankAdmin />} />
+            <Route path="books-v2/:bookId/pipeline/:chapterId/:topicKey" element={<TopicPipelineDashboard />} />
             <Route path="pixi-js-poc" element={<PixiJsPocPage />} />
             <Route path="interactive-poc" element={<InteractiveVisualsPocPage />} />
             <Route path="visual-render-preview/:id" element={<VisualRenderPreview />} />

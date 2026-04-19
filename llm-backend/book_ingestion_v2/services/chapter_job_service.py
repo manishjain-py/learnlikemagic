@@ -1,7 +1,17 @@
 """
-Chapter job service — job lock + progress tracking per chapter.
+Chapter job service — job lock + progress tracking per chapter and per topic.
 
-Adapts V1 JobLockService pattern but scoped to chapters instead of books.
+Adapts V1 JobLockService pattern. Two lock scopes:
+
+- **Chapter-level jobs** (`guideline_id IS NULL`) — OCR, topic extraction,
+  refinalization, refresher generation. One active job per chapter.
+- **Topic-level jobs** (`guideline_id IS NOT NULL`) — post-sync stages
+  (explanations, visuals, check-ins, practice bank, audio review, audio
+  synthesis). One active job per `(chapter_id, guideline_id)`.
+
+Reader-writer semantics: a chapter-level job and any topic-level job in the
+same chapter are mutually exclusive. Two topic-level jobs in the same chapter
+with different `guideline_id`s can run concurrently.
 
 State machine: pending → running → completed|completed_with_errors|failed
 Stale detection: running jobs with expired heartbeat are auto-marked failed.
@@ -13,7 +23,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD, PENDING_STALE_THRESHOLD
+from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD, PENDING_STALE_THRESHOLD, V2JobType
 from book_ingestion_v2.models.database import ChapterProcessingJob
 from book_ingestion_v2.models.schemas import ProcessingJobResponse
 
@@ -21,6 +31,18 @@ logger = logging.getLogger(__name__)
 
 _HEARTBEAT_THRESHOLD = timedelta(seconds=HEARTBEAT_STALE_THRESHOLD)
 _PENDING_THRESHOLD = timedelta(seconds=PENDING_STALE_THRESHOLD)
+
+# Post-sync job types REQUIRE a guideline_id.
+POST_SYNC_JOB_TYPES: frozenset[str] = frozenset(
+    {
+        V2JobType.EXPLANATION_GENERATION.value,
+        V2JobType.VISUAL_ENRICHMENT.value,
+        V2JobType.CHECK_IN_ENRICHMENT.value,
+        V2JobType.PRACTICE_BANK_GENERATION.value,
+        V2JobType.AUDIO_TEXT_REVIEW.value,
+        V2JobType.AUDIO_GENERATION.value,
+    }
+)
 
 
 class ChapterJobLockError(Exception):
@@ -30,7 +52,7 @@ class ChapterJobLockError(Exception):
 
 class ChapterJobService:
     """
-    Service to manage job locks for chapter operations.
+    Service to manage job locks for chapter or topic operations.
 
     Enforces the job state machine:
       pending → running → completed|completed_with_errors|failed
@@ -40,16 +62,74 @@ class ChapterJobService:
         self.db = db
 
     def acquire_lock(
-        self, book_id: str, chapter_id: str, job_type: str, total_items: int = None
+        self,
+        book_id: str,
+        chapter_id: str,
+        job_type: str,
+        total_items: int | None = None,
+        guideline_id: str | None = None,
     ) -> str:
         """
         Create a new job in 'pending' state. Returns job_id.
-        Raises ChapterJobLockError if a pending/running job already exists.
+
+        Post-sync job types REQUIRE `guideline_id`; chapter-level job types
+        must NOT pass one (the index enforces NULL for chapter-level).
+
+        Enforces reader-writer semantics across chapter- and topic-scope:
+        a chapter-level job blocks all topic-level starts in the same chapter
+        and vice versa.
+
+        Raises ChapterJobLockError if a conflicting active job exists.
         """
-        existing = self.db.query(ChapterProcessingJob).filter(
+        is_post_sync = job_type in POST_SYNC_JOB_TYPES
+        if is_post_sync and not guideline_id:
+            raise ChapterJobLockError(
+                f"Post-sync job {job_type} requires guideline_id"
+            )
+        if not is_post_sync:
+            # Chapter-level job: guideline_id must be NULL.
+            guideline_id = None
+
+        # Cross-scope check — chapter-level vs topic-level mutual exclusion.
+        if is_post_sync:
+            conflicting = self.db.query(ChapterProcessingJob).filter(
+                ChapterProcessingJob.chapter_id == chapter_id,
+                ChapterProcessingJob.guideline_id.is_(None),
+                ChapterProcessingJob.status.in_(["pending", "running"]),
+            ).first()
+            if conflicting and not self._stale_or_abandoned(conflicting):
+                raise ChapterJobLockError(
+                    f"Chapter-level {conflicting.job_type} is active for chapter "
+                    f"{chapter_id}; cannot start {job_type} for guideline "
+                    f"{guideline_id}"
+                )
+        else:
+            conflicting_topic_jobs = self.db.query(ChapterProcessingJob).filter(
+                ChapterProcessingJob.chapter_id == chapter_id,
+                ChapterProcessingJob.guideline_id.isnot(None),
+                ChapterProcessingJob.status.in_(["pending", "running"]),
+            ).all()
+            live = [j for j in conflicting_topic_jobs if not self._stale_or_abandoned(j)]
+            if live:
+                raise ChapterJobLockError(
+                    f"{len(live)} post-sync job(s) active in chapter {chapter_id}; "
+                    f"cannot start chapter-level {job_type}"
+                )
+
+        # Same-scope duplicate check.
+        existing_query = self.db.query(ChapterProcessingJob).filter(
             ChapterProcessingJob.chapter_id == chapter_id,
             ChapterProcessingJob.status.in_(["pending", "running"]),
-        ).first()
+        )
+        if is_post_sync:
+            existing_query = existing_query.filter(
+                ChapterProcessingJob.guideline_id == guideline_id
+            )
+        else:
+            existing_query = existing_query.filter(
+                ChapterProcessingJob.guideline_id.is_(None)
+            )
+        existing = existing_query.first()
 
         if existing:
             if existing.status == "running" and self._is_stale(existing):
@@ -57,8 +137,13 @@ class ChapterJobService:
             elif existing.status == "pending" and self._is_pending_stale(existing):
                 self._mark_pending_abandoned(existing)
             else:
+                scope = (
+                    f"chapter={chapter_id}"
+                    if not is_post_sync
+                    else f"chapter={chapter_id} guideline={guideline_id}"
+                )
                 raise ChapterJobLockError(
-                    f"Job already {existing.status} for chapter {chapter_id}: "
+                    f"Job already {existing.status} for {scope}: "
                     f"{existing.job_type} (started {existing.started_at})"
                 )
 
@@ -66,6 +151,7 @@ class ChapterJobService:
             id=str(uuid.uuid4()),
             book_id=book_id,
             chapter_id=chapter_id,
+            guideline_id=guideline_id,
             job_type=job_type,
             status="pending",
             total_items=total_items,
@@ -75,14 +161,15 @@ class ChapterJobService:
             self.db.add(job)
             self.db.commit()
             logger.info(
-                f"Job {job.id} created: chapter={chapter_id} type={job_type} "
-                f"total_items={total_items}"
+                f"Job {job.id} created: chapter={chapter_id} "
+                f"guideline={guideline_id} type={job_type} total_items={total_items}"
             )
             return job.id
         except IntegrityError:
             self.db.rollback()
             raise ChapterJobLockError(
-                f"Another job was just created for chapter {chapter_id}"
+                f"Another job was just created for chapter={chapter_id} "
+                f"guideline={guideline_id}"
             )
 
     def start_job(self, job_id: str):
@@ -161,14 +248,28 @@ class ChapterJobService:
         return self._to_response(job)
 
     def get_latest_job(
-        self, chapter_id: str, job_type: Optional[str] = None
+        self,
+        chapter_id: str,
+        job_type: Optional[str] = None,
+        guideline_id: Optional[str] = None,
     ) -> Optional[ProcessingJobResponse]:
-        """Get most recent job for a chapter. Detects stale jobs."""
+        """Get most recent job for a chapter (optionally scoped to topic).
+
+        When `guideline_id` is passed, the query filters by it (topic-scope).
+        When not passed, the query returns the most recent row matching the
+        other filters — which, for callers that still use the old
+        `lock_chapter_id = guideline_id or chapter_id` pattern, continues to
+        surface historical overloaded rows correctly.
+
+        Detects stale jobs as a side effect of reading the latest.
+        """
         query = self.db.query(ChapterProcessingJob).filter(
             ChapterProcessingJob.chapter_id == chapter_id
         )
         if job_type:
             query = query.filter(ChapterProcessingJob.job_type == job_type)
+        if guideline_id is not None:
+            query = query.filter(ChapterProcessingJob.guideline_id == guideline_id)
         job = query.order_by(ChapterProcessingJob.created_at.desc()).first()
 
         if not job:
@@ -182,12 +283,24 @@ class ChapterJobService:
 
         return self._to_response(job)
 
+    def _stale_or_abandoned(self, job: ChapterProcessingJob) -> bool:
+        """True if the job is stale (running, no heartbeat) or abandoned (pending too long)."""
+        if job.status == "running":
+            return self._is_stale(job)
+        if job.status == "pending":
+            return self._is_pending_stale(job)
+        return False
+
     def _is_stale(self, job: ChapterProcessingJob) -> bool:
         if not job.heartbeat_at:
+            if not job.started_at:
+                return True
             return (datetime.utcnow() - job.started_at) > _HEARTBEAT_THRESHOLD
         return (datetime.utcnow() - job.heartbeat_at) > _HEARTBEAT_THRESHOLD
 
     def _is_pending_stale(self, job: ChapterProcessingJob) -> bool:
+        if not job.started_at:
+            return True
         return (datetime.utcnow() - job.started_at) > _PENDING_THRESHOLD
 
     def _mark_stale(self, job: ChapterProcessingJob):
@@ -221,7 +334,7 @@ class ChapterJobService:
         job.status = "failed"
         job.completed_at = datetime.utcnow()
         job.error_message = (
-            f"Job abandoned (stuck in pending since {job.started_at.isoformat()})."
+            f"Job abandoned (stuck in pending since {job.started_at.isoformat() if job.started_at else 'never'})."
         )
         self.db.commit()
         logger.warning(f"Job {job.id} marked abandoned → failed")

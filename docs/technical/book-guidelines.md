@@ -283,7 +283,10 @@ Runs after all chunks are extracted. Returns a `FinalizationResult` with the con
 
 State machine: `pending -> running -> completed | completed_with_errors | failed`
 
-- Only one active job (pending/running) per chapter, enforced by partial unique index
+- **Reader-writer lock scopes:**
+  - *Chapter-level* (`guideline_id IS NULL`) — OCR, extraction, finalization, refresher. One active job per chapter (partial unique index `idx_chapter_active_chapter_job`).
+  - *Topic-level* (`guideline_id IS NOT NULL`) — post-sync stages (explanations, visuals, check-ins, practice bank, audio review, audio synthesis). One active job per `(chapter_id, guideline_id)` (partial unique index `idx_chapter_active_topic_job`).
+  - Chapter-level and topic-level are mutually exclusive in the same chapter. Two topic-level jobs on different guidelines in one chapter can run concurrently.
 - Stale detection: running jobs with no heartbeat for 30 minutes (`HEARTBEAT_STALE_THRESHOLD = 1800`) are auto-marked failed; pending jobs stuck for 5 minutes are marked abandoned. Threshold raised from 10 → 30 min because Opus + high reasoning effort calls can take 10+ min.
 - Progress updates include `current_item` description, `completed_items`/`failed_items` counts, and heartbeat timestamp
 - Jobs may save per-stage snapshots (`stage_snapshots_json`) for explanation generation runs — used by the admin UI to inspect how cards changed across refine rounds
@@ -668,6 +671,47 @@ The `/landing` endpoint reads the refresher's `metadata_json` to surface prerequ
 
 ---
 
+## Topic Pipeline Dashboard
+
+**Purpose:** one-view-per-topic admin hub that consolidates the 6 post-sync stage statuses and lets an admin run the full pipeline for a topic with a single click. Existing per-stage admin pages (`ExplanationAdmin`, `VisualsAdmin`, `PracticeBankAdmin`, etc.) remain the canonical surfaces for detailed work.
+
+**Route:** `/admin/books-v2/:bookId/pipeline/:chapterId/:topicKey`
+
+**6-stage ladder in DAG order:**
+
+```
+① Explanations → (② Visuals ∥ ③ Check-ins ∥ ④ Practice bank) → ⑤ Audio review → ⑥ Audio synthesis
+```
+
+**Stage states (six):** `done` / `warning` / `running` / `ready` / `blocked` / `failed`.
+
+**Staleness rule:** anchored to `max(topic_explanations.created_at)` for the guideline. Explanation regeneration does delete+insert (advances the anchor); visuals / check-ins / audio synthesis write `cards_json` in-place (do NOT advance the anchor). Only practice bank and audio review can go stale.
+
+**Super-button (per topic):** `POST /chapters/{chapter_id}/topics/{topic_key}/run-pipeline` with `{ quality_level, force, confirm_skip_review }`. Quality maps to per-stage review rounds:
+
+| Quality | Explanations | Visuals | Check-ins | Practice |
+|---------|---|---|---|---|
+| Fast | 0 | 0 | 0 | 0 |
+| Balanced | 2 | 1 | 1 | 2 |
+| Thorough | 3 | 2 | 2 | 3 |
+
+Orchestrator polls by `job_id` returned from each `launch_<stage>_job` helper — not `get_latest_job`, which would race with a freshly-committed job row.
+
+**Chapter-level runner:** `POST /chapters/{chapter_id}/run-pipeline-all` fans out per-topic orchestrators with bounded parallelism (`TOPIC_PIPELINE_MAX_PARALLEL_TOPICS = 4` default). A per-topic failure does NOT halt the chapter run; other topics keep going.
+
+**Endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../chapters/{chapter_id}/topics/{topic_key}/pipeline` | Consolidated 6-stage status for one topic (admin hub) |
+| POST | `.../chapters/{chapter_id}/topics/{topic_key}/run-pipeline` | Super-button: run all not-done stages in DAG order |
+| GET | `.../chapters/{chapter_id}/pipeline-summary` | Per-topic rollups for the chapter chip on BookV2Detail |
+| POST | `.../chapters/{chapter_id}/run-pipeline-all` | Chapter-wide fan-out: run every topic in parallel |
+
+**Fan-out on existing routes:** `POST /generate-explanations`, `/generate-visuals`, `/generate-check-ins`, `/generate-practice-banks`, `/generate-audio-review`, `/generate-audio` now return `FanOutJobResponse = { launched: int, job_ids: list[str], skipped_guidelines: list[str] }`. When `guideline_id` is omitted the route resolves all APPROVED guidelines in scope and launches one topic-level job per guideline; topics that already have an active job are reported in `skipped_guidelines` rather than aborting the batch.
+
+---
+
 ## Ingestion Quality Evaluation
 
 **Module:** `autoresearch/book_ingestion_quality/`
@@ -936,7 +980,10 @@ Legacy/unused prompts kept in `prompts/`: `explanation_critique.txt`, `explanati
 | `book_ingestion_v2/api/toc_routes.py` | TOC extraction + CRUD endpoints |
 | `book_ingestion_v2/api/page_routes.py` | Page upload, retry-OCR, page detail endpoints |
 | `book_ingestion_v2/api/processing_routes.py` | `/process`, `/reprocess`, `/refinalize`, bulk OCR (`/ocr-retry`, `/ocr-rerun`), `/jobs/latest`, `/topics`; `run_in_background_v2()` daemon-thread runner |
-| `book_ingestion_v2/api/sync_routes.py` | Sync, results, landing, guidelines admin (CRUD), explanations (generate/refine/status/detail/delete/stages), visuals (generate/status/jobs/strip), check-ins (generate/status/jobs), refresher (generate/jobs); contains `_run_explanation_generation`, `_run_visual_enrichment`, `_run_check_in_enrichment`, `_run_refresher_generation` background tasks |
+| `book_ingestion_v2/api/sync_routes.py` | Sync, results, landing, guidelines admin (CRUD), explanations (generate/refine/status/detail/delete/stages), visuals (generate/status/jobs/strip), check-ins (generate/status/jobs), refresher (generate/jobs), topic pipeline hub (GET `/chapters/{chapter_id}/topics/{topic_key}/pipeline`, POST `/.../run-pipeline`, GET `/chapters/{chapter_id}/pipeline-summary`, POST `/.../run-pipeline-all`); contains `_run_explanation_generation`, `_run_visual_enrichment`, `_run_check_in_enrichment`, `_run_refresher_generation` background tasks plus `_fan_out` + `_resolve_lookup_scope` helpers |
+| `book_ingestion_v2/services/stage_launchers.py` | Per-stage launcher helpers: `launch_explanation_job`, `launch_visual_job`, `launch_check_in_job`, `launch_practice_bank_job`, `launch_audio_review_job`, `launch_audio_synthesis_job`. Each encapsulates `acquire_lock` + `run_in_background_v2` and returns `job_id`. Consumed by `sync_routes.py` routes and `TopicPipelineOrchestrator`. |
+| `book_ingestion_v2/services/topic_pipeline_status_service.py` | Computes 6-stage pipeline status for one topic (ladder rows on the admin hub) and aggregate per-chapter summaries. Staleness anchored to `max(topic_explanations.created_at)` — in-place `cards_json` writes don't flip stale. |
+| `book_ingestion_v2/services/topic_pipeline_orchestrator.py` | DAG runner for the 6-stage pipeline: `① → (② ∥ ③ ∥ ④) → ⑤ → ⑥`. Polls by `job_id` (not `get_latest_job`) to avoid the freshly-committed race. `run_chapter_pipeline_all` wraps it with bounded parallelism for chapter-wide runs. |
 | `shared/repositories/book_repository.py` | Shared book data access |
 | `shared/repositories/explanation_repository.py` | CRUD for `topic_explanations` table (written by ingestion pipeline, read by tutor); `get_variant_counts_for_chapter`, `delete_by_chapter`, `delete_by_guideline_id` |
 | `shared/models/entities.py` | ORM models: `StudyPlan` (study_plans table), `TopicExplanation` (topic_explanations table, JSONB cards), `TeachingGuideline` |
