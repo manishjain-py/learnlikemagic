@@ -2519,8 +2519,10 @@ body {
   height: auto !important;
 }
 
-/* Lets vertical scroll/horizontal swipe pass through to the card container.
-   Remove if the iframe ever renders interactive (drag/tap) Pixi content. */
+/* Belt: outer iframe is non-interactive. iOS WebKit does NOT respect this
+   reliably for sandboxed srcdoc iframes — the inner document's own
+   pointer-events: none + touch-action: none (see VisualExplanation.tsx
+   buildSrcdoc) is the suspenders that actually lets touches pass through. */
 .visual-canvas-pixi iframe {
   pointer-events: none;
 }

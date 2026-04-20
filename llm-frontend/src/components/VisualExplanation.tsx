@@ -32,8 +32,13 @@ export default function VisualExplanation({ visual, autoStart }: Props) {
 <head>
 <style>
   * { margin: 0; padding: 0; }
-  body { background: #1a1a2e; overflow: hidden; }
-  canvas { display: block; width: 100% !important; height: auto !important; }
+  /* pointer-events: none on body + canvas + touch-action: none guarantees the iframe
+     can never capture touches — so vertical scroll and horizontal card swipe always
+     pass through to the parent document. iOS WebKit ignores pointer-events: none set
+     on the <iframe> element itself for cross-origin sandboxed content, so this must
+     be declared inside the iframe's own document. */
+  html, body { pointer-events: none; touch-action: none; background: #1a1a2e; overflow: hidden; }
+  canvas { display: block; width: 100% !important; height: auto !important; pointer-events: none; touch-action: none; }
 </style>
 </head>
 <body>
@@ -43,6 +48,9 @@ export default function VisualExplanation({ visual, autoStart }: Props) {
   try {
     const app = new PIXI.Application();
     await app.init({ width: 500, height: 350, backgroundColor: 0x1a1a2e, antialias: true });
+    // Disable Pixi's event system — nothing inside should intercept touches.
+    app.stage.eventMode = 'none';
+    app.stage.interactiveChildren = false;
     document.body.appendChild(app.canvas);
     const fn = new Function('app', 'PIXI', ${JSON.stringify(code)});
     fn(app, PIXI);
