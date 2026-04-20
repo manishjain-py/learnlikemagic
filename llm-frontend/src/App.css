@@ -2519,6 +2519,12 @@ body {
   height: auto !important;
 }
 
+/* Lets vertical scroll/horizontal swipe pass through to the card container.
+   Remove if the iframe ever renders interactive (drag/tap) Pixi content. */
+.visual-canvas-pixi iframe {
+  pointer-events: none;
+}
+
 .visual-error {
   text-align: center;
   color: #f87171;
