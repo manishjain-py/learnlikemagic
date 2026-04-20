@@ -1,17 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 interface Props {
   checkIn: CheckInActivity;
@@ -20,6 +10,7 @@ interface Props {
 
 export default function TrueFalseActivity({ checkIn, onComplete }: Props) {
   const correctAnswer = checkIn.correct_answer ?? true;
+  const { play: playTTS } = useCheckInAudio();
 
   const [answered, setAnswered] = useState<boolean | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
@@ -54,7 +45,7 @@ export default function TrueFalseActivity({ checkIn, onComplete }: Props) {
         playTTS(checkIn.hint);
       }
     }
-  }, [isCorrect, correctAnswer, hintShown, checkIn, handleComplete]);
+  }, [isCorrect, correctAnswer, hintShown, checkIn, handleComplete, playTTS]);
 
   return (
     <div className="checkin-activity">

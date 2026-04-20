@@ -184,10 +184,6 @@ export default function ChatSession() {
   const isSpeaking = playingSlideId !== null;
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
   const focusTrackRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const focusSwipeStartX = useRef(0);
-  const focusSwipeStartY = useRef(0);
-  const focusSwipeDir = useRef<'h' | 'v' | null>(null);
   const prevSlidesLen = useRef(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1065,63 +1061,6 @@ export default function ChatSession() {
     }
   };
 
-  const getContainerWidth = () => containerRef.current?.clientWidth || window.innerWidth;
-
-  const handleFocusSwipeStart = (e: React.TouchEvent) => {
-    focusSwipeStartX.current = e.touches[0].clientX;
-    focusSwipeStartY.current = e.touches[0].clientY;
-    focusSwipeDir.current = null;
-    if (focusTrackRef.current) {
-      focusTrackRef.current.style.transition = 'none';
-    }
-  };
-
-  const handleFocusSwipeMove = (e: React.TouchEvent) => {
-    const dx = e.touches[0].clientX - focusSwipeStartX.current;
-    const dy = e.touches[0].clientY - focusSwipeStartY.current;
-
-    if (focusSwipeDir.current === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
-      focusSwipeDir.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
-    }
-
-    if (focusSwipeDir.current === 'h') {
-      const w = getContainerWidth();
-      const pxOffset = -(Math.min(currentSlideIdx, carouselSlides.length - 1) * w) + dx;
-      if (focusTrackRef.current) {
-        focusTrackRef.current.style.transform = `translateX(${pxOffset}px)`;
-      }
-    }
-  };
-
-  const handleFocusSwipeEnd = (e: React.TouchEvent) => {
-    let newIdx = currentSlideIdx;
-    if (focusSwipeDir.current === 'h') {
-      const dx = e.changedTouches[0].clientX - focusSwipeStartX.current;
-      if (dx > 80 && currentSlideIdx > 0) {
-        newIdx = currentSlideIdx - 1;
-      } else if (dx < -80 && currentSlideIdx < carouselSlides.length - 1
-          && !(carouselSlides[currentSlideIdx]?.type === 'check_in' && !completedCheckIns.has(carouselSlides[currentSlideIdx]?.id || ''))) {
-        newIdx = currentSlideIdx + 1;
-      }
-      if (newIdx !== currentSlideIdx) {
-        setCurrentSlideIdx(newIdx);
-        // Persist position for card phase
-        if (sessionPhase === 'card_phase' && sessionId) {
-          localStorage.setItem(`slide-pos-${sessionId}`, String(newIdx));
-          // Notify server of card position (skip welcome slide)
-          if (newIdx > 0 && wsRef.current) {
-            wsRef.current.sendJson({ type: 'card_navigate', payload: { card_idx: newIdx - 1 } });
-          }
-        }
-      }
-    }
-    if (focusTrackRef.current) {
-      focusTrackRef.current.style.transition = 'transform 0.3s ease-out';
-      focusTrackRef.current.style.transform = `translateX(${-(newIdx * 100)}%)`;
-    }
-    focusSwipeDir.current = null;
-  };
-
   // ─── Card phase action handler ─────────────────────────────────────
   const handleCardAction = async (action: 'clear' | 'explain_differently') => {
     if (!sessionId) return;
@@ -1447,13 +1386,8 @@ export default function ChatSession() {
               )}
             </div>
           ) : (
-            <div className="focus-carousel" ref={containerRef}>
-              <div
-                className="focus-track-container"
-                onTouchStart={handleFocusSwipeStart}
-                onTouchMove={handleFocusSwipeMove}
-                onTouchEnd={handleFocusSwipeEnd}
-              >
+            <div className="focus-carousel">
+              <div className="focus-track-container">
                 <div
                   ref={focusTrackRef}
                   className="focus-track"
@@ -1720,7 +1654,7 @@ export default function ChatSession() {
                 )
               ) : !loading ? (
                 currentSlideIdx < carouselSlides.length - 1 ? (
-                  /* User swiped back to a previous slide — show nav only */
+                  /* User navigated back to a previous slide — show nav only */
                   <div className="explanation-nav">
                     <div className="explanation-nav-row">
                       <button

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 // Re-export for backward compatibility
 export type MatchActivityResult = CheckInActivityResult;
@@ -8,18 +9,6 @@ export type MatchActivityResult = CheckInActivityResult;
 interface MatchActivityProps {
   checkIn: CheckInActivity;
   onComplete: (result: CheckInActivityResult) => void;
-}
-
-/** Play a short TTS string — fire-and-forget, errors silently ignored */
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
 }
 
 const AUTO_REVEAL_THRESHOLD = 5;
@@ -36,6 +25,7 @@ function shuffle(arr: number[]): number[] {
 
 export default function MatchActivity({ checkIn, onComplete }: MatchActivityProps) {
   const pairs = checkIn.pairs;
+  const { play: playTTS } = useCheckInAudio();
 
   // Shuffled indices for right column (stable across re-renders)
   const shuffledRight = useMemo(
@@ -118,7 +108,7 @@ export default function MatchActivity({ checkIn, onComplete }: MatchActivityProp
         }
       }
     }
-  }, [selectedLeft, shuffledRight, matchedPairs, autoRevealed, wrongAttempts, pairs.length, checkIn]);
+  }, [selectedLeft, shuffledRight, matchedPairs, autoRevealed, wrongAttempts, pairs.length, checkIn, playTTS]);
 
   const handleComplete = useCallback(() => {
     const confusedPairs: PairStruggle[] = [];
