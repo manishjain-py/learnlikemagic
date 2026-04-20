@@ -255,6 +255,8 @@ MASTER_TUTOR_BRIDGE_PROMPT = PromptTemplate(
 {notes_section}
 
 {instruction}
+
+Language: Student is Indian, English is their second language. Every sentence under 15 words. No idioms, no phrasal verbs, no complex grammar. Reuse the same simple words the cards used — do not "upgrade" vocabulary.
 """,
     name="master_tutor_bridge",
 )

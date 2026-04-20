@@ -21,6 +21,7 @@ Refine the study plan to address the feedback.
 - Keep what works.
 - Fix what is broken.
 - Ensure the output is still VALID JSON following the same schema.
+- Language: Student is Indian, English is their second language. Titles, descriptions, and analogies must use basic, everyday words. No idioms, no phrasal verbs, no complex grammar. Use everyday Indian life (rupees, cricket, chapati, Indian names) as the default — never label it as "the Indian way" or compare to "Western."
 
 ## Output Schema (JSON)
 {{

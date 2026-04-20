@@ -11,9 +11,11 @@ EXPLANATION CARDS TO REVIEW:
 REVIEW EACH CARD AGAINST THESE 12 PRINCIPLES:
 
 1. Use the Simplest Words the Student Would Use
+   - The student is Indian — English is NOT their first language. Flag any idiom, phrasal verb ("figure out", "come up with"), or word a Grade {grade} Indian ESL child wouldn't use daily. Flag any sentence over 15 words.
    - Are there words a Grade {grade} student wouldn't naturally say? Replace them with simpler alternatives.
    - Are technical terms introduced gently with plain-language explanations alongside?
    - Read each card imagining a struggling student — would they have to re-read any sentence?
+   - Does any card label the student's context as "the Indian way" or compare to a "Western / American / international" way? Flag these — the student's world is the default, not a variant.
 
 2. One Idea Per Card
    - Does any card try to teach more than one concept?

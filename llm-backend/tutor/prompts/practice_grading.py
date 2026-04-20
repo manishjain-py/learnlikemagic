@@ -29,6 +29,8 @@ Then write ONE short sentence (<= 18 words) of kid-friendly feedback:
 
 Tone: warm, concrete, no jargon. Address the student directly ("you").
 
+Language: Student is Indian, English is their second language. Sentence under 12 words. No idioms, no phrasal verbs, no complex grammar. Use everyday Indian life (rupees, cricket, chapati, Indian names) as the default — never label it as "the Indian way" or compare to "Western."
+
 INPUT:
 Question: {question_text}
 Expected answer: {expected_answer}
@@ -46,7 +48,7 @@ Write ONE short sentence (<= 20 words) of kid-friendly feedback that:
   - Names the correct answer clearly
   - Gives the one key reason their pick was off
   - Does not scold; assume they're trying
-  - Uses simple words, no jargon
+  - Student is Indian, English is their second language. Sentence under 12 words. No idioms, no phrasal verbs, no complex grammar. Use everyday Indian life (rupees, cricket, chapati, Indian names) as the default — never label it as "the Indian way" or compare to "Western."
 
 If the student did not pick anything (blank answer), explain what the correct
 answer is and why — frame it as "the answer is..." rather than "you should

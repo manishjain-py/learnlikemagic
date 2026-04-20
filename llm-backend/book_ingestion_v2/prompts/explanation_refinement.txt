@@ -18,5 +18,7 @@ CRITIQUE FEEDBACK:
 TASK:
 Revise the cards to address the issues and incorporate the suggestions. Keep the same variant approach. You may add, remove, reorder, or rewrite cards as needed. Maintain all 12 explanation principles.
 
+Language: Student is Indian, English is their second language. Every sentence under 15 words. No idioms, no phrasal verbs, no complex grammar. Use everyday Indian life (rupees, cricket, chapati, Indian names, lakh/crore, Indian comma grouping) as the default — never label it as "the Indian way" or compare to "Western / American / international." If a concept has a regional variant, teach their form as THE form. Only compare when the teaching guideline itself teaches comparison.
+
 OUTPUT FORMAT — respond with valid JSON only, no other text:
 {output_schema}
