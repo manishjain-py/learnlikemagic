@@ -1,17 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 interface Props {
   checkIn: CheckInActivity;
@@ -22,6 +12,7 @@ export default function FillBlankActivity({ checkIn, onComplete }: Props) {
   const options = checkIn.options || [];
   const correctIdx = checkIn.correct_index ?? 0;
   const instruction = checkIn.instruction || '';
+  const { play: playTTS } = useCheckInAudio();
 
   // Split on ___ to render the blank visually
   const parts = instruction.split('___');
@@ -63,7 +54,7 @@ export default function FillBlankActivity({ checkIn, onComplete }: Props) {
         playTTS(checkIn.hint);
       }
     }
-  }, [isCorrect, correctIdx, hintShown, options, checkIn, handleComplete]);
+  }, [isCorrect, correctIdx, hintShown, options, checkIn, handleComplete, playTTS]);
 
   return (
     <div className="checkin-activity">

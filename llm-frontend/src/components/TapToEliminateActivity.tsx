@@ -1,17 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 interface Props {
   checkIn: CheckInActivity;
@@ -21,6 +11,7 @@ interface Props {
 export default function TapToEliminateActivity({ checkIn, onComplete }: Props) {
   const options = checkIn.options || [];
   const correctIdx = checkIn.correct_index ?? 0;
+  const { play: playTTS } = useCheckInAudio();
 
   const [eliminated, setEliminated] = useState<Set<number>>(new Set());
   const [wrongCount, setWrongCount] = useState(0);
@@ -56,7 +47,7 @@ export default function TapToEliminateActivity({ checkIn, onComplete }: Props) {
         playTTS(checkIn.success_message);
       }
     }
-  }, [showSuccess, eliminated, correctIdx, options, hintShown, checkIn]);
+  }, [showSuccess, eliminated, correctIdx, options, hintShown, checkIn, playTTS]);
 
   const handleComplete = useCallback(() => {
     onComplete({

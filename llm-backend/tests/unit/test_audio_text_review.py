@@ -50,14 +50,23 @@ def _explanation_card(card_idx: int = 1, lines: list[dict] | None = None) -> dic
     }
 
 
-def _check_in_card(card_idx: int = 5, audio_text: str = "", instruction: str = "") -> dict:
-    return {
+def _check_in_card(
+    card_idx: int = 5,
+    audio_text: str = "",
+    instruction: str = "",
+    *,
+    check_in: dict | None = None,
+) -> dict:
+    card = {
         "card_idx": card_idx,
         "card_type": "check_in",
         "title": "Quick check",
         "instruction": instruction or "Pick the right one",
         "audio_text": audio_text,
     }
+    if check_in is not None:
+        card["check_in"] = check_in
+    return card
 
 
 def _guideline():
@@ -233,6 +242,198 @@ class TestApplyRevisions:
         applied = service._apply_revisions(card, [rev])
         assert applied == 0
         assert card["audio_text"] == "current text"
+
+    def test_check_in_text_also_mirrors_onto_nested_and_clears_url(self):
+        """Applying check_in_text mirrors the edit onto check_in.audio_text and
+        clears the nested URL so the next synth re-generates."""
+        service, _ = _make_service()
+        card = _check_in_card(
+            audio_text="Pick 5+3=8",
+            check_in={
+                "activity_type": "pick_one",
+                "audio_text": "Pick 5+3=8",
+                "audio_text_url": "https://s3/old.mp3",
+                "hint": "h", "success_message": "s",
+            },
+        )
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_text",
+            original_audio="Pick 5+3=8",
+            revised_audio="Pick five plus three equals eight",
+            reason="symbol leak",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 1
+        assert card["audio_text"] == "Pick five plus three equals eight"
+        assert card["check_in"]["audio_text"] == "Pick five plus three equals eight"
+        assert card["check_in"]["audio_text_url"] is None
+
+    def test_applies_check_in_hint_and_clears_hint_url(self):
+        service, _ = _make_service()
+        card = _check_in_card(
+            check_in={
+                "activity_type": "pick_one",
+                "hint": "2+3=5 so pair with 7",
+                "hint_audio_url": "https://s3/old-hint.mp3",
+                "success_message": "s",
+                "audio_text": "at",
+            },
+        )
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_hint",
+            original_audio="2+3=5 so pair with 7",
+            revised_audio="two plus three equals five, so pair it with seven",
+            reason="symbol leak",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 1
+        ci = card["check_in"]
+        assert ci["hint"] == "two plus three equals five, so pair it with seven"
+        assert ci["hint_audio_url"] is None
+        # success untouched
+        assert ci["success_message"] == "s"
+
+    def test_applies_check_in_success_and_clears_url(self):
+        service, _ = _make_service()
+        card = _check_in_card(
+            check_in={
+                "activity_type": "true_false",
+                "hint": "h",
+                "success_message": "Right! 5*2=10.",
+                "success_audio_url": "https://s3/old.mp3",
+                "audio_text": "at",
+            },
+        )
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_success",
+            original_audio="Right! 5*2=10.",
+            revised_audio="Right! five times two equals ten.",
+            reason="symbol leak",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 1
+        assert card["check_in"]["success_message"] == "Right! five times two equals ten."
+        assert card["check_in"]["success_audio_url"] is None
+
+    def test_applies_check_in_reveal_only_for_predict_then_reveal(self):
+        service, _ = _make_service()
+        card = _check_in_card(
+            check_in={
+                "activity_type": "predict_then_reveal",
+                "hint": "h", "success_message": "s", "audio_text": "at",
+                "reveal_text": "Actually, 3*4=12.",
+                "reveal_audio_url": "https://s3/old.mp3",
+            },
+        )
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_reveal",
+            original_audio="Actually, 3*4=12.",
+            revised_audio="Actually, three times four equals twelve.",
+            reason="symbol leak",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 1
+        assert card["check_in"]["reveal_text"] == "Actually, three times four equals twelve."
+        assert card["check_in"]["reveal_audio_url"] is None
+
+    def test_drops_check_in_reveal_on_non_predict_activity(self):
+        service, _ = _make_service()
+        card = _check_in_card(
+            check_in={
+                "activity_type": "pick_one",  # not predict_then_reveal
+                "hint": "h", "success_message": "s", "audio_text": "at",
+                "reveal_text": "x",
+            },
+        )
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_reveal",
+            original_audio="x", revised_audio="y", reason="test",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 0
+        # Original value preserved
+        assert card["check_in"]["reveal_text"] == "x"
+
+    def test_drops_check_in_hint_on_drift(self):
+        service, _ = _make_service()
+        card = _check_in_card(
+            check_in={
+                "activity_type": "pick_one",
+                "hint": "current hint", "success_message": "s", "audio_text": "at",
+            },
+        )
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_hint",
+            original_audio="stale hint",  # drift
+            revised_audio="new hint", reason="test",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 0
+        assert card["check_in"]["hint"] == "current hint"
+
+    def test_drops_check_in_kind_on_wrong_card_type(self):
+        service, _ = _make_service()
+        card = _explanation_card()
+        for kind in ("check_in_hint", "check_in_success", "check_in_reveal"):
+            rev = AudioLineRevision(
+                card_idx=1, line_idx=None, kind=kind,
+                original_audio="x", revised_audio="y", reason="test",
+            )
+            applied = service._apply_revisions(card, [rev])
+            assert applied == 0, f"Should drop {kind} on non-check-in card"
+
+    def test_drops_check_in_kind_when_check_in_dict_missing(self):
+        service, _ = _make_service()
+        # Card marked check_in but no nested dict
+        card = _check_in_card(audio_text="at")  # No check_in= kwarg
+        assert "check_in" not in card
+        rev = AudioLineRevision(
+            card_idx=5, line_idx=None, kind="check_in_hint",
+            original_audio="x", revised_audio="y", reason="test",
+        )
+        applied = service._apply_revisions(card, [rev])
+        assert applied == 0
+
+
+class TestStripAudioUrls:
+    """_strip_audio_urls — pre-LLM sanitizer."""
+
+    def test_strips_line_audio_urls(self):
+        service, _ = _make_service()
+        card = _explanation_card(lines=[
+            _line("a", audio_url="https://s3/a.mp3"),
+            _line("b", audio_url="https://s3/b.mp3"),
+        ])
+        out = service._strip_audio_urls(card)
+        assert all("audio_url" not in l for l in out["lines"])
+        # Original card untouched (deep-copy)
+        assert card["lines"][0]["audio_url"] == "https://s3/a.mp3"
+
+    def test_strips_check_in_nested_audio_urls(self):
+        service, _ = _make_service()
+        card = _check_in_card(
+            audio_text="at",
+            check_in={
+                "activity_type": "predict_then_reveal",
+                "audio_text": "at",
+                "hint": "h", "success_message": "s", "reveal_text": "r",
+                "audio_text_url": "https://s3/1.mp3",
+                "hint_audio_url": "https://s3/2.mp3",
+                "success_audio_url": "https://s3/3.mp3",
+                "reveal_audio_url": "https://s3/4.mp3",
+            },
+        )
+        out = service._strip_audio_urls(card)
+        ci = out["check_in"]
+        for url_field in (
+            "audio_text_url", "hint_audio_url",
+            "success_audio_url", "reveal_audio_url",
+        ):
+            assert url_field not in ci, f"{url_field} should be stripped"
+        # Text content preserved
+        assert ci["hint"] == "h"
+        # Original card untouched
+        assert card["check_in"]["audio_text_url"] == "https://s3/1.mp3"
 
 
 class TestCollectSnapshot:

@@ -464,29 +464,25 @@ class TopicPipelineStatusService:
         if not explanations_done:
             return _build_blocked("audio_synthesis", blocked_by="explanations", job=job)
 
-        total_lines = 0
-        lines_with_audio = 0
-        for expl in explanations:
-            for card in expl.cards_json or []:
-                if not isinstance(card, dict):
-                    continue
-                for line in card.get("lines") or []:
-                    if not isinstance(line, dict):
-                        continue
-                    total_lines += 1
-                    if line.get("audio_url"):
-                        lines_with_audio += 1
+        from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
 
-        if total_lines == 0:
-            summary = "No audio lines yet"
+        total_clips = 0
+        clips_with_audio = 0
+        for expl in explanations:
+            t, w = AudioGenerationService.count_audio_items(expl.cards_json or [])
+            total_clips += t
+            clips_with_audio += w
+
+        if total_clips == 0:
+            summary = "No audio clips yet"
             artifact_present = False
         else:
-            summary = f"{lines_with_audio}/{total_lines} lines have audio"
-            artifact_present = lines_with_audio > 0
+            summary = f"{clips_with_audio}/{total_clips} audio clips have pre-computed MP3"
+            artifact_present = clips_with_audio > 0
 
-        if total_lines > 0 and lines_with_audio == total_lines:
+        if total_clips > 0 and clips_with_audio == total_clips:
             state: StageState = "done"
-        elif 0 < lines_with_audio < total_lines:
+        elif 0 < clips_with_audio < total_clips:
             state = "warning"
         else:
             state = "ready"

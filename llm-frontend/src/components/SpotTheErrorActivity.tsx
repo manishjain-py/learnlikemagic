@@ -1,17 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 interface Props {
   checkIn: CheckInActivity;
@@ -21,6 +11,7 @@ interface Props {
 export default function SpotTheErrorActivity({ checkIn, onComplete }: Props) {
   const steps = checkIn.error_steps || [];
   const errorIdx = checkIn.error_index ?? 0;
+  const { play: playTTS } = useCheckInAudio();
 
   const [tappedIdx, setTappedIdx] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
@@ -46,7 +37,7 @@ export default function SpotTheErrorActivity({ checkIn, onComplete }: Props) {
     if (idx === errorIdx) {
       setTappedIdx(idx);
       setIsCorrect(true);
-      playTTS(checkIn.success_message);
+      playTTS(checkIn.success_message, checkIn.success_audio_url);
       handleComplete();
     } else {
       setWrongCount(prev => prev + 1);
@@ -55,10 +46,10 @@ export default function SpotTheErrorActivity({ checkIn, onComplete }: Props) {
       setTimeout(() => setShakeIdx(null), 500);
       if (!hintShown) {
         setHintShown(true);
-        playTTS(checkIn.hint);
+        playTTS(checkIn.hint, checkIn.hint_audio_url);
       }
     }
-  }, [isCorrect, errorIdx, hintShown, steps, checkIn, handleComplete]);
+  }, [isCorrect, errorIdx, hintShown, steps, checkIn, handleComplete, playTTS]);
 
   return (
     <div className="checkin-activity">

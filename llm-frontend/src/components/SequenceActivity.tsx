@@ -1,17 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 /** Fisher-Yates shuffle */
 function shuffle<T>(arr: T[]): T[] {
@@ -30,6 +20,7 @@ interface Props {
 
 export default function SequenceActivity({ checkIn, onComplete }: Props) {
   const correctOrder = checkIn.sequence_items || [];
+  const { play: playTTS } = useCheckInAudio();
 
   // Shuffled items for display (stable across re-renders)
   const shuffledItems = useMemo(() => shuffle(correctOrder), [correctOrder]);
@@ -77,7 +68,7 @@ export default function SequenceActivity({ checkIn, onComplete }: Props) {
         setHintCount(prev => prev + 1);
       }
     }
-  }, [placedOrder, nextSlot, correctOrder, showSuccess, hintShown, checkIn]);
+  }, [placedOrder, nextSlot, correctOrder, showSuccess, hintShown, checkIn, playTTS]);
 
   const handleComplete = useCallback(() => {
     const confusedPairs: PairStruggle[] = [];

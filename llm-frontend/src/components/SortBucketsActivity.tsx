@@ -1,17 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { CheckInActivity, BucketItem, synthesizeSpeech } from '../api';
+import { CheckInActivity, BucketItem } from '../api';
 import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 /** Fisher-Yates shuffle */
 function shuffle<T>(arr: T[]): T[] {
@@ -33,6 +23,7 @@ interface Props {
 export default function SortBucketsActivity({ checkIn, onComplete }: Props) {
   const bucketNames = checkIn.bucket_names || [];
   const items = useMemo(() => shuffle(checkIn.bucket_items || []), [checkIn.bucket_items]);
+  const { play: playTTS } = useCheckInAudio();
 
   const [selectedItem, setSelectedItem] = useState<number | null>(null);
   const [placed, setPlaced] = useState<Map<number, number>>(new Map()); // itemIdx → bucketIdx
@@ -103,7 +94,7 @@ export default function SortBucketsActivity({ checkIn, onComplete }: Props) {
         }
       }
     }
-  }, [selectedItem, items, placed, autoRevealed, wrongAttempts, hintShown, bucketNames, checkIn]);
+  }, [selectedItem, items, placed, autoRevealed, wrongAttempts, hintShown, bucketNames, checkIn, playTTS]);
 
   const handleComplete = useCallback(() => {
     const confusedPairs: PairStruggle[] = [];

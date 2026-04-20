@@ -99,6 +99,13 @@ export interface CheckInActivity {
   success_message: string;
   audio_text: string;
 
+  // Pre-computed TTS audio URLs (populated by offline synth; optional).
+  // Frontend falls back to live synthesizeSpeech when any URL is absent.
+  audio_text_url?: string;
+  hint_audio_url?: string;
+  success_audio_url?: string;
+  reveal_audio_url?: string;  // predict_then_reveal only
+
   // pick_one / fill_blank / predict_then_reveal / tap_to_eliminate
   options?: string[];
   correct_index?: number;

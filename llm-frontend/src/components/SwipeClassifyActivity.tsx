@@ -1,17 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { CheckInActivity, BucketItem, synthesizeSpeech } from '../api';
+import { CheckInActivity, BucketItem } from '../api';
 import { CheckInActivityResult, PairStruggle } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -30,6 +20,7 @@ interface Props {
 export default function SwipeClassifyActivity({ checkIn, onComplete }: Props) {
   const categories = checkIn.bucket_names || [];
   const items = useMemo(() => shuffle(checkIn.bucket_items || []), [checkIn.bucket_items]);
+  const { play: playTTS } = useCheckInAudio();
 
   const [currentIdx, setCurrentIdx] = useState(0);
   const [wrongAttempts, setWrongAttempts] = useState<Map<number, number>>(new Map());
@@ -85,7 +76,7 @@ export default function SwipeClassifyActivity({ checkIn, onComplete }: Props) {
         playTTS(checkIn.hint);
       }
     }
-  }, [isFinished, currentItem, currentIdx, items, categories, wrongAttempts, checkIn]);
+  }, [isFinished, currentItem, currentIdx, items, categories, wrongAttempts, checkIn, playTTS]);
 
   // Touch handlers for swipe gesture
   const handleTouchStart = useCallback((e: React.TouchEvent) => {

@@ -37,7 +37,7 @@ export default function PickOneActivity({ checkIn, onComplete }: Props) {
     if (idx === correctIdx) {
       setSelected(idx);
       setIsCorrect(true);
-      playTTS(checkIn.success_message);
+      playTTS(checkIn.success_message, checkIn.success_audio_url);
       handleComplete();
     } else {
       setWrongCount(prev => prev + 1);
@@ -46,7 +46,7 @@ export default function PickOneActivity({ checkIn, onComplete }: Props) {
       setTimeout(() => setShakeIdx(null), 500);
       if (!hintShown) {
         setHintShown(true);
-        playTTS(checkIn.hint);
+        playTTS(checkIn.hint, checkIn.hint_audio_url);
       }
     }
   }, [isCorrect, correctIdx, hintShown, options, checkIn, handleComplete, playTTS]);

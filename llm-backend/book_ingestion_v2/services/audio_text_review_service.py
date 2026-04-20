@@ -45,8 +45,20 @@ class AudioLineRevision(BaseModel):
         default=None,
         description="0-based line index within the card. NULL for check-in cards.",
     )
-    kind: Literal["line", "check_in_text"] = Field(
-        description="'line' = entry in card.lines[].audio; 'check_in_text' = top-level audio_text on a check_in card"
+    kind: Literal[
+        "line",
+        "check_in_text",
+        "check_in_hint",
+        "check_in_success",
+        "check_in_reveal",
+    ] = Field(
+        description=(
+            "'line' = entry in card.lines[].audio; "
+            "'check_in_text' = top-level audio_text on a check_in card; "
+            "'check_in_hint' = check_in.hint; "
+            "'check_in_success' = check_in.success_message; "
+            "'check_in_reveal' = check_in.reveal_text (predict_then_reveal only)"
+        )
     )
     original_audio: str = Field(description="Current audio string (for drift guard)")
     revised_audio: str = Field(description="New audio string")
@@ -314,6 +326,15 @@ class AudioTextReviewService:
                 return False
         return True
 
+    # kind → (nested-field on check_in, url-field on check_in) for the three
+    # check-in nested revision kinds. `check_in_text` is a special case
+    # (top-level card.audio_text) handled separately.
+    _CHECK_IN_NESTED_KINDS = {
+        "check_in_hint": ("hint", "hint_audio_url"),
+        "check_in_success": ("success_message", "success_audio_url"),
+        "check_in_reveal": ("reveal_text", "reveal_audio_url"),
+    }
+
     def _apply_revisions(
         self, card: dict, revisions: list[AudioLineRevision]
     ) -> int:
@@ -333,6 +354,43 @@ class AudioTextReviewService:
                     )
                     continue
                 card["audio_text"] = rev.revised_audio
+                # Mirror the top-level edit onto check_in.audio_text so the
+                # nested dict (read by the frontend) stays in sync, and clear
+                # its URL so the next synth pass re-generates the MP3.
+                check_in = card.get("check_in")
+                if isinstance(check_in, dict):
+                    check_in["audio_text"] = rev.revised_audio
+                    check_in["audio_text_url"] = None
+                applied += 1
+            elif rev.kind in self._CHECK_IN_NESTED_KINDS:
+                if card.get("card_type") != "check_in":
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} kind={rev.kind} — "
+                        f"card_type is '{card.get('card_type')}', not 'check_in'"
+                    )
+                    continue
+                check_in = card.get("check_in")
+                if not isinstance(check_in, dict):
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} kind={rev.kind} — "
+                        f"card has no check_in dict"
+                    )
+                    continue
+                text_field, url_field = self._CHECK_IN_NESTED_KINDS[rev.kind]
+                if rev.kind == "check_in_reveal" and check_in.get("activity_type") != "predict_then_reveal":
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} kind=check_in_reveal — "
+                        f"activity_type is '{check_in.get('activity_type')}', not 'predict_then_reveal'"
+                    )
+                    continue
+                if check_in.get(text_field) != rev.original_audio:
+                    logger.info(
+                        f"Dropping revision card_idx={rev.card_idx} kind={rev.kind} — "
+                        f"drift detected (original_audio mismatch)"
+                    )
+                    continue
+                check_in[text_field] = rev.revised_audio
+                check_in[url_field] = None
                 applied += 1
             else:  # "line"
                 lines = card.get("lines") or []
@@ -358,6 +416,13 @@ class AudioTextReviewService:
         out = copy.deepcopy(card)
         for line in (out.get("lines") or []):
             line.pop("audio_url", None)
+        check_in = out.get("check_in")
+        if isinstance(check_in, dict):
+            for url_field in (
+                "audio_text_url", "hint_audio_url",
+                "success_audio_url", "reveal_audio_url",
+            ):
+                check_in.pop(url_field, None)
         return out
 
     def _collect_snapshot(

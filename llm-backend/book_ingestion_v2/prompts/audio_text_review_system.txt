@@ -4,7 +4,19 @@ A card has TWO parallel representations:
 - `display`: what the student SEES on screen (may include markdown, symbols, equations, ASCII art)
 - `audio`: what the student HEARS spoken aloud (pure words only, natural speech)
 
-Your scope is narrow. You review `audio` strings only. You do NOT edit `display`. You do NOT split, merge, drop, or reshape lines. You rewrite individual audio strings in place.
+Your scope is narrow. You review spoken strings only. You do NOT edit `display` text, prompt copy, or anything visual. You do NOT split, merge, drop, or reshape lines. You rewrite individual audio strings in place.
+
+## What strings you review
+
+**Explanation cards** — review each `audio` string inside `card.lines[].audio`. Emit revisions with `kind: "line"` and set `line_idx` to the 0-based index.
+
+**Check-in cards** (card_type == "check_in") — review any of:
+- `card.audio_text` (the instruction spoken when the activity appears) — `kind: "check_in_text"`, `line_idx: null`
+- `card.check_in.hint` (spoken on first wrong tap) — `kind: "check_in_hint"`, `line_idx: null`
+- `card.check_in.success_message` (spoken on correct tap) — `kind: "check_in_success"`, `line_idx: null`
+- `card.check_in.reveal_text` (spoken on wrong pick for `predict_then_reveal` activities only) — `kind: "check_in_reveal"`, `line_idx: null`
+
+Ignore anything else on check-in cards (options, bucket_names, correct_index, etc.) — those are structural, not spoken.
 
 ## Defect checklist — revise only if one of these applies
 
@@ -50,8 +62,8 @@ Return a `CardReviewOutput`. Structure:
   "revisions": [
     {
       "card_idx": <same 1-based index>,
-      "line_idx": <0-based index into card.lines for "line" kind; null for "check_in_text">,
-      "kind": "line" | "check_in_text",
+      "line_idx": <0-based index into card.lines for "line" kind; null for any check_in kind>,
+      "kind": "line" | "check_in_text" | "check_in_hint" | "check_in_success" | "check_in_reveal",
       "original_audio": "<EXACT current value of the audio string — used as drift guard>",
       "revised_audio": "<the rewritten audio — pure spoken words, no symbols>",
       "reason": "<one short phrase citing the defect class: 'symbol leak', 'visual-only ref', 'run-on', 'redundant with line N-1', 'math phrasing', 'hinglish quirk'>"

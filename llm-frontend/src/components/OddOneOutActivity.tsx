@@ -1,17 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 interface Props {
   checkIn: CheckInActivity;
@@ -21,6 +11,7 @@ interface Props {
 export default function OddOneOutActivity({ checkIn, onComplete }: Props) {
   const items = checkIn.odd_items || [];
   const oddIdx = checkIn.odd_index ?? 0;
+  const { play: playTTS } = useCheckInAudio();
 
   const [tappedIdx, setTappedIdx] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
@@ -58,7 +49,7 @@ export default function OddOneOutActivity({ checkIn, onComplete }: Props) {
         playTTS(checkIn.hint);
       }
     }
-  }, [isCorrect, oddIdx, hintShown, items, checkIn, handleComplete]);
+  }, [isCorrect, oddIdx, hintShown, items, checkIn, handleComplete, playTTS]);
 
   return (
     <div className="checkin-activity">

@@ -163,12 +163,12 @@ class TestFullDone:
             {
                 "card_type": "explain",
                 "visual_explanation": {"pixi_code": "(() => {})()"},
-                "lines": [{"text": "Line 1", "audio_url": "https://s3.example/1.mp3"}],
+                "lines": [{"display": "Line 1", "audio": "Line one", "audio_url": "https://s3.example/1.mp3"}],
             },
             {
                 "card_type": "check_in",
                 "visual_explanation": {"pixi_code": "(() => {})()"},
-                "lines": [{"text": "Question?", "audio_url": "https://s3.example/2.mp3"}],
+                "lines": [{"display": "Question?", "audio": "Question?", "audio_url": "https://s3.example/2.mp3"}],
             },
         ]
         _add_explanation(db_session, gid, cards)
@@ -207,6 +207,77 @@ class TestFullDone:
         assert by_id["check_ins"].state == "done"
         assert by_id["practice_bank"].state == "done"
         assert by_id["audio_review"].state == "done"
+        assert by_id["audio_synthesis"].state == "done"
+
+
+class TestAudioSynthesisCheckIns:
+    """Regression: audio_synthesis stage must account for check-in audio URLs."""
+
+    def test_check_in_fields_missing_audio_keeps_stage_in_warning(self, db_session, seed_book_chapter_topic):
+        gid = seed_book_chapter_topic["guideline_id"]
+        cards = [
+            {
+                "card_idx": 1,
+                "card_type": "explain",
+                "lines": [{"display": "Line 1", "audio": "Line one",
+                           "audio_url": "https://s3.example/1.mp3"}],
+            },
+            {
+                "card_idx": 2,
+                "card_type": "check_in",
+                "card_id": "ci-uuid-1",
+                "audio_text": "Pick the right one",
+                "check_in": {
+                    "activity_type": "pick_one",
+                    "audio_text": "Pick the right one",
+                    "hint": "Think pairs",
+                    "success_message": "Nice work",
+                    # No *_audio_url fields — stage is partially done
+                },
+            },
+        ]
+        _add_explanation(db_session, gid, cards)
+
+        svc = TopicPipelineStatusService(db_session)
+        resp = svc.get_pipeline_status(
+            seed_book_chapter_topic["book_id"],
+            seed_book_chapter_topic["chapter_id"],
+            seed_book_chapter_topic["topic_key"],
+        )
+        by_id = {s.stage_id: s for s in resp.stages}
+        # 1 line done + 3 check-in audio clips pending → warning, not done
+        assert by_id["audio_synthesis"].state == "warning"
+
+    def test_check_in_all_audio_present_marks_stage_done(self, db_session, seed_book_chapter_topic):
+        gid = seed_book_chapter_topic["guideline_id"]
+        cards = [
+            {
+                "card_idx": 1,
+                "card_type": "check_in",
+                "card_id": "ci-uuid-2",
+                "audio_text": "at",
+                "check_in": {
+                    "activity_type": "predict_then_reveal",
+                    "audio_text": "at",
+                    "hint": "h",
+                    "success_message": "s",
+                    "reveal_text": "r",
+                    "audio_text_url": "https://s3/at.mp3",
+                    "hint_audio_url": "https://s3/h.mp3",
+                    "success_audio_url": "https://s3/s.mp3",
+                    "reveal_audio_url": "https://s3/r.mp3",
+                },
+            },
+        ]
+        _add_explanation(db_session, gid, cards)
+
+        svc = TopicPipelineStatusService(db_session)
+        resp = svc.get_pipeline_status(
+            seed_book_chapter_topic["book_id"],
+            seed_book_chapter_topic["chapter_id"],
+            seed_book_chapter_topic["topic_key"],
+        )
+        by_id = {s.stage_id: s for s in resp.stages}
         assert by_id["audio_synthesis"].state == "done"
 
 

@@ -1,17 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { CheckInActivity, synthesizeSpeech } from '../api';
+import { CheckInActivity } from '../api';
 import { CheckInActivityResult } from './CheckInDispatcher';
-
-function playTTS(text: string) {
-  synthesizeSpeech(text)
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    })
-    .catch(() => {});
-}
+import { useCheckInAudio } from '../hooks/useCheckInAudio';
 
 interface Props {
   checkIn: CheckInActivity;
@@ -21,6 +11,7 @@ interface Props {
 export default function PredictRevealActivity({ checkIn, onComplete }: Props) {
   const options = checkIn.options || [];
   const correctIdx = checkIn.correct_index ?? 0;
+  const { play: playTTS } = useCheckInAudio();
 
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -48,9 +39,15 @@ export default function PredictRevealActivity({ checkIn, onComplete }: Props) {
     // Short pause then reveal
     setTimeout(() => {
       setRevealed(true);
-      playTTS(correct ? checkIn.success_message : checkIn.reveal_text || checkIn.success_message);
+      if (correct) {
+        playTTS(checkIn.success_message, checkIn.success_audio_url);
+      } else {
+        const text = checkIn.reveal_text || checkIn.success_message;
+        const url = checkIn.reveal_text ? checkIn.reveal_audio_url : checkIn.success_audio_url;
+        playTTS(text, url);
+      }
     }, 600);
-  }, [selectedIdx, correctIdx, checkIn]);
+  }, [selectedIdx, correctIdx, checkIn, playTTS]);
 
   // Auto-complete when revealed (no extra buttons)
   useEffect(() => {

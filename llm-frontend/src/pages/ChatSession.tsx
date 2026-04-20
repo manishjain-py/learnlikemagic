@@ -29,6 +29,7 @@ import VisualExplanationComponent from '../components/VisualExplanation';
 import InteractiveQuestion from '../components/InteractiveQuestion';
 import CheckInDispatcher, { CheckInActivityResult } from '../components/CheckInDispatcher';
 import TypewriterMarkdown from '../components/TypewriterMarkdown';
+import { registerAudioStop, stopAllAudio, prefetchAudio as checkInPrefetchAudio, getCachedBlob } from '../hooks/audioController';
 import '../App.css';
 
 interface Message {
@@ -51,6 +52,7 @@ interface Slide {
   questionFormat?: QuestionFormat | null;
   studentResponse?: string | null;
   audioText?: string | null;
+  audioUrl?: string;  // Pre-computed S3 URL for the slide-level audio (check-in instruction)
   audioLines?: { display: string; audio: string; audio_url?: string }[];  // Per-line audio from LLM
   checkIn?: CheckInActivity | null;
   simplifications?: ExplanationCard['simplifications'];
@@ -214,6 +216,7 @@ export default function ChatSession() {
             cardType: 'check_in',
             checkIn: card.check_in,
             audioText: card.check_in.audio_text,
+            audioUrl: card.check_in.audio_text_url,
           });
         } else {
           slides.push({
@@ -288,7 +291,7 @@ export default function ChatSession() {
         // Auto-play TTS for new slide (skip streaming slide)
         const newSlide = carouselSlides[newIdx];
         if (newSlide && newSlide.id !== 'streaming' && newSlide.type !== 'explanation') {
-          playTeacherAudio(newSlide.audioText || newSlide.content, newSlide.id);
+          playTeacherAudio(newSlide.audioText || newSlide.content, newSlide.id, newSlide.audioUrl);
         }
       }
     }
@@ -311,9 +314,11 @@ export default function ChatSession() {
     prevSlideIdx.current = currentSlideIdx;
     if (sessionPhase !== 'card_phase') return;
     // Stop prior card's audio and cancel any in-flight TTS fetches before
-    // (maybe) starting the new card's audio. stopAudio() bumps audioPlayVersion,
-    // which makes late-arriving prefetches in playLineAudio/playTeacherAudio
-    // discard themselves instead of playing over the new card.
+    // (maybe) starting the new card's audio. stopAllAudio() silences every
+    // registered track (teacher audio, per-line audio, check-in hook audio);
+    // stopAudio() also bumps audioPlayVersion so late-arriving prefetches in
+    // playLineAudio/playTeacherAudio discard themselves.
+    stopAllAudio();
     stopAudio();
     // Cancel any in-flight widget reveal sequence — student has navigated
     // away from the slide that was running it.
@@ -324,7 +329,7 @@ export default function ChatSession() {
     const slide = carouselSlides[currentSlideIdx];
     // Auto-play for message and check_in slides; explanation slides use per-line typewriter audio
     if (slide && (slide.type === 'message' || slide.type === 'check_in')) {
-      playTeacherAudio(slide.audioText || slide.content, slide.id);
+      playTeacherAudio(slide.audioText || slide.content, slide.id, slide.audioUrl);
     }
   }, [currentSlideIdx, sessionPhase, carouselSlides]);
 
@@ -368,6 +373,21 @@ export default function ChatSession() {
         if (!line.audio?.trim()) return;
         timers.push(setTimeout(() => prefetchAudio(line.audio, line.audio_url), nextDelay + i * 100));
       });
+    }
+
+    // Look-ahead for check-in slides: explanation lines get "typewriter cover"
+    // for their fetch latency, but a check-in's instruction audio plays the
+    // instant the slide arrives — with no cover time, it'd be stuck on the
+    // ~800ms S3 round-trip. Warm the global blob cache now so by the time the
+    // student advances to the check-in, the blobs are already in hand.
+    if (nextSlide?.checkIn) {
+      const nextDelay = Math.ceil(slide.audioLines.length / BATCH_SIZE) * BATCH_DELAY + 500;
+      timers.push(setTimeout(() => {
+        checkInPrefetchAudio(nextSlide.checkIn?.audio_text_url);
+        checkInPrefetchAudio(nextSlide.checkIn?.hint_audio_url);
+        checkInPrefetchAudio(nextSlide.checkIn?.success_audio_url);
+        checkInPrefetchAudio(nextSlide.checkIn?.reveal_audio_url);
+      }, nextDelay));
     }
 
     return () => timers.forEach(clearTimeout);
@@ -712,7 +732,9 @@ export default function ChatSession() {
     return audio;
   };
 
-  const playTeacherAudio = async (text: string, slideId?: string) => {
+  const playTeacherAudio = async (text: string, slideId?: string, audioUrl?: string) => {
+    // Silence any other track (check-in hook, prior teacher audio) before starting.
+    stopAllAudio();
     const version = ++audioPlayVersion.current;
     try {
       const audio = getOrCreateAudio();
@@ -721,13 +743,42 @@ export default function ChatSession() {
         URL.revokeObjectURL(audio.src);
       }
 
-      const audioBlob = await synthesizeSpeech(text, audioLang);
+      // Prefer pre-computed S3 MP3 when available; check shared blob cache
+      // first (warmed by check-in look-ahead prefetch); then live fetch; then
+      // live TTS fallback.
+      let audioBlob: Blob;
+      if (audioUrl) {
+        const cached = getCachedBlob(audioUrl);
+        try {
+          if (cached) {
+            audioBlob = await cached;
+          } else {
+            const res = await fetch(audioUrl);
+            if (!res.ok) throw new Error(`S3 ${res.status}`);
+            audioBlob = await res.blob();
+          }
+        } catch {
+          audioBlob = await synthesizeSpeech(text, audioLang);
+        }
+      } else {
+        audioBlob = await synthesizeSpeech(text, audioLang);
+      }
       // Discard if a newer play request was made while we were fetching
       if (audioPlayVersion.current !== version) return;
       const url = URL.createObjectURL(audioBlob);
       audio.src = url;
-      audio.onended = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); };
-      audio.onerror = () => { setPlayingSlideId(null); URL.revokeObjectURL(url); };
+      // Register for global stop so another playback (or option click) silences us.
+      const unregister = registerAudioStop(stopAudio);
+      audio.onended = () => {
+        setPlayingSlideId(null);
+        URL.revokeObjectURL(url);
+        unregister();
+      };
+      audio.onerror = () => {
+        setPlayingSlideId(null);
+        URL.revokeObjectURL(url);
+        unregister();
+      };
       await audio.play();
       setPlayingSlideId(slideId ?? null);
     } catch (err) {
@@ -1251,7 +1302,7 @@ export default function ChatSession() {
                       return;
                     }
                     // After completion: play full card audio (audioText is already TTS-friendly)
-                    playTeacherAudio(slide.audioText || slide.content, slide.id);
+                    playTeacherAudio(slide.audioText || slide.content, slide.id, slide.audioUrl);
                   }}
                   aria-label={playingSlideId === carouselSlides[currentSlideIdx]?.id ? 'Stop audio' : 'Play audio'}
                 >
