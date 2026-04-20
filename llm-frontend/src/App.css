@@ -2519,6 +2519,10 @@ body {
   height: auto !important;
 }
 
+.visual-canvas-pixi iframe {
+  pointer-events: none;
+}
+
 .visual-error {
   text-align: center;
   color: #f87171;
