@@ -475,5 +475,49 @@ All 28 fixes applied as part of this PR. After merge:
 - `grep -nE "var\(--font-hand\)" llm-frontend/src/App.css | wc -l` returns **4** (rows 7, 14, 26, 27 in the table above).
 - All retained Caveat uses are explicitly whitelisted by §5.8 (app logo, celebration display ≤5 words).
 - Numeric chrome (scores, step circles, grade digits, OTP input, stat values, exam summary numerics, practice score badge) now renders with `tabular-nums` so digits align during re-renders.
-- TopicSelect renders chapter name once (breadcrumb only).
+- TopicSelect renders chapter name once (breadcrumb only); `<h3>Topics</h3>` promoted to `<h2>Topics</h2>` so the page retains an h1/h2 anchor (see §11.5 obs #3).
 - Unused `.tabular-nums` utility class removed.
+
+### 11.5 Migration details beyond font-family (post-review addendum)
+
+The Fix column in §11.2 read "Switch to `var(--font-body)`", which was shorthand. The actual migrations also normalize **size**, **weight**, and **line-height** to match §4 / §3 D4 — Caveat's stylized glyphs don't translate 1:1 to Inter/Lexend at the same size/weight. Reviewers asked for these normalizations to be called out explicitly. Summary:
+
+**Weight normalization to §4 spec (700 → 600) — page-level headings:**
+
+| Rule | Before | After | §4 target |
+|---|---|---|---|
+| `.selection-step h2` | 700 | 600 | Page title → 600 |
+| `.page-title` | 700 | 600 | Page title → 600 |
+| `.auth-title` | 700 | 600 | Page title → 600 |
+| `.report-issue-heading` | 700 | 600 | Page title → 600 |
+| `.practice-header-title` | 700 | 600 | Page title → 600 |
+| `.enrichment-cta-content h3` | 700 | 600 | Section title → 600 |
+| `.selection-card` | 700 | 600 | Card title → 600 |
+| `.reportcard-subject-name` | 700 | 600 | Subject row label → 600 |
+| `.otp-input` | 700 | 600 | Input value → 600 |
+| `.grade-btn` | 700 | 600 | Grade-select option → 600 |
+
+Rules that correctly retain 700 (scores/celebration per §4): `.session-complete-title`, `.auth-logo h1`, `.summary-card h2`, `.exam-summary-score-value`, `.exam-summary-q-num`, `.stat-value`, `.practice-score-badge`, `.step-circle` (numeric chip — bold visibility).
+
+**Size normalization — Inter/Lexend render visually heavier than Caveat at the same rem size, so several rules step down one token:**
+
+| Rule | Size before | Size after | Why |
+|---|---|---|---|
+| `.selection-step h2` | `--fs-3xl` (36px) | `--fs-2xl` (28px) | §4 page title token is `--type-page-title` = `--fs-2xl` |
+| `.selection-step h3` | `--fs-xl` (22px) | `--fs-lg` (18px) | §4 section title + tighter default |
+| `.selection-card` | `--fs-2xl` (28px) | `--fs-xl` (22px) | §4 card-title token `--type-card-title` |
+| `.learning-path-title` | `--fs-xl` (22px) | `--fs-lg` (18px) | Selection-card label — Inter at 22px dominates the row |
+| `.page-title` | `--fs-3xl` (36px) | `--fs-2xl` (28px) | §4 page-title token |
+| `.session-topic` | `--fs-lg` (18px) | `--fs-md` (16px) | List-item chrome, not primary content |
+| `.onboarding-input` | `--fs-xl` (22px) | `--fs-lg` (18px) | §4 input-value = `--type-stem` = `--fs-lg` |
+| `.report-issue-heading` | `--fs-3xl` (36px) | `--fs-2xl` (28px) | §4 page-title token |
+
+Rules retain size but gain explicit `line-height` (none previously declared): most `.chalkboard-active *-title` rules now set 1.25 or 1.3 per §3 D4.
+
+**Size + weight changes preserved on numeric displays** that already used display-scale size in #108: `.exam-summary-score-value` (fs-3xl), `.stat-value` (fs-2xl), `.practice-score-badge` (type-page-title). Only the family flipped from Caveat to Inter.
+
+### 11.6 Known follow-ups (not in this PR)
+
+- **TopicSelect heading semantics** — `<h2>Topics</h2>` (promoted from `<h3>`) now gets the full `.selection-step h2` Inter 28px treatment. That is a size bump vs the old `<h3>` Caveat 22px, which is fine but louder. If visual QA finds the "Topics" label too dominant, introduce a `--section-title` role that sits between page-title and label, or restyle `.selection-step h2` when its text is a one-word section anchor (modifier class) rather than a dynamic page title.
+- **§5.8 example tightened** — the original "Today's plan" was itself 2 words, self-contradicting the "one word only" rule. Updated to "Topics" in this PR. If a real surface needs a 2-word Caveat title, relax §5.8 explicitly and bump the word cap — do not smuggle exceptions in via examples.
+- **Chalkboard-vs-light weight guidance** — Inter 600 on the dark chalkboard surface reads slightly lighter than Inter 600 on white. If visual QA finds titles underweight, add a typography.md §3 D3 note: "on chalkboard (dark) surfaces, bump page-title weight to 700 to compensate for backdrop contrast". Do not ad-hoc decide rule-by-rule.

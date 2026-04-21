@@ -4681,7 +4681,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 /* Selection-screen page title — Inter per typography.md §4 (dynamic content, often multi-word) */
 .chalkboard-active .selection-step h2 {
   font-family: var(--font-body);
-  font-weight: 700;
+  font-weight: 600;
   font-size: var(--fs-2xl);
   line-height: 1.25;
   color: var(--chalk-white);
@@ -5229,7 +5229,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 .chalkboard-active .page-title {
   font-family: var(--font-body);
   font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 8px;
@@ -5759,11 +5759,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   font-family: var(--font-body);
   font-size: var(--fs-md);
 }
-/* Auth question ("What's your name?") — Inter stem per §4 Auth (reading task) */
+/* Auth question ("What's your name?") — Inter page-title per §4 (dynamic multi-word) */
 .auth-page.chalkboard-active .auth-title {
   font-family: var(--font-body);
   font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 0.5rem;
@@ -6376,7 +6376,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   font-family: var(--font-body);
   color: var(--chalk-gold);
   font-size: var(--fs-lg);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
   margin: 0 0 4px;
 }
@@ -6768,7 +6768,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 .chalkboard-active .report-issue-heading {
   font-family: var(--font-body);
   font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 6px;
@@ -7857,7 +7857,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 .chalkboard-active .practice-header-title {
   font-family: var(--font-body);
   font-size: var(--type-page-title);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   color: var(--chalk-white);
   text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);

@@ -260,7 +260,7 @@ Each option is a tap target with short text. Must be:
 
 Allowed:
 - App logo / app-title flourish
-- Page-title flourish on low-density screens (e.g., "Today's plan" on chapter select, one word only)
+- Page-title flourish on low-density screens (e.g., "Topics" on topic select, **one word only** — multi-word page titles must be Inter)
 - Card-type label on the chalkboard card ("Concept", "Example") — all-caps is optional; may be title-case in Caveat
 - Celebration display ("Great job!") — one line, maximum 4-5 words
 
