@@ -50,7 +50,7 @@ These are the load-bearing choices. Every other rule derives from them.
 
 ### D2. One modular size scale. Eight values. Semantic aliases.
 
-Primitive tokens (already defined in `App.css:59-66`):
+Primitive tokens — **prototyped** in `llm-frontend/mockups/chalkboard/tokens.css:59-66`, but **not yet in the live runtime**. Phase 1 of the rollout adds these to `llm-frontend/src/App.css` `:root` (the live token layer):
 
 ```
 --fs-xs:   0.75rem  (12px)
@@ -63,7 +63,7 @@ Primitive tokens (already defined in `App.css:59-66`):
 --fs-4xl:  3rem     (48px)
 ```
 
-Semantic role tokens layered on top (new — to be added):
+Semantic role tokens layered on top (also new in Phase 1):
 
 ```
 --type-caption       = --fs-xs    /* timestamps, metadata only — NEVER student content */
@@ -141,11 +141,11 @@ This is the master map. Every new text element must pick a row from this table. 
 | App name / logo wordmark | `--type-display` | 700 | 1.15 | Inter or Caveat (decor) | Brand moment |
 | Onboarding question (e.g., "What's your name?") | `--type-stem` | 600 | 1.55 | Lexend Deca | Kid parses & answers — reading task |
 | Input placeholder | `--type-body` | 400 | 1.4 | Inter | UI chrome |
-| Input value (what kid types) | `--type-stem` | 500→600 | 1.4 | Lexend Deca | Their content — big and clear |
+| Input value (what kid types) | `--type-stem` | 600 | 1.4 | Lexend Deca | Their content — big and clear |
 | Grade-select option label | `--type-card-title` | 600 | 1.3 | Inter | Large tap target needs matching text |
 | "Next" / primary CTA | `--type-body` upper | 700 | 1.3 | Inter | All-caps +0.05em tracking |
-| "Skip for now" link | `--type-body` | 500 → 600 | 1.4 | Inter | Secondary CTA, not a caption |
-| Error message | `--type-body` | 500 → 600 | 1.5 | Inter | Must be easy to read immediately; colour `--color-error` |
+| "Skip for now" link | `--type-body` | 600 | 1.4 | Inter | Secondary CTA, not a caption |
+| Error message | `--type-body` | 600 | 1.5 | Inter | Must be easy to read immediately; colour `--color-error` |
 
 ### Selection screens (Subject / Chapter / Topic / Mode)
 
@@ -158,7 +158,7 @@ This is the master map. Every new text element must pick a row from this table. 
 | Chapter summary body prose | `--type-body-reading` | 400 | 1.65 | Lexend Deca | Actual reading |
 | Breadcrumb link | `--type-label` | 400 | 1.4 | Inter | Nav chrome |
 | Breadcrumb current (selected) | `--type-label` | 600 | 1.4 | Inter | Emphasis by weight, not size |
-| Progress caption ("3 of 8") | `--type-label` | 500 → 600 | 1.4 | Inter tabular-nums | Glance info |
+| Progress caption ("3 of 8") | `--type-label` | 600 | 1.4 | Inter tabular-nums | Glance info |
 
 ### Learning session — explanation cards
 
@@ -169,8 +169,8 @@ This is the master map. Every new text element must pick a row from this table. 
 | Explanation body prose | `--type-body-reading` | 400 | 1.65 | **Lexend Deca** | Primary reading surface — biggest single gain |
 | Emphasised term inside prose (**10 ones**) | inherit size | 700 | inherit | inherit | Bold, not italic, not size change |
 | Parchment/formula inset body | inherit | 400 | 1.5 | JetBrains Mono | Differentiates formula from prose |
-| Typewriter spotlight block (ChatSession TW mode) | `--type-spotlight` | 500 → 600 | 1.45 | Lexend Deca | One block at a time — large, calm |
-| "I didn't understand" escape-hatch link | `--type-body` | 500 → 600 | 1.4 | Inter | Secondary action — visible but not loud |
+| Typewriter spotlight block (ChatSession TW mode) | `--type-spotlight` | 600 | 1.45 | Lexend Deca | One block at a time — large, calm |
+| "I didn't understand" escape-hatch link | `--type-body` | 600 | 1.4 | Inter | Secondary action — visible but not loud |
 | Primary nav button ("NEXT") | `--type-body` upper | 700 | 1.3 | Inter, +0.05em tracking | All-caps, pill |
 | Secondary nav button ("BACK") | `--type-body` upper | 600 | 1.3 | Inter, +0.05em tracking | Lighter pill |
 
@@ -193,7 +193,7 @@ This is the master map. Every new text element must pick a row from this table. 
 |---|---|---|---|---|---|
 | Celebration headline ("Great job today!") | `--type-display` | 700 | 1.15 | Caveat (decor) or Inter | Moment |
 | Subject row label | `--type-card-title` | 600 | 1.3 | Inter | List item title |
-| Score / count large display | `--type-2xl` | 700 | 1.1 | Inter tabular-nums | Numeric focus |
+| Score / count large display | `--type-display` | 700 | 1.1 | Inter tabular-nums | Numeric focus — display-sized; apply `.tabular-nums` |
 | Timestamp / relative date | `--type-caption` | 400 | 1.4 | Inter | Meta chrome — may use `#5A5A5A` |
 | Mode badge ("PRACTICE", "TEACH") pill | `--type-caption` upper | 700 | 1 | Inter, +0.05em tracking | Chip |
 
@@ -202,7 +202,7 @@ This is the master map. Every new text element must pick a row from this table. 
 | Role | Token | Weight | Line-height | Font | Rationale |
 |---|---|---|---|---|---|
 | Section title | `--type-card-title` | 600 | 1.3 | Inter | Anchor |
-| Chip/selector label | `--type-body` | 500 → 600 | 1.4 | Inter | Tap target |
+| Chip/selector label | `--type-body` | 600 | 1.4 | Inter | Tap target |
 | Helper text ("Pick up to 3") | `--type-body` | 400 | 1.5 | Inter | Guidance |
 
 ---
@@ -252,7 +252,7 @@ Each option is a tap target with short text. Must be:
 
 ### 5.7 Error / feedback / toasts
 
-- Error message: `--type-body` weight 500-600, line-height 1.5, colour `--color-error` (on light bg must pass 4.5:1 — current `#e53e3e` on white = ~4.6:1, marginal; prefer `#C4302B` for better safety).
+- Error message: `--type-body` weight 600, line-height 1.5, colour `--color-error` (on light bg must pass 4.5:1 — current `#e53e3e` on white = ~4.6:1, marginal; prefer `#C4302B` for better safety).
 - Success / celebration: `--type-stem` weight 600; may be colour `--color-success` only if paired with icon — colour alone does not carry meaning.
 - Toast vertical layout: title `--type-body` 600 + body `--type-body` 400. Don't shrink toast text to `--type-label` just because the toast is small.
 
@@ -290,7 +290,47 @@ Not allowed:
 
 ---
 
-## 7. Anti-patterns (what not to do)
+## 7. Font loading & performance
+
+Four font families cost real bytes on the first load — especially on low-end Android in India, one of our stated audience constraints (§1). The plan must be explicit about payload, fallbacks, and render behaviour.
+
+### 7.1 What we load
+
+| Family | Role | Weights to load | Why |
+|---|---|---|---|
+| Inter | UI chrome | 400, 600, 700 | Three weights map exactly to D3 |
+| Lexend Deca | Reading prose & stems | 400, 600, 700 | Same three weights; D3 bans 500 |
+| Caveat | Decorative only | 600, 700 | Only used for display labels / celebration — no body text |
+| JetBrains Mono | Formulas / code | 400 | Single weight — our educational formulas/code surfaces don't need emphasis; add 700 later only if a concrete surface demands it |
+
+Weight 500 is banned universally by D3 — do not load it for any family. This saves ~15-25KB per family on the critical path and keeps the hierarchy rule uniform.
+
+### 7.2 Loading strategy
+
+- **`font-display: swap`** on every family — already correct in `index.html`. Forbid FOIT.
+- **Preconnect** to `fonts.googleapis.com` and `fonts.gstatic.com` — already correct.
+- **Preload** the single highest-traffic weight of the reading font: `<link rel="preload" as="font" type="font/woff2" href="…lexend-deca-400.woff2" crossorigin>`. Explanation prose mounts on every session; this reduces the Lexend pop-in on first paint.
+- **Variable fonts preferred** where available (Inter variable, Lexend variable). One HTTP request replaces three static weights.
+- **Subsetting:** Google Fonts default subset is Latin. Keep as-is; we do not yet ship Hindi/Tamil/Telugu. When we do, switch to the appropriate `unicode-range` CSS to avoid double-loading.
+
+### 7.3 Fallback behaviour — comprehension must not depend on web fonts
+
+If Lexend Deca fails to load (slow 3G, CDN outage, extension blocking), the reading surface falls through to `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif` — all of which satisfy the "open-counter sans" requirement from D1. Comprehension should degrade gracefully, not collapse. Same reasoning for Caveat: if the handwritten font doesn't load, the surface falls through to Inter — visually flatter but perfectly legible.
+
+### 7.4 Acceptance criteria for typography rollout
+
+- LCP on `ChatSession` explanation-card-mount: ≤ 2.5s on simulated Fast 3G throttle.
+- CLS attributable to font swap: ≤ 0.05 (measure per-screen; Lexend swap is the biggest risk).
+- Total font payload for the student surface on cold load: ≤ 150KB compressed (budget — reject any new font that breaks this ceiling).
+- No surface remains blank (FOIT) for > 100ms waiting on a font.
+
+### 7.5 Self-hosting tradeoff (future work, not Phase 1)
+
+Google Fonts add latency in India (CDN RTT to closest edge varies). If post-rollout measurement shows consistent first-paint lag attributable to font fetches, self-host Lexend Deca variable from the same origin as the app. Deferred — measure first.
+
+---
+
+## 8. Anti-patterns (what not to do)
 
 1. **Caveat for anything the student has to *read to answer*.** Question stems, options, instructions — always sans-serif.
 2. **More than one new size per screen.** If a screen already uses `--type-body-reading`, a fifth size like `0.82rem` is not allowed — promote it to an existing token.
@@ -305,7 +345,7 @@ Not allowed:
 
 ---
 
-## 8. How to apply this to new components
+## 9. How to apply this to new components
 
 Before writing `font-size: 0.87rem`, answer:
 

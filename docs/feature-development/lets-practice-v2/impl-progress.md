@@ -4,6 +4,14 @@
 **Branch:** `feat/lets-practice-v2` (off `main`)
 **Status:** 16 of 16 steps complete (counting 9a + 9b + 9c). Docs: 3 new practice-mode docs (principles + functional + technical); scorecard docs (all 3) rewritten to drop exam refs + describe the practice chip; architecture-overview, database, auth-and-onboarding, llm-prompts, functional/app-overview, functional/learning-session, technical/learning-session all pruned of stale exam references; `teach-me-practice-split/` superseded folder deleted; CLAUDE.md + DOCUMENTATION_GUIDELINES.md indexes updated. Remaining "exam" occurrences in docs are legitimate historical-context mentions (e.g., "Replaces the old Exam mode") or a migration-function name. Implementation feature branch `feat/lets-practice-v2` is code-complete and docs-complete.
 
+> **⚠ Superseded — typography decisions in Step 9b (2026-04-21)**
+>
+> Step 9b applied `--font-hand` (Caveat) to practice question text and bucket labels as part of the chalkboard restyle. This decision has since been **reviewed and superseded** by [`docs/principles/typography.md`](../../principles/typography.md), which restricts Caveat/handwritten fonts to decorative roles (card-type labels, celebration headlines, page-title flourish) only — never question stems, options, instructions, or UI labels.
+>
+> **For future work on practice CSS:** consult the role-to-token map in `typography.md` §4, not this progress log. Question stems → `--type-stem` Lexend Deca. Bucket / UI labels → Inter uppercase. The specific CSS rules to fix are enumerated in [`docs/feature-development/typography-redesign/gap-analysis.md`](../typography-redesign/gap-analysis.md) §3 P0.6.
+>
+> This note does not invalidate the rest of Step 9b's work (chalkboard tokens, parchment CTAs, chalk-state colours, route registration) — only the handwritten-font-for-text choice.
+
 ---
 
 ## TL;DR
