@@ -30,6 +30,7 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/principles/prerequisites.md` | How prerequisite knowledge gaps are handled (refresher topics, warm-up framing) |
 | `docs/principles/easy-english.md` | Language accessibility for Indian ESL students (no idioms, simple grammar, Indian contexts) |
 | `docs/principles/practice-mode.md` | How Let's Practice works (offline bank, no hints during set, evaluation-as-learning) |
+| `docs/principles/typography.md` | Research-backed typography strategy for student-facing UI (fonts, sizes, weights, line-heights, role tokens) |
 
 ## Documentation Index
 
