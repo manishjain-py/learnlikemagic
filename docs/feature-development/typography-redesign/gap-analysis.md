@@ -404,3 +404,120 @@ All targets are falsifiable — if they don't move, we rolled back or re-designe
 - Copy content itself — belongs to `docs/principles/easy-english.md` and `docs/principles/how-to-explain.md`, not typography.
 - Localisation into Hindi / Tamil / Telugu — future; separate effort (different font stacks required).
 - Email notification typography — separate channel, not app.
+
+---
+
+## 11. Selection / auth / reportcard surface coverage (post-PR-#108 audit)
+
+**Why this section exists.** The original audit (§§3–6) was scope-limited to the ChatSession in-session surface and the `/practice/*` chalkboard runner. It never enumerated the `.chalkboard-active` rules that drive selection screens (Subject/Chapter/Topic/Mode), auth/onboarding, report card, session history, profile, enrichment, report-issue, and the exam/practice summary. PR #108 shipped Phases 1–6 but those surfaces carried forward Caveat-on-multi-word-title and Caveat-on-selection-label violations that are now visible in production — e.g. on `/learn/Mathematics/Place%20Value...` the 10-word chapter title renders in Caveat, and every topic name in the learning path renders in Caveat.
+
+### 11.1 Strategy doc contradiction to resolve first
+
+The role map in [typography.md §4 Selection screens](../../principles/typography.md) says:
+
+> Page title → `--type-page-title` 600 1.25 **Inter (or Caveat in chalkboard)**
+
+The anti-pattern in §5.8 says:
+
+> Page-title flourish on low-density screens (e.g., "Today's plan" on chapter select, **one word only**)
+
+These contradict for multi-word page titles. Resolution (applied in this PR): tighten §4 to defer to §5.8 — **Caveat is allowed for page titles only when the title is ≤1 word**; otherwise Inter. All per-rule fixes below assume the tightened rule.
+
+### 11.2 Full audit table — every `.chalkboard-active` rule using `var(--font-hand)`
+
+`git grep "var(--font-hand)" llm-frontend/src/App.css` returns **32 occurrences**. Each row classified against the §4 role map and §5.8 whitelist.
+
+| # | App.css line | Selector | Current size | Strategy role | Violation? | Sev | Fix |
+|---|---|---|---|---|---|---|---|
+| 1 | 4205 | `.focus-tutor-msg h1/h2/h3, .tw-spotlight-content h1-h4` | `1.1` line-height hand | Content heading inside reading prose → Lexend | YES — arbitrary prose heading is not a §5.8 decorative label | P1 | Switch to `var(--font-reading)` |
+| 2 | 4689 | `.selection-step h2` | `var(--fs-3xl)` hand | Page title — dynamic (`Select a Subject`, `{chapter}`, `{topic.topic}`) | YES — multi-word content routes through this rule | P0 | Switch to `var(--font-body)` |
+| 3 | 4698 | `.selection-step h3` | `var(--fs-xl)` hand | Section heading ("Topics") | Borderline — 1-word today but fragile | P2 | Switch to `var(--font-body)` |
+| 4 | 4721 | `.selection-card` | `var(--fs-2xl)` hand | Selection card label (subject/topic/mode name) | YES — §4 says Inter | P0 | Switch to `var(--font-body)` |
+| 5 | 4849 | `.step-circle` | `var(--fs-md)` hand | Numeric step digit | YES — numeric must be Inter tabular-nums | P1 | Switch to `var(--font-body)` + tabular-nums |
+| 6 | 4877 | `.learning-path-title` | `var(--fs-xl)` hand | Selection card label (topic/chapter name) | YES — §4 says Inter | P0 | Switch to `var(--font-body)` |
+| 7 | 5139 | `.session-complete-title` | `var(--fs-3xl)` hand | Celebration display | OK — §5.8 whitelist | — | Keep Caveat |
+| 8 | 5233 | `.page-title` (shared /history /report-card /profile /report-issue) | `var(--fs-3xl)` hand | Screen title — dynamic ("My Report Card", "My Sessions", "Profile & Settings", "Help us know X better") | YES — multi-word | P0 | Switch to `var(--font-body)` |
+| 9 | 5263 | `.page-empty-state-title` | `var(--fs-xl)` hand | Empty-state message | YES — multi-word ("Your report card is empty!") | P1 | Switch to `var(--font-body)` |
+| 10 | 5342 | `.stat-value` | `var(--fs-2xl)` hand | Numeric stat display | YES — §4 Results: Score → Inter tabular-nums | P1 | Switch to `var(--font-body)` |
+| 11 | 5411 | `.session-topic` | `var(--fs-lg)` hand | Session-list topic name | YES — selection label → Inter | P0 | Switch to `var(--font-body)` |
+| 12 | 5517 | `.reportcard-subject-name` | `var(--fs-xl)` hand | Subject row label | YES — §4 Results → Inter ("Social Studies" is multi-word anyway) | P0 | Switch to `var(--font-body)` |
+| 13 | 5544 | `.reportcard-chapter-name` | `var(--fs-lg)` hand | Chapter row label | YES — multi-word | P0 | Switch to `var(--font-body)` |
+| 14 | 5747 | `.auth-logo h1` | `var(--fs-3xl)` hand | App wordmark ("Learn Like Magic") | OK — §5.8 app logo | — | Keep Caveat |
+| 15 | 5760 | `.auth-title` | `var(--fs-2xl)` hand | Auth question ("What's your name?", "How old are you?") | YES — multi-word reading task per §4 Auth | P0 | Switch to `var(--font-body)` (stays 700) |
+| 16 | 6030 | `.otp-input` | `var(--fs-2xl)` hand | Kid types OTP digits | YES — §4 Auth: input value → Lexend stem; numeric needs tabular-nums | P1 | Switch to `var(--font-reading)` + tabular-nums |
+| 17 | 6081 | `.onboarding-input` | `var(--fs-xl)` hand | Kid types name/age | YES — §4 Auth: input value → Lexend stem | P1 | Switch to `var(--font-reading)` |
+| 18 | 6104 | `.grade-btn` | `var(--fs-xl)` hand | Grade digit (1-12) | YES — §4 Auth: grade-select option → Inter; numeric needs tabular-nums | P1 | Switch to `var(--font-body)` + tabular-nums |
+| 19 | 6331 | `.profile-section h3` | `var(--fs-xl)` hand | Profile section title ("Language Preferences", "Account") | YES — §4 Profile: Section title → Inter | P0 | Switch to `var(--font-body)` |
+| 20 | 6362 | `.enrichment-cta-content h3` | `var(--fs-lg)` hand | CTA header ("Help us know {kidName} better") | YES — multi-word | P1 | Switch to `var(--font-body)` |
+| 21 | 6451 | `.enrichment-section-title` | `var(--fs-lg)` hand | Section title | YES — §4 Profile: Section title → Inter | P0 | Switch to `var(--font-body)` |
+| 22 | 6630 | `.enrichment-open-textbox-title` | `var(--fs-lg)` hand | Section title ("Anything else we should know?") | YES — multi-word | P1 | Switch to `var(--font-body)` |
+| 23 | 6669 | `.enrichment-session-title` | `var(--fs-xl)` hand | Section title ("Session Preferences") | YES — multi-word | P1 | Switch to `var(--font-body)` |
+| 24 | 6686 | `.enrichment-personality-card h3` | `var(--fs-xl)` hand | Section title ("Here's what we understand about X") | YES — multi-word | P1 | Switch to `var(--font-body)` |
+| 25 | 6747 | `.report-issue-heading` | `var(--fs-3xl)` hand | Page heading ("Report an Issue") | YES — multi-word | P1 | Switch to `var(--font-body)` |
+| 26 | 6925 | `.report-issue-done-title` | `var(--fs-2xl)` hand | Confirmation ("Issue Reported") | OK — §5.8 celebration-adjacent, 2 words | — | Keep Caveat |
+| 27 | 7108 | `.summary-card h2` | `var(--fs-3xl)` hand | Completion heading — "Nice work!" / "Well done!" / "Your score" / "Grading didn't finish" | OK — all ≤5 words celebration or short operational | — | Keep Caveat (note: callers must keep text ≤5 words per §5.8) |
+| 28 | 7251 | `.summary-card .exam-summary-score-value` | `var(--fs-3xl)` hand | Numeric score display | YES — §4: Score → Inter tabular-nums | P1 | Switch to `var(--font-body)` |
+| 29 | 7288 | `.summary-card .exam-summary-q-num` | `var(--fs-md)` hand | Question number | YES — numeric | P1 | Switch to `var(--font-body)` |
+| 30 | 7833 | `.practice-header-title` | `var(--type-page-title)` hand | Practice runner topic name header | YES — multi-word | P0 | Switch to `var(--font-body)` |
+| 31 | 8080 | `.practice-score-badge` | `var(--type-page-title)` hand | Numeric score badge ("7/10") | YES — numeric → Inter tabular-nums | P1 | Switch to `var(--font-body)` |
+| 32 | 8090 | `.practice-score-label` | `var(--type-card-title)` hand | Numeric-leading label ("7/10 correct") | YES — numeric-leading | P1 | Switch to `var(--font-body)` |
+
+**Summary:** 28 fixes, 4 rules retain Caveat per §5.8 whitelist (rows 7, 14, 26, 27).
+
+### 11.3 TSX structural issues
+
+- **TopicSelect.tsx:71-74** — duplicate chapter rendering. `<span className="breadcrumb-current">{chapter}</span>` followed by `<h2>{chapter}</h2>` on the same screen. Fix: drop the `<h2>{chapter}</h2>` — the breadcrumb already anchors the chapter name and the `<h3>Topics</h3>` below serves as the section label before the learning path. ChapterSelect and ModeSelection do not have this pattern.
+- **`.tabular-nums` utility class** (App.css:152-157) has **zero consumers** in TSX (`grep -nE "className.*tabular-nums" llm-frontend/src` returns nothing). The numeric chrome CSS rules already inline `font-variant-numeric: tabular-nums; font-feature-settings: "tnum";` directly. Decision: remove the unused utility class (no consumers to migrate), and add the two inline props directly to the numeric rules that currently lack them (step-circle, grade-btn, otp-input).
+
+### 11.4 Resolution notes (post-fix)
+
+All 28 fixes applied as part of this PR. After merge:
+- `grep -nE "var\(--font-hand\)" llm-frontend/src/App.css | wc -l` returns **4** (rows 7, 14, 26, 27 in the table above).
+- All retained Caveat uses are explicitly whitelisted by §5.8 (app logo, celebration display ≤5 words).
+- Numeric chrome (scores, step circles, grade digits, OTP input, stat values, exam summary numerics, practice score badge) now renders with `tabular-nums` so digits align during re-renders.
+- TopicSelect renders chapter name once (breadcrumb only); `<h3>Topics</h3>` promoted to `<h2>Topics</h2>` so the page retains an h1/h2 anchor (see §11.5 obs #3).
+- Unused `.tabular-nums` utility class removed.
+
+### 11.5 Migration details beyond font-family (post-review addendum)
+
+The Fix column in §11.2 read "Switch to `var(--font-body)`", which was shorthand. The actual migrations also normalize **size**, **weight**, and **line-height** to match §4 / §3 D4 — Caveat's stylized glyphs don't translate 1:1 to Inter/Lexend at the same size/weight. Reviewers asked for these normalizations to be called out explicitly. Summary:
+
+**Weight normalization to §4 spec (700 → 600) — page-level headings:**
+
+| Rule | Before | After | §4 target |
+|---|---|---|---|
+| `.selection-step h2` | 700 | 600 | Page title → 600 |
+| `.page-title` | 700 | 600 | Page title → 600 |
+| `.auth-title` | 700 | 600 | Page title → 600 |
+| `.report-issue-heading` | 700 | 600 | Page title → 600 |
+| `.practice-header-title` | 700 | 600 | Page title → 600 |
+| `.enrichment-cta-content h3` | 700 | 600 | Section title → 600 |
+| `.selection-card` | 700 | 600 | Card title → 600 |
+| `.reportcard-subject-name` | 700 | 600 | Subject row label → 600 |
+| `.otp-input` | 700 | 600 | Input value → 600 |
+| `.grade-btn` | 700 | 600 | Grade-select option → 600 |
+
+Rules that correctly retain 700 (scores/celebration per §4): `.session-complete-title`, `.auth-logo h1`, `.summary-card h2`, `.exam-summary-score-value`, `.exam-summary-q-num`, `.stat-value`, `.practice-score-badge`, `.step-circle` (numeric chip — bold visibility).
+
+**Size normalization — Inter/Lexend render visually heavier than Caveat at the same rem size, so several rules step down one token:**
+
+| Rule | Size before | Size after | Why |
+|---|---|---|---|
+| `.selection-step h2` | `--fs-3xl` (36px) | `--fs-2xl` (28px) | §4 page title token is `--type-page-title` = `--fs-2xl` |
+| `.selection-step h3` | `--fs-xl` (22px) | `--fs-lg` (18px) | §4 section title + tighter default |
+| `.selection-card` | `--fs-2xl` (28px) | `--fs-xl` (22px) | §4 card-title token `--type-card-title` |
+| `.learning-path-title` | `--fs-xl` (22px) | `--fs-lg` (18px) | Selection-card label — Inter at 22px dominates the row |
+| `.page-title` | `--fs-3xl` (36px) | `--fs-2xl` (28px) | §4 page-title token |
+| `.session-topic` | `--fs-lg` (18px) | `--fs-md` (16px) | List-item chrome, not primary content |
+| `.onboarding-input` | `--fs-xl` (22px) | `--fs-lg` (18px) | §4 input-value = `--type-stem` = `--fs-lg` |
+| `.report-issue-heading` | `--fs-3xl` (36px) | `--fs-2xl` (28px) | §4 page-title token |
+
+Rules retain size but gain explicit `line-height` (none previously declared): most `.chalkboard-active *-title` rules now set 1.25 or 1.3 per §3 D4.
+
+**Size + weight changes preserved on numeric displays** that already used display-scale size in #108: `.exam-summary-score-value` (fs-3xl), `.stat-value` (fs-2xl), `.practice-score-badge` (type-page-title). Only the family flipped from Caveat to Inter.
+
+### 11.6 Known follow-ups (not in this PR)
+
+- **TopicSelect heading semantics** — `<h2>Topics</h2>` (promoted from `<h3>`) now gets the full `.selection-step h2` Inter 28px treatment. That is a size bump vs the old `<h3>` Caveat 22px, which is fine but louder. If visual QA finds the "Topics" label too dominant, introduce a `--section-title` role that sits between page-title and label, or restyle `.selection-step h2` when its text is a one-word section anchor (modifier class) rather than a dynamic page title.
+- **§5.8 example tightened** — the original "Today's plan" was itself 2 words, self-contradicting the "one word only" rule. Updated to "Topics" in this PR. If a real surface needs a 2-word Caveat title, relax §5.8 explicitly and bump the word cap — do not smuggle exceptions in via examples.
+- **Chalkboard-vs-light weight guidance** — Inter 600 on the dark chalkboard surface reads slightly lighter than Inter 600 on white. If visual QA finds titles underweight, add a typography.md §3 D3 note: "on chalkboard (dark) surfaces, bump page-title weight to 700 to compensate for backdrop contrast". Do not ad-hoc decide rule-by-rule.

@@ -71,8 +71,6 @@ export default function TopicSelect() {
         <span className="breadcrumb-current">{chapter}</span>
       </div>
 
-      <h2>{chapter}</h2>
-
       {loading ? (
         <p>Loading topics...</p>
       ) : (
@@ -107,7 +105,7 @@ export default function TopicSelect() {
           )}
 
           {/* Regular topics */}
-          <h3>Topics</h3>
+          <h2>Topics</h2>
           <div className="learning-path" data-testid="topic-list">
             {regularTopics.map((t, idx) => {
               const status = getTopicStatus(t);

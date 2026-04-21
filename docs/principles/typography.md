@@ -151,7 +151,7 @@ This is the master map. Every new text element must pick a row from this table. 
 
 | Role | Token | Weight | Line-height | Font | Rationale |
 |---|---|---|---|---|---|
-| Page title ("What should we learn?") | `--type-page-title` | 600 | 1.25 | Inter (or Caveat in chalkboard) | Anchors screen |
+| Page title ("What should we learn?") | `--type-page-title` | 600 | 1.25 | Inter (Caveat only when title is ≤1 word per §5.8) | Anchors screen |
 | Selection card label (subject/topic name) | `--type-card-title` | 600 | 1.3 | Inter | Tap target + content — largest UI item |
 | Card subtitle (e.g., chapter summary) | `--type-body` | 400 | 1.5 | Inter | Context, not primary |
 | "What you'll learn" section header | `--type-label` upper | 600 | 1.3 | Inter | All-caps +0.05em tracking |
@@ -260,7 +260,7 @@ Each option is a tap target with short text. Must be:
 
 Allowed:
 - App logo / app-title flourish
-- Page-title flourish on low-density screens (e.g., "Today's plan" on chapter select, one word only)
+- Page-title flourish on low-density screens (e.g., "Topics" on topic select, **one word only** — multi-word page titles must be Inter)
 - Card-type label on the chalkboard card ("Concept", "Example") — all-caps is optional; may be title-case in Caveat
 - Celebration display ("Great job!") — one line, maximum 4-5 words
 
