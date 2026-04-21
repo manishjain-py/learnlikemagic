@@ -6,12 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Learn Like Magic</title>
 
-    <!-- Chalkboard redesign fonts — Inter (body), Caveat (handwritten), JetBrains Mono (formulas) -->
+    <!-- Student-surface fonts — see docs/principles/typography.md §7.
+         Inter (UI), Lexend Deca (reading prose & stems), Caveat (decorative), JetBrains Mono (formulas).
+         Weights: 400/600/700 only — weight 500 is banned per typography D3. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Preload Lexend Deca woff2 (single file serves all weights, variable font).
+         Reduces font-swap CLS on the explanation-card primary reading surface (typography.md §7.2).
+         If Google rotates this hash, the preload becomes a no-op — the stylesheet load below still works. -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="https://fonts.gstatic.com/s/lexenddeca/v25/K2F1fZFYk-dHSE0UPPuwQ6qlLSj6ZQ.woff2"
+      crossorigin
+    />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lexend+Deca:wght@400;600;700&family=Caveat:wght@600;700&family=JetBrains+Mono:wght@400&display=swap"
     />
   </head>
   <body>
