@@ -151,7 +151,7 @@ This is the master map. Every new text element must pick a row from this table. 
 
 | Role | Token | Weight | Line-height | Font | Rationale |
 |---|---|---|---|---|---|
-| Page title ("What should we learn?") | `--type-page-title` | 600 | 1.25 | Inter (or Caveat in chalkboard) | Anchors screen |
+| Page title ("What should we learn?") | `--type-page-title` | 600 | 1.25 | Inter (Caveat only when title is ≤1 word per §5.8) | Anchors screen |
 | Selection card label (subject/topic name) | `--type-card-title` | 600 | 1.3 | Inter | Tap target + content — largest UI item |
 | Card subtitle (e.g., chapter summary) | `--type-body` | 400 | 1.5 | Inter | Context, not primary |
 | "What you'll learn" section header | `--type-label` upper | 600 | 1.3 | Inter | All-caps +0.05em tracking |

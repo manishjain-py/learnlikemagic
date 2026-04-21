@@ -149,13 +149,6 @@ body {
   background: var(--color-bg);
 }
 
-/* Tabular numerals utility — for scores, timers, streak counts, report-card numerics.
-   Prevents digit jitter when values change. See typography.md §5.6. */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
 .app {
   display: flex;
   flex-direction: column;
@@ -4194,7 +4187,8 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   text-shadow: 0 0 1px rgba(244, 244, 239, 0.5), 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
-/* Headings in handwritten font */
+/* Content headings inside reading prose — Lexend per typography.md §4 (reading surface).
+   Caveat is banned here by §5.8 (not a decorative label). */
 .chalkboard-active .focus-tutor-msg h1,
 .chalkboard-active .focus-tutor-msg h2,
 .chalkboard-active .focus-tutor-msg h3,
@@ -4202,11 +4196,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 .chalkboard-active .tw-spotlight-content h2,
 .chalkboard-active .tw-spotlight-content h3,
 .chalkboard-active .tw-spotlight-content h4 {
-  font-family: var(--font-hand);
+  font-family: var(--font-reading);
   color: var(--chalk-white);
   font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: 0.01em;
+  line-height: 1.3;
+  letter-spacing: 0.005em;
   text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
 }
 
@@ -4684,20 +4678,20 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 .chalkboard-active .selection-step > * { position: relative; z-index: 1; }
 
-/* Handwritten chalk heading */
+/* Selection-screen page title — Inter per typography.md §4 (dynamic content, often multi-word) */
 .chalkboard-active .selection-step h2 {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-weight: 700;
-  font-size: var(--fs-3xl);
-  line-height: 1.1;
+  font-size: var(--fs-2xl);
+  line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 var(--sp-4);
-  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 .chalkboard-active .selection-step h3 {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   color: var(--chalk-white);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-lg);
   margin: var(--sp-3) 0 var(--sp-2);
   font-weight: 600;
 }
@@ -4718,9 +4712,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   border: none;
   border-radius: var(--r-md);
   color: var(--chalk-white);
-  font-family: var(--font-hand);
-  font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-family: var(--font-body);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.3;
   text-align: left;
   cursor: pointer;
   position: relative;
@@ -4846,9 +4841,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-md);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
   border: 1.5px dashed rgba(244, 244, 239, 0.4);
   background: transparent;
   color: var(--chalk-white);
@@ -4872,14 +4869,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   color: var(--chalk-white-dim);
 }
 
-/* Path item text */
+/* Path item text — selection card label per §4 role map (Inter, not Caveat) */
 .chalkboard-active .learning-path-title {
-  font-family: var(--font-hand);
-  font-size: var(--fs-xl);
+  font-family: var(--font-body);
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: var(--chalk-white);
-  line-height: 1.2;
-  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3);
+  line-height: 1.3;
 }
 .chalkboard-active .learning-path-summary {
   color: var(--chalk-white-soft);
@@ -5229,13 +5225,15 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 
 
 /* ── AppShell shared overrides for /history + /report-card ───────────── */
+/* Screen title — Inter per §4 (dynamic multi-word content like "My Report Card") */
 .chalkboard-active .page-title {
-  font-family: var(--font-hand);
-  font-size: var(--fs-3xl);
+  font-family: var(--font-body);
+  font-size: var(--fs-2xl);
   font-weight: 700;
+  line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 8px;
-  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 .chalkboard-active .page-subtitle {
   color: var(--chalk-white-soft);
@@ -5260,9 +5258,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 .chalkboard-active .page-empty-state-title {
   color: var(--chalk-white);
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-xl);
   font-weight: 600;
+  line-height: 1.3;
   margin-bottom: 8px;
 }
 .chalkboard-active .page-empty-state-desc {
@@ -5339,9 +5338,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 .chalkboard-active .stat-value {
   display: block;
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-2xl);
   font-weight: 700;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
   color: var(--chalk-gold);
@@ -5408,9 +5408,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   flex-wrap: wrap;
 }
 .chalkboard-active .session-topic {
-  font-family: var(--font-hand);
-  font-size: var(--fs-lg);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
   font-weight: 600;
+  line-height: 1.3;
   color: var(--chalk-white);
 }
 .chalkboard-active .session-mastery {
@@ -5514,9 +5515,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 
 .chalkboard-active .reportcard-subject-name {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-xl);
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--chalk-white);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
@@ -5541,9 +5543,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   margin-bottom: 10px;
 }
 .chalkboard-active .reportcard-chapter-name {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: var(--fs-lg);
+  line-height: 1.3;
   color: var(--chalk-white);
 }
 
@@ -5756,13 +5759,15 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   font-family: var(--font-body);
   font-size: var(--fs-md);
 }
+/* Auth question ("What's your name?") — Inter stem per §4 Auth (reading task) */
 .auth-page.chalkboard-active .auth-title {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-2xl);
   font-weight: 700;
+  line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 0.5rem;
-  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 .auth-page.chalkboard-active .auth-subtitle {
   color: var(--chalk-white-soft);
@@ -6027,9 +6032,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   width: 44px;
   height: 56px;
   text-align: center;
-  font-family: var(--font-hand);
+  font-family: var(--font-reading);
   font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
   color: var(--chalk-white);
   background: rgba(244, 244, 239, 0.08);
   border: 1.5px dashed rgba(244, 244, 239, 0.4);
@@ -6076,10 +6083,12 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 .auth-page.chalkboard-active .onboarding-step .auth-title {
   text-align: center;
 }
+/* Kid types their name/age — Lexend stem per §4 Auth (input value) */
 .auth-page.chalkboard-active .onboarding-input {
   text-align: center;
-  font-family: var(--font-hand);
-  font-size: var(--fs-xl);
+  font-family: var(--font-reading);
+  font-size: var(--fs-lg);
+  font-weight: 600;
   padding: 14px;
 }
 .auth-page.chalkboard-active .onboarding-textarea {
@@ -6101,9 +6110,12 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   background: rgba(244, 244, 239, 0.05);
   border: 1.5px dashed rgba(244, 244, 239, 0.4);
   border-radius: var(--r-sm);
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-xl);
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
   color: var(--chalk-white);
   cursor: pointer;
   transition: transform 0.1s, background 0.15s, border-color 0.15s;
@@ -6328,8 +6340,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   border-top: 1px dashed rgba(244, 244, 239, 0.2);
 }
 .chalkboard-active .profile-section h3 {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--chalk-white);
   margin-bottom: 0.5rem;
 }
@@ -6359,10 +6373,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   transform: translateY(-1px);
 }
 .chalkboard-active .enrichment-cta-content h3 {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   color: var(--chalk-gold);
   font-size: var(--fs-lg);
   font-weight: 700;
+  line-height: 1.3;
   margin: 0 0 4px;
 }
 .chalkboard-active .enrichment-cta-content p {
@@ -6448,9 +6463,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 .chalkboard-active .enrichment-section-title {
   flex: 1;
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-lg);
   font-weight: 600;
+  line-height: 1.3;
   color: var(--chalk-white);
 }
 .chalkboard-active .enrichment-section-dot {
@@ -6627,8 +6643,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   border-radius: var(--r-md);
 }
 .chalkboard-active .enrichment-open-textbox-title {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--chalk-white);
   margin: 0 0 6px;
 }
@@ -6666,8 +6684,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   border-top: 1px dashed rgba(244, 244, 239, 0.2);
 }
 .chalkboard-active .enrichment-session-title {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--chalk-white);
   margin: 0 0 0.75rem;
 }
@@ -6683,8 +6703,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   color: var(--ink-dark);
 }
 .chalkboard-active .enrichment-personality-card h3 {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--ink-dark);
   margin: 0 0 10px;
 }
@@ -6744,12 +6766,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   margin: 0 auto;
 }
 .chalkboard-active .report-issue-heading {
-  font-family: var(--font-hand);
-  font-size: var(--fs-3xl);
+  font-family: var(--font-body);
+  font-size: var(--fs-2xl);
   font-weight: 700;
+  line-height: 1.25;
   color: var(--chalk-white);
   margin: 0 0 6px;
-  text-shadow: 0 0 1px rgba(244, 244, 239, 0.4), 0 2px 0 rgba(0, 0, 0, 0.3);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 .chalkboard-active .report-issue-subtitle {
   font-family: var(--font-body);
@@ -7248,9 +7271,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   border-radius: var(--r-sm);
 }
 .summary-card .exam-summary-score-value {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--fs-3xl);
   font-weight: 700;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
   /* score color set inline based on pct — let it win */
@@ -7285,9 +7309,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   margin-bottom: 8px;
 }
 .summary-card .exam-summary-q-num {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-weight: 700;
   font-size: var(--fs-md);
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
   color: var(--chalk-gold);
@@ -7830,12 +7855,12 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   gap: 8px;
 }
 .chalkboard-active .practice-header-title {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--type-page-title);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.25;
   color: var(--chalk-white);
-  text-shadow: 0 0 1px rgba(244, 244, 239, 0.35), 0 1px 0 rgba(0, 0, 0, 0.25);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 .chalkboard-active .practice-difficulty-dot {
   display: inline-flex;
@@ -8077,7 +8102,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--type-page-title);
   font-weight: 700;
   line-height: 1.1;
@@ -8087,10 +8112,12 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   text-shadow: 0 0 1px rgba(244, 199, 108, 0.4);
 }
 .chalkboard-active .practice-score-label {
-  font-family: var(--font-hand);
+  font-family: var(--font-body);
   font-size: var(--type-card-title);
   font-weight: 600;
   line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
   color: var(--chalk-white);
   margin-bottom: 4px;
 }

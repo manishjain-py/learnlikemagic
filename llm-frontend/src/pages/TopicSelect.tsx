@@ -71,8 +71,6 @@ export default function TopicSelect() {
         <span className="breadcrumb-current">{chapter}</span>
       </div>
 
-      <h2>{chapter}</h2>
-
       {loading ? (
         <p>Loading topics...</p>
       ) : (
