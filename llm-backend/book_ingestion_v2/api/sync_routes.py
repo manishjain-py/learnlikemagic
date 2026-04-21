@@ -284,6 +284,9 @@ def run_chapter_pipeline_all_route(
     from book_ingestion_v2.services.topic_pipeline_status_service import (
         TopicPipelineStatusService,
     )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    ChapterJobService(db).reap_stale_post_sync_jobs(chapter_id)
 
     # Quick planning pass: figure out how many topics are queued.
     try:
@@ -373,6 +376,14 @@ def run_topic_pipeline(
         TopicPipelineOrchestrator,
         stages_to_run_from_status,
     )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    # Reap stale post-sync jobs up-front so the status snapshot reflects
+    # reality. Without this, a stale orphaned job appears `running` and
+    # `stages_to_run_from_status` would skip it — then the first launcher
+    # reaps it silently via `acquire_lock`, stranding that stage outside
+    # the run set.
+    ChapterJobService(db).reap_stale_post_sync_jobs(chapter_id)
 
     try:
         svc = TopicPipelineStatusService(db)

@@ -294,6 +294,33 @@ class ChapterJobService:
             return None
         return self._to_response(job)
 
+    def reap_stale_post_sync_jobs(
+        self, chapter_id: str, guideline_id: Optional[str] = None
+    ) -> int:
+        # Stale-detection side effects inside `acquire_lock` and `get_latest_job`
+        # only fire for whichever job the caller happens to query. Callers that
+        # read pipeline status via `TopicPipelineStatusService` (read-only, no
+        # side effects) see a stale orphaned job as `running` — so a
+        # force=true pipeline kickoff excludes that stage from `stages_to_run`.
+        # Reaping across all post-sync job types up-front makes the status
+        # snapshot reflect reality before stage selection.
+        query = self.db.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.chapter_id == chapter_id,
+            ChapterProcessingJob.status.in_(["pending", "running"]),
+            ChapterProcessingJob.job_type.in_(POST_SYNC_JOB_TYPES),
+        )
+        if guideline_id is not None:
+            query = query.filter(ChapterProcessingJob.guideline_id == guideline_id)
+        reaped = 0
+        for job in query.all():
+            if job.status == "running" and self._is_stale(job):
+                self._mark_stale(job)
+                reaped += 1
+            elif job.status == "pending" and self._is_pending_stale(job):
+                self._mark_pending_abandoned(job)
+                reaped += 1
+        return reaped
+
     def is_job_heartbeat_stale(self, job_id: str) -> bool:
         """True if the job's heartbeat is older than `HEARTBEAT_STALE_THRESHOLD`.
 

@@ -235,3 +235,97 @@ class TestGetLatestJob:
         assert latest is not None and latest.job_id == jid2  # most recent
         # Ensure both still reachable by id
         assert svc.get_job(jid1) is not None
+
+
+class TestReapStalePostSyncJobs:
+    def test_reaps_stale_running_across_stages(self, db_session):
+        from datetime import datetime, timedelta
+        from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+
+        ids = _ids(db_session)
+        svc = ChapterJobService(db_session)
+
+        jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.VISUAL_ENRICHMENT.value,
+            guideline_id=ids["g1"],
+        )
+        svc.start_job(jid)
+        row = db_session.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == jid
+        ).first()
+        row.heartbeat_at = datetime.utcnow() - timedelta(
+            seconds=HEARTBEAT_STALE_THRESHOLD + 60
+        )
+        db_session.commit()
+
+        reaped = svc.reap_stale_post_sync_jobs(ids["chapter_id"])
+        assert reaped == 1
+        job = svc.get_job(jid)
+        assert job is not None and job.status == "failed"
+        assert "heartbeat" in (job.error_message or "").lower()
+
+    def test_leaves_healthy_running_alone(self, db_session):
+        ids = _ids(db_session)
+        svc = ChapterJobService(db_session)
+
+        jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            guideline_id=ids["g1"],
+        )
+        svc.start_job(jid)
+
+        reaped = svc.reap_stale_post_sync_jobs(ids["chapter_id"])
+        assert reaped == 0
+        job = svc.get_job(jid)
+        assert job is not None and job.status == "running"
+
+    def test_scopes_to_guideline_when_provided(self, db_session):
+        from datetime import datetime, timedelta
+        from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+
+        ids = _ids(db_session)
+        svc = ChapterJobService(db_session)
+
+        stale_jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.VISUAL_ENRICHMENT.value,
+            guideline_id=ids["g1"],
+        )
+        svc.start_job(stale_jid)
+        row = db_session.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == stale_jid
+        ).first()
+        row.heartbeat_at = datetime.utcnow() - timedelta(
+            seconds=HEARTBEAT_STALE_THRESHOLD + 60
+        )
+        db_session.commit()
+
+        # Second stale job under a different guideline in the same chapter.
+        other_jid = svc.acquire_lock(
+            book_id=ids["book_id"],
+            chapter_id=ids["chapter_id"],
+            job_type=V2JobType.CHECK_IN_ENRICHMENT.value,
+            guideline_id=ids["g2"],
+        )
+        svc.start_job(other_jid)
+        row2 = db_session.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == other_jid
+        ).first()
+        row2.heartbeat_at = datetime.utcnow() - timedelta(
+            seconds=HEARTBEAT_STALE_THRESHOLD + 60
+        )
+        db_session.commit()
+
+        reaped = svc.reap_stale_post_sync_jobs(
+            ids["chapter_id"], guideline_id=ids["g1"]
+        )
+        assert reaped == 1
+        assert svc.get_job(stale_jid).status == "failed"
+        assert svc.get_job(other_jid).status == "running"
