@@ -385,13 +385,13 @@ export default function VisualsAdmin() {
               <StatusBadge total={t.total_cards} withVisuals={t.cards_with_visuals} hasExplanations={t.has_explanations} />
               {(t.layout_warning_count ?? 0) > 0 && (
                 <span
-                  title={`${t.layout_warning_count} card(s) have persistent layout overlap detected by the render harness`}
+                  title={`${t.layout_warning_count} card(s) flagged by the visual review and not auto-fixed`}
                   style={{
                     fontSize: '10px', fontWeight: 600, padding: '2px 6px',
                     borderRadius: '8px', backgroundColor: '#FEF3C7', color: '#92400E',
                   }}
                 >
-                  ⚠ {t.layout_warning_count} overlap
+                  ⚠ {t.layout_warning_count} visual issue
                 </span>
               )}
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>

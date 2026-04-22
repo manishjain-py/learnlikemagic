@@ -74,13 +74,13 @@ _LLM_CONFIG_SEEDS = [
     {
         "component_key": "check_in_enrichment",
         "provider": "claude_code",
-        "model_id": "claude-opus-4-6",
+        "model_id": "claude-opus-4-7",
         "description": "Check-in card generation (match-the-pairs activities for explanation cards)",
     },
     {
         "component_key": "practice_bank_generator",
         "provider": "claude_code",
-        "model_id": "claude-opus-4-6",
+        "model_id": "claude-opus-4-7",
         "description": "Practice question bank generation + correctness review",
     },
     {
@@ -754,7 +754,7 @@ def _apply_topic_explanations_table(db_manager):
         db_manager,
         component_key="check_in_enrichment",
         provider="claude_code",
-        model_id="claude-opus-4-6",
+        model_id="claude-opus-4-7",
         description="Check-in card generation (match-the-pairs activities for explanation cards)",
     )
 
@@ -817,7 +817,7 @@ def _apply_practice_tables(db_manager):
         db_manager,
         component_key="practice_bank_generator",
         provider="claude_code",
-        model_id="claude-opus-4-6",
+        model_id="claude-opus-4-7",
         description="Practice question bank generation + correctness review",
     )
     _ensure_llm_config(

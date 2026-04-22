@@ -1,9 +1,9 @@
-"""Render pixi code in headless Chrome, extract bounds + screenshot.
+"""Render pixi code in headless Chrome and capture a PNG screenshot.
 
 Uses playwright-python. Stashes code server-side via the visual preview store,
 then navigates to the id-keyed /admin/visual-render-preview/{id} page — the
-admin preview mounts Pixi directly so we can walk app.stage children via
-page.evaluate() and getBounds().
+admin preview mounts Pixi directly. We wait for the page to flip to ready
+and then screenshot the canvas.
 
 Dependencies:
 - playwright-python (`pip install playwright`)
@@ -11,8 +11,8 @@ Dependencies:
 - Frontend dev server on http://localhost:3000 (admin preview page)
 
 The preflight() classmethod exists so callers can fail a long-running job
-fast when the frontend isn't up, instead of silently passing N cards through
-an unrunning overlap check.
+fast when the frontend isn't up, instead of silently skipping the stage-7
+visual review gate on every card.
 """
 import logging
 from pathlib import Path
@@ -20,7 +20,6 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-from book_ingestion_v2.services.visual_overlap_detector import ObjectBounds
 from book_ingestion_v2.services.visual_preview_store import get_preview_store
 
 logger = logging.getLogger(__name__)
@@ -32,64 +31,12 @@ RENDER_TIMEOUT_MS = 30_000
 
 class RenderResult(BaseModel):
     ok: bool
-    bounds: list[ObjectBounds] = []
     screenshot_path: Optional[str] = None
     error: Optional[str] = None
 
 
-_BOUNDS_WALK_JS = """() => {
-  const app = window.__pixiApp;
-  if (!app) return [];
-  const results = [];
-  function walk(obj) {
-    if (!obj.visible) return;
-    let b;
-    try { b = obj.getBounds(); } catch (_) { b = null; }
-    if (b && isFinite(b.x) && isFinite(b.y) && isFinite(b.width) && isFinite(b.height)) {
-      // Pixi v8 internally names some classes with an underscore prefix
-      // (_Graphics, _Container, etc.) but exports them unprefixed. Strip
-      // the prefix so downstream detection matches the public type name.
-      const rawType = obj.constructor ? obj.constructor.name : 'Unknown';
-      const type = rawType.replace(/^_+/, '') || 'Unknown';
-      const entry = {
-        type: type,
-        alpha: obj.alpha ?? 1,
-        bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
-      };
-      if (entry.type === 'Text') entry.text = obj.text || '';
-      if (entry.type === 'Graphics') {
-        // Heuristic: a Graphics is "dense" if it has at least one fill instruction.
-        // Different Pixi versions expose this differently; we try v8 first (what
-        // this codebase uses), then fall back to v7/v6 shapes. Conservative
-        // default of true when we can't introspect — errs on the side of flagging.
-        let dense = true;
-        try {
-          // Pixi v8: GraphicsContext with instructions[]. Each has action: 'fill'|'stroke'|'texture'|...
-          const v8Instructions = obj.context && Array.isArray(obj.context.instructions)
-            ? obj.context.instructions
-            : null;
-          if (v8Instructions) {
-            dense = v8Instructions.some(function (ins) { return ins && ins.action === 'fill'; });
-          } else {
-            // Pixi v7: geometry.drawCalls. Pixi v6: graphicsData.
-            const fills = (obj.geometry && obj.geometry.drawCalls) || obj.graphicsData || null;
-            if (fills && fills.length === 0) dense = false;
-          }
-          if (obj.alpha === 0) dense = false;
-        } catch (_) { dense = true; }
-        entry.dense = dense;
-      }
-      results.push(entry);
-    }
-    (obj.children || []).forEach(walk);
-  }
-  (app.stage.children || []).forEach(walk);
-  return results;
-}"""
-
-
 class VisualRenderHarness:
-    """Per-call: boot browser, render code, extract bounds, screenshot.
+    """Per-call: boot browser, render code, capture screenshot.
 
     Serial — not thread-safe. Use one instance per job, not shared across threads.
     """
@@ -101,14 +48,12 @@ class VisualRenderHarness:
         output_type: Literal["static_visual", "animated_visual"] = "static_visual",
         screenshot_path: Optional[Path] = None,
     ) -> RenderResult:
-        """Render pixi code in headless Chromium, return bounds list + optional screenshot."""
+        """Render pixi code in headless Chromium and write a PNG screenshot."""
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
             return RenderResult(ok=False, error="playwright not installed")
 
-        # Stash code via in-process preview store — the admin page fetches it
-        # back by id. Avoids putting executable code in the URL.
         preview_id = get_preview_store().put(code=pixi_code, output_type=output_type)
         url = f"{FRONTEND_URL}/admin/visual-render-preview/{preview_id}"
 
@@ -119,7 +64,6 @@ class VisualRenderHarness:
                     context = browser.new_context(viewport={"width": 800, "height": 600})
                     page = context.new_page()
                     page.goto(url, timeout=RENDER_TIMEOUT_MS)
-                    # Wait for the preview page to flip data-pixi-state to ready (or error).
                     page.wait_for_selector(
                         '[data-pixi-state="ready"], [data-pixi-state="error"]',
                         timeout=RENDER_TIMEOUT_MS,
@@ -128,9 +72,6 @@ class VisualRenderHarness:
                     if state == "error":
                         err_msg = page.evaluate("() => window.__pixiError || 'unknown error'")
                         return RenderResult(ok=False, error=f"pixi error: {err_msg}")
-
-                    # Walk the display tree and capture bounds for every visible node.
-                    raw_bounds = page.evaluate(_BOUNDS_WALK_JS)
 
                     if screenshot_path:
                         try:
@@ -141,20 +82,16 @@ class VisualRenderHarness:
                             logger.warning(
                                 f"Screenshot failed for {preview_id}: {shot_err}"
                             )
+                            return RenderResult(
+                                ok=False, error=f"screenshot failed: {shot_err}"
+                            )
 
                     context.close()
                 finally:
                     browser.close()
 
-                bounds: list[ObjectBounds] = []
-                for b in raw_bounds:
-                    try:
-                        bounds.append(ObjectBounds(**b))
-                    except Exception as parse_err:
-                        logger.warning(f"Skipping un-parseable bounds entry: {b} ({parse_err})")
                 return RenderResult(
                     ok=True,
-                    bounds=bounds,
                     screenshot_path=str(screenshot_path) if screenshot_path else None,
                 )
         except Exception as e:
@@ -166,8 +103,8 @@ class VisualRenderHarness:
         """HEAD the frontend root. Fails fast when localhost:3000 isn't up.
 
         Called once at the top of a stage-7 visual enrichment job so admin
-        sees a clear error in seconds, rather than silently passing N cards
-        through an unrunning overlap check.
+        sees a clear error in seconds, rather than silently skipping the
+        review gate on every card.
         """
         import urllib.error
         import urllib.request
