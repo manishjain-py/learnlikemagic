@@ -10,15 +10,14 @@
  *
  * Differences from student-facing VisualExplanation.tsx:
  *  - Mounts Pixi directly on the page (no sandboxed iframe) so Playwright
- *    can reach into window.__pixiApp.stage via page.evaluate(). The
- *    student-facing component uses a sandboxed iframe for defense in
- *    depth — see docs/feature-development/ingestion-quality-reviews/
- *    impl-plan.md §3.3 for the trade-off rationale.
+ *    can screenshot the canvas without iframe indirection. The student-facing
+ *    component uses a sandboxed iframe for defense in depth — see
+ *    docs/feature-development/ingestion-quality-reviews/impl-plan.md §3.3
+ *    for the trade-off rationale.
  *  - Signals render state via a `data-pixi-state` attribute on the canvas
  *    container so Playwright can wait for it to flip to "ready" or "error".
  *
- * Admin-only. Never served to students. Never call window.__pixiApp from
- * a student-facing code path.
+ * Admin-only. Never served to students.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -65,9 +64,6 @@ export default function VisualRenderPreview() {
         });
         canvasContainerRef.current.appendChild(app.canvas);
         pixiAppRef.current = app;
-
-        // Expose for Playwright's page.evaluate().
-        (window as any).__pixiApp = app;
 
         // Make PIXI available globally for the generated code.
         const PIXI = await import('pixi.js');

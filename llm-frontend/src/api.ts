@@ -76,7 +76,7 @@ export interface VisualExplanation {
   output_type?: 'image' | 'animation';
   title?: string;
   narration?: string;
-  layout_warning?: boolean; // True when stage-7 overlap gate detected persistent overlap
+  layout_warning?: boolean; // True when stage-7 visual review gate still flagged the card after the targeted refine round. Admin observability only — no student-facing UI.
   // Legacy fields from old SVG-based visuals (backward compat)
   scene_type?: string;
 }

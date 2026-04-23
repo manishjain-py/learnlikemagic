@@ -105,7 +105,7 @@ class ClaudeCodeAdapter:
             "--dangerously-skip-permissions",
             "--no-session-persistence",
             "--max-turns", "1",
-            "--model", "claude-opus-4-6",
+            "--model", "claude-opus-4-7",
         ]
 
         # When a system prompt file is provided, load static instructions
@@ -283,7 +283,7 @@ class ClaudeCodeAdapter:
             "--dangerously-skip-permissions",
             "--no-session-persistence",
             "--max-turns", str(max_turns),
-            "--model", "claude-opus-4-6",
+            "--model", "claude-opus-4-7",
             "--effort", cli_effort,
         ]
 
