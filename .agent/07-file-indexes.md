@@ -43,7 +43,6 @@ Code baseline: `main@e0c0338`
 - Feature flag service: `llm-backend/shared/services/feature_flag_service.py`
 - LLM config routes: `llm-backend/shared/api/llm_config_routes.py`
 - Docs API: `llm-backend/api/docs.py`
-- Pixi PoC API: `llm-backend/api/pixi_poc.py`
 - Pixi code generator: `llm-backend/tutor/services/pixi_code_generator.py`
 - Test-scenarios API: `llm-backend/api/test_scenarios.py`
 
