@@ -24,7 +24,9 @@ Each work item below is scoped so it can ship as its own PR, keeping blast radiu
 ## 2. Audit Summary
 
 ### 2.1 Dead code
-Minimal. The audit found no dead endpoints, no orphan modules, and no unused config settings. One naming-clarity issue: `db.py` is a migration CLI — not a data-access library — and shares the namespace with `database.py` (session management). Low priority.
+One real item: the **pixi-poc admin PoC** is obsolete. It existed to prototype Pixi.js code generation before the integrated tutor pixi flow (`tutor/services/pixi_code_generator.py`) shipped; now that the integrated flow is live, the standalone PoC page and endpoint are unused. Handled as P0.1 below. Otherwise clean — no other dead endpoints, orphan modules, or unused config.
+
+One naming-clarity issue: `db.py` is a migration CLI — not a data-access library — and shares the namespace with `database.py` (session management). Low priority.
 
 ### 2.2 Readability
 Five files dominate: `sync_routes.py` (2258 LOC), `session_service.py` (1387), `orchestrator.py` (1099), `db.py` (934), `master_tutor.py` (928). Inside those files, ~10 functions exceed 150 lines. Mastery thresholds, turn limits, and grade cutoffs are scattered as magic numbers (`0.7`, `0.6`, `grade <= 5`) instead of named constants.
@@ -42,7 +44,7 @@ DB session handling is **mostly** clean (`Depends(get_db)` with FastAPI auto-clo
 - **Missing `exc_info=True`** on `logger.error()` in exception handlers (`tts.py:90`, `transcription.py:76`, `pixi_poc.py:114`).
 - **`print()` in `main.py` startup** (lines 131/137/139/141) bypasses the JSON log formatter.
 - **Blocking I/O in async endpoints** — `tts.py:76` (`client.synthesize_speech`) and `transcription.py:70` (`client.audio.transcriptions.create`) block the event loop.
-- **Unauthenticated admin endpoint** — `POST /api/admin/pixi-poc/generate` has no auth dependency.
+- **Obsolete PoC endpoint** — `POST /api/admin/pixi-poc/generate` is also unauthenticated, but since the PoC has been superseded by the integrated tutor pixi flow, the right fix is deletion, not auth.
 - **Hardcoded logger names** in a few files (`"auth.middleware"`, `"tutor.session_service"`) vs. the standard `__name__`.
 
 ---
@@ -59,12 +61,27 @@ Each item lists: **What / Why / Files / Approach / Regression surface / Effort**
 
 These change runtime behavior under failure (exceptions, concurrency, auth) and are individually small. Bundle them or split by file — but do not defer.
 
-#### P0.1 — Authenticate the pixi-poc admin endpoint
-**What.** `POST /api/admin/pixi-poc/generate` at `llm-backend/api/pixi_poc.py:61` accepts requests from anyone. It spends OpenAI tokens and executes LLM-generated Pixi.js code in the admin UI.
-**Why.** Unauthenticated endpoint on `/api/admin/*` is a cost and abuse vector. Every other admin endpoint in the codebase gates on `Depends(get_current_user)`.
-**Files.** `llm-backend/api/pixi_poc.py`.
-**Approach.** Add `Depends(get_current_user)` to the route, matching the pattern used in `book_ingestion_v2/api/book_routes.py`. If an admin-role check exists anywhere in `auth/` (currently none found), introduce a `require_admin()` dependency in `auth/middleware/` and apply here.
-**Regression surface.** Frontend `PixiJsPocPage.tsx` must already send auth headers — confirm by inspecting the frontend call site before shipping.
+#### P0.1 — Remove the obsolete pixi-poc PoC
+**What.** Delete the standalone Pixi.js code-generation PoC. It was built before the integrated tutor pixi flow (`tutor/services/pixi_code_generator.py`) shipped; now that the integrated flow is live in-session, the PoC is unused dead code that also happens to be unauthenticated.
+
+**Why.** Removes a cost/abuse vector (the endpoint is unauthenticated and spends OpenAI tokens) and trims dead code. Deleting is simpler than authenticating something nobody uses.
+
+**Files to delete (backend).**
+- `llm-backend/api/pixi_poc.py`
+- Remove the imports and `app.include_router(pixi_poc_router)` in `llm-backend/main.py:24, 124`.
+
+**Files to delete (frontend, companion PR — required to avoid a dead nav link).**
+- `llm-frontend/src/features/admin/pages/PixiJsPocPage.tsx`
+- Remove the route registration in `llm-frontend/src/App.tsx`.
+- Remove the nav link in `llm-frontend/src/features/admin/components/AdminLayout.tsx`.
+- Remove the link card in `llm-frontend/src/features/admin/pages/AdminHome.tsx`.
+
+**Docs to update.** `docs/technical/architecture-overview.md` lines 25, 193, 271, 333 — remove pixi-poc references.
+
+**Keep unchanged.** `llm-backend/tutor/services/pixi_code_generator.py` (used by the orchestrator for in-session `visual_explanation` rendering) and the `pixi_code_generator` seed row in `db.py` (still consumed by the integrated generator) stay exactly as they are.
+
+**Regression surface.** Minimal. The PoC page has no upstream callers in the student flow. Verify by (a) grepping for any other caller of the endpoint path `/api/admin/pixi-poc`, (b) confirming the tutor's in-session pixi still renders after the change — `tutor/services/pixi_code_generator.py` continues to import the `pixi_code_generator` LLM config by the same name.
+
 **Effort.** S.
 
 #### P0.2 — Move blocking I/O off the event loop in async endpoints
@@ -322,7 +339,7 @@ Recommended order (each step lands independently; later steps may unblock earlie
 
 ## 6. Out of Scope
 
-- **Frontend changes.** This plan is backend-only.
+- **Frontend changes.** Backend-only, with one exception: P0.1 (pixi-poc removal) requires a companion frontend PR to delete the dead admin page — listed inline in P0.1.
 - **Test coverage increases.** Refactors should preserve or slightly improve testability, but adding net-new tests is a separate workstream.
 - **Infrastructure / deployment changes.** No Terraform, no Dockerfile edits.
 - **Performance optimization.** P0.2 fixes a correctness bug around blocking I/O; broader perf work is out of scope.
