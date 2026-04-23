@@ -86,9 +86,11 @@ def start_processing(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -123,9 +125,11 @@ def reprocess(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -172,9 +176,11 @@ def refinalize(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -220,9 +226,11 @@ def ocr_retry(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -273,9 +281,11 @@ def ocr_rerun(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -298,9 +308,11 @@ def get_latest_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -321,9 +333,11 @@ def get_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -359,9 +373,11 @@ def get_chapter_topics(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -395,9 +411,11 @@ def get_topic(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("processing route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -421,8 +439,12 @@ def delete_topic(
         return {"deleted": topic_id}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("processing route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 # ───── Helpers ─────

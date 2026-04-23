@@ -128,17 +128,18 @@ app.include_router(issue_routes.router)          # Issue reporting: /issues/*
 @app.on_event("startup")
 async def startup_event():
     """Validate database connection on startup."""
-    print("🚀 Starting LearnLikeMagic LLM Backend...")
+    logger = logging.getLogger(__name__)
+    logger.info("Starting LearnLikeMagic LLM Backend")
 
     db_manager = get_db_manager()
     is_healthy = db_manager.health_check()
 
     if not is_healthy:
-        print("⚠️  WARNING: Database health check failed on startup")
+        logger.warning("Database health check failed on startup")
     else:
-        print("✅ Database connection healthy")
+        logger.info("Database connection healthy")
 
-    print("✅ Application started successfully")
+    logger.info("Application started successfully")
 
 
 if __name__ == "__main__":
