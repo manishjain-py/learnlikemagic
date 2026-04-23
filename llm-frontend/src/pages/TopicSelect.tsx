@@ -14,6 +14,7 @@ export default function TopicSelect() {
   const [progress, setProgress] = useState<Record<string, TopicProgress>>({});
   const [loading, setLoading] = useState(true);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const chapterSummary = (location.state as any)?.chapterSummary || null;
 
@@ -50,6 +51,15 @@ export default function TopicSelect() {
     setExpandedIdx(expandedIdx === idx ? null : idx);
   };
 
+  const toggleSection = (key: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // Separate refresher topic from regular topics
   const refresherTopic = topics.find((t) => t.topic_key === 'get-ready');
   const regularTopics = topics.filter((t) => t.topic_key !== 'get-ready');
@@ -80,14 +90,38 @@ export default function TopicSelect() {
             <div className="chapter-landing">
               {chapterSummary && (
                 <div className="chapter-landing-section">
-                  <div className="chapter-landing-label">What you'll learn</div>
-                  <p className="chapter-landing-text">{chapterSummary}</p>
+                  <button
+                    type="button"
+                    className="chapter-landing-toggle"
+                    onClick={() => toggleSection('learn')}
+                    aria-expanded={expandedSections.has('learn')}
+                  >
+                    <span className="chapter-landing-label">What you'll learn</span>
+                    <span className="chapter-landing-chevron">
+                      {expandedSections.has('learn') ? '\u2303' : '\u02C5'}
+                    </span>
+                  </button>
+                  {expandedSections.has('learn') && (
+                    <p className="chapter-landing-text">{chapterSummary}</p>
+                  )}
                 </div>
               )}
               {refresherTopic && refresherTopic.topic_summary && (
                 <div className="chapter-landing-section">
-                  <div className="chapter-landing-label">What you'll need</div>
-                  <p className="chapter-landing-text">{refresherTopic.topic_summary}</p>
+                  <button
+                    type="button"
+                    className="chapter-landing-toggle"
+                    onClick={() => toggleSection('need')}
+                    aria-expanded={expandedSections.has('need')}
+                  >
+                    <span className="chapter-landing-label">What you'll need</span>
+                    <span className="chapter-landing-chevron">
+                      {expandedSections.has('need') ? '\u2303' : '\u02C5'}
+                    </span>
+                  </button>
+                  {expandedSections.has('need') && (
+                    <p className="chapter-landing-text">{refresherTopic.topic_summary}</p>
+                  )}
                 </div>
               )}
               {refresherTopic && (

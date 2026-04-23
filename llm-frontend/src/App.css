@@ -4914,8 +4914,30 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   color: var(--chalk-white-soft);
   font-family: var(--font-body);
   font-size: var(--fs-sm);
-  margin: 0;
+  margin: 6px 0 0 0;
   line-height: 1.5;
+}
+.chalkboard-active .chapter-landing-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--chalk-white-dim);
+  text-align: left;
+}
+.chalkboard-active .chapter-landing-toggle:hover .chapter-landing-label,
+.chalkboard-active .chapter-landing-toggle:hover .chapter-landing-chevron {
+  color: var(--chalk-white);
+}
+.chalkboard-active .chapter-landing-chevron {
+  font-size: var(--fs-md);
+  color: var(--chalk-white-dim);
+  margin-left: 8px;
+  line-height: 1;
 }
 
 /* Get Ready prerequisite button — parchment feel */
