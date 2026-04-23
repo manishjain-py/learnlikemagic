@@ -544,7 +544,12 @@ class AnimationEnrichmentService:
             )
             return False, ""
 
-        if response.upper().startswith("OK"):
+        # Accept exactly "OK" (with optional trailing . ! whitespace) as clean.
+        # Anything else — including "OK, but ..." — counts as flagged, because
+        # the prompt explicitly asks for an empty `OK` on a clean card.
+        if not response:
+            return False, ""
+        if re.fullmatch(r"OK[\s.!]*", response, flags=re.IGNORECASE):
             return False, ""
         return True, response
 

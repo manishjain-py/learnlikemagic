@@ -241,6 +241,51 @@ class TestVisualReview:
         assert flagged is False
         assert note == ""
 
+    def test_ok_with_terminal_punctuation_not_flagged(self):
+        svc = _mk_service()
+        adapter = MagicMock()
+        adapter.call_vision_sync.return_value = "OK."
+        with patch.object(svc, "_get_vision_adapter", return_value=adapter):
+            flagged, note = svc._visual_review(
+                screenshot_path=Path("/tmp/unused.png"),
+                decision=_mk_decision(),
+                card={"content": "content"},
+                guideline=_FakeGuideline(),
+            )
+        assert flagged is False
+        assert note == ""
+
+    def test_ok_prefix_followed_by_issue_is_flagged(self):
+        """'OK, but ...' is a real issue masquerading as clean — must flag."""
+        svc = _mk_service()
+        adapter = MagicMock()
+        adapter.call_vision_sync.return_value = "OK, but the '?' is cut off at the right edge."
+        with patch.object(svc, "_get_vision_adapter", return_value=adapter):
+            flagged, note = svc._visual_review(
+                screenshot_path=Path("/tmp/unused.png"),
+                decision=_mk_decision(),
+                card={"content": "content"},
+                guideline=_FakeGuideline(),
+            )
+        assert flagged is True
+        assert "cut off" in note
+
+    def test_empty_response_not_flagged(self):
+        """An empty response means no issues were articulated — don't flag with
+        an empty note, which would produce a no-op refine round."""
+        svc = _mk_service()
+        adapter = MagicMock()
+        adapter.call_vision_sync.return_value = "   \n  "
+        with patch.object(svc, "_get_vision_adapter", return_value=adapter):
+            flagged, note = svc._visual_review(
+                screenshot_path=Path("/tmp/unused.png"),
+                decision=_mk_decision(),
+                card={"content": "content"},
+                guideline=_FakeGuideline(),
+            )
+        assert flagged is False
+        assert note == ""
+
     def test_issue_list_returns_flagged_with_note(self):
         svc = _mk_service()
         adapter = MagicMock()
