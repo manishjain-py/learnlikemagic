@@ -36,14 +36,6 @@ export default function LoginPage() {
 
         <div className="auth-buttons">
           <button
-            className="auth-btn auth-btn-phone"
-            disabled
-            style={{ opacity: 0.5, cursor: 'not-allowed' }}
-          >
-            Continue with Phone (coming soon)
-          </button>
-
-          <button
             className="auth-btn auth-btn-email"
             onClick={() => navigate('/login/email')}
           >
@@ -55,6 +47,14 @@ export default function LoginPage() {
             onClick={loginWithGoogle}
           >
             Continue with Google
+          </button>
+
+          <button
+            className="auth-btn auth-btn-phone"
+            disabled
+            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            Continue with Phone (coming soon)
           </button>
         </div>
 

@@ -13,6 +13,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 type Step = 'name' | 'preferred_name' | 'age' | 'grade' | 'board' | 'about' | 'done';
 
+const STEP_ORDER: Step[] = ['name', 'preferred_name', 'age', 'grade', 'board', 'about', 'done'];
+
 const BOARDS = ['CBSE', 'ICSE', 'State Board', 'Other'];
 
 export default function OnboardingFlow() {
@@ -114,6 +116,14 @@ export default function OnboardingFlow() {
     navigate('/');
   };
 
+  const goBack = () => {
+    const idx = STEP_ORDER.indexOf(step);
+    if (idx > 0) {
+      setError('');
+      setStep(STEP_ORDER[idx - 1]);
+    }
+  };
+
   return (
     <div className="auth-page chalkboard-active">
       <div className="auth-container onboarding">
@@ -128,6 +138,12 @@ export default function OnboardingFlow() {
             />
           ))}
         </div>
+
+        {step !== 'name' && step !== 'done' && (
+          <button type="button" className="auth-back-btn" onClick={goBack} disabled={loading}>
+            &larr; Back
+          </button>
+        )}
 
         {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
 
