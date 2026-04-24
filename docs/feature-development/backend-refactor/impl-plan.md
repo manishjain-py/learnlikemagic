@@ -3,7 +3,9 @@
 **Date:** 2026-04-23
 **Status:** Draft — audit complete, awaiting review
 **Scope:** `llm-backend/` (286 Python files, ~70k LOC excluding venv/tests)
-**Goal:** Prioritized refactor backlog. No behavior changes; every item below is a structural cleanup that must preserve existing functionality end-to-end.
+**Goal:** Prioritized refactor backlog. Items fall into two buckets:
+- **Behavior-preserving refactors** (P1/P2/P3): structural cleanup that must preserve existing functionality end-to-end.
+- **Intentional safety-driven behavior changes** (P0): documented per-item below — deleting an unauthenticated PoC endpoint, stopping silent exception swallow, replacing blocking I/O on the event loop. These change client-visible behavior on purpose; the change and its blast radius are called out in each P0 item.
 **Principles:** `docs/technical/architecture-overview.md` (API → Service → Agent/Orchestration → Repository)
 
 ---
@@ -24,7 +26,7 @@ Each work item below is scoped so it can ship as its own PR, keeping blast radiu
 ## 2. Audit Summary
 
 ### 2.1 Dead code
-One real item: the **pixi-poc admin PoC** is obsolete. It existed to prototype Pixi.js code generation before the integrated tutor pixi flow (`tutor/services/pixi_code_generator.py`) shipped; now that the integrated flow is live, the standalone PoC page and endpoint are unused. Handled as P0.1 below. Otherwise clean — no other dead endpoints, orphan modules, or unused config.
+One real item: the **pixi-poc admin PoC** is obsolete. It existed to prototype Pixi.js code generation before the integrated tutor pixi flow (`tutor/services/pixi_code_generator.py`) shipped; now that the integrated flow is live, the standalone PoC page, endpoint, **and its `pixi_code_generator` LLM-config seed** are all unused. All handled together as P0.1 below. Otherwise clean — no other dead endpoints or orphan modules.
 
 One naming-clarity issue: `db.py` is a migration CLI — not a data-access library — and shares the namespace with `database.py` (session management). Low priority.
 
@@ -78,9 +80,11 @@ These change runtime behavior under failure (exceptions, concurrency, auth) and 
 
 **Docs to update.** `docs/technical/architecture-overview.md` lines 25, 193, 271, 333 — remove pixi-poc references.
 
-**Keep unchanged.** `llm-backend/tutor/services/pixi_code_generator.py` (used by the orchestrator for in-session `visual_explanation` rendering) and the `pixi_code_generator` seed row in `db.py` (still consumed by the integrated generator) stay exactly as they are.
+**Also delete.** The `pixi_code_generator` seed row in `db.py`'s `_LLM_CONFIG_SEEDS`. Its only reader was `api/pixi_poc.py` itself, so once the PoC module is deleted the seed becomes orphan dead data. (Initial plan incorrectly claimed the integrated generator consumed this seed; it doesn't — `tutor/services/pixi_code_generator.py` takes an `LLMService` instance from its caller and never looks up a dedicated `component_key`.)
 
-**Regression surface.** Minimal. The PoC page has no upstream callers in the student flow. Verify by (a) grepping for any other caller of the endpoint path `/api/admin/pixi-poc`, (b) confirming the tutor's in-session pixi still renders after the change — `tutor/services/pixi_code_generator.py` continues to import the `pixi_code_generator` LLM config by the same name.
+**Keep unchanged.** `llm-backend/tutor/services/pixi_code_generator.py` (used by the orchestrator for in-session `visual_explanation` rendering) stays exactly as is.
+
+**Regression surface.** Minimal. The PoC page has no upstream callers in the student flow. Verify by (a) grepping for any other caller of the endpoint path `/api/admin/pixi-poc`, (b) confirming the tutor's in-session pixi still renders after the change — the orchestrator passes its own `LLMService` to `PixiCodeGenerator`, so deleting the LLM-config seed has no impact on the live visual rendering path.
 
 **Effort.** S.
 
@@ -314,11 +318,11 @@ Gap is small (~2–3% of service signatures). Run `mypy --strict` on `shared/ser
 
 Every refactor PR must:
 
-1. **Keep public contracts unchanged.** API routes: same path, same request/response model, same status codes. Services: same method signatures where callers exist outside the service module.
+1. **Keep public contracts unchanged** — *unless the PR is explicitly a P0 safety fix whose behavior change is documented in its item above*. P1/P2/P3 PRs: same API paths, same request/response models, same status codes, same service method signatures. P0 PRs: preserve every contract not explicitly listed as changing in the item (e.g., P0.3 changes 500 response bodies but not status codes, paths, or 4xx bodies).
 2. **Run the full test suite** — `cd llm-backend && make test` — must pass before merge.
 3. **Run the tutor eval sanity pass** — for any changes in `tutor/orchestration/`, `tutor/agents/`, or `tutor/services/session_service.py`. Confirmed via `autoresearch/tutor_teaching_quality/` run on a small fixed scenario set; scores must not regress.
 4. **Manual smoke test the affected feature path.** For API/service changes: run the relevant student flow end-to-end on localhost (per project memory, ingestion is localhost-only).
-5. **No behavior changes.** If a refactor tempts you to "also fix" an adjacent bug, stop and file it separately. Mixing refactor + fix defeats the regression-isolation story.
+5. **No unplanned behavior changes.** If a refactor tempts you to "also fix" an adjacent bug beyond what the P0/P1/P2/P3 item lists, stop and file it separately. Mixing in-scope refactor + out-of-scope fix defeats the regression-isolation story.
 
 Per the project's concise-doc rule, this list is intentionally minimal. Ops burden stays proportional to the change.
 
