@@ -369,7 +369,7 @@ class TestSimplifyCardService:
         )
 
         from tutor.services.session_service import SessionService
-        from fastapi import HTTPException
+        from tutor.exceptions import CardPhaseError
 
         with patch.object(SessionService, '__init__', lambda self, db: None):
             service = SessionService.__new__(SessionService)
@@ -381,9 +381,9 @@ class TestSimplifyCardService:
             session_row.state_version = 1
             service.session_repo.get_by_id.return_value = session_row
 
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(CardPhaseError) as exc_info:
                 service.simplify_card("sess_test", card_idx=0, reason='example')
-            assert exc_info.value.status_code == 400
+            assert exc_info.value.to_http_exception().status_code == 400
 
 
 # ---------------------------------------------------------------------------

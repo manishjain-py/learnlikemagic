@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 # V2 uses its own run_in_background_v2 defined below
 from book_ingestion_v2.constants import ChapterStatus, V2JobType
+from book_ingestion_v2.exceptions import StageGateRejected
 from book_ingestion_v2.models.schemas import (
     StartProcessingRequest,
     ReprocessRequest,
@@ -88,6 +89,8 @@ def start_processing(
 
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except StageGateRejected as e:
+        raise e.to_http_exception()
     except HTTPException:
         raise
     except Exception:
@@ -178,6 +181,8 @@ def refinalize(
 
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except StageGateRejected as e:
+        raise e.to_http_exception()
     except HTTPException:
         raise
     except Exception:
@@ -228,6 +233,8 @@ def ocr_retry(
 
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except StageGateRejected as e:
+        raise e.to_http_exception()
     except HTTPException:
         raise
     except Exception:
@@ -283,6 +290,8 @@ def ocr_rerun(
 
     except ChapterJobLockError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except StageGateRejected as e:
+        raise e.to_http_exception()
     except HTTPException:
         raise
     except Exception:

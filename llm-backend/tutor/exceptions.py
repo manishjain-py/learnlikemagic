@@ -21,6 +21,12 @@ Exception Hierarchy:
     ├── PromptError
     │   └── PromptTemplateError
     └── ConfigurationError
+
+    LearnLikeMagicException (shared base, HTTP-translatable)
+    ├── SessionModeError         (400)
+    ├── CardPhaseError           (400)
+    ├── InvalidCardActionError   (400)
+    └── VariantNotFoundError     (404)
 """
 
 from typing import Optional
@@ -203,3 +209,59 @@ class ConfigurationError(TutorAgentError):
         super().__init__(message)
         self.config_key = config_key
         self.reason = reason
+
+
+# Service-Layer Errors (HTTP-translatable)
+#
+# These replace inline `raise HTTPException(...)` from service methods. They
+# inherit from LearnLikeMagicException so existing route handlers that catch
+# it via `except LearnLikeMagicException as e: raise e.to_http_exception()`
+# translate them to HTTP responses automatically — no route changes needed.
+
+from fastapi import HTTPException, status  # noqa: E402
+
+from shared.utils.exceptions import LearnLikeMagicException  # noqa: E402
+
+
+class SessionModeError(LearnLikeMagicException):
+    """Operation is invalid for the session's current mode (400)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+    def to_http_exception(self) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=self.message)
+
+
+class CardPhaseError(LearnLikeMagicException):
+    """Operation is invalid for the session's current card-phase state (400)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+    def to_http_exception(self) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=self.message)
+
+
+class InvalidCardActionError(LearnLikeMagicException):
+    """Invalid card-action parameter: unknown action or out-of-range index (400)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+    def to_http_exception(self) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=self.message)
+
+
+class VariantNotFoundError(LearnLikeMagicException):
+    """Explanation variant or its cards are not found (404)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+    def to_http_exception(self) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=self.message)

@@ -700,7 +700,7 @@ class TestSessionServiceCardPhase:
 
     @patch("tutor.services.session_service.get_settings")
     def test_process_step_rejects_during_card_phase(self, mock_settings):
-        """process_step raises HTTPException 400 when session is in card phase."""
+        """process_step raises CardPhaseError (translates to 400) when session is in card phase."""
         mock_settings.return_value = MagicMock(
             openai_api_key="fake", gemini_api_key=None, anthropic_api_key=None,
         )
@@ -717,13 +717,13 @@ class TestSessionServiceCardPhase:
         db_row.state_version = 1
         svc.session_repo.get_by_id.return_value = db_row
 
-        from fastapi import HTTPException
+        from tutor.exceptions import CardPhaseError
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(CardPhaseError) as exc_info:
             svc.process_step("test-session-card", StepRequest(student_reply="hello"))
 
-        assert exc_info.value.status_code == 400
-        assert "card phase" in exc_info.value.detail.lower()
+        assert exc_info.value.to_http_exception().status_code == 400
+        assert "card phase" in exc_info.value.message.lower()
 
     @patch("tutor.services.session_service.get_settings")
     @patch("tutor.services.session_service.ExplanationRepository")
@@ -854,13 +854,13 @@ class TestSessionServiceCardPhase:
         db_row.state_version = 1
         svc.session_repo.get_by_id.return_value = db_row
 
-        from fastapi import HTTPException
+        from tutor.exceptions import CardPhaseError
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(CardPhaseError) as exc_info:
             svc.complete_card_phase("test-session-card", "clear")
 
-        assert exc_info.value.status_code == 400
-        assert "not in card phase" in exc_info.value.detail.lower()
+        assert exc_info.value.to_http_exception().status_code == 400
+        assert "not in card phase" in exc_info.value.message.lower()
 
     @patch("tutor.services.session_service.get_settings")
     def test_card_action_session_not_found(self, mock_settings):

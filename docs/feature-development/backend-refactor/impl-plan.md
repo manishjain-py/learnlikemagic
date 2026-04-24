@@ -1,7 +1,7 @@
 # Tech Implementation Plan: Backend Refactor
 
 **Date:** 2026-04-23 (progress tracker updated 2026-04-24)
-**Status:** In progress — **P0 shipped**, **P1 next (start with P1.2)**
+**Status:** In progress — **P0 shipped**, **P1.2 shipped**, **P1.1 next (smallest file first)**
 **Scope:** `llm-backend/` (286 Python files, ~70k LOC excluding venv/tests)
 **Goal:** Prioritized refactor backlog. Items fall into two buckets:
 - **Behavior-preserving refactors** (P1/P2/P3): structural cleanup that must preserve existing functionality end-to-end.
@@ -18,11 +18,12 @@
 | Plan  | this doc | Merged | [PR #113](https://github.com/manishjain-py/learnlikemagic/pull/113) |
 | P0    | P0.1 pixi-poc removal + orphan seed cleanup | **Shipped** | [PR #114](https://github.com/manishjain-py/learnlikemagic/pull/114) · commit `238f350` |
 | P0    | P0.2–P0.5 safety fixes (async I/O, silent excepts, exc_info, print→logger) | **Shipped** | [PR #115](https://github.com/manishjain-py/learnlikemagic/pull/115) · commit `b8fcf94` |
-| P1    | P1.1 layer violations / P1.2 service exceptions / P1.3 split sync_routes.py | **Not started** | — |
+| P1    | P1.2 service exceptions (session_service + stage_gating) | **Shipped** | TBD (PR pending) |
+| P1    | P1.1 layer violations / P1.3 split sync_routes.py | **Not started** | — |
 | P2    | Six items — see §3 | Not started | — |
 | P3    | Five items — see §3 | Not started | — |
 
-**Next action:** start P1.2 (domain exceptions in services). Per the rollout sequence in §5, P1.2 unblocks both P1.1 and P1.3.
+**Next action:** start P1.1 (layer violations), smallest file first — `auth/api/profile_routes.py` + `enrichment_routes.py`. P1.2 shipped the domain-exception idiom (`tutor/exceptions.py` + `book_ingestion_v2/exceptions.py`, HTTP-translated via `LearnLikeMagicException.to_http_exception()`), so new services can raise those instead of `HTTPException`.
 
 ---
 
@@ -184,7 +185,7 @@ For each file:
 
 **Effort.** L overall; each sub-PR is M.
 
-#### P1.2 — Services should not raise `fastapi.HTTPException`
+#### P1.2 — Services should not raise `fastapi.HTTPException` [SHIPPED 2026-04-24]
 **What.** Services raise HTTP-transport exceptions. Confirmed sites:
 - `tutor/services/session_service.py:73, 267, 556, 836, 840, 850, 855, 974, 1023, 1087` (often via inline `from fastapi import HTTPException` inside methods)
 - `book_ingestion_v2/services/stage_gating.py:11`
@@ -349,8 +350,8 @@ Per the project's concise-doc rule, this list is intentionally minimal. Ops burd
 Recommended order (each step lands independently; later steps may unblock earlier-listed items):
 
 1. ~~**Week 1.** P0.1–P0.5 — five small safety fixes.~~ **Done — shipped 2026-04-24 in PRs #114 and #115.**
-2. **Next up → P1.2 (service exceptions).** Unblocks P1.1 and P1.3 because now services have a clean error-raising idiom. Create `tutor/exceptions.py` (already exists — extend it) and new `book_ingestion_v2/exceptions.py`. Replace `raise HTTPException(...)` in `tutor/services/session_service.py` (lines 73, 267, 556, 836, 840, 850, 855, 974, 1023, 1087) and `book_ingestion_v2/services/stage_gating.py:11` with domain exceptions. Add FastAPI exception handlers in routes to translate.
-3. **After P1.2: P1.1** (layer-violation fixes) — ordered smallest file → largest. Plan lists the specific import sites.
+2. ~~**P1.2 (service exceptions).**~~ **Done — shipped 2026-04-24.** Domain exceptions now live in `tutor/exceptions.py` (`SessionModeError`, `CardPhaseError`, `InvalidCardActionError`, `VariantNotFoundError`) and `book_ingestion_v2/exceptions.py` (`StageGateRejected`). All inherit from `LearnLikeMagicException`, so existing tutor routes (which already `except LearnLikeMagicException`) pick them up unchanged; `processing_routes.py` got explicit `except StageGateRejected` clauses.
+3. **Next up → P1.1** (layer-violation fixes) — ordered smallest file → largest. Plan lists the specific import sites.
 4. **After P1.1: P1.3** — split `sync_routes.py` (2258 LOC) into stage-runner modules, one at a time.
 5. **Later.** P2 items in any order; each is independent.
 6. **Convenient downtime.** P3 items, batched.
