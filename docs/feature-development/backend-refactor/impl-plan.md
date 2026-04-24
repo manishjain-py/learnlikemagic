@@ -1,12 +1,28 @@
 # Tech Implementation Plan: Backend Refactor
 
-**Date:** 2026-04-23
-**Status:** Draft — audit complete, awaiting review
+**Date:** 2026-04-23 (progress tracker updated 2026-04-24)
+**Status:** In progress — **P0 shipped**, **P1 next (start with P1.2)**
 **Scope:** `llm-backend/` (286 Python files, ~70k LOC excluding venv/tests)
 **Goal:** Prioritized refactor backlog. Items fall into two buckets:
 - **Behavior-preserving refactors** (P1/P2/P3): structural cleanup that must preserve existing functionality end-to-end.
 - **Intentional safety-driven behavior changes** (P0): documented per-item below — deleting an unauthenticated PoC endpoint, stopping silent exception swallow, replacing blocking I/O on the event loop. These change client-visible behavior on purpose; the change and its blast radius are called out in each P0 item.
+
 **Principles:** `docs/technical/architecture-overview.md` (API → Service → Agent/Orchestration → Repository)
+
+---
+
+## 0. Progress Tracker
+
+| Wave | Items | Status | Shipped |
+|------|-------|--------|---------|
+| Plan  | this doc | Merged | [PR #113](https://github.com/manishjain-py/learnlikemagic/pull/113) |
+| P0    | P0.1 pixi-poc removal + orphan seed cleanup | **Shipped** | [PR #114](https://github.com/manishjain-py/learnlikemagic/pull/114) · commit `238f350` |
+| P0    | P0.2–P0.5 safety fixes (async I/O, silent excepts, exc_info, print→logger) | **Shipped** | [PR #115](https://github.com/manishjain-py/learnlikemagic/pull/115) · commit `b8fcf94` |
+| P1    | P1.1 layer violations / P1.2 service exceptions / P1.3 split sync_routes.py | **Not started** | — |
+| P2    | Six items — see §3 | Not started | — |
+| P3    | Five items — see §3 | Not started | — |
+
+**Next action:** start P1.2 (domain exceptions in services). Per the rollout sequence in §5, P1.2 unblocks both P1.1 and P1.3.
 
 ---
 
@@ -63,7 +79,7 @@ Each item lists: **What / Why / Files / Approach / Regression surface / Effort**
 
 These change runtime behavior under failure (exceptions, concurrency, auth) and are individually small. Bundle them or split by file — but do not defer.
 
-#### P0.1 — Remove the obsolete pixi-poc PoC
+#### P0.1 — Remove the obsolete pixi-poc PoC [SHIPPED in PR #114 · 2026-04-24]
 **What.** Delete the standalone Pixi.js code-generation PoC. It was built before the integrated tutor pixi flow (`tutor/services/pixi_code_generator.py`) shipped; now that the integrated flow is live in-session, the PoC is unused dead code that also happens to be unauthenticated.
 
 **Why.** Removes a cost/abuse vector (the endpoint is unauthenticated and spends OpenAI tokens) and trims dead code. Deleting is simpler than authenticating something nobody uses.
@@ -88,7 +104,7 @@ These change runtime behavior under failure (exceptions, concurrency, auth) and 
 
 **Effort.** S.
 
-#### P0.2 — Move blocking I/O off the event loop in async endpoints
+#### P0.2 — Move blocking I/O off the event loop in async endpoints [SHIPPED in PR #115 · 2026-04-24]
 **What.** `tutor/api/tts.py:76` calls the synchronous `client.synthesize_speech(...)` inside an `async def` route. `tutor/api/transcription.py:70` calls sync `client.audio.transcriptions.create(...)` inside an `async def` route. Both block the asyncio event loop for the duration of the external API call.
 **Why.** On a single-worker dev server the symptom is latent; under load, concurrent requests stall. The canonical pattern is already present in `api/pixi_poc.py:94` (`await asyncio.to_thread(llm.call, ...)`).
 **Files.** `llm-backend/tutor/api/tts.py`, `llm-backend/tutor/api/transcription.py`.
@@ -96,7 +112,7 @@ These change runtime behavior under failure (exceptions, concurrency, auth) and 
 **Regression surface.** Unit tests for tts/transcription (if any) + manual smoke test of the student voice flow.
 **Effort.** S.
 
-#### P0.3 — Replace silent `except Exception:` in API routes
+#### P0.3 — Replace silent `except Exception:` in API routes [SHIPPED in PR #115 · 2026-04-24]
 **What.** Several API routes catch `Exception`, drop the traceback, and return `detail=str(e)` as the HTTP response. Examples:
 - `book_ingestion_v2/api/processing_routes.py:89-92`, `126-129`
 - `book_ingestion_v2/api/sync_routes.py` (11+ occurrences)
@@ -120,7 +136,7 @@ Rules:
 **Regression surface.** Client-side error messages change from "specific internal string" to a generic sentence. Confirm frontend does not parse `detail` text for branching (grep `error.detail` in `llm-frontend/src/`).
 **Effort.** M (mechanical but touches ~15 call sites).
 
-#### P0.4 — Add `exc_info=True` to error logging
+#### P0.4 — Add `exc_info=True` to error logging [SHIPPED in PR #115 · 2026-04-24]
 **What.** `logger.error(f"... {e}")` appears in several handlers without `exc_info=True`, so no stack trace is captured. Examples: `tts.py:90`, `transcription.py:76`, `pixi_poc.py:114`.
 **Why.** When these fail in prod, we get only the exception message. Root causes that live two frames deep are invisible.
 **Files.** `llm-backend/tutor/api/tts.py`, `llm-backend/tutor/api/transcription.py`, `llm-backend/api/pixi_poc.py`, plus any other `logger.error` handlers in `llm-backend/**/api/*.py` (audit with grep before shipping).
@@ -128,7 +144,7 @@ Rules:
 **Regression surface.** None — purely additive logging.
 **Effort.** S.
 
-#### P0.5 — Replace `print()` with logger in `main.py` startup
+#### P0.5 — Replace `print()` with logger in `main.py` startup [SHIPPED in PR #115 · 2026-04-24]
 **What.** `main.py:131/137/139/141` emits startup banners via `print()`, which bypasses the JSON formatter configured 60 lines earlier.
 **Why.** Prod logs are structured JSON; `print()` leaves unparsed strings in the stream, breaking log aggregation and alerting.
 **Files.** `llm-backend/main.py`.
@@ -332,16 +348,46 @@ Per the project's concise-doc rule, this list is intentionally minimal. Ops burd
 
 Recommended order (each step lands independently; later steps may unblock earlier-listed items):
 
-1. **Week 1.** P0.1–P0.5 — five small safety fixes. Ship as a single PR or five, reviewer's choice.
-2. **Week 2.** P1.2 (service exceptions) — unblocks P1.1 and P1.3 because now services have a clean error-raising idiom.
-3. **Weeks 3–4.** P1.1 (layer-violation fixes), ordered smallest file → largest.
-4. **Weeks 5–6.** P1.3 (split `sync_routes.py`) — one enrichment-stage-runner at a time.
+1. ~~**Week 1.** P0.1–P0.5 — five small safety fixes.~~ **Done — shipped 2026-04-24 in PRs #114 and #115.**
+2. **Next up → P1.2 (service exceptions).** Unblocks P1.1 and P1.3 because now services have a clean error-raising idiom. Create `tutor/exceptions.py` (already exists — extend it) and new `book_ingestion_v2/exceptions.py`. Replace `raise HTTPException(...)` in `tutor/services/session_service.py` (lines 73, 267, 556, 836, 840, 850, 855, 974, 1023, 1087) and `book_ingestion_v2/services/stage_gating.py:11` with domain exceptions. Add FastAPI exception handlers in routes to translate.
+3. **After P1.2: P1.1** (layer-violation fixes) — ordered smallest file → largest. Plan lists the specific import sites.
+4. **After P1.1: P1.3** — split `sync_routes.py` (2258 LOC) into stage-runner modules, one at a time.
 5. **Later.** P2 items in any order; each is independent.
 6. **Convenient downtime.** P3 items, batched.
 
 ---
 
-## 6. Out of Scope
+## 6. Development notes for future sessions
+
+These are practical gotchas that tripped up earlier work on this plan. None are captured in the surrounding codebase; record them here so subsequent PRs don't re-learn them.
+
+### Local tooling
+- **Venv path is `llm-backend/venv`** (not `.venv`). `source venv/bin/activate` inside the shell-tool doesn't persist reliably — prefer invoking `/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python -m pytest …` directly.
+- **Frontend has no `tsc` binary installed.** Use `npm run build` (vite) as the type-check proxy. `npx tsc` will error with "not the tsc you are looking for."
+
+### Verifying changes
+- To spot missing module-level loggers in a file, use `grep "^logger\s*=\s*logging"` — not `grep "logger = logging.getLogger"`. The broader pattern matches function-local variables and will give false positives. This was the PR #115 blocker.
+- **Full unit-test suite currently has ~64 pre-existing failures on main** (`test_anthropic_adapter`, `test_topic_adapter`, `test_safety_agent`, `test_session_service`, `test_shared_models`, etc.) unrelated to this refactor. Run targeted tests for modified files only (`pytest -k "<module_names>"`). If you suspect a regression, confirm via `git stash && pytest <file>` on clean main before assuming your PR caused it.
+
+### Deploy workflow
+- `.github/workflows/deploy-backend.yml` runs on **every push to main**, including docs-only changes. There's no path filter.
+- **App Runner deploys can't be stacked** — calling `start-deployment` while the service is in `OPERATION_IN_PROGRESS` returns `InvalidRequestException: Can't start a deployment on the specified service, because it isn't in RUNNING state.`
+- Consequence: **merging multiple PRs to main within a short window (< ~3 min) will cause later workflow runs to fail at the "Deploy to App Runner" step**, even though Docker builds and ECR pushes succeed. The *latest* image is still in ECR, so prod ends up running the newest code once App Runner finishes its in-flight deploy — but the GitHub Actions runs look red.
+- For P1+ work: either ship PRs one at a time with a few minutes between merges, or accept that trailing deploy runs may need a manual re-run (`gh run rerun <id>` or a no-op commit).
+
+### Conventions established for this refactor
+- **One priority item per PR.** Mixing P1.2 with P1.1, or stacking unrelated cleanups onto a P2 split, defeats the regression-isolation story in §4.
+- **Squash-merge with branch delete:** `gh pr merge <num> --squash --delete-branch`.
+- **Intentional behavior changes go in the PR description**, not hidden in the diff. §4 regression gate was updated to carve out documented P0 changes — future items that change behavior should do the same.
+- **For large mechanical rewrites** (e.g., P0.3's 52-site rewrite), a one-shot Python script in `/tmp` beats many individual `Edit` calls. Verify with `git diff --stat` before committing.
+
+### Landmines to avoid
+- **Don't touch `tutor/services/pixi_code_generator.py`.** It's the live in-session pixi path used by the orchestrator (`orchestrator.py:50`). Only the old standalone PoC (`api/pixi_poc.py`, already deleted) was dead code.
+- **Don't add abstractions beyond task scope.** Three similar lines is better than a premature helper. The plan is intentionally written so each item has a concrete scope — resist expanding it "while we're in there."
+
+---
+
+## 7. Out of Scope
 
 - **Frontend changes.** Backend-only, with one exception: P0.1 (pixi-poc removal) requires a companion frontend PR to delete the dead admin page — listed inline in P0.1.
 - **Test coverage increases.** Refactors should preserve or slightly improve testability, but adding net-new tests is a separate workstream.
@@ -351,7 +397,7 @@ Recommended order (each step lands independently; later steps may unblock earlie
 
 ---
 
-## 7. Appendix — Audit Method
+## 8. Appendix — Audit Method
 
 Five parallel read-only audits, each scoped to one dimension:
 
