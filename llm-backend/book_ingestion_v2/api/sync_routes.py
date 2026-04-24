@@ -194,9 +194,11 @@ def sync_book(book_id: str, db: Session = Depends(get_db)):
         return service.sync_book(book_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -208,9 +210,11 @@ def sync_chapter(book_id: str, chapter_id: str, db: Session = Depends(get_db)):
         return service.sync_chapter(book_id, chapter_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -254,9 +258,11 @@ def get_book_results(book_id: str, db: Session = Depends(get_db)):
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -294,9 +300,11 @@ def run_chapter_pipeline_all_route(
         summary = svc.get_chapter_summary(book_id, chapter_id)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
     max_parallel = body.max_parallel
@@ -453,10 +461,11 @@ def get_chapter_pipeline_summary(
         return svc.get_chapter_summary(book_id, chapter_id)
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Chapter pipeline summary failed: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Chapter pipeline summary failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -486,10 +495,11 @@ def get_topic_pipeline(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Topic pipeline status failed: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Topic pipeline status failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -530,10 +540,11 @@ def generate_explanations(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Explanation generation failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Explanation generation failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -563,9 +574,11 @@ def get_latest_explanation_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -599,9 +612,11 @@ def get_latest_audio_review_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -670,9 +685,11 @@ def get_explanation_status(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -721,9 +738,11 @@ def get_topic_explanations(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -773,9 +792,11 @@ def delete_explanations(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -808,10 +829,11 @@ def generate_visuals(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Visual enrichment failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Visual enrichment failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -905,10 +927,11 @@ def generate_audio(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Audio generation failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Audio generation failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -1028,10 +1051,11 @@ def generate_audio_review(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Audio text review failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Audio text review failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -1373,8 +1397,12 @@ def get_guideline_status(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 @router.get("/guidelines/{guideline_id}", response_model=GuidelineDetailResponse)
@@ -1511,8 +1539,12 @@ def get_visual_status(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 @router.delete("/guidelines/{guideline_id}")
@@ -1613,8 +1645,12 @@ def get_latest_visual_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1651,10 +1687,11 @@ def generate_check_ins(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Check-in enrichment failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Check-in enrichment failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -1712,8 +1749,12 @@ def get_check_in_status(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 @router.get("/check-in-jobs/latest", response_model=ProcessingJobResponse)
@@ -1739,8 +1780,12 @@ def get_latest_check_in_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 def _run_check_in_enrichment(
@@ -1858,10 +1903,11 @@ def generate_practice_banks(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Practice bank generation failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Practice bank generation failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -1913,8 +1959,12 @@ def get_practice_bank_status(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 @router.get("/practice-bank-jobs/latest", response_model=ProcessingJobResponse)
@@ -1940,8 +1990,12 @@ def get_latest_practice_bank_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 @router.get("/practice-banks/{guideline_id}", response_model=PracticeBankDetailResponse)
@@ -1989,8 +2043,12 @@ def get_practice_bank(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 def _run_practice_bank_generation(
@@ -2130,10 +2188,11 @@ def generate_refresher(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Refresher generation failed for book {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Refresher generation failed for book {book_id}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -2154,8 +2213,12 @@ def get_latest_refresher_job(
         return result
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except Exception:
+        logger.exception("sync route failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 @router.get("/landing")
@@ -2205,9 +2268,11 @@ def get_chapter_landing(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("sync route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 

@@ -1,5 +1,7 @@
 """Profile API endpoints."""
 
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DBSession
 
@@ -12,6 +14,8 @@ from auth.models.schemas import (
     ChangePasswordRequest,
     ChangePasswordResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -82,7 +86,9 @@ async def update_profile(
                 if enrichment_service.should_regenerate(current_user.id, new_hash):
                     background_tasks.add_task(_debounced_regenerate, current_user.id, new_hash)
         except Exception:
-            pass  # Don't fail profile update if personality trigger fails
+            # Don't fail profile update if personality trigger fails, but log
+            # the failure so we can diagnose why derivation is being skipped.
+            logger.exception("personality regeneration trigger failed")
 
     return _user_to_response(user)
 

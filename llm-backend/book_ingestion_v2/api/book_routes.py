@@ -1,4 +1,6 @@
 """API routes for V2 book management."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,8 @@ from book_ingestion_v2.models.schemas import (
     BookV2DetailResponse,
 )
 from book_ingestion_v2.services.book_v2_service import BookV2Service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/v2/books", tags=["Book Ingestion V2"])
 
@@ -24,9 +28,11 @@ def create_book(request: CreateBookV2Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("book route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -47,9 +53,11 @@ def list_books(
             country=country, board=board, grade=grade, subject=subject,
             limit=limit, offset=offset,
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("book route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -67,9 +75,11 @@ def get_book(book_id: str, db: Session = Depends(get_db)):
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("book route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -86,7 +96,9 @@ def delete_book(book_id: str, db: Session = Depends(get_db)):
             )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("book route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )

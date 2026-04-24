@@ -1,5 +1,6 @@
 """Audio transcription endpoint using OpenAI Whisper."""
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -67,11 +68,12 @@ async def transcribe_audio(
     filename = f"recording.{ext}"
 
     try:
-        transcript = client.audio.transcriptions.create(
+        transcript = await asyncio.to_thread(
+            client.audio.transcriptions.create,
             model="whisper-1",
             file=(filename, contents),
         )
         return TranscriptionResponse(text=transcript.text)
-    except Exception as e:
-        logger.error(f"Whisper transcription failed: {e}")
+    except Exception:
+        logger.exception("Whisper transcription failed")
         raise HTTPException(status_code=500, detail="Transcription failed")

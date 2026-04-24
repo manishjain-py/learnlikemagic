@@ -99,9 +99,11 @@ def save_toc(book_id: str, request: SaveTOCRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("toc route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -111,9 +113,11 @@ def get_toc(book_id: str, db: Session = Depends(get_db)):
     try:
         service = TOCService(db)
         return service.get_toc(book_id)
-    except Exception as e:
+    except Exception:
+        logger.exception("toc route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -131,9 +135,11 @@ def update_chapter(
         raise HTTPException(status_code=code, detail=detail)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("toc route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -154,7 +160,9 @@ def delete_chapter(book_id: str, chapter_id: str, db: Session = Depends(get_db))
         raise HTTPException(status_code=code, detail=detail)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("toc route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )

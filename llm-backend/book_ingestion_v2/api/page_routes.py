@@ -1,10 +1,14 @@
 """API routes for V2 chapter page management."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 
 from database import get_db
 from book_ingestion_v2.models.schemas import PageResponse, PageDetailResponse, ChapterPagesResponse
 from book_ingestion_v2.services.chapter_page_service import ChapterPageService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/admin/v2/books/{book_id}/chapters/{chapter_id}/pages",
@@ -37,9 +41,11 @@ async def upload_page(
         raise HTTPException(status_code=code, detail=detail)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("page route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -51,9 +57,11 @@ def list_pages(book_id: str, chapter_id: str, db: Session = Depends(get_db)):
         return service.get_chapter_pages(book_id, chapter_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("page route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -71,9 +79,11 @@ def get_page(book_id: str, chapter_id: str, page_num: int, db: Session = Depends
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("page route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -91,9 +101,11 @@ def get_page_detail(book_id: str, chapter_id: str, page_num: int, db: Session = 
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("page route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -110,9 +122,11 @@ def delete_page(book_id: str, chapter_id: str, page_num: int, db: Session = Depe
             )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("page route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 
@@ -126,7 +140,9 @@ def retry_ocr(book_id: str, chapter_id: str, page_num: int, db: Session = Depend
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("page route failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )

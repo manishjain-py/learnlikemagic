@@ -1,5 +1,6 @@
 """Text-to-speech endpoint using Google Cloud TTS API (Chirp 3 HD)."""
 
+import asyncio
 import io
 import logging
 
@@ -73,7 +74,8 @@ async def text_to_speech(
             audio_encoding=texttospeech.AudioEncoding.MP3,
         )
 
-        response = client.synthesize_speech(
+        response = await asyncio.to_thread(
+            client.synthesize_speech,
             input=synthesis_input,
             voice=voice,
             audio_config=audio_config,
@@ -86,6 +88,6 @@ async def text_to_speech(
             media_type="audio/mpeg",
             headers={"Content-Disposition": "inline"},
         )
-    except Exception as e:
-        logger.error(f"TTS generation failed: {e}")
+    except Exception:
+        logger.exception("TTS generation failed")
         raise HTTPException(status_code=500, detail="Text-to-speech generation failed")
