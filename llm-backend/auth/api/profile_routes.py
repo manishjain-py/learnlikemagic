@@ -75,16 +75,12 @@ async def update_profile(
     changed_fields = {k for k, v in request.model_dump(exclude_unset=True).items() if v is not None}
     if changed_fields & personality_triggering_fields:
         try:
-            from auth.repositories.enrichment_repository import EnrichmentRepository
             from auth.services.enrichment_service import EnrichmentService
             from auth.api.enrichment_routes import _debounced_regenerate
 
-            enrichment_repo = EnrichmentRepository(db)
-            if enrichment_repo.get_by_user_id(current_user.id):
-                enrichment_service = EnrichmentService(db)
-                new_hash = enrichment_service.compute_inputs_hash(current_user.id)
-                if enrichment_service.should_regenerate(current_user.id, new_hash):
-                    background_tasks.add_task(_debounced_regenerate, current_user.id, new_hash)
+            pending_hash = EnrichmentService(db).get_pending_regeneration_hash(current_user.id)
+            if pending_hash:
+                background_tasks.add_task(_debounced_regenerate, current_user.id, pending_hash)
         except Exception:
             # Don't fail profile update if personality trigger fails, but log
             # the failure so we can diagnose why derivation is being skipped.

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session as DBSession
 from database import get_db, get_db_manager
 from auth.middleware.auth_middleware import get_current_user
 from auth.services.enrichment_service import EnrichmentService
+from auth.services.personality_service import PersonalityService
 from auth.models.enrichment_schemas import (
     EnrichmentProfileRequest,
     EnrichmentProfileResponse,
@@ -33,13 +34,10 @@ def _debounced_regenerate(user_id: str, expected_hash: str):
             return
 
         # Only regenerate if at least 1 of the 9 main sections has data
-        profile = service.enrichment_repo.get_by_user_id(user_id)
-        if not profile or not service.has_meaningful_data(profile):
+        if not service.has_meaningful_enrichment_data(user_id):
             return
 
-        from auth.services.personality_service import PersonalityService
-        personality_service = PersonalityService(db)
-        personality_service.generate_personality(user_id)
+        PersonalityService(db).generate_personality(user_id)
 
 
 @router.get("/enrichment", response_model=EnrichmentProfileResponse)
@@ -78,9 +76,7 @@ async def get_personality(
     db: DBSession = Depends(get_db),
 ):
     """Get latest derived personality + status."""
-    from auth.repositories.personality_repository import PersonalityRepository
-    repo = PersonalityRepository(db)
-    latest = repo.get_latest(current_user.id)
+    latest = PersonalityService(db).get_latest_personality(current_user.id)
     if not latest:
         return PersonalityResponse(status="none")
     return PersonalityResponse(
@@ -94,7 +90,6 @@ async def get_personality(
 def _force_regenerate_bg(user_id: str):
     """Run force_regenerate with its own DB session (not request-scoped)."""
     with get_db_manager().session_scope() as db:
-        from auth.services.personality_service import PersonalityService
         PersonalityService(db).force_regenerate(user_id)
 
 
@@ -105,9 +100,7 @@ async def regenerate_personality(
     db: DBSession = Depends(get_db),
 ):
     """Force regeneration of personality (admin/debug use)."""
-    enrichment = EnrichmentService(db)
-    profile = enrichment.enrichment_repo.get_by_user_id(current_user.id)
-    if not profile or not enrichment.has_meaningful_data(profile):
+    if not EnrichmentService(db).has_meaningful_enrichment_data(current_user.id):
         raise HTTPException(status_code=400, detail="No enrichment data to generate personality from")
 
     background_tasks.add_task(_force_regenerate_bg, current_user.id)

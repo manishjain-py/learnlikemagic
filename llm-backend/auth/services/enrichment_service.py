@@ -3,6 +3,8 @@
 import hashlib
 import json
 import logging
+from typing import Optional
+
 from sqlalchemy.orm import Session as DBSession
 
 from auth.repositories.enrichment_repository import EnrichmentRepository
@@ -148,6 +150,25 @@ class EnrichmentService:
         if any(check(profile) for check in _SECTION_CHECKS):
             return True
         return bool(profile.parent_notes) or bool(profile.attention_span) or bool(profile.pace_preference)
+
+    def has_meaningful_enrichment_data(self, user_id: str) -> bool:
+        """True if user has an enrichment profile with enough data to derive personality."""
+        profile = self.enrichment_repo.get_by_user_id(user_id)
+        return self.has_meaningful_data(profile)
+
+    def get_pending_regeneration_hash(self, user_id: str) -> Optional[str]:
+        """Return new inputs_hash if personality regeneration should be scheduled, else None.
+
+        Triggers when an enrichment profile exists AND the computed hash differs from the
+        latest personality's hash. The debounced worker re-checks `has_meaningful_data`
+        before calling the LLM, so this does not need to.
+        """
+        if not self.enrichment_repo.get_by_user_id(user_id):
+            return None
+        new_hash = self.compute_inputs_hash(user_id)
+        if not self.should_regenerate(user_id, new_hash):
+            return None
+        return new_hash
 
     def _count_sections_filled(self, profile: KidEnrichmentProfile) -> int:
         """Count how many of the 4 sections have data."""
