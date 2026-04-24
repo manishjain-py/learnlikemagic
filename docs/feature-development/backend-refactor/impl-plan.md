@@ -18,7 +18,7 @@
 | Plan  | this doc | Merged | [PR #113](https://github.com/manishjain-py/learnlikemagic/pull/113) |
 | P0    | P0.1 pixi-poc removal + orphan seed cleanup | **Shipped** | [PR #114](https://github.com/manishjain-py/learnlikemagic/pull/114) · commit `238f350` |
 | P0    | P0.2–P0.5 safety fixes (async I/O, silent excepts, exc_info, print→logger) | **Shipped** | [PR #115](https://github.com/manishjain-py/learnlikemagic/pull/115) · commit `b8fcf94` |
-| P1    | P1.2 service exceptions (session_service + stage_gating) | **Shipped** | TBD (PR pending) |
+| P1    | P1.2 service exceptions (session_service + stage_gating) | **Shipped** | [PR #117](https://github.com/manishjain-py/learnlikemagic/pull/117) · commit `2428643` |
 | P1    | P1.1 layer violations / P1.3 split sync_routes.py | **Not started** | — |
 | P2    | Six items — see §3 | Not started | — |
 | P3    | Five items — see §3 | Not started | — |
@@ -159,7 +159,9 @@ Rules:
 
 These break dependency cycles and unblock further cleanup. They are bigger, but they change *shape*, not behavior.
 
-#### P1.1 — Stop API routes from importing repositories directly
+#### P1.1 — Stop API routes from importing repositories directly [NEXT UP]
+**Continuation notes for a fresh session.** Branch off `main` as `refactor/p1-1-<file-scope>`. Do one route-file per PR, smallest first (starter: `auth/api/profile_routes.py` + `enrichment_routes.py` — may bundle since both are small). The exception idiom shipped in P1.2 is available: when a new service method needs to signal a client-facing error, raise a `LearnLikeMagicException` subclass from `tutor/exceptions.py`, `book_ingestion_v2/exceptions.py`, or a newly-created `<domain>/exceptions.py` — **do not** raise `fastapi.HTTPException` from services. Tutor routes already catch `LearnLikeMagicException`; other routers catch by explicit clause (see `book_ingestion_v2/api/processing_routes.py` for the pattern). Run the full unit suite before and after — a ~65-failure floor is pre-existing; only investigate new failures.
+
 **What.** ~8 confirmed sites where API modules import from `*/repositories/` and instantiate repositories inline:
 - `book_ingestion_v2/api/sync_routes.py:39-40, 629, 687, 739`
 - `tutor/api/sessions.py:38, 213, 623`
@@ -381,6 +383,8 @@ These are practical gotchas that tripped up earlier work on this plan. None are 
 - **Squash-merge with branch delete:** `gh pr merge <num> --squash --delete-branch`.
 - **Intentional behavior changes go in the PR description**, not hidden in the diff. §4 regression gate was updated to carve out documented P0 changes — future items that change behavior should do the same.
 - **For large mechanical rewrites** (e.g., P0.3's 52-site rewrite), a one-shot Python script in `/tmp` beats many individual `Edit` calls. Verify with `git diff --stat` before committing.
+- **Domain-exception idiom (established by P1.2).** Service methods should not raise `fastapi.HTTPException`. Define domain exceptions in `<domain>/exceptions.py` (new file or extend existing). Have each inherit from `shared.utils.exceptions.LearnLikeMagicException` and implement `to_http_exception()` — that contract is what existing routes use to translate back to HTTP. Tutor routes (`tutor/api/sessions.py`) already have a catch-all `except LearnLikeMagicException: raise e.to_http_exception()` clause; routers that do not (e.g., `book_ingestion_v2/api/processing_routes.py`) need an explicit `except <DomainException>` clause per handler. Route-level defensive guards (e.g., `pause_session` mode check in `sessions.py:306-310`) may coexist with service-level domain raises — both paths are idiomatic.
+- **Migrating tests that assert on service-raised `HTTPException`.** Switch the assertion type to the domain exception and check status via `exc_info.value.to_http_exception().status_code`. Detail-string checks move from `exc_info.value.detail` to `exc_info.value.message`.
 
 ### Landmines to avoid
 - **Don't touch `tutor/services/pixi_code_generator.py`.** It's the live in-session pixi path used by the orchestrator (`orchestrator.py:50`). Only the old standalone PoC (`api/pixi_poc.py`, already deleted) was dead code.
