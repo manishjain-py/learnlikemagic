@@ -390,7 +390,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
 - **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
-- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `pixi_code_generator`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`
+- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`
 - **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
 
 ### Key Provider Files

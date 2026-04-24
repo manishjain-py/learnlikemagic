@@ -66,12 +66,6 @@ _LLM_CONFIG_SEEDS = [
         "description": "Lightweight model for safety checks, translation, and other fast tasks",
     },
     {
-        "component_key": "pixi_code_generator",
-        "provider": "openai",
-        "model_id": "gpt-5.3-codex",
-        "description": "Pixi.js visual code generation from natural language",
-    },
-    {
         "component_key": "check_in_enrichment",
         "provider": "claude_code",
         "model_id": "claude-opus-4-7",
