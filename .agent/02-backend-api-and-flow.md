@@ -132,9 +132,6 @@ Code baseline: `main@e0c0338`
 - `GET /api/admin/feature-flags`
 - `PUT /api/admin/feature-flags/{flag_name}`
 
-### Pixi.js PoC
-- `POST /api/admin/pixi-poc/generate`
-
 ## Tutoring Runtime Flow
 1. Session creation (`SessionService.create_new_session`) resolves guideline + optional study plan + user context
 2. Orchestrator turn cycle (`process_turn` / `process_turn_stream`):

@@ -47,7 +47,6 @@ Code baseline: `main@e0c0338`
 - `/admin/docs`
 - `/admin/llm-config`
 - `/admin/test-scenarios`
-- `/admin/pixi-js-poc`
 - `/admin/feature-flags`
 
 ## Auth Flow

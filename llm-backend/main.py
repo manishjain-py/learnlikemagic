@@ -21,7 +21,6 @@ from auth.api.profile_routes import router as profile_router
 from auth.api.enrichment_routes import router as enrichment_router
 from api.docs import router as docs_router
 from api.test_scenarios import router as test_scenarios_router
-from api.pixi_poc import router as pixi_poc_router
 from book_ingestion_v2.api import book_routes as v2_book_routes
 from book_ingestion_v2.api import toc_routes as v2_toc_routes
 from book_ingestion_v2.api import page_routes as v2_page_routes
@@ -121,7 +120,6 @@ app.include_router(v2_page_routes.router)   # Book Ingestion V2: /admin/v2/books
 app.include_router(v2_processing_routes.router)  # Book Ingestion V2: processing, topics, jobs
 app.include_router(v2_sync_routes.router)        # Book Ingestion V2: sync + results
 app.include_router(v2_visual_preview_routes.router)  # Book Ingestion V2: visual preview store
-app.include_router(pixi_poc_router)              # Pixi.js PoC: code generation
 app.include_router(issue_routes.router)          # Issue reporting: /issues/*
 
 

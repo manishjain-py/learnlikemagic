@@ -22,7 +22,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │                                                                 │
 │  Modules: tutor, book_ingestion_v2, study_plans, evaluation,    │
 │           auth (+ enrichment, personality)                      │
-│  Root API: api/ (docs, test_scenarios, pixi_poc)                 │
+│  Root API: api/ (docs, test_scenarios)                          │
 │  Shared: llm_service, llm_config_service, feature_flag_service, │
 │          issue_service, anthropic_adapter, claude_code_adapter,  │
 │          ocr_service, s3_client, api, models, utils, repos       │
@@ -190,7 +190,6 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 | v2 page routes | `/admin/v2/books/{id}/chapters/{id}/pages` | Chapter page management (V2) |
 | v2 processing routes | `/admin/v2/books/{id}/chapters/{id}` | Chapter processing, topic extraction, jobs (V2) |
 | v2 sync routes | `/admin/v2/books/{id}` | Sync processed topics to curriculum + results (V2) |
-| pixi poc | `/api/admin/pixi-poc` | Pixi.js code generation from text prompts (PoC) |
 | issues | `/issues` | Issue reporting (create, list, update status, screenshot upload/retrieval) |
 
 ---
@@ -268,7 +267,6 @@ llm-frontend/src/
 │   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
 │   │   │   ├── FeatureFlagsPage.tsx  # Feature flag toggle admin
 │   │   │   ├── TestScenariosPage.tsx # E2E test results viewer
-│   │   │   ├── PixiJsPocPage.tsx    # Pixi.js visual generation PoC
 │   │   │   ├── InteractiveVisualsPocPage.tsx # Interactive template testing PoC
 │   │   │   └── AdminIssuesPage.tsx  # Issue management (list, status update, screenshots)
 │   │   └── types/
@@ -330,7 +328,6 @@ llm-frontend/src/
 | `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
 | `/admin/feature-flags` | AdminLayout > FeatureFlagsPage | Unprotected | Toggle runtime feature flags on/off |
 | `/admin/test-scenarios` | AdminLayout > TestScenariosPage | Unprotected | E2E test results and screenshots |
-| `/admin/pixi-js-poc` | AdminLayout > PixiJsPocPage | Unprotected | Pixi.js visual generation PoC |
 | `/admin/interactive-poc` | AdminLayout > InteractiveVisualsPocPage | Unprotected | Interactive visual template testing PoC |
 | `/admin/issues` | AdminLayout > AdminIssuesPage | Unprotected | Issue management (list, status, screenshots) |
 
@@ -393,7 +390,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
 - **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
-- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `pixi_code_generator`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`
+- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`
 - **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
 
 ### Key Provider Files
