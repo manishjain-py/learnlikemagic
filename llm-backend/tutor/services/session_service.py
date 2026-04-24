@@ -21,6 +21,12 @@ from shared.repositories import SessionRepository, EventRepository, TeachingGuid
 from shared.services.llm_service import LLMService
 from shared.utils.exceptions import SessionNotFoundException, GuidelineNotFoundException, StaleStateError
 
+from tutor.exceptions import (
+    CardPhaseError,
+    InvalidCardActionError,
+    SessionModeError,
+    VariantNotFoundError,
+)
 from tutor.orchestration import TeacherOrchestrator
 from tutor.models.session_state import SessionState, CardPhaseState, create_session
 from tutor.models.messages import StudentContext, create_teacher_message
@@ -70,8 +76,7 @@ class SessionService:
         is_refresher = bool(guideline.metadata and guideline.metadata.is_refresher)
 
         if is_refresher and mode != "teach_me":
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail="Refresher topics only support Teach Me mode")
+            raise SessionModeError("Refresher topics only support Teach Me mode")
 
         # Build student context FIRST (needed for personalized plan generation)
         if user_id:
@@ -264,8 +269,7 @@ class SessionService:
         session = SessionState.model_validate_json(db_session.state_json)
 
         if session.is_in_card_phase():
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail="Session is in card phase. Use /card-action endpoint.")
+            raise CardPhaseError("Session is in card phase. Use /card-action endpoint.")
 
         # Process turn via orchestrator
         import asyncio
@@ -553,11 +557,7 @@ class SessionService:
         session = SessionState.model_validate_json(db_session.state_json)
 
         if session.mode != "teach_me":
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=400,
-                detail="Only Teach Me sessions can be paused",
-            )
+            raise SessionModeError("Only Teach Me sessions can be paused")
 
         session.is_paused = True
         self._persist_session_state(session_id, session, expected_version)
@@ -833,12 +833,10 @@ class SessionService:
         session = SessionState.model_validate_json(db_session.state_json)
 
         if not session.is_in_card_phase():
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail="Session is not in card phase")
+            raise CardPhaseError("Session is not in card phase")
 
         if session.is_refresher:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail="Card simplification is not available for refresher topics")
+            raise CardPhaseError("Card simplification is not available for refresher topics")
 
         # Load current variant cards
         explanation_repo = ExplanationRepository(self.db)
@@ -847,13 +845,11 @@ class SessionService:
             session.card_phase.current_variant_key,
         )
         if not explanation or not explanation.cards_json:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail="Current variant cards not found")
+            raise VariantNotFoundError("Current variant cards not found")
 
         all_cards = explanation.cards_json
         if card_idx < 0 or card_idx >= len(all_cards):
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail=f"Invalid card_idx: {card_idx}")
+            raise InvalidCardActionError(f"Invalid card_idx: {card_idx}")
 
         # Always use the ORIGINAL base card as the primary input to prevent
         # recursive title/content stacking. Pass previous attempts as separate context.
@@ -971,8 +967,7 @@ class SessionService:
         session = SessionState.model_validate_json(db_session.state_json)
 
         if not session.is_in_card_phase():
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail="Session is not in card phase")
+            raise CardPhaseError("Session is not in card phase")
 
         if session.is_refresher:
             session.complete_card_phase()
@@ -1020,8 +1015,7 @@ class SessionService:
                 custom_message="We've looked at this from a few angles. Let's practice to see what stuck!",
             )
 
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail=f"Unknown card action: {action}")
+        raise InvalidCardActionError(f"Unknown card action: {action}")
 
     def _finalize_teach_me_session(
         self,
@@ -1084,8 +1078,7 @@ class SessionService:
             session.card_phase.guideline_id, variant_key
         )
         if not explanation:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail=f"Variant {variant_key} not found")
+            raise VariantNotFoundError(f"Variant {variant_key} not found")
 
         session.card_phase.current_variant_key = variant_key
         session.card_phase.current_card_idx = 0

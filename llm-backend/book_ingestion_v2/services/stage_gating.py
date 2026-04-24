@@ -8,9 +8,8 @@ Post-sync stages (explanations, visuals, check-ins, practice bank) are NOT
 gated here — they operate across chapters and filter at the guideline level
 via `review_status == APPROVED`.
 """
-from fastapi import HTTPException, status
-
 from book_ingestion_v2.constants import ChapterStatus, V2JobType
+from book_ingestion_v2.exceptions import StageGateRejected
 
 
 # job_type -> allowed chapter statuses. The ":resume" suffix is used when the
@@ -54,10 +53,7 @@ def require_stage_ready(chapter, job_type: str, *, resume: bool = False) -> None
     if allowed is None:
         return  # Not a chapter-gated stage
     if chapter.status not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"Cannot start {job_type} for chapter in state '{chapter.status}'. "
-                f"Expected one of: {sorted(allowed)}"
-            ),
+        raise StageGateRejected(
+            f"Cannot start {job_type} for chapter in state '{chapter.status}'. "
+            f"Expected one of: {sorted(allowed)}"
         )
