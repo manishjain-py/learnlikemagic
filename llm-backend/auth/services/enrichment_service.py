@@ -156,6 +156,15 @@ class EnrichmentService:
         profile = self.enrichment_repo.get_by_user_id(user_id)
         return self.has_meaningful_data(profile)
 
+    def get_latest_personality(self, user_id: str):
+        """Return the latest personality row (any status), or None if none exists.
+
+        Read-only path — does not instantiate the LLM stack. Mirrors the pattern
+        already used by `_get_personality_status`.
+        """
+        from auth.repositories.personality_repository import PersonalityRepository
+        return PersonalityRepository(self.db).get_latest(user_id)
+
     def get_pending_regeneration_hash(self, user_id: str) -> Optional[str]:
         """Return new inputs_hash if personality regeneration should be scheduled, else None.
 

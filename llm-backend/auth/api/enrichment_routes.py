@@ -76,7 +76,7 @@ async def get_personality(
     db: DBSession = Depends(get_db),
 ):
     """Get latest derived personality + status."""
-    latest = PersonalityService(db).get_latest_personality(current_user.id)
+    latest = EnrichmentService(db).get_latest_personality(current_user.id)
     if not latest:
         return PersonalityResponse(status="none")
     return PersonalityResponse(
