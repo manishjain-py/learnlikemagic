@@ -82,6 +82,8 @@ else:
         force=True
     )
 
+logger = logging.getLogger(__name__)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="LearnLikeMagic LLM Backend",
@@ -128,7 +130,6 @@ app.include_router(issue_routes.router)          # Issue reporting: /issues/*
 @app.on_event("startup")
 async def startup_event():
     """Validate database connection on startup."""
-    logger = logging.getLogger(__name__)
     logger.info("Starting LearnLikeMagic LLM Backend")
 
     db_manager = get_db_manager()

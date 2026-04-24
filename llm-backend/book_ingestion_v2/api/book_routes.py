@@ -5,8 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-
-logger = logging.getLogger(__name__)
 from book_ingestion_v2.models.schemas import (
     CreateBookV2Request,
     BookV2Response,
@@ -14,6 +12,8 @@ from book_ingestion_v2.models.schemas import (
     BookV2DetailResponse,
 )
 from book_ingestion_v2.services.book_v2_service import BookV2Service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/v2/books", tags=["Book Ingestion V2"])
 

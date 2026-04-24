@@ -1,5 +1,8 @@
 """API routes for V2 chapter processing — extraction, finalization, status, topics."""
 import json
+import logging
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -14,13 +17,14 @@ from book_ingestion_v2.models.schemas import (
     ChapterTopicResponse,
     ChapterTopicsResponse,
 )
-from typing import Optional
 from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
 from book_ingestion_v2.repositories.chapter_page_repository import ChapterPageRepository
 from book_ingestion_v2.repositories.topic_repository import TopicRepository
 from book_ingestion_v2.services.chapter_job_service import ChapterJobService, ChapterJobLockError
 from book_ingestion_v2.services.chapter_page_service import ChapterPageService
 from book_ingestion_v2.services.topic_extraction_orchestrator import TopicExtractionOrchestrator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/admin/v2/books/{book_id}/chapters/{chapter_id}",

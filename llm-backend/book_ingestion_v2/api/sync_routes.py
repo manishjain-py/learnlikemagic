@@ -462,7 +462,7 @@ def get_chapter_pipeline_summary(
     except HTTPException:
         raise
     except Exception:
-        logger.exception(f"Chapter pipeline summary failed")
+        logger.exception("Chapter pipeline summary failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
@@ -496,7 +496,7 @@ def get_topic_pipeline(
     except HTTPException:
         raise
     except Exception:
-        logger.exception(f"Topic pipeline status failed")
+        logger.exception("Topic pipeline status failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",

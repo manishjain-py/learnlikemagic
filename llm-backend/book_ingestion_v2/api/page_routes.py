@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 from sqlalchemy.orm import Session
 
 from database import get_db
-
-logger = logging.getLogger(__name__)
 from book_ingestion_v2.models.schemas import PageResponse, PageDetailResponse, ChapterPagesResponse
 from book_ingestion_v2.services.chapter_page_service import ChapterPageService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/admin/v2/books/{book_id}/chapters/{chapter_id}/pages",
