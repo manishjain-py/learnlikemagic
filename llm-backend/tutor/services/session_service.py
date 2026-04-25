@@ -607,10 +607,13 @@ class SessionService:
     def _finalize_baatcheet_session(self, session: SessionState) -> None:
         """Mark Baatcheet session complete + propagate coverage.
 
-        Coverage uses VARIANT A concepts as the canonical source — Baatcheet
-        teaches the same material as Explain, so completion contributes
-        identical coverage regardless of which submode the student picked.
-        Without this, scorecard would zero out for Baatcheet students.
+        Baatcheet is single-pass and teaches the whole topic, so completion
+        marks every concept in the topic's study plan as covered. We add
+        concept TOKENS (not display titles) because that's what
+        `coverage_percentage` intersects against and what `master_tutor`
+        consults to decide whether to re-teach a concept. The previous
+        title-based path looked correct but contributed zero to coverage
+        because titles never matched study-plan concept tokens.
 
         Idempotent.
         """
@@ -622,33 +625,12 @@ class SessionService:
         session.dialogue_phase.completed = True
         session.is_paused = False
 
-        guideline_id = session.dialogue_phase.guideline_id
-
-        # Pull covered concepts from variant A summary (same source the
-        # existing Explain finalize uses).
-        variant_a = ExplanationRepository(self.db).get_variant(guideline_id, "A")
-        covered: list[str] = []
-        if variant_a and variant_a.summary_json:
-            covered = list(variant_a.summary_json.get("card_titles") or [])
-
-        if not covered:
-            # Fallback — derive from dialogue card titles, excluding chrome.
-            dialogue = DialogueRepository(self.db).get_by_guideline_id(guideline_id)
-            if dialogue and dialogue.cards_json:
-                covered = [
-                    c.get("title") for c in dialogue.cards_json
-                    if isinstance(c, dict)
-                    and c.get("card_type") not in ("welcome", "check_in", "summary")
-                    and c.get("title")
-                ]
-
-        # Merge into both concept-tracking sets so coverage % and the report
-        # card see the dialogue contribution.
-        for title in covered:
-            if not isinstance(title, str) or not title.strip():
-                continue
-            session.concepts_covered_set.add(title)
-            session.card_covered_concepts.add(title)
+        if session.topic and session.topic.study_plan:
+            for concept in session.topic.study_plan.get_concepts():
+                if not concept:
+                    continue
+                session.concepts_covered_set.add(concept)
+                session.card_covered_concepts.add(concept)
 
     def _build_student_context_from_profile(self, user_id: str, request: CreateSessionRequest) -> StudentContext:
         """Build StudentContext from user profile data when authenticated."""
