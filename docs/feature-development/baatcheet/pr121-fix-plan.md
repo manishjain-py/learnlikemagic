@@ -3,9 +3,9 @@
 **Date:** 2026-04-25
 **PR:** https://github.com/manishjain-py/learnlikemagic/pull/121
 **Branch:** `pr121-review` (merging into `feat/baatcheet-conversational-teach-me`)
-**Source:** consolidates Claude Code review (`claude-code-review-feedback.md`) and Codex review (`codex-code-review-feedback.md`).
+**Source:** consolidates two independent reviews of commit `332d342`.
 
-Both reviewers independently caught the same #1 blocker (`Session.teach_me_mode` ORM mismatch). Codex caught two additional critical UX breakages (auto-play, missing CTA). Claude Code caught a placeholder leak (`{topic_name}`) and a status-tile blind spot. All four together break the V1 ship; the rest can defer.
+Both reviewers caught the same #1 blocker (`Session.teach_me_mode` ORM mismatch). One caught two additional critical UX breakages (auto-play, missing CTA). The other caught a placeholder leak (`{topic_name}`) and a status-tile blind spot. All four together break the V1 ship; the rest can defer.
 
 ---
 
