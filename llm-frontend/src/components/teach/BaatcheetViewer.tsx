@@ -30,6 +30,7 @@ import SpeakerAvatar from '../baatcheet/SpeakerAvatar';
 import CheckInDispatcher, {
   type CheckInActivityResult,
 } from '../CheckInDispatcher';
+import VisualExplanationComponent from '../VisualExplanation';
 
 interface Props {
   sessionId: string;
@@ -223,7 +224,8 @@ export default function BaatcheetViewer({
     .map((l) => materializeText(l.display, personalization))
     .join('\n');
 
-  const visualPixiCode = currentCard.visual_explanation?.pixi_code || null;
+  const visualExplanation = currentCard.visual_explanation;
+  const visualPixiCode = visualExplanation?.pixi_code || null;
 
   return (
     <div className="baatcheet-viewer" data-card-type={currentCard.card_type}>
@@ -250,14 +252,11 @@ export default function BaatcheetViewer({
       ) : currentCard.card_type === 'visual' ? (
         <div className="baatcheet-viewer__visual">
           {currentCard.title && <h3>{currentCard.title}</h3>}
-          {visualPixiCode ? (
-            <div className="baatcheet-visual-stage" data-pixi-pending={visualPixiCode ? 'true' : 'false'}>
-              {/* PixiJS stage is wired by the existing visual harness; falls
-                  back to the visual_intent text if the harness isn't present. */}
-              {currentCard.visual_intent && (
-                <p className="baatcheet-viewer__visual-fallback">{currentCard.visual_intent}</p>
-              )}
-            </div>
+          {visualPixiCode && visualExplanation ? (
+            <VisualExplanationComponent
+              visual={visualExplanation}
+              autoStart={!visited.has(cardIdx)}
+            />
           ) : (
             currentCard.visual_intent && <p>{currentCard.visual_intent}</p>
           )}

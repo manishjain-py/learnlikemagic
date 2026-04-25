@@ -526,16 +526,19 @@ export default function ChatSession() {
 
             if (state.card_phase?.active) {
               // Card phase still in progress — restore card navigation state.
-              // current_card_idx is the 0-based index into cards_json. The welcome
-              // card is cards_json[0] and the carousel maps 1:1 onto cards_json,
-              // so slideIdx == current_card_idx (no +1 — the previous +1 was an
-              // off-by-one that double-counted the welcome).
+              // localStorage is the truth source for Explain: forward/back nav
+              // writes there on every advance. Server-side `current_card_idx`
+              // is only updated by the WS card_navigate handler that no
+              // frontend caller invokes today, so the server value is always
+              // the initial 0. Until Explain nav is wired to /card-progress
+              // (see TODO in record_card_progress), prefer localStorage.
               let slideIdx = 0;
-              if (state.card_phase.current_card_idx != null) {
+              const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
+              if (savedPos !== null) {
+                const parsed = parseInt(savedPos, 10);
+                if (!isNaN(parsed)) slideIdx = parsed;
+              } else if (state.card_phase.current_card_idx != null) {
                 slideIdx = state.card_phase.current_card_idx;
-              } else {
-                const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
-                if (savedPos) slideIdx = parseInt(savedPos, 10);
               }
               setSessionPhase('card_phase');
               setCurrentSlideIdx(slideIdx);

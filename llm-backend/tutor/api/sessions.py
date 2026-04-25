@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 
@@ -200,19 +201,21 @@ def get_teach_me_options(
         # Look up the most recent session for this submode. We do NOT require
         # is_paused — exit-mid-dialogue without explicit pause must still
         # surface the resume CTA (PRD §FR-33). Latest one wins.
-        row = (
+        # COALESCE handles legacy rows that may have NULL teach_me_mode
+        # (migration backfills to 'explain', but the COALESCE is defensive).
+        # Index `idx_sessions_user_guideline_teach_mode` covers the leading
+        # filter columns; COALESCE evaluates on the small filtered set.
+        latest = (
             db.query(SessionModel)
             .filter(
                 SessionModel.user_id == current_user.id,
                 SessionModel.guideline_id == guideline_id,
                 SessionModel.mode == "teach_me",
+                func.coalesce(SessionModel.teach_me_mode, "explain") == submode,
             )
             .order_by(SessionModel.updated_at.desc())
-            .all()
+            .first()
         )
-        # Filter by teach_me_mode in Python because old rows may have NULL.
-        row = [r for r in row if (r.teach_me_mode or "explain") == submode]
-        latest = row[0] if row else None
 
         in_progress_id = None
         completed_id = None
@@ -372,7 +375,7 @@ def get_session_replay(
                 "student_name": student_ctx.get("student_name"),
                 "fallback_student_name": "friend",
                 "topic_name": (
-                    (guideline.topic_title or guideline.topic) if guideline else ""
+                    (guideline.topic_title or guideline.topic) if guideline else "this topic"
                 ),
             }
 

@@ -1,9 +1,10 @@
 # Baatcheet — Implementation Progress
 
 **Date:** 2026-04-25
-**Status:** Backend complete; frontend rendering wired; CSS + end-to-end verification pending
+**Status:** Backend complete; frontend rendering wired; code-review feedback applied; CSS + end-to-end verification pending
 **PRD:** `docs/feature-development/baatcheet/PRD.md` (PR #119)
 **Impl plan:** `docs/feature-development/baatcheet/impl-plan.md` (PR #120)
+**Code review:** `docs/feature-development/baatcheet/code-review.md`
 
 ---
 
@@ -104,6 +105,35 @@ These are the same decisions called out in the impl plan §1, applied as written
 8. **`card_id` mandatory for dialogue cards** — regen rotates content; positional keys would race.
 9. **`voice_role` allowlist on TTS endpoint** — security boundary prevents frontend from passing arbitrary Google voice IDs.
 10. **Refresher topics force `teach_me_mode = "explain"` in V1** — PRD doesn't address; safest default.
+
+---
+
+## Code-review feedback addressed (in this PR)
+
+After the first revision was reviewed, the following blockers + concerns were verified against the code and fixed in-PR:
+
+1. **Migration ordering bug** (Blocker #1) — `_apply_practice_mode_support` ran after my migration and clobbered the index back to 3-col, dropping `teach_me_mode`. Violated PRD §FR-4 (paused Baatcheet + paused Explain couldn't coexist). Fix: made `_apply_practice_mode_support` teach_me_mode-aware (column-detect + 4-col when present, 3-col fallback). Both helpers now converge on the same index regardless of order — robust against future migration reordering.
+2. **Stage 5c PixiJS never rendered** (Blocker #2) — `BaatcheetViewer` only displayed `visual_intent` text, throwing away the generated `pixi_code`. Fix: imported `VisualExplanationComponent` (the same Pixi runner Explain mode uses, sandboxed in an iframe) and rendered it when `visual_explanation.pixi_code` is present. `autoStart` is wired to first-visit.
+3. **Explain resume regression** (Blocker #3) — my "off-by-one fix" assumed the server's `card_phase.current_card_idx` was being written by the frontend; verification showed nothing in the frontend ever sends `card_navigate`, so the server's value is always 0. The previous `+1` masked this by landing at card 1; my change made it land at card 0 always. Fix: inverted priority — read `localStorage` first (the actual truth source for Explain), fall back to server only when `localStorage` is empty. Better than the original `+1` because it now honors actual progress where the user navigated.
+4. **`{student_name}` outside `lines[].audio` plays silently** (Bug #5) — my own system prompt explicitly asked the LLM to put `{student_name}` inside check-in instructions, but `audio_generation_service.py` skips the entire flagged card before iterating check-in fields, and `usePersonalizedAudio` doesn't synthesize check-in fields. Fix: tightened the prompt to forbid `{student_name}` in any `check_in.*` field + extended the validator to detect violations across `check_in.{instruction, hint, success_message, audio_text, reveal_text, statement}`. Also added a check that `{student_name}` in `lines[].display` must mirror in `lines[].audio` (otherwise the student would see the name but not hear it).
+5. **`process_step` doesn't reject `dialogue_phase`** (Concern #7) — Baatcheet sessions calling `POST /sessions/{id}/step` would fall through to the orchestrator with surprising results. Fix: added the parallel `is_in_dialogue_phase()` guard alongside the existing `is_in_card_phase()` check.
+6. **`/teach-me-options` Python-side filter** (Concern #10) — the endpoint was loading all teach_me sessions then filtering `teach_me_mode` in Python. Fix: pushed the filter to SQL via `func.coalesce(SessionModel.teach_me_mode, 'explain') == submode` + `.first()`. Index `idx_sessions_user_guideline_teach_mode` covers the leading filter columns.
+7. **Stage 5b blocked-by uses `any` variant** (Concern #12) — Stage 5b raises `ValueError` if specifically variant A is missing, but the status tile said "ready" if any variant existed. Fix: filter to `variant_key == "A"` so the tile reflects the runtime contract.
+8. **Validator card-count floor** (Nit) — prompt asks for 24-34 LLM cards (final 25-35), but `MIN_TOTAL_CARDS = 13` was way looser. Tightened to `25` so the floor matches the prompt's lower bound.
+9. **Empty topic_name fallback** (Nit) — `_build_personalization` and `_replay_dialogue_personalization` fell back to empty string. Changed to `"this topic"` so a missing guideline title doesn't render `{topic_name}` as nothing.
+
+Verified each fix with structural + behavioral smoke tests (validator catches all 5 new failure modes; structural checks confirm the SQL coalesce, variant-A filter, and migration convergence).
+
+### Deferred from review to follow-up PRs
+
+- **#3 long-term fix** — wire Explain forward/back nav to `postCardProgress({phase: 'card_phase', ...})`. Will land with the ChatSession refactor since both touch the same nav handlers.
+- **#4 — Check-in struggle events not sent.** PRD §10 doesn't require for V1; either wire `usePersonalizedAudio` + `BaatcheetViewer.onCheckInComplete` to send `check_in_events`, or remove `DialoguePhaseState.check_in_struggles` until V2.
+- **#6 — Schema-less prompt path for non-Claude providers.** Defensive against a future config change; mirror `explanation_generator_service.py:332-352`'s inline fallback.
+- **#8 — Banned-pattern emoji range.** Same parity gap exists in `audio_text_review_service.py`; tighten both regexes together.
+- **#9 — `_build_welcome_card_pydantic` ignored guideline param.** Could bake `{topic_name}` server-side and remove the second runtime substitution path.
+- **#11 — Coverage source mismatch.** Pre-existing in Explain. Both modes use card titles, not concepts; `study_plan.get_concepts()` (which seeds `mastery_estimates`) doesn't align with either. Fix should touch both modes consistently.
+- **#13 — `asyncio.run` in Stage 5c thread.** Currently safe (daemon thread); add a defensive comment and switch to `new_event_loop()` if the orchestrator ever async-dispatches.
+- **Other nits** — `audio_generation_service.py:310` whole-card skip, `BaatcheetViewer` initial visited set means resume to non-zero card won't autoplay (PRD-compliant but UX-debatable).
 
 ---
 

@@ -467,12 +467,18 @@ class TopicPipelineStatusService:
         """
         from shared.repositories.dialogue_repository import DialogueRepository
 
-        explanations_done = any(bool(e.cards_json) for e in explanations)
+        # Stage 5b raises if specifically variant A is missing — match that
+        # contract here instead of accepting any variant. (A topic with only
+        # B/C is unusual but possible during partial regeneration.)
+        variant_a_done = any(
+            getattr(e, "variant_key", None) == "A" and bool(e.cards_json)
+            for e in explanations
+        )
         job = self._latest_job_for_guideline(
             chapter_id="", guideline_id=guideline_id,
             job_type=_STAGE_JOB_TYPE["baatcheet_dialogue"],
         )
-        if not explanations_done:
+        if not variant_a_done:
             return _build_blocked("baatcheet_dialogue", blocked_by="explanations", job=job)
 
         repo = DialogueRepository(self.db)

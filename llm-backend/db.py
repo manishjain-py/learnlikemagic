@@ -312,26 +312,43 @@ def _apply_chapter_jobs_guideline_id(db_manager):
 
 
 def _apply_practice_mode_support(db_manager):
-    """Rebuild the paused-session unique index to include mode.
+    """Rebuild the paused-session unique index to include mode (+ teach_me_mode).
 
-    Before: (user_id, guideline_id) WHERE is_paused = TRUE
-    After:  (user_id, guideline_id, mode) WHERE is_paused = TRUE
+    Index includes:
+    - mode (teach_me, clarify_doubts, practice…) so paused Teach Me + paused
+      Practice can coexist for the same (user, topic).
+    - teach_me_mode (explain, baatcheet) when the column exists, so paused
+      Baatcheet + paused Explain can coexist for the same (user, topic) —
+      PRD §FR-4.
 
-    This allows a paused Teach Me session and a paused Practice session to
-    coexist for the same user+topic without colliding on the unique constraint.
-    Idempotent: DROP IF EXISTS + CREATE IF NOT EXISTS.
+    Defensive against migration ordering: detects the column before including
+    it. Falls back to the legacy 3-col shape when teach_me_mode hasn't been
+    added yet. Idempotent.
     """
+    inspector = inspect(db_manager.engine)
+    if "sessions" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("sessions")}
+    has_teach_me_mode = "teach_me_mode" in cols
+
     with db_manager.engine.connect() as conn:
-        print("  Rebuilding paused-session unique index to include mode...")
+        print("  Rebuilding paused-session unique index...")
         conn.execute(text(
             "DROP INDEX IF EXISTS idx_sessions_one_paused_per_user_guideline"
         ))
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
-            "ON sessions(user_id, guideline_id, mode) WHERE is_paused = TRUE"
-        ))
+        if has_teach_me_mode:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+                "ON sessions(user_id, guideline_id, mode, teach_me_mode) WHERE is_paused = TRUE"
+            ))
+            print("  ✓ paused-session unique index includes mode + teach_me_mode")
+        else:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+                "ON sessions(user_id, guideline_id, mode) WHERE is_paused = TRUE"
+            ))
+            print("  ✓ paused-session unique index includes mode (legacy 3-col)")
         conn.commit()
-        print("  ✓ paused-session unique index now includes mode")
 
 
 def _apply_user_language_columns(db_manager):

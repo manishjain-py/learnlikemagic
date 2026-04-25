@@ -367,6 +367,10 @@ class SessionService:
 
         if session.is_in_card_phase():
             raise CardPhaseError("Session is in card phase. Use /card-action endpoint.")
+        if session.is_in_dialogue_phase():
+            raise CardPhaseError(
+                "Session is in dialogue phase. Use /card-progress endpoint."
+            )
 
         # Process turn via orchestrator
         import asyncio
@@ -491,7 +495,9 @@ class SessionService:
         from shared.models.schemas import Personalization
 
         topic_name = (
-            (getattr(guideline, "topic_title", None) or getattr(guideline, "topic", None) or "")
+            getattr(guideline, "topic_title", None)
+            or getattr(guideline, "topic", None)
+            or "this topic"
         )
         return Personalization(
             student_name=getattr(student_context, "student_name", None),

@@ -23,7 +23,7 @@ Card types you may use:
 - "tutor_turn" — Mr. Verma speaks. One short turn per card. May use {student_name} placeholder when addressing the real student.
 - "peer_turn" — Meera speaks. One short turn per card.
 - "visual" — a card showing a simple diagram. Tutor narrates a brief line. Provide a "visual_intent" describing what should be drawn (1–2 sentences, plain language). Example: "A number line from 0 to 10 with 4 highlighted in blue".
-- "check_in" — a small interactive activity. The tutor turns to the real student. Use the same 11 check-in activity_type values used in Explain mode. Mark the card with a `check_in` object. Use {student_name} in the instruction text. Card spacing rule: at least 4 cards between any two check_in cards.
+- "check_in" — a small interactive activity. The tutor turns to the real student. Use the same 11 check-in activity_type values used in Explain mode. Mark the card with a `check_in` object. Card spacing rule: at least 4 cards between any two check_in cards. **DO NOT** use `{student_name}` anywhere inside the `check_in` object (instruction, hint, success_message, audio_text, reveal_text). Check-in fields are pre-rendered as static audio in V1; the runtime substitutes `{student_name}` only on `lines[].audio` / `lines[].display`. Address the student generically inside check-ins ("Try this!" / "Your turn!" — without their name).
 - "summary" — the LAST card. Mr. Verma summarises in 2–3 short lines. Same shape as Explain mode's summary card. Tutor speaks; no peer turn here.
 
 LENGTH
@@ -42,9 +42,10 @@ LANGUAGE — RADICAL SIMPLICITY
 
 PERSONALIZATION — {student_name} placeholders
 
-- Use the literal placeholder `{student_name}` ONLY on cards where Mr. Verma is addressing the real student directly (introductions, turning to them for a check-in, congratulations). Do NOT use it on peer turns (Meera doesn't know the student's name in V1) or on cards where the tutor is talking to Meera.
+- Use the literal placeholder `{student_name}` ONLY inside `lines[].audio` and `lines[].display` on cards where Mr. Verma is addressing the real student directly (introductions, turning to them before a check-in, congratulations after). Do NOT use it on peer turns (Meera doesn't know the student's name in V1) or on cards where the tutor is talking to Meera.
 - Every card that uses {student_name} MUST set `includes_student_name: true`.
 - Conversely, never set `includes_student_name: true` on a card whose lines do not contain `{student_name}`. The validator checks both directions.
+- **Never** put `{student_name}` inside any `check_in.*` field. Those are pre-rendered as static audio.
 - {topic_name} can also appear; it is materialised at runtime.
 
 AUDIO RULES (TTS-FRIENDLY)

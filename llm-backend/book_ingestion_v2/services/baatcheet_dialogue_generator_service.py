@@ -51,7 +51,7 @@ _REVIEW_REFINE_SYSTEM_FILE = str(_PROMPTS_DIR / "baatcheet_dialogue_review_refin
 
 # Welcome card 1 is prepended server-side; LLM produces cards 2..N.
 # After the welcome is added, total = LLM_count + 1.
-MIN_TOTAL_CARDS = 13       # absolute floor (PRD §6 lower bound)
+MIN_TOTAL_CARDS = 25       # matches prompt's "25–30 target, 25 floor" + welcome card
 MAX_TOTAL_CARDS = 35       # absolute ceiling (PRD §FR-11 hard cap)
 MIN_CHECK_IN_SPACING = 4   # cards between two check-in cards (PRD §FR-12)
 
@@ -189,6 +189,30 @@ def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> 
                 f"card {c.card_idx}: contains '{{student_name}}' but "
                 f"includes_student_name flag is False"
             )
+
+        # `{student_name}` is allowed ONLY in lines[].audio / lines[].display.
+        # Check-in fields are pre-rendered as static audio in V1, so a
+        # placeholder there would never get substituted and play silently.
+        if c.check_in:
+            ci = c.check_in
+            check_in_text_fields = (
+                ci.instruction, ci.hint, ci.success_message, ci.audio_text,
+                ci.reveal_text or "", ci.statement or "",
+            )
+            for field_text in check_in_text_fields:
+                if field_text and "{student_name}" in field_text:
+                    issues.append(
+                        f"card {c.card_idx}: '{{student_name}}' found inside a "
+                        f"check_in field — not allowed (V1 pre-renders check-in "
+                        f"audio statically)"
+                    )
+                    break
+        for li, line in enumerate(c.lines):
+            if "{student_name}" in line.display and "{student_name}" not in line.audio:
+                issues.append(
+                    f"card {c.card_idx} line {li}: '{{student_name}}' in display "
+                    f"but not in audio — student would see name but not hear it"
+                )
 
     if issues and raise_on_fail:
         raise DialogueValidationError("; ".join(issues[:8]))
