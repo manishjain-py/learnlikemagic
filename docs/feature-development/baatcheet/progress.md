@@ -1,10 +1,11 @@
 # Baatcheet — Implementation Progress
 
 **Date:** 2026-04-25
-**Status:** Backend complete; frontend rendering wired; code-review feedback applied; CSS + end-to-end verification pending
+**Status:** Backend complete; frontend rendering wired; code-review fixes F1–F9 landed; CSS + PEER_VOICE + minimum unit tests landed; end-to-end ingestion + browser smoke + ChatSession refactor pending
 **PRD:** `docs/feature-development/baatcheet/PRD.md` (PR #119)
 **Impl plan:** `docs/feature-development/baatcheet/impl-plan.md` (PR #120)
 **Code review:** `docs/feature-development/baatcheet/code-review.md`
+**Fix plan (consolidated):** `docs/feature-development/baatcheet/pr121-fix-plan.md`
 
 ---
 
@@ -162,33 +163,57 @@ Plan flagged optional in V1; not built.
 ## What was NOT verified
 
 - **No frontend type-check.** `tsc` is not installed locally and no `vite build` was run. The new `.tsx` files compile in isolation by inspection but have not been verified end-to-end.
-- **No runtime test against real DB / LLM.** Backend modules import cleanly (verified via `python -c` smoke tests) and unit-tested validators pass, but the full Stage 5b → 5c → audio synthesis flow has not been exercised against a real guideline.
-- **No browser test.** Layout will be unstyled until CSS is added — see "Pending CSS" below.
-- **No persistence migration run.** `python db.py --migrate` needs to run before any code path touches `topic_dialogues` or `sessions.teach_me_mode`.
+- **No runtime test against real DB / LLM.** Backend modules import cleanly and committed unit tests pass (see `tests/unit/test_baatcheet.py`, 36 tests), but the full Stage 5b → 5c → audio synthesis flow has not been exercised against a real guideline.
+- **No browser test.** CSS landed (see "CSS landed" below) but no real browser walk-through has been done.
+- **Persistence migration applied.** `python db.py --migrate` ran cleanly: `teach_me_mode` column added, 621 teach_me sessions backfilled to `'explain'`, both indexes (paused-unique + lookup) include `teach_me_mode`. `topic_dialogues` table + unique-on-`guideline_id` index in place.
 
 ---
 
-## Pending CSS
+## CSS landed
 
-The new components reference these classes that don't exist in `App.css` yet:
+`llm-frontend/src/App.css` now styles all classes the new components reference:
 
-- `.baatcheet-viewer`, `.baatcheet-viewer--empty`, `.baatcheet-viewer__progress`, `.baatcheet-viewer__speaker`, `.baatcheet-viewer__speaker-name`, `.baatcheet-viewer__check-in`, `.baatcheet-viewer__visual`, `.baatcheet-viewer__visual-fallback`, `.baatcheet-viewer__line`, `.baatcheet-viewer__title`, `.baatcheet-viewer__line-text`, `.baatcheet-viewer__nav`, `.baatcheet-nav-button`, `.baatcheet-nav-button--primary`, `.baatcheet-active`, `.baatcheet-visual-stage`
-- `.speaker-avatar`, `.speaker-avatar--speaking`, `.speaker-avatar__pulse`
-- `.mode-cards`, `.mode-card-title`, `.mode-card-sub`, `.mode-card-stale`, `.selection-card.baatcheet-card`, `.selection-card.explain-card`, `.selection-card.is-disabled`, `.badge`
-- `.session-error-banner` (already exists; verify shared)
+- BaatcheetViewer chalk-island wrapper (`.baatcheet-active` + `.baatcheet-viewer*`) — chalkboard-themed since ChatSession is OUTSIDE AppShell so `.chalkboard-active` isn't on the parent.
+- `.speaker-avatar` + `.speaker-avatar--speaking` + `.speaker-avatar__pulse` — circular avatar with cross-fade keyframe + speaking-indicator pulse ring; respects `prefers-reduced-motion`.
+- Sub-chooser cards under `.chalkboard-active` (TeachMeSubChooser is INSIDE AppShell): `.mode-cards`, `.selection-card.baatcheet-card` (gold-bordered, recommended), `.selection-card.explain-card` (quieter secondary), `.selection-card.is-disabled`, `.mode-card-title`, `.mode-card-stale` badge, `.badge` (Recommended pill), `.selection-step__title`.
+- Mobile-tightening media query at `max-width: 600px` for both scopes.
 
-Open question: whether to bring this in as a Tailwind-style utility pass or extend `App.css` to match the existing chalkboard style. Recommend: match existing card styles + add SpeakerAvatar pulse animation.
+`.session-error-banner` was already styled in chalkboard mode (App.css:5083) — re-used, no new rule.
+
+---
+
+## PEER_VOICE selected (heuristic, pre-audition)
+
+`PEER_VOICE` set to `("hi-IN", "hi-IN-Chirp3-HD-Leda")` — Leda is documented as a youthful feminine voice in Google's Chirp 3 HD catalog, contrasts most audibly with Kore (the tutor's smooth/professional voice), and matches Meera's peer-aged persona. Pick is heuristic, NOT the result of a real audition — keep an eye on the first dialogue listen-test and revisit if it sounds too similar to Kore in production audio.
+
+---
+
+## Unit tests landed
+
+`llm-backend/tests/unit/test_baatcheet.py` — 36 tests covering the minimum set called out in the fix plan:
+
+- F1: ORM round-trip — `Session.teach_me_mode` persists `'baatcheet'`, defaults to `'explain'`, paused Baatcheet + paused Explain coexist for same `(user, guideline)`.
+- F4: `count_dialogue_audio_items` skips `includes_student_name` cards, skips `{student_name}` placeholder lines, counts check-in fields.
+- F5: `{topic_name}` outside welcome card → validator failure; inside welcome card → passes.
+- F6: `{student_name}` in `check_in.hint` → fail; markdown bold in `check_in.audio_text` → fail; emoji in `check_in.success_message` → fail; unsupported `activity_type` → fail.
+- F7: `BaatcheetAudioReviewService` (delegates to `AudioTextReviewService._apply_revisions`) lands `check_in_text` revisions on dialogue check-in cards (no top-level `audio_text`); drift-mismatch still drops revisions.
+- F8: `_finalize_baatcheet_session` populates `concepts_covered_set` AND `card_covered_concepts` with concept tokens (not display titles) → `coverage_percentage = 100%`; idempotent; no-op without dialogue_phase.
+- F9: emoji range covers Misc Technical (`▶` U+25B6 in `lines[].audio` → fail).
+- Voice routing — peer → `PEER_VOICE`; tutor → `VOICE_MAP[lang]`; absent speaker → tutor (variant A backwards compat); peer ≠ Kore.
+- TTS allowlist — `voice_role: "tutor"|"peer"` accepted; arbitrary string + None rejected via Pydantic Literal.
+- DialogueCard schema round-trip + invalid speaker / card_type rejected.
+- Hash invariants — `audio_url` / `pixi_code` / `visual_explanation` mutations don't change hash; line text edit does.
+
+Pre-existing 68 unit-test failures in the suite are unrelated to Baatcheet (test_topic_adapter, test_session_service::test_create_session_success, test_safety_agent::test_prompt_mentions_safety_checks, etc.) — confirmed by stashing baatcheet changes and re-running.
 
 ---
 
 ## Next steps before merge
 
-1. **Run the migration locally** — `cd llm-backend && source venv/bin/activate && python db.py --migrate`. Confirm the new table + column are created and the unique index is rebuilt.
-2. **Audition Meera's voice** — pick from `hi-IN-Chirp3-HD-Aoede / Charon / Fenrir / Leda / Orus / Puck`. Update `PEER_VOICE` in `audio_generation_service.py` (and the import in `tts.py`).
-3. **End-to-end ingestion test** — open admin TopicPipelineDashboard for a topic with variant A done, run `Generate Baatcheet Dialogue`, then `Generate Baatcheet Visuals`, then `Generate Audio`. Verify the `topic_dialogues` row appears with content_hash, dialogue MP3s land in `audio/{guideline_id}/dialogue/...`, and the audio_synthesis tile reports both variant A and dialogue clip counts.
-4. **Add the CSS** for the BaatcheetViewer + sub-chooser + speaker avatar.
-5. **Write the unit tests** the plan §9.1 enumerates — at minimum the validator tests, hash invariants (already smoke-tested in this session but not committed), voice routing tests, and the Explain replay no-+1 regression.
-6. **Browser smoke test** — pick a topic, tap Teach Me → see chooser → tap Baatcheet → walk through the dialogue → verify avatar swap, audio playback, check-in dispatch, summary completion, and resume after exit.
+1. **End-to-end ingestion test** — open admin TopicPipelineDashboard for a topic with variant A done, run `Generate Baatcheet Dialogue`, then `Generate Baatcheet Visuals`, then `Generate Audio`. Verify the `topic_dialogues` row appears with content_hash, dialogue MP3s land in `audio/{guideline_id}/dialogue/...`, and the audio_synthesis tile reports both variant A and dialogue clip counts (F4 fix).
+2. **Browser smoke test** — pick a topic, tap Teach Me → see chooser → tap Baatcheet → walk through the dialogue → verify avatar swap, audio playback in Leda for peer turns + Kore for tutor turns, check-in dispatch, summary completion + Practice CTA, and resume after exit.
+3. **Audition listen-test on Leda** — listen to ~3 dialogue cards Meera-side; if it sounds too similar to Kore, swap to one of Charon/Fenrir/Orus/Puck (male) or Aoede (other female) and re-test.
+4. **Update PR #121 description** to reflect the F1–F9 fixes + CSS + PEER_VOICE + tests landed.
 
 ## Next steps before pilot
 

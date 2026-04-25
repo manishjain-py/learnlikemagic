@@ -26,11 +26,14 @@ VOICE_MAP = {
     "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
 }
 
-# Baatcheet voices — tutor reuses the existing Kore voice; peer (Meera) gets
-# a distinct hi-IN-Chirp3-HD-* voice. Specific peer voice TBD during impl
-# after audition (PRD §13). Aoede is the placeholder.
+# Baatcheet voices — tutor reuses the existing Kore voice (smooth, neutral);
+# peer (Meera) gets a distinct hi-IN-Chirp3-HD-* voice. Per Google's published
+# Chirp 3 HD voice catalog, `Leda` is documented as a youthful feminine voice,
+# which fits Meera's persona (peer-aged, warm, curious) and contrasts most
+# audibly with Kore. Pilot the pick during the first dialogue listen-test;
+# revisit if it sounds too similar in production audio.
 TUTOR_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Kore")
-PEER_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Aoede")
+PEER_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Leda")
 
 
 def _voice_for_speaker(speaker: Optional[str], language: str) -> tuple[str, str]:

@@ -8407,3 +8407,378 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   opacity: 0.6;
   cursor: wait;
 }
+
+
+/* ==========================================================================
+   BAATCHEET — Conversational Teach Me submode
+   Two scopes:
+     1. .chalkboard-active .selection-step  — TeachMeSubChooser (lives inside
+        AppShell, so chalkboard-active is already set on the parent).
+     2. .baatcheet-active                    — BaatcheetViewer wrapper
+        (ChatSession is OUTSIDE AppShell, so the viewer carries its own
+        chalk-island wrapper without depending on chalkboard-active).
+   ========================================================================== */
+
+
+/* ── Sub-chooser: mode cards ───────────────────────────────────────────── */
+
+.chalkboard-active .mode-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+.chalkboard-active .selection-step__title {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--fs-2xl);
+  line-height: 1.25;
+  color: var(--chalk-white);
+  margin: 0 0 var(--sp-4);
+  text-shadow: 0 0 1px rgba(244, 244, 239, 0.3), 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+.chalkboard-active .selection-card.baatcheet-card,
+.chalkboard-active .selection-card.explain-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: 18px 20px;
+  text-align: left;
+  position: relative;
+}
+
+.chalkboard-active .selection-card.baatcheet-card {
+  background: linear-gradient(135deg, #4A6E5C 0%, #2F4A3C 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 199, 108, 0.35),
+    0 4px 0 rgba(0, 0, 0, 0.25),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+}
+.chalkboard-active .selection-card.baatcheet-card:hover {
+  background: linear-gradient(135deg, #57826B 0%, #38594A 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 199, 108, 0.5),
+    0 6px 0 rgba(0, 0, 0, 0.25),
+    0 8px 14px rgba(0, 0, 0, 0.3);
+}
+
+.chalkboard-active .selection-card.explain-card {
+  background: linear-gradient(135deg, #3F5C4A 0%, var(--board-green) 100%);
+}
+
+.chalkboard-active .selection-card.is-disabled,
+.chalkboard-active .selection-card.is-disabled:hover {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: grayscale(0.5);
+  transform: none;
+}
+
+.chalkboard-active .mode-card-title {
+  font-family: var(--font-body);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--chalk-white);
+  letter-spacing: 0.01em;
+}
+
+.chalkboard-active .mode-card-stale {
+  display: inline-block;
+  margin-top: var(--sp-1);
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(244, 199, 108, 0.18);
+  border: 1px dashed var(--chalk-gold);
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Recommended badge — sits at top-right of the Baatcheet card */
+.chalkboard-active .selection-card.baatcheet-card .badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--chalk-gold);
+  color: #2F1F00;
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+
+/* ── BaatcheetViewer — chalk island inside ChatSession ─────────────────── */
+
+.baatcheet-active {
+  min-height: 100vh;
+  background: var(--wall-cream);
+  padding: var(--sp-3);
+}
+
+.baatcheet-viewer {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-4);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
+  box-shadow: var(--shadow-board-inset), 0 6px 18px rgba(0, 0, 0, 0.25);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.baatcheet-viewer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%),
+    radial-gradient(circle at 18% 22%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
+    radial-gradient(circle at 82% 78%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
+}
+.baatcheet-viewer > * { position: relative; z-index: 1; }
+
+.baatcheet-viewer--empty {
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--chalk-white-soft);
+  padding: var(--sp-6);
+}
+
+.baatcheet-viewer__progress {
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chalk-white-dim);
+  text-align: center;
+  margin-bottom: var(--sp-4);
+}
+
+.baatcheet-viewer__speaker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.baatcheet-viewer__speaker-name {
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--chalk-gold);
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.baatcheet-viewer__title {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--fs-xl);
+  color: var(--chalk-white);
+  margin: 0 0 var(--sp-3);
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.baatcheet-viewer__line {
+  font-family: var(--font-reading);
+  font-size: var(--fs-lg);
+  line-height: 1.55;
+  color: var(--chalk-white);
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.18);
+  border-radius: var(--r-sm);
+  padding: var(--sp-4);
+  margin: 0 auto var(--sp-4);
+  max-width: 600px;
+}
+
+.baatcheet-viewer__line-text {
+  margin: 0;
+}
+.baatcheet-viewer__line-text + .baatcheet-viewer__line-text {
+  margin-top: var(--sp-2);
+}
+
+.baatcheet-viewer__check-in {
+  background: rgba(244, 244, 239, 0.04);
+  border: 1px dashed rgba(244, 244, 239, 0.18);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.baatcheet-viewer__check-in h3 {
+  font-family: var(--font-body);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--chalk-gold);
+  margin: 0 0 var(--sp-3);
+  text-align: center;
+}
+
+.baatcheet-viewer__visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.baatcheet-viewer__visual h3 {
+  font-family: var(--font-body);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--chalk-white);
+  margin: 0;
+  text-align: center;
+}
+.baatcheet-viewer__visual .baatcheet-viewer__line {
+  margin-top: var(--sp-2);
+}
+
+/* Nav row */
+.baatcheet-viewer__nav {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+.baatcheet-nav-button {
+  flex: 1;
+  padding: 12px 18px;
+  border-radius: var(--r-pill);
+  border: 1.5px dashed rgba(244, 244, 239, 0.4);
+  background: rgba(244, 244, 239, 0.08);
+  color: var(--chalk-white);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+.baatcheet-nav-button:hover:not(:disabled) {
+  background: rgba(244, 244, 239, 0.16);
+  border-color: var(--chalk-white-dim);
+  transform: translateY(-1px);
+}
+.baatcheet-nav-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.baatcheet-nav-button--primary {
+  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
+  color: var(--cb-ink-dark);
+  border: 1px solid var(--parchment-edge);
+  box-shadow: var(--shadow-parchment);
+}
+.baatcheet-nav-button--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+
+
+/* ── Speaker avatar — circular swap with cross-fade + speaking pulse ───── */
+
+.speaker-avatar {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(244, 244, 239, 0.06);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
+    0 4px 12px rgba(0, 0, 0, 0.35);
+  /* Cross-fade between avatars: <SpeakerAvatar key={speaker}> remounts
+     when the speaker changes, replaying this opacity transition. */
+  animation: speaker-avatar-fade-in 320ms ease-out;
+}
+.speaker-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.speaker-avatar--speaking {
+  box-shadow:
+    inset 0 0 0 2px var(--chalk-gold),
+    0 0 0 4px rgba(244, 199, 108, 0.35),
+    0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.speaker-avatar__pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--chalk-gold);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: speaker-avatar-pulse 1.6s ease-out infinite;
+}
+
+@keyframes speaker-avatar-fade-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes speaker-avatar-pulse {
+  0%   { transform: scale(1);    opacity: 0.55; }
+  70%  { transform: scale(1.16); opacity: 0;    }
+  100% { transform: scale(1.16); opacity: 0;    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speaker-avatar { animation: none; }
+  .speaker-avatar__pulse { animation: none; opacity: 0.4; }
+}
+
+
+/* ── Mobile tightening for both scopes ─────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .chalkboard-active .selection-card.baatcheet-card,
+  .chalkboard-active .selection-card.explain-card {
+    padding: 14px 16px;
+  }
+  .chalkboard-active .mode-card-title {
+    font-size: var(--fs-lg);
+  }
+  .baatcheet-viewer {
+    padding: var(--sp-4) var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+  .baatcheet-viewer__line {
+    font-size: var(--fs-md);
+    padding: var(--sp-3);
+  }
+  .speaker-avatar {
+    width: 76px;
+    height: 76px;
+  }
+  .baatcheet-nav-button {
+    font-size: var(--fs-sm);
+    padding: 10px 14px;
+  }
+}
