@@ -35,6 +35,9 @@ class V2JobType(str, Enum):
     CHECK_IN_ENRICHMENT = "v2_check_in_enrichment"
     AUDIO_TEXT_REVIEW = "v2_audio_text_review"
     PRACTICE_BANK_GENERATION = "v2_practice_bank_generation"
+    BAATCHEET_DIALOGUE_GENERATION = "v2_baatcheet_dialogue_generation"
+    BAATCHEET_VISUAL_ENRICHMENT = "v2_baatcheet_visual_enrichment"
+    BAATCHEET_AUDIO_REVIEW = "v2_baatcheet_audio_review"
 
 
 class V2JobStatus(str, Enum):

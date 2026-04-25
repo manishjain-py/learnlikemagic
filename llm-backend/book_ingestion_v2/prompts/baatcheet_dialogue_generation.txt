@@ -1,0 +1,13 @@
+TOPIC: {topic_name}
+SUBJECT: {subject}, Grade {grade}
+
+TEACHING GUIDELINE:
+{guideline_text}
+
+VARIANT A EXPLANATION CARDS (use the IDEAS, do not copy the prose):
+{variant_a_cards_json}
+
+COMMON MISCONCEPTIONS (soft — Meera MAY voice 1–3 of these via "answer incorrectly" turns, then the tutor corrects gently):
+{misconceptions_list}
+
+{prior_topics_section}

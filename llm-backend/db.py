@@ -83,6 +83,12 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "gpt-4o-mini",
         "description": "Practice free-form grading + per-pick wrong-answer rationale",
     },
+    {
+        "component_key": "baatcheet_dialogue_generator",
+        "provider": "claude_code",
+        "model_id": "claude-opus-4-7",
+        "description": "Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera)",
+    },
 ]
 
 
@@ -133,6 +139,10 @@ def migrate():
 
         # Topic explanations table (created by create_all, verify + seed LLM config)
         _apply_topic_explanations_table(db_manager)
+
+        # Baatcheet — topic_dialogues table + sessions.teach_me_mode column
+        _apply_topic_dialogues_table(db_manager)
+        _apply_sessions_teach_me_mode_column(db_manager)
 
         # Issues table (created by create_all, seed LLM config)
         _apply_issues_table(db_manager)
@@ -302,26 +312,43 @@ def _apply_chapter_jobs_guideline_id(db_manager):
 
 
 def _apply_practice_mode_support(db_manager):
-    """Rebuild the paused-session unique index to include mode.
+    """Rebuild the paused-session unique index to include mode (+ teach_me_mode).
 
-    Before: (user_id, guideline_id) WHERE is_paused = TRUE
-    After:  (user_id, guideline_id, mode) WHERE is_paused = TRUE
+    Index includes:
+    - mode (teach_me, clarify_doubts, practice…) so paused Teach Me + paused
+      Practice can coexist for the same (user, topic).
+    - teach_me_mode (explain, baatcheet) when the column exists, so paused
+      Baatcheet + paused Explain can coexist for the same (user, topic) —
+      PRD §FR-4.
 
-    This allows a paused Teach Me session and a paused Practice session to
-    coexist for the same user+topic without colliding on the unique constraint.
-    Idempotent: DROP IF EXISTS + CREATE IF NOT EXISTS.
+    Defensive against migration ordering: detects the column before including
+    it. Falls back to the legacy 3-col shape when teach_me_mode hasn't been
+    added yet. Idempotent.
     """
+    inspector = inspect(db_manager.engine)
+    if "sessions" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("sessions")}
+    has_teach_me_mode = "teach_me_mode" in cols
+
     with db_manager.engine.connect() as conn:
-        print("  Rebuilding paused-session unique index to include mode...")
+        print("  Rebuilding paused-session unique index...")
         conn.execute(text(
             "DROP INDEX IF EXISTS idx_sessions_one_paused_per_user_guideline"
         ))
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
-            "ON sessions(user_id, guideline_id, mode) WHERE is_paused = TRUE"
-        ))
+        if has_teach_me_mode:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+                "ON sessions(user_id, guideline_id, mode, teach_me_mode) WHERE is_paused = TRUE"
+            ))
+            print("  ✓ paused-session unique index includes mode + teach_me_mode")
+        else:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+                "ON sessions(user_id, guideline_id, mode) WHERE is_paused = TRUE"
+            ))
+            print("  ✓ paused-session unique index includes mode (legacy 3-col)")
         conn.commit()
-        print("  ✓ paused-session unique index now includes mode")
 
 
 def _apply_user_language_columns(db_manager):
@@ -751,6 +778,94 @@ def _apply_topic_explanations_table(db_manager):
         model_id="claude-opus-4-7",
         description="Check-in card generation (match-the-pairs activities for explanation cards)",
     )
+
+
+def _apply_topic_dialogues_table(db_manager):
+    """Verify topic_dialogues table exists (created by Base.metadata.create_all).
+
+    Ensures the unique-on-guideline_id index exists for the unique=True
+    column on the ORM model — Postgres normally creates the index for a
+    column-level UNIQUE constraint, but on existing deployments where the
+    table predated the constraint we make the index idempotent here.
+    Also seeds the baatcheet_dialogue_generator LLM config.
+    """
+    inspector = inspect(db_manager.engine)
+    if "topic_dialogues" not in inspector.get_table_names():
+        print("  ⚠ topic_dialogues table not found — will be created by create_all()")
+    else:
+        print("  ✓ topic_dialogues table exists")
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("topic_dialogues")}
+        with db_manager.engine.connect() as conn:
+            if "idx_topic_dialogues_guideline" not in existing_indexes:
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_topic_dialogues_guideline "
+                    "ON topic_dialogues(guideline_id)"
+                ))
+            conn.commit()
+
+    _ensure_llm_config(
+        db_manager,
+        component_key="baatcheet_dialogue_generator",
+        provider="claude_code",
+        model_id="claude-opus-4-7",
+        description="Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera)",
+    )
+
+
+def _apply_sessions_teach_me_mode_column(db_manager):
+    """Add `teach_me_mode` column + rebuild paused-session unique index.
+
+    Distinguishes the two Teach Me submodes ("explain" / "baatcheet") within
+    `mode == "teach_me"`. Existing rows backfill to "explain". Idempotent.
+    The paused-session unique index is rebuilt to include teach_me_mode so
+    that a paused Baatcheet and a paused Explain session can coexist for the
+    same (user, guideline). A non-unique lookup index supports the resume CTA.
+    """
+    inspector = inspect(db_manager.engine)
+    if "sessions" not in inspector.get_table_names():
+        return
+    existing_columns = {c["name"] for c in inspector.get_columns("sessions")}
+
+    with db_manager.engine.connect() as conn:
+        if "teach_me_mode" not in existing_columns:
+            print("  Adding teach_me_mode column to sessions...")
+            conn.execute(text(
+                "ALTER TABLE sessions ADD COLUMN teach_me_mode VARCHAR DEFAULT 'explain'"
+            ))
+            conn.execute(text(
+                "UPDATE sessions SET teach_me_mode = 'explain' "
+                "WHERE mode = 'teach_me' AND teach_me_mode IS NULL"
+            ))
+            print("  ✓ teach_me_mode column added (existing teach_me rows backfilled)")
+
+        # Always-on backfill from state_json. The column-add step above sets
+        # every teach_me row to 'explain' indiscriminately, so any Baatcheet
+        # session created before the ORM column was wired (PR #121 first cut)
+        # is mis-tagged. This re-derives the value from the embedded session
+        # state. Idempotent — only touches rows where the recorded column
+        # value disagrees with state_json.
+        result = conn.execute(text(
+            "UPDATE sessions "
+            "SET teach_me_mode = state_json::jsonb->>'teach_me_mode' "
+            "WHERE mode = 'teach_me' "
+            "  AND state_json::jsonb->>'teach_me_mode' IS NOT NULL "
+            "  AND state_json::jsonb->>'teach_me_mode' <> COALESCE(teach_me_mode, '')"
+        ))
+        if result.rowcount:
+            print(f"  ✓ teach_me_mode backfilled from state_json on {result.rowcount} row(s)")
+
+        print("  Rebuilding paused-session unique index to include teach_me_mode...")
+        conn.execute(text("DROP INDEX IF EXISTS idx_sessions_one_paused_per_user_guideline"))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+            "ON sessions(user_id, guideline_id, mode, teach_me_mode) WHERE is_paused = TRUE"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_guideline_teach_mode "
+            "ON sessions(user_id, guideline_id, mode, teach_me_mode, updated_at DESC)"
+        ))
+        conn.commit()
+        print("  ✓ paused-session unique index rebuilt with teach_me_mode")
 
 
 def _ensure_llm_config(db_manager, component_key, provider, model_id, description):

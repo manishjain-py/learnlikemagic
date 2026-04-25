@@ -21,7 +21,10 @@ import {
   QuestionFormat,
   CheckInActivity,
   CheckInEventDTO,
+  DialogueCard,
+  Personalization,
 } from '../api';
+import BaatcheetViewer from '../components/teach/BaatcheetViewer';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -135,8 +138,12 @@ export default function ChatSession() {
   const [playingSlideId, setPlayingSlideId] = useState<string | null>(null);
 
   // Card phase state (pre-computed explanations)
-  const [sessionPhase, setSessionPhase] = useState<'card_phase' | 'interactive'>('interactive');
+  const [sessionPhase, setSessionPhase] = useState<'card_phase' | 'dialogue_phase' | 'interactive'>('interactive');
   const [explanationCards, setExplanationCards] = useState<ExplanationCard[]>([]);
+  // Baatcheet (dialogue phase) state — populated from firstTurn or replay.
+  const [dialogueCards, setDialogueCards] = useState<DialogueCard[] | null>(null);
+  const [dialoguePersonalization, setDialoguePersonalization] = useState<Personalization | null>(null);
+  const [dialogueInitialIdx, setDialogueInitialIdx] = useState(0);
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
@@ -406,8 +413,20 @@ export default function ChatSession() {
 
     if (locState?.firstTurn) {
       // Fresh session from ModeSelectPage
+      // Baatcheet (dialogue) phase short-circuits the explanation/card path.
+      if (
+        locState.firstTurn.session_phase === 'dialogue_phase' &&
+        locState.firstTurn.dialogue_cards
+      ) {
+        setSessionPhase('dialogue_phase');
+        setDialogueCards(locState.firstTurn.dialogue_cards);
+        setDialoguePersonalization(locState.firstTurn.personalization || null);
+        setDialogueInitialIdx(
+          locState.firstTurn.dialogue_phase_state?.current_card_idx ?? 0,
+        );
+      }
       // Check for card phase (pre-computed explanations)
-      if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
+      else if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
         setSessionPhase('card_phase');
         const cards = annotateCards(locState.firstTurn.explanation_cards);
         setExplanationCards(cards);
@@ -473,6 +492,25 @@ export default function ChatSession() {
           if (state.mode) setSessionMode(state.mode);
           if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
 
+          // Hydrate dialogue phase (Baatcheet) on resume / deep-link.
+          if (state._replay_dialogue_cards && state.dialogue_phase) {
+            setDialogueCards(state._replay_dialogue_cards);
+            setDialoguePersonalization(
+              state._replay_dialogue_personalization || {
+                student_name: null,
+                fallback_student_name: 'friend',
+                topic_name: '',
+              },
+            );
+            const initialIdx = state.dialogue_phase.current_card_idx ?? 0;
+            setDialogueInitialIdx(initialIdx);
+            if (state.dialogue_phase.active) {
+              setSessionPhase('dialogue_phase');
+            }
+            // else: completed dialogue — viewer still renders for review
+            // when the user lands on this URL.
+          }
+
           // Hydrate card phase — active or completed
           if (state._replay_explanation_cards) {
             const replayCards = annotateCards(state._replay_explanation_cards);
@@ -487,17 +525,24 @@ export default function ChatSession() {
             }
 
             if (state.card_phase?.active) {
-              // Card phase still in progress — restore card navigation state
+              // Card phase still in progress — restore card navigation state.
+              // localStorage is the truth source for Explain: forward/back nav
+              // writes there on every advance. Server-side `current_card_idx`
+              // is only updated by the WS card_navigate handler that no
+              // frontend caller invokes today, so the server value is always
+              // the initial 0. Until Explain nav is wired to /card-progress
+              // (see TODO in record_card_progress), prefer localStorage.
               let slideIdx = 0;
-              if (state.card_phase.current_card_idx != null) {
-                slideIdx = state.card_phase.current_card_idx + 1; // +1 for welcome slide
-              } else {
-                const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
-                if (savedPos) slideIdx = parseInt(savedPos, 10);
+              const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
+              if (savedPos !== null) {
+                const parsed = parseInt(savedPos, 10);
+                if (!isNaN(parsed)) slideIdx = parsed;
+              } else if (state.card_phase.current_card_idx != null) {
+                slideIdx = state.card_phase.current_card_idx;
               }
               setSessionPhase('card_phase');
               setCurrentSlideIdx(slideIdx);
-              prevSlidesLen.current = state._replay_explanation_cards.length + 1; // +1 for welcome slide
+              prevSlidesLen.current = state._replay_explanation_cards.length;
               setCardPhaseState({
                 current_variant_key: state.card_phase.current_variant_key,
                 current_card_idx: slideIdx,
@@ -1252,6 +1297,67 @@ export default function ChatSession() {
         <div className="chat-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <p>Loading session...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Baatcheet (dialogue) phase — render the standalone viewer or, after
+  // completion, the same Practice CTA + summary panel Explain shows. The
+  // viewer's onComplete callback hands back the concepts/coverage/guideline
+  // sourced from the server-side finalize so we don't need a follow-up fetch.
+  if (sessionPhase === 'dialogue_phase' && dialogueCards && dialoguePersonalization) {
+    if (teachMeComplete) {
+      return (
+        <div className="app">
+          <div className="chat-container">
+            <div className="summary-card" data-testid="teach-me-complete">
+              <h2>Nice work!</h2>
+              {teachMeConceptsCovered.length > 0 && (
+                <div className="summary-content">
+                  <p>You've covered:</p>
+                  <div className="summary-chips">
+                    {teachMeConceptsCovered.map((c, i) => (
+                      <span key={i} className="summary-chip">{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {teachMeCompletionMessage && (
+                <p className="summary-card-message">{teachMeCompletionMessage}</p>
+              )}
+              <button
+                onClick={handleStartPracticeFromCTA}
+                className="restart-button"
+                data-testid="start-practice-cta"
+              >
+                Let's Practice — put it to work!
+              </button>
+              <button
+                onClick={handleDoneForNow}
+                className="restart-button restart-button--ghost"
+              >
+                I'm done for now
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="app baatcheet-active">
+        <BaatcheetViewer
+          sessionId={sessionId || ''}
+          cards={dialogueCards}
+          personalization={dialoguePersonalization}
+          initialCardIdx={dialogueInitialIdx}
+          onComplete={(info) => {
+            setIsComplete(true);
+            setTeachMeComplete(true);
+            setTeachMeConceptsCovered(info.concepts_covered || []);
+            setTeachMeGuidelineId(info.guideline_id || null);
+            if (info.coverage != null) setCoverage(info.coverage);
+          }}
+        />
       </div>
     );
   }

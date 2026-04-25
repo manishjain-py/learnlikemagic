@@ -19,6 +19,8 @@ import {
   generatePracticeBanks,
   generateAudio,
   generateAudioReview,
+  generateBaatcheetDialogue,
+  generateBaatcheetVisuals,
   runTopicPipeline,
   type ChapterPipelineSummary,
   type QualityLevel,
@@ -27,6 +29,8 @@ import {
 
 const STAGE_ORDER: StageId[] = [
   'explanations',
+  'baatcheet_dialogue',
+  'baatcheet_visuals',
   'visuals',
   'check_ins',
   'practice_bank',
@@ -139,6 +143,10 @@ const TopicPipelineDashboard: React.FC = () => {
     try {
       if (stageId === 'explanations') {
         await generateExplanations(bookId, { guidelineId, force: shouldForce });
+      } else if (stageId === 'baatcheet_dialogue') {
+        await generateBaatcheetDialogue(bookId, { guidelineId, force: shouldForce });
+      } else if (stageId === 'baatcheet_visuals') {
+        await generateBaatcheetVisuals(bookId, { guidelineId, force: shouldForce });
       } else if (stageId === 'visuals') {
         await generateVisuals(bookId, { guidelineId, force: shouldForce });
       } else if (stageId === 'check_ins') {

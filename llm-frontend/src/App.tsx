@@ -47,6 +47,7 @@ import SubjectSelect from './pages/SubjectSelect';
 import ChapterSelect from './pages/ChapterSelect';
 import TopicSelect from './pages/TopicSelect';
 import ModeSelectPage from './pages/ModeSelectPage';
+import TeachMeSubChooser from './pages/TeachMeSubChooser';
 import ChatSession from './pages/ChatSession';
 
 // Admin pages
@@ -113,6 +114,7 @@ function App() {
               <Route path="/learn/:subject" element={<ChapterSelect />} />
               <Route path="/learn/:subject/:chapter" element={<TopicSelect />} />
               <Route path="/learn/:subject/:chapter/:topic" element={<ModeSelectPage />} />
+              <Route path="/learn/:subject/:chapter/:topic/teach" element={<TeachMeSubChooser />} />
 
               {/* Profile & settings */}
               <Route path="/profile" element={<ProfilePage />} />

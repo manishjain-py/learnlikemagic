@@ -1,0 +1,83 @@
+You are reviewing a Baatcheet (conversational) script and improving it. Read the cards as if you ARE a struggling Indian Grade {grade} student with English as a second language. Fix anything that doesn't click and return the FULL improved card list.
+
+The cards have two speakers: Mr. Verma (tutor) and Meera (a peer). Card 1 is a welcome card prepended SEPARATELY by the service — your output starts at card_idx=2. Last card must be a `summary` card spoken by the tutor.
+
+REVIEW CHECKLIST
+
+1. Coverage — does the dialogue teach everything the variant A explanation teaches? Add missing cards if needed; do not drop content.
+2. Pedagogy — does Meera play all four roles across the dialogue (ASK / ANSWER CORRECTLY / ANSWER INCORRECTLY / REACT)? Rebalance if monotonous.
+3. Misconceptions — do at least 1–2 of Meera's "answer incorrectly" turns voice a real common misconception that the tutor then corrects gently? If none surface, weave one in.
+4. Language — every sentence under the word cap (12 for tutor, 10 for Meera), one sentence per line, no idioms, no phrasal verbs, no passive voice.
+5. Audio strings — no markdown (`**`), no naked equals signs, no emoji. Math written as words.
+6. Personalization — every card with `includes_student_name: true` MUST contain the literal `{student_name}` placeholder. Every card containing `{student_name}` MUST be flagged. Use student-name placeholders ONLY on tutor turns addressing the real student (introduction, check-ins, congratulations).
+7. Check-ins — at least 4 cards apart. The 11 supported activity_type values are the same as Explain. Generic `hint` and `success_message` only.
+8. Length — total card count (your output) between 12 and 34 cards. The service adds 1 welcome card on top.
+9. Cultural framing — never label the student's context as "the Indian way" or compare to "Western". Treat their everyday life as the default.
+10. Tone — Mr. Verma warm but not babyish; Meera curious, warm, not a know-it-all.
+
+If the user message includes a list of validator issues from a previous round, fix those issues specifically. Otherwise, do a full review.
+
+FIX DIRECTLY — you may add, remove, reorder, or rewrite cards. Re-number `card_idx` consecutively starting at 2.
+
+OUTPUT FORMAT — same JSON schema as the generation pass. Respond with valid JSON only — no markdown fences, no commentary.
+
+{
+  "$defs": {
+    "DialogueLineOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display", "audio"],
+      "properties": {
+        "display": {"type": "string"},
+        "audio":   {"type": "string"}
+      }
+    },
+    "CheckInActivityOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activity_type", "instruction", "hint", "success_message", "audio_text"],
+      "properties": {
+        "activity_type":   {"type": "string"},
+        "instruction":     {"type": "string"},
+        "hint":            {"type": "string"},
+        "success_message": {"type": "string"},
+        "audio_text":      {"type": "string"},
+        "options":         {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+        "correct_index":   {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "statement":       {"anyOf": [{"type": "string"},  {"type": "null"}]},
+        "correct_answer":  {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
+        "pairs":           {"anyOf": [{"type": "array", "items": {"type": "object", "required": ["left","right"], "additionalProperties": false, "properties": {"left":{"type":"string"}, "right":{"type":"string"}}}}, {"type": "null"}]},
+        "bucket_names":    {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+        "bucket_items":    {"anyOf": [{"type": "array", "items": {"type": "object", "required": ["text","correct_bucket"], "additionalProperties": false, "properties": {"text":{"type":"string"}, "correct_bucket":{"type":"integer"}}}}, {"type": "null"}]},
+        "sequence_items":  {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+        "error_steps":     {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+        "error_index":     {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "odd_items":       {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+        "odd_index":       {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "reveal_text":     {"anyOf": [{"type": "string"},  {"type": "null"}]}
+      }
+    },
+    "DialogueCardOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card_idx", "card_type", "speaker", "speaker_name", "title", "lines", "includes_student_name", "visual_intent", "check_in"],
+      "properties": {
+        "card_idx":              {"type": "integer"},
+        "card_type":             {"type": "string", "enum": ["tutor_turn", "peer_turn", "visual", "check_in", "summary"]},
+        "speaker":               {"anyOf": [{"type": "string", "enum": ["tutor", "peer"]}, {"type": "null"}]},
+        "speaker_name":          {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "title":                 {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "lines":                 {"type": "array", "items": {"$ref": "#/$defs/DialogueLineOutput"}},
+        "includes_student_name": {"type": "boolean"},
+        "visual_intent":         {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "check_in":              {"anyOf": [{"$ref": "#/$defs/CheckInActivityOutput"}, {"type": "null"}]}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cards"],
+  "properties": {
+    "cards": {"type": "array", "items": {"$ref": "#/$defs/DialogueCardOutput"}}
+  }
+}

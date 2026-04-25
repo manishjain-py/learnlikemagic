@@ -17,6 +17,9 @@ MasteryLevel = Literal["not_started", "needs_work", "developing", "adequate", "s
 
 SessionMode = Literal["teach_me", "clarify_doubts"]
 
+# Submode within Teach Me. Only meaningful when mode == "teach_me".
+TeachMeMode = Literal["explain", "baatcheet"]
+
 ExplanationPhaseName = Literal["not_started", "opening", "explaining", "informal_check", "complete"]
 
 
@@ -71,6 +74,27 @@ class CardPhaseState(BaseModel):
     check_in_struggles: list[CheckInStruggleEvent] = Field(
         default_factory=list,
         description="Per-check-in struggle tracking for tutor context"
+    )
+
+
+class DialoguePhaseState(BaseModel):
+    """Tracks card-based dialogue phase for Baatcheet sessions.
+
+    Sibling to CardPhaseState (Explain mode). Kept separate because
+    CardPhaseState carries variant-aware fields (current_variant_key,
+    variants_shown, remedial_cards) that don't apply to Baatcheet.
+    """
+    guideline_id: str = Field(description="FK for dialogue lookups")
+    active: bool = Field(default=True, description="Whether dialogue phase is currently active")
+    current_card_idx: int = Field(default=0, description="Current card index (0-based)")
+    total_cards: int = Field(default=0, description="Total cards in dialogue")
+    completed: bool = Field(default=False, description="True when student saw the summary card")
+    last_visited_at: Optional[datetime] = Field(
+        default=None, description="When the student last advanced (used for resume CTA)"
+    )
+    check_in_struggles: list[CheckInStruggleEvent] = Field(
+        default_factory=list,
+        description="Per-check-in struggle tracking, mirrors CardPhaseState.check_in_struggles",
     )
 
 
@@ -167,6 +191,10 @@ class SessionState(BaseModel):
 
     # Mode and pause state
     mode: SessionMode = Field(default="teach_me", description="Session mode")
+    teach_me_mode: TeachMeMode = Field(
+        default="explain",
+        description="Submode within Teach Me; only meaningful when mode == 'teach_me'",
+    )
     is_paused: bool = Field(default=False, description="Whether this Teach Me session is paused")
 
     # Coverage tracking
@@ -189,6 +217,10 @@ class SessionState(BaseModel):
     # Card Phase (pre-computed explanations)
     card_phase: Optional[CardPhaseState] = Field(
         default=None, description="Card-based explanation phase state (pre-computed explanations)"
+    )
+    # Dialogue Phase (Baatcheet) — sibling of card_phase
+    dialogue_phase: Optional[DialoguePhaseState] = Field(
+        default=None, description="Card-based dialogue phase state (Baatcheet)"
     )
     precomputed_explanation_summary: Optional[str] = Field(
         default=None, description="Summary of pre-computed explanations shown, for tutor context injection"
@@ -228,7 +260,10 @@ class SessionState(BaseModel):
             return False
         if self.is_refresher:
             return self.card_phase is not None and self.card_phase.completed
-        # Card-based Teach Me (the only path going forward): complete when card phase is done
+        # Baatcheet submode — completion gated on dialogue_phase
+        if self.teach_me_mode == "baatcheet":
+            return self.dialogue_phase is not None and self.dialogue_phase.completed
+        # Card-based Teach Me (Explain): complete when card phase is done
         if self.card_phase is not None:
             return self.card_phase.completed
         # v1 fallback (non-card sessions, out of scope but preserved for legacy data)
@@ -316,6 +351,19 @@ class SessionState(BaseModel):
         if self.card_phase:
             self.card_phase.active = False
             self.card_phase.completed = True
+            self.updated_at = datetime.utcnow()
+
+    # --- Dialogue phase helpers (Baatcheet) ---
+
+    def is_in_dialogue_phase(self) -> bool:
+        """Check if the session is currently in the dialogue (Baatcheet) phase."""
+        return self.dialogue_phase is not None and self.dialogue_phase.active
+
+    def complete_dialogue_phase(self) -> None:
+        """Mark dialogue phase as completed."""
+        if self.dialogue_phase:
+            self.dialogue_phase.active = False
+            self.dialogue_phase.completed = True
             self.updated_at = datetime.utcnow()
 
     # --- Explanation phase helpers ---

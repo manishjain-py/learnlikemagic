@@ -28,10 +28,20 @@ from tutor.exceptions import (
     VariantNotFoundError,
 )
 from tutor.orchestration import TeacherOrchestrator
-from tutor.models.session_state import SessionState, CardPhaseState, create_session
+from tutor.models.session_state import (
+    SessionState, CardPhaseState, DialoguePhaseState, create_session,
+)
 from tutor.models.messages import StudentContext, create_teacher_message
 from tutor.services.topic_adapter import convert_guideline_to_topic
 from shared.repositories.explanation_repository import ExplanationRepository
+from shared.repositories.dialogue_repository import DialogueRepository
+
+
+class BaatcheetUnavailableError(Exception):
+    """Raised when a Baatcheet session is requested for a guideline that has
+    no `topic_dialogues` row yet. Surfaces as 409 Conflict so the frontend
+    can degrade gracefully even if the chooser's disabled-state didn't fire.
+    """
 
 logger = logging.getLogger("tutor.session_service")
 
@@ -67,6 +77,15 @@ class SessionService:
         """Create a new learning session with mode support."""
         mode = request.mode if hasattr(request, 'mode') else "teach_me"
 
+        # Resolve teach_me submode. Only meaningful when mode == "teach_me";
+        # ignored for clarify_doubts. Defaults to "explain" — preserves
+        # pre-Baatcheet behavior for callers that don't pass the field.
+        teach_me_mode = "explain"
+        if mode == "teach_me":
+            requested = getattr(request, "teach_me_mode", None)
+            if requested in ("explain", "baatcheet"):
+                teach_me_mode = requested
+
         # Validate guideline exists
         guideline = self.guideline_repo.get_guideline_by_id(request.goal.guideline_id)
         if not guideline:
@@ -77,6 +96,16 @@ class SessionService:
 
         if is_refresher and mode != "teach_me":
             raise SessionModeError("Refresher topics only support Teach Me mode")
+
+        # Refresher topics force the Explain submode in V1 — Baatcheet for
+        # refresher mini-lessons isn't covered by the PRD, and the safest
+        # default is to fall back to the proven Explain flow.
+        if is_refresher and teach_me_mode == "baatcheet":
+            logger.info(
+                f"Coercing teach_me_mode to 'explain' for refresher guideline "
+                f"{request.goal.guideline_id}"
+            )
+            teach_me_mode = "explain"
 
         # Build student context FIRST (needed for personalized plan generation)
         if user_id:
@@ -116,8 +145,12 @@ class SessionService:
         session_id = str(uuid4())
         session.session_id = session_id
         session.is_refresher = is_refresher
+        session.teach_me_mode = teach_me_mode if mode == "teach_me" else "explain"
 
-        logger.info(f"Created session {session_id} for topic {topic.topic_name} mode={mode} is_refresher={is_refresher}")
+        logger.info(
+            f"Created session {session_id} for topic {topic.topic_name} "
+            f"mode={mode} teach_me_mode={session.teach_me_mode} is_refresher={is_refresher}"
+        )
 
         import asyncio
 
@@ -129,6 +162,70 @@ class SessionService:
                 explanations = explanation_repo.get_by_guideline_id(request.goal.guideline_id)
             except Exception:
                 explanations = []
+
+        # ─── Baatcheet submode branch ──────────────────────────────────────
+        # Loaded from `topic_dialogues` instead of `topic_explanations`. Same
+        # carousel + check-in dispatcher, different DTO shape (dialogue_phase).
+        if mode == "teach_me" and teach_me_mode == "baatcheet":
+            dialogue_repo = DialogueRepository(self.db)
+            dialogue = dialogue_repo.get_by_guideline_id(request.goal.guideline_id)
+            if not dialogue or not dialogue.cards_json:
+                raise BaatcheetUnavailableError(
+                    f"No Baatcheet dialogue exists for guideline "
+                    f"{request.goal.guideline_id}"
+                )
+
+            cards = dialogue.cards_json
+            session.dialogue_phase = DialoguePhaseState(
+                guideline_id=request.goal.guideline_id,
+                active=True,
+                current_card_idx=0,
+                total_cards=len(cards),
+            )
+
+            first_card = cards[0] if cards else {}
+            display_lines = [
+                line.get("display", "") for line in first_card.get("lines", [])
+            ]
+            audio_lines = [
+                line.get("audio", "") for line in first_card.get("lines", [])
+            ]
+            welcome = "\n".join(s for s in display_lines if s)
+            audio_text = " ".join(s for s in audio_lines if s)
+
+            personalization = self._build_personalization(student_context, guideline)
+
+            first_turn = {
+                "message": welcome,
+                "audio_text": audio_text,
+                "hints": [],
+                "step_idx": session.current_step,
+                "total_steps": session.topic.study_plan.total_steps if session.topic else 0,
+                "dialogue_cards": cards,
+                "session_phase": "dialogue_phase",
+                "dialogue_phase_state": {
+                    "current_card_idx": 0,
+                    "total_cards": len(cards),
+                },
+                "teach_me_mode": "baatcheet",
+                "personalization": personalization.model_dump(),
+            }
+
+            session.add_message(create_teacher_message(welcome, audio_text=audio_text))
+            self._persist_session(
+                session_id, session, request,
+                user_id=user_id, subject=guideline.subject if guideline else None,
+            )
+            self.event_repo.log(
+                session_id=session_id,
+                node="welcome",
+                step_idx=session.current_step,
+                payload={"action": "session_created", "mode": mode, "teach_me_mode": "baatcheet"},
+            )
+            return CreateSessionResponse(
+                session_id=session_id, first_turn=first_turn,
+                mode=mode, teach_me_mode="baatcheet",
+            )
 
         if explanations and mode == "teach_me":
             # Card phase: skip welcome LLM call AND explanation phase init
@@ -270,6 +367,10 @@ class SessionService:
 
         if session.is_in_card_phase():
             raise CardPhaseError("Session is in card phase. Use /card-action endpoint.")
+        if session.is_in_dialogue_phase():
+            raise CardPhaseError(
+                "Session is in dialogue phase. Use /card-progress endpoint."
+            )
 
         # Process turn via orchestrator
         import asyncio
@@ -378,6 +479,7 @@ class SessionService:
             user_id=user_id,
             subject=subject,
             mode=session.mode,
+            teach_me_mode=session.teach_me_mode if session.mode == "teach_me" else None,
             guideline_id=request.goal.guideline_id,
             state_version=1,
             created_at=datetime.utcnow(),
@@ -386,6 +488,149 @@ class SessionService:
         self.db.add(db_record)
         self.db.commit()
         self.db.refresh(db_record)
+
+    @staticmethod
+    def _build_personalization(student_context: StudentContext, guideline) -> "Personalization":
+        """Surface the values the frontend substitutes for {student_name} /
+        {topic_name} placeholders at runtime TTS time."""
+        from shared.models.schemas import Personalization
+
+        topic_name = (
+            getattr(guideline, "topic_title", None)
+            or getattr(guideline, "topic", None)
+            or "this topic"
+        )
+        return Personalization(
+            student_name=getattr(student_context, "student_name", None),
+            fallback_student_name="friend",
+            topic_name=topic_name,
+        )
+
+    def record_card_progress(
+        self,
+        session_id: str,
+        *,
+        phase: str,
+        card_idx: int,
+        mark_complete: bool = False,
+        check_in_events: Optional[list[dict]] = None,
+    ) -> dict:
+        """Persist forward/back nav, optional completion, and check-in events.
+
+        Single endpoint covers both Explain (`card_phase`) and Baatcheet
+        (`dialogue_phase`). Uses the version-safe persistence path so a stale
+        client doesn't clobber a more recent server state. Idempotent on
+        `mark_complete=True`.
+        """
+        from datetime import datetime
+        from tutor.models.session_state import CheckInStruggleEvent
+
+        db_session = self.session_repo.get_by_id(session_id)
+        if not db_session:
+            raise SessionNotFoundException(session_id)
+        expected_version = db_session.state_version or 1
+
+        session = SessionState.model_validate_json(db_session.state_json)
+
+        if phase == "card_phase":
+            if not session.card_phase:
+                raise CardPhaseError("Session has no card_phase state")
+            if card_idx < 0 or card_idx >= max(1, session.card_phase.total_cards):
+                raise InvalidCardActionError(
+                    f"card_idx {card_idx} out of bounds [0, {session.card_phase.total_cards})"
+                )
+            session.card_phase.current_card_idx = card_idx
+            for ev in (check_in_events or []):
+                try:
+                    session.card_phase.check_in_struggles.append(
+                        CheckInStruggleEvent(**ev)
+                    )
+                except Exception as e:
+                    logger.warning(f"Bad check_in_event payload dropped: {e}")
+            if mark_complete:
+                self._finalize_explain_session(session)
+        elif phase == "dialogue_phase":
+            if not session.dialogue_phase:
+                raise CardPhaseError("Session has no dialogue_phase state")
+            if card_idx < 0 or card_idx >= max(1, session.dialogue_phase.total_cards):
+                raise InvalidCardActionError(
+                    f"card_idx {card_idx} out of bounds [0, {session.dialogue_phase.total_cards})"
+                )
+            session.dialogue_phase.current_card_idx = card_idx
+            session.dialogue_phase.last_visited_at = datetime.utcnow()
+            for ev in (check_in_events or []):
+                try:
+                    session.dialogue_phase.check_in_struggles.append(
+                        CheckInStruggleEvent(**ev)
+                    )
+                except Exception as e:
+                    logger.warning(f"Bad check_in_event payload dropped: {e}")
+            if mark_complete:
+                self._finalize_baatcheet_session(session)
+        else:
+            raise CardPhaseError(f"Unknown phase: {phase}")
+
+        self._persist_session_state(session_id, session, expected_version)
+        response = {
+            "session_id": session_id,
+            "phase": phase,
+            "card_idx": card_idx,
+            "is_complete": session.is_complete,
+        }
+        # Include completion context so the frontend can render the Practice
+        # CTA + summary chips without a follow-up fetch.
+        if mark_complete and session.is_complete:
+            phase_state = (
+                session.dialogue_phase if phase == "dialogue_phase"
+                else session.card_phase
+            )
+            response.update({
+                "concepts_covered": list(session.concepts_covered_set),
+                "coverage": session.coverage_percentage,
+                "guideline_id": getattr(phase_state, "guideline_id", None),
+            })
+        return response
+
+    def _finalize_explain_session(self, session: SessionState) -> None:
+        """Mark Explain session complete + clear pause flag.
+
+        Idempotent — a second call after completion is a no-op.
+        """
+        if not session.card_phase:
+            return
+        if session.card_phase.completed:
+            return
+        session.card_phase.active = False
+        session.card_phase.completed = True
+        session.is_paused = False
+
+    def _finalize_baatcheet_session(self, session: SessionState) -> None:
+        """Mark Baatcheet session complete + propagate coverage.
+
+        Baatcheet is single-pass and teaches the whole topic, so completion
+        marks every concept in the topic's study plan as covered. We add
+        concept TOKENS (not display titles) because that's what
+        `coverage_percentage` intersects against and what `master_tutor`
+        consults to decide whether to re-teach a concept. The previous
+        title-based path looked correct but contributed zero to coverage
+        because titles never matched study-plan concept tokens.
+
+        Idempotent.
+        """
+        if not session.dialogue_phase:
+            return
+        if session.dialogue_phase.completed:
+            return
+        session.dialogue_phase.active = False
+        session.dialogue_phase.completed = True
+        session.is_paused = False
+
+        if session.topic and session.topic.study_plan:
+            for concept in session.topic.study_plan.get_concepts():
+                if not concept:
+                    continue
+                session.concepts_covered_set.add(concept)
+                session.card_covered_concepts.add(concept)
 
     def _build_student_context_from_profile(self, user_id: str, request: CreateSessionRequest) -> StudentContext:
         """Build StudentContext from user profile data when authenticated."""
@@ -514,6 +759,7 @@ class SessionService:
             db_record.mastery = session.overall_mastery
             db_record.step_idx = session.current_step
             db_record.mode = session.mode
+            db_record.teach_me_mode = session.teach_me_mode if session.mode == "teach_me" else None
             db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
             db_record.updated_at = datetime.utcnow()
             self.db.commit()
@@ -538,6 +784,7 @@ class SessionService:
                 step_idx=session.current_step,
                 state_version=expected_version + 1,
                 mode=session.mode,
+                teach_me_mode=session.teach_me_mode if session.mode == "teach_me" else None,
                 is_paused=session.is_paused if session.mode == "teach_me" else False,
                 updated_at=datetime.utcnow(),
             )

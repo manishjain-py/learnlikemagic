@@ -1,0 +1,12 @@
+A simple static diagram for a Grade {grade} student learning {topic_name}.
+
+Visual intent: {visual_intent}
+
+Constraints:
+- Static image (no animation).
+- Large clear labels, fontSize >= 24.
+- High contrast — dark text on light background or light on dark.
+- Maximum 5 distinct visual groups on screen.
+- One clear focal point — the student should instantly see what to look at.
+- Use color to encode meaning (red group, blue group), not decoration.
+- No clutter, no overlap, plenty of whitespace.

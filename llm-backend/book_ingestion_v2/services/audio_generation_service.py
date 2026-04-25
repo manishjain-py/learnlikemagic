@@ -26,6 +26,28 @@ VOICE_MAP = {
     "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
 }
 
+# Baatcheet voices — tutor reuses the existing Kore voice (smooth, neutral);
+# peer (Meera) gets a distinct hi-IN-Chirp3-HD-* voice. Per Google's published
+# Chirp 3 HD voice catalog, `Leda` is documented as a youthful feminine voice,
+# which fits Meera's persona (peer-aged, warm, curious) and contrasts most
+# audibly with Kore. Pilot the pick during the first dialogue listen-test;
+# revisit if it sounds too similar in production audio.
+TUTOR_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Kore")
+PEER_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Leda")
+
+
+def _voice_for_speaker(speaker: Optional[str], language: str) -> tuple[str, str]:
+    """Return (language_code, voice_name) for a given speaker.
+
+    `speaker == "peer"` → Meera's voice.
+    Anything else (including None / "tutor" / unknown) → the language-mapped
+    tutor voice. This preserves variant A behavior for cards that don't carry
+    a speaker field.
+    """
+    if speaker == "peer":
+        return PEER_VOICE
+    return VOICE_MAP.get(language, VOICE_MAP["en"])
+
 # Check-in fields that get synthesized. (text_field, s3_key_suffix, url_field)
 _CHECK_IN_FIELDS_ALWAYS = [
     ("audio_text", "audio_text", "audio_text_url"),
@@ -67,11 +89,19 @@ class AudioGenerationService:
         self.bucket = settings.aws_s3_bucket
         self.region = settings.aws_region
 
-    def _synthesize(self, text: str) -> bytes:
-        """Call Google Cloud TTS and return raw MP3 bytes."""
+    def _synthesize(
+        self,
+        text: str,
+        voice: Optional["texttospeech.VoiceSelectionParams"] = None,
+    ) -> bytes:
+        """Call Google Cloud TTS and return raw MP3 bytes.
+
+        `voice` defaults to the instance's language-mapped voice (existing
+        variant A behavior). Pass an explicit voice to route per-speaker.
+        """
         response = self.tts_client.synthesize_speech(
             input=texttospeech.SynthesisInput(text=text),
-            voice=self.voice,
+            voice=voice or self.voice,
             audio_config=self.audio_config,
         )
         return response.audio_content
@@ -80,9 +110,14 @@ class AudioGenerationService:
         """Construct the public HTTPS URL for an S3 object."""
         return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{key}"
 
-    def _synth_and_upload(self, text: str, s3_key: str) -> str:
+    def _synth_and_upload(
+        self,
+        text: str,
+        s3_key: str,
+        voice: Optional["texttospeech.VoiceSelectionParams"] = None,
+    ) -> str:
         """Synthesize text → MP3 → upload to S3 → return public URL."""
-        mp3_bytes = self._synthesize(text)
+        mp3_bytes = self._synthesize(text, voice=voice)
         self.s3.upload_bytes(mp3_bytes, s3_key, content_type="audio/mpeg")
         return self._s3_url(s3_key)
 
@@ -248,3 +283,142 @@ class AudioGenerationService:
             guideline_id=explanation.guideline_id,
             variant_key=explanation.variant_key,
         )
+
+    # ─── Baatcheet ────────────────────────────────────────────────────────
+
+    def generate_for_topic_dialogue(
+        self, dialogue, *, dry_run: bool = False,
+    ) -> Optional[list[dict]]:
+        """Generate audio for a TopicDialogue record.
+
+        - Skips lines on cards flagged `includes_student_name=True` (the
+          frontend handles these via runtime TTS at session start so the
+          student's actual name can be substituted into the audio).
+        - Routes voice per `card.speaker` ("peer" → Meera; otherwise tutor).
+        - S3 keys live in a parallel namespace
+          `audio/{guideline_id}/dialogue/{card_id}/{line_idx}.mp3`. Variant A
+          keys are unchanged.
+        - `card_id` is mandatory — dialogue regen rotates content, so
+          positional keys would race. Cards without `card_id` are skipped
+          with a warning.
+        """
+        cards = dialogue.cards_json
+        if not cards:
+            return None
+
+        guideline_id = dialogue.guideline_id
+        total = generated = skipped = failed = 0
+
+        for card in cards:
+            if card.get("includes_student_name"):
+                continue  # runtime TTS — never pre-render
+
+            speaker = card.get("speaker")
+            lang_code, voice_name = _voice_for_speaker(speaker, self.language)
+            voice = texttospeech.VoiceSelectionParams(
+                language_code=lang_code, name=voice_name,
+            )
+            card_id = card.get("card_id")
+            if not card_id:
+                logger.warning(
+                    f"Dialogue card at idx {card.get('card_idx')} on "
+                    f"{guideline_id} has no card_id — skipping audio gen"
+                )
+                continue
+
+            for line_idx, line in enumerate(card.get("lines") or []):
+                total += 1
+                if line.get("audio_url"):
+                    skipped += 1
+                    continue
+                text = (line.get("audio") or "").strip()
+                if not text or "{student_name}" in text:
+                    skipped += 1
+                    continue
+                s3_key = f"audio/{guideline_id}/dialogue/{card_id}/{line_idx}.mp3"
+                try:
+                    line["audio_url"] = self._synth_and_upload(
+                        text, s3_key, voice=voice,
+                    )
+                    generated += 1
+                except Exception as e:
+                    logger.error(
+                        f"Dialogue TTS failed for {guideline_id}/{card_id}/"
+                        f"line{line_idx}: {e}"
+                    )
+                    failed += 1
+
+            check_in = card.get("check_in")
+            if check_in and card.get("card_type") == "check_in":
+                # Tutor voice for all check-in fields — PRD §FR-27 (no Meera
+                # reactions to real student in V1). Match the existing
+                # check-in S3 key shape for variant A but in the dialogue
+                # subtree.
+                tutor_voice = texttospeech.VoiceSelectionParams(
+                    language_code=TUTOR_VOICE[0], name=TUTOR_VOICE[1],
+                )
+                for text_field, key_suffix, url_field in _check_in_fields_for(check_in):
+                    if check_in.get(url_field):
+                        if (check_in.get(text_field) or "").strip():
+                            total += 1
+                            skipped += 1
+                        continue
+                    text = (check_in.get(text_field) or "").strip()
+                    if not text or "{student_name}" in text:
+                        continue
+                    total += 1
+                    s3_key = (
+                        f"audio/{guideline_id}/dialogue/{card_id}"
+                        f"/check_in/{key_suffix}.mp3"
+                    )
+                    try:
+                        check_in[url_field] = self._synth_and_upload(
+                            text, s3_key, voice=tutor_voice,
+                        )
+                        generated += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Dialogue check-in TTS failed for "
+                            f"{guideline_id}/{card_id}/{key_suffix}: {e}"
+                        )
+                        failed += 1
+
+        logger.info(
+            f"Dialogue audio for {guideline_id}: "
+            f"{generated} generated, {skipped} skipped, {failed} failed "
+            f"(total items={total})"
+        )
+        return cards
+
+    @staticmethod
+    def count_dialogue_audio_items(cards: list[dict]) -> tuple[int, int]:
+        """Count (total, with_url) for a dialogue card list — same skip rules
+        used by generate_for_topic_dialogue. Used by the pipeline status
+        service to surface progress on the audio_synthesis tile when the
+        topic has both variant A and a dialogue.
+        """
+        total = existing = 0
+        for card in cards or []:
+            if not isinstance(card, dict):
+                continue
+            if card.get("includes_student_name"):
+                continue
+            for line in card.get("lines") or []:
+                if not isinstance(line, dict):
+                    continue
+                text = (line.get("audio") or "").strip()
+                if not text or "{student_name}" in text:
+                    continue
+                total += 1
+                if line.get("audio_url"):
+                    existing += 1
+            check_in = card.get("check_in")
+            if check_in and card.get("card_type") == "check_in":
+                for text_field, _, url_field in _check_in_fields_for(check_in):
+                    text = (check_in.get(text_field) or "").strip()
+                    if not text or "{student_name}" in text:
+                        continue
+                    total += 1
+                    if check_in.get(url_field):
+                        existing += 1
+        return total, existing

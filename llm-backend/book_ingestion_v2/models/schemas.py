@@ -369,6 +369,8 @@ class BookResultsResponse(BaseModel):
 
 StageId = Literal[
     "explanations",
+    "baatcheet_dialogue",
+    "baatcheet_visuals",
     "visuals",
     "check_ins",
     "practice_bank",

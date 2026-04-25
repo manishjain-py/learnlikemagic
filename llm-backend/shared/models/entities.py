@@ -57,6 +57,7 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     mode = Column(String, default='teach_me')
+    teach_me_mode = Column(String, nullable=True, default='explain')
     is_paused = Column(Boolean, default=False)
     guideline_id = Column(String, nullable=True)
     state_version = Column(Integer, default=1, nullable=False)
@@ -334,6 +335,32 @@ class TopicExplanation(Base):
     __table_args__ = (
         UniqueConstraint("guideline_id", "variant_key", name="uq_explanation_guideline_variant"),
     )
+
+
+class TopicDialogue(Base):
+    """Pre-computed Baatcheet dialogue for a teaching guideline.
+
+    One row per guideline (no variant key — V1 has a single dialogue per topic).
+    Cascade-deleted when the parent guideline is deleted (e.g., during re-sync).
+    `source_content_hash` captures the semantic identity of variant A at
+    generation time so staleness can be detected without timestamp comparison.
+    """
+    __tablename__ = "topic_dialogues"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    guideline_id = Column(
+        String,
+        ForeignKey("teaching_guidelines.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    cards_json = Column(JSONB, nullable=False)
+    generator_model = Column(String, nullable=True)
+    source_variant_key = Column(String, nullable=False, default="A")
+    source_explanation_id = Column(String, nullable=True)
+    source_content_hash = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class StudentTopicCards(Base):

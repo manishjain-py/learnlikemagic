@@ -42,18 +42,21 @@ QUALITY_ROUNDS: dict[QualityLevel, dict[StageId, int]] = {
         "visuals": 0,
         "check_ins": 0,
         "practice_bank": 0,
+        "baatcheet_dialogue": 0,
     },
     "balanced": {
         "explanations": 2,
         "visuals": 1,
         "check_ins": 1,
         "practice_bank": 2,
+        "baatcheet_dialogue": 1,
     },
     "thorough": {
         "explanations": 3,
         "visuals": 2,
         "check_ins": 2,
         "practice_bank": 3,
+        "baatcheet_dialogue": 2,
     },
 }
 
@@ -69,6 +72,8 @@ QUALITY_ROUNDS: dict[QualityLevel, dict[StageId, int]] = {
 # (chapter runner spawns multiple orchestrators) for throughput.
 PIPELINE_LAYERS: list[list[StageId]] = [
     ["explanations"],
+    ["baatcheet_dialogue"],   # depends only on variant A
+    ["baatcheet_visuals"],    # depends on baatcheet_dialogue
     ["visuals"],
     ["check_ins"],
     ["practice_bank"],
@@ -210,6 +215,11 @@ class TopicPipelineOrchestrator:
                 kwargs["mode"] = "generate"
             else:
                 kwargs["force"] = self.force
+        elif stage == "baatcheet_dialogue":
+            kwargs["force"] = self.force
+            kwargs["review_rounds"] = self.rounds["baatcheet_dialogue"]
+        elif stage == "baatcheet_visuals":
+            kwargs["force"] = self.force
         elif stage == "audio_review":
             kwargs["language"] = None
         # audio_synthesis has no extra args
