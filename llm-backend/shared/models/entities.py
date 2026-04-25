@@ -57,6 +57,7 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     mode = Column(String, default='teach_me')
+    teach_me_mode = Column(String, nullable=True, default='explain')
     is_paused = Column(Boolean, default=False)
     guideline_id = Column(String, nullable=True)
     state_version = Column(Integer, default=1, nullable=False)

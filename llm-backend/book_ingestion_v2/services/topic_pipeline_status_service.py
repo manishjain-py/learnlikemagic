@@ -567,6 +567,7 @@ class TopicPipelineStatusService:
             return _build_blocked("audio_synthesis", blocked_by="explanations", job=job)
 
         from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
+        from shared.repositories.dialogue_repository import DialogueRepository
 
         total_clips = 0
         clips_with_audio = 0
@@ -574,6 +575,14 @@ class TopicPipelineStatusService:
             t, w = AudioGenerationService.count_audio_items(expl.cards_json or [])
             total_clips += t
             clips_with_audio += w
+
+        # Include Baatcheet dialogue clips so super-run doesn't mark the stage
+        # `done` while dialogue MP3s are still missing.
+        dialogue = DialogueRepository(self.db).get_by_guideline_id(guideline_id)
+        if dialogue and dialogue.cards_json:
+            dt, dw = AudioGenerationService.count_dialogue_audio_items(dialogue.cards_json)
+            total_clips += dt
+            clips_with_audio += dw
 
         if total_clips == 0:
             summary = "No audio clips yet"

@@ -479,6 +479,7 @@ class SessionService:
             user_id=user_id,
             subject=subject,
             mode=session.mode,
+            teach_me_mode=session.teach_me_mode if session.mode == "teach_me" else None,
             guideline_id=request.goal.guideline_id,
             state_version=1,
             created_at=datetime.utcnow(),
@@ -570,12 +571,25 @@ class SessionService:
             raise CardPhaseError(f"Unknown phase: {phase}")
 
         self._persist_session_state(session_id, session, expected_version)
-        return {
+        response = {
             "session_id": session_id,
             "phase": phase,
             "card_idx": card_idx,
             "is_complete": session.is_complete,
         }
+        # Include completion context so the frontend can render the Practice
+        # CTA + summary chips without a follow-up fetch.
+        if mark_complete and session.is_complete:
+            phase_state = (
+                session.dialogue_phase if phase == "dialogue_phase"
+                else session.card_phase
+            )
+            response.update({
+                "concepts_covered": list(session.concepts_covered_set),
+                "coverage": session.coverage_percentage,
+                "guideline_id": getattr(phase_state, "guideline_id", None),
+            })
+        return response
 
     def _finalize_explain_session(self, session: SessionState) -> None:
         """Mark Explain session complete + clear pause flag.
@@ -763,6 +777,7 @@ class SessionService:
             db_record.mastery = session.overall_mastery
             db_record.step_idx = session.current_step
             db_record.mode = session.mode
+            db_record.teach_me_mode = session.teach_me_mode if session.mode == "teach_me" else None
             db_record.is_paused = session.is_paused if session.mode == "teach_me" else False
             db_record.updated_at = datetime.utcnow()
             self.db.commit()
@@ -787,6 +802,7 @@ class SessionService:
                 step_idx=session.current_step,
                 state_version=expected_version + 1,
                 mode=session.mode,
+                teach_me_mode=session.teach_me_mode if session.mode == "teach_me" else None,
                 is_paused=session.is_paused if session.mode == "teach_me" else False,
                 updated_at=datetime.utcnow(),
             )

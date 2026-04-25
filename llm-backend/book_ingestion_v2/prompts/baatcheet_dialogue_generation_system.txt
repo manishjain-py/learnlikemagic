@@ -46,7 +46,7 @@ PERSONALIZATION — {student_name} placeholders
 - Every card that uses {student_name} MUST set `includes_student_name: true`.
 - Conversely, never set `includes_student_name: true` on a card whose lines do not contain `{student_name}`. The validator checks both directions.
 - **Never** put `{student_name}` inside any `check_in.*` field. Those are pre-rendered as static audio.
-- {topic_name} can also appear; it is materialised at runtime.
+- **Never** emit the literal placeholder `{topic_name}` anywhere. The welcome card is server-prepended and is the only place where `{topic_name}` is allowed; any other use plays as the literal text "{topic_name}" because audio is pre-rendered. Write the topic name in plain words instead.
 
 AUDIO RULES (TTS-FRIENDLY)
 

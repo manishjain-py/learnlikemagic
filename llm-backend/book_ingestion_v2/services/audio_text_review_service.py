@@ -35,7 +35,7 @@ DEFAULT_LANGUAGE = "en"
 _BANNED_PATTERNS = [
     re.compile(r"\*\*"),
     re.compile(r"(?<![a-zA-Z])=(?![a-zA-Z])"),
-    re.compile(r"[\u2600-\u27BF\U0001F300-\U0001FAFF]"),
+    re.compile(r"[\u2300-\u27BF\U0001F300-\U0001FAFF]"),
 ]
 
 
@@ -347,20 +347,29 @@ class AudioTextReviewService:
                         f"card_type is '{card.get('card_type')}', not 'check_in'"
                     )
                     continue
-                if card.get("audio_text") != rev.original_audio:
+                # Variant A explanation cards expose `audio_text` at the top
+                # level (and mirror it to check_in.audio_text). Baatcheet
+                # dialogue cards only have the nested form. Resolve whichever
+                # one matches the LLM's original_audio.
+                check_in = card.get("check_in")
+                top_text = card.get("audio_text")
+                nested_text = check_in.get("audio_text") if isinstance(check_in, dict) else None
+                if top_text == rev.original_audio:
+                    card["audio_text"] = rev.revised_audio
+                    if isinstance(check_in, dict):
+                        check_in["audio_text"] = rev.revised_audio
+                        check_in["audio_text_url"] = None
+                elif nested_text == rev.original_audio and isinstance(check_in, dict):
+                    check_in["audio_text"] = rev.revised_audio
+                    check_in["audio_text_url"] = None
+                    if "audio_text" in card:
+                        card["audio_text"] = rev.revised_audio
+                else:
                     logger.info(
                         f"Dropping revision card_idx={rev.card_idx} kind=check_in_text — "
                         f"drift detected (original_audio mismatch)"
                     )
                     continue
-                card["audio_text"] = rev.revised_audio
-                # Mirror the top-level edit onto check_in.audio_text so the
-                # nested dict (read by the frontend) stays in sync, and clear
-                # its URL so the next synth pass re-generates the MP3.
-                check_in = card.get("check_in")
-                if isinstance(check_in, dict):
-                    check_in["audio_text"] = rev.revised_audio
-                    check_in["audio_text_url"] = None
                 applied += 1
             elif rev.kind in self._CHECK_IN_NESTED_KINDS:
                 if card.get("card_type") != "check_in":

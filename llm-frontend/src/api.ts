@@ -518,10 +518,21 @@ export async function getTeachMeOptions(guidelineId: string): Promise<TeachMeOpt
   return response.json();
 }
 
+export interface CardProgressResponse {
+  session_id: string;
+  phase: string;
+  card_idx: number;
+  is_complete: boolean;
+  // Populated only when mark_complete=true triggers session finalization.
+  concepts_covered?: string[];
+  coverage?: number;
+  guideline_id?: string | null;
+}
+
 export async function postCardProgress(
   sessionId: string,
   payload: CardProgressRequest,
-): Promise<{ session_id: string; phase: string; card_idx: number; is_complete: boolean }> {
+): Promise<CardProgressResponse> {
   const response = await apiFetch(`/sessions/${sessionId}/card-progress`, {
     method: 'POST',
     body: JSON.stringify(payload),

@@ -57,6 +57,14 @@ MIN_CHECK_IN_SPACING = 4   # cards between two check-in cards (PRD §FR-12)
 
 DEFAULT_REVIEW_ROUNDS = 1
 
+# Mirrors the activity types CheckInDispatcher renders. An unsupported value
+# would silently fall through on the frontend (blank check-in card).
+_SUPPORTED_ACTIVITY_TYPES = {
+    "pick_one", "true_false", "fill_blank", "match_pairs", "sort_buckets",
+    "sequence", "spot_the_error", "odd_one_out", "predict_then_reveal",
+    "swipe_classify", "tap_to_eliminate",
+}
+
 
 # Same defect classes the audio_text_review_service.py regex catches.
 # Centralising them here means Stage 5b's validator rejects deterministic
@@ -64,7 +72,7 @@ DEFAULT_REVIEW_ROUNDS = 1
 _BANNED_AUDIO_PATTERNS = [
     re.compile(r"\*\*"),                              # markdown bold
     re.compile(r"(?<![a-zA-Z])=(?![a-zA-Z])"),         # naked equals
-    re.compile(r"[☀-➿\U0001F300-\U0001FAFF]"),  # emoji
+    re.compile(r"[⌀-➿\U0001F300-\U0001FAFF]"),  # emoji + misc technical
 ]
 
 
@@ -176,6 +184,15 @@ def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> 
                         f"card {c.card_idx} line {li}: banned pattern in audio "
                         f"(/{pat.pattern}/)"
                     )
+            # `{topic_name}` is only valid on the server-prepended welcome
+            # card. Anywhere else it would TTS as the literal string.
+            if c.card_type != "welcome":
+                if "{topic_name}" in line.audio or "{topic_name}" in line.display:
+                    issues.append(
+                        f"card {c.card_idx} line {li}: '{{topic_name}}' is "
+                        f"reserved for the welcome card — write the topic name "
+                        f"in plain words instead"
+                    )
 
         text_blob = " ".join(line.audio for line in c.lines)
         has_placeholder = "{student_name}" in text_blob
@@ -193,20 +210,44 @@ def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> 
         # `{student_name}` is allowed ONLY in lines[].audio / lines[].display.
         # Check-in fields are pre-rendered as static audio in V1, so a
         # placeholder there would never get substituted and play silently.
+        # Banned audio patterns (markdown / equals / emoji) must also be
+        # caught here — otherwise they leak into the pre-rendered MP3s.
         if c.check_in:
             ci = c.check_in
-            check_in_text_fields = (
-                ci.instruction, ci.hint, ci.success_message, ci.audio_text,
-                ci.reveal_text or "", ci.statement or "",
-            )
-            for field_text in check_in_text_fields:
-                if field_text and "{student_name}" in field_text:
+            check_in_audio_fields = {
+                "instruction": ci.instruction,
+                "hint": ci.hint,
+                "success_message": ci.success_message,
+                "audio_text": ci.audio_text,
+                "reveal_text": ci.reveal_text or "",
+                "statement": ci.statement or "",
+            }
+            for field_name, field_text in check_in_audio_fields.items():
+                if not field_text:
+                    continue
+                if "{student_name}" in field_text:
                     issues.append(
-                        f"card {c.card_idx}: '{{student_name}}' found inside a "
-                        f"check_in field — not allowed (V1 pre-renders check-in "
-                        f"audio statically)"
+                        f"card {c.card_idx}: '{{student_name}}' found inside "
+                        f"check_in.{field_name} — not allowed (V1 pre-renders "
+                        f"check-in audio statically)"
                     )
-                    break
+                if "{topic_name}" in field_text:
+                    issues.append(
+                        f"card {c.card_idx}: '{{topic_name}}' found inside "
+                        f"check_in.{field_name} — write the topic name in "
+                        f"plain words instead"
+                    )
+                for pat in _BANNED_AUDIO_PATTERNS:
+                    if pat.search(field_text):
+                        issues.append(
+                            f"card {c.card_idx}: banned pattern in "
+                            f"check_in.{field_name} (/{pat.pattern}/)"
+                        )
+            if ci.activity_type and ci.activity_type not in _SUPPORTED_ACTIVITY_TYPES:
+                issues.append(
+                    f"card {c.card_idx}: activity_type '{ci.activity_type}' "
+                    f"is not one of the supported CheckInDispatcher types"
+                )
         for li, line in enumerate(c.lines):
             if "{student_name}" in line.display and "{student_name}" not in line.audio:
                 issues.append(

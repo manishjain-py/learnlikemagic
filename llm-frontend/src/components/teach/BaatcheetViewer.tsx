@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   postCardProgress,
+  type CardProgressResponse,
   type DialogueCard,
   type Personalization,
 } from '../../api';
@@ -38,6 +39,7 @@ interface Props {
   personalization: Personalization;
   initialCardIdx?: number;
   language?: string;
+  onComplete?: (info: CardProgressResponse) => void;
 }
 
 const PROGRESS_DEBOUNCE_MS = 500;
@@ -55,12 +57,16 @@ export default function BaatcheetViewer({
   personalization,
   initialCardIdx = 0,
   language = 'hinglish',
+  onComplete,
 }: Props) {
   const totalCards = cards.length;
   const [cardIdx, setCardIdx] = useState(() =>
     Math.max(0, Math.min(initialCardIdx, Math.max(0, totalCards - 1))),
   );
-  const [visited, setVisited] = useState<Set<number>>(() => new Set([initialCardIdx]));
+  // Don't pre-seed `visited` with `initialCardIdx`. The post-effect below
+  // marks cards visited after their first playback, so the welcome card (or
+  // a resumed card) still triggers auto-play on mount.
+  const [visited, setVisited] = useState<Set<number>>(() => new Set());
   const [speaking, setSpeaking] = useState(false);
   const [completed, setCompleted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -109,9 +115,17 @@ export default function BaatcheetViewer({
 
         let blob: Blob | null = null;
         if (currentCard.includes_student_name) {
-          blob = getClientAudioBlob(
-            personalizedAudioKey(currentCard.card_id, lineIdx),
-          );
+          // Personalized audio is synthesized in the background by
+          // usePersonalizedAudio. The synth may not be done by the time the
+          // playback effect first runs — wait briefly for the blob to arrive
+          // before falling through to silent skip.
+          const key = personalizedAudioKey(currentCard.card_id, lineIdx);
+          blob = getClientAudioBlob(key);
+          for (let attempt = 0; attempt < 30 && !blob; attempt++) {
+            await new Promise((r) => setTimeout(r, 100));
+            if (cancelled) return;
+            blob = getClientAudioBlob(key);
+          }
         } else if (line.audio_url) {
           try {
             blob = await (getCachedBlob(line.audio_url) ?? fetch(line.audio_url).then((r) => r.blob()));
@@ -177,11 +191,17 @@ export default function BaatcheetViewer({
           phase: 'dialogue_phase',
           card_idx: idx,
           mark_complete: markComplete,
-        }).catch((err) => console.warn('postCardProgress failed', err));
+        })
+          .then((res) => {
+            if (markComplete && res.is_complete) {
+              onComplete?.(res);
+            }
+          })
+          .catch((err) => console.warn('postCardProgress failed', err));
         debounceRef.current = null;
       }, delay);
     },
-    [sessionId],
+    [sessionId, onComplete],
   );
 
   // When the summary card becomes visible, mark the session complete.

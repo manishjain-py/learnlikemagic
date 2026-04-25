@@ -838,6 +838,22 @@ def _apply_sessions_teach_me_mode_column(db_manager):
             ))
             print("  ✓ teach_me_mode column added (existing teach_me rows backfilled)")
 
+        # Always-on backfill from state_json. The column-add step above sets
+        # every teach_me row to 'explain' indiscriminately, so any Baatcheet
+        # session created before the ORM column was wired (PR #121 first cut)
+        # is mis-tagged. This re-derives the value from the embedded session
+        # state. Idempotent — only touches rows where the recorded column
+        # value disagrees with state_json.
+        result = conn.execute(text(
+            "UPDATE sessions "
+            "SET teach_me_mode = state_json::jsonb->>'teach_me_mode' "
+            "WHERE mode = 'teach_me' "
+            "  AND state_json::jsonb->>'teach_me_mode' IS NOT NULL "
+            "  AND state_json::jsonb->>'teach_me_mode' <> COALESCE(teach_me_mode, '')"
+        ))
+        if result.rowcount:
+            print(f"  ✓ teach_me_mode backfilled from state_json on {result.rowcount} row(s)")
+
         print("  Rebuilding paused-session unique index to include teach_me_mode...")
         conn.execute(text("DROP INDEX IF EXISTS idx_sessions_one_paused_per_user_guideline"))
         conn.execute(text(

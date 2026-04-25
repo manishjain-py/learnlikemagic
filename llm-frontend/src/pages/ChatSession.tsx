@@ -1301,10 +1301,48 @@ export default function ChatSession() {
     );
   }
 
-  // Baatcheet (dialogue) phase — render the standalone viewer. Skips the
-  // entire explanation-card carousel below; the viewer owns its own deck +
-  // audio + check-in + progress posting.
+  // Baatcheet (dialogue) phase — render the standalone viewer or, after
+  // completion, the same Practice CTA + summary panel Explain shows. The
+  // viewer's onComplete callback hands back the concepts/coverage/guideline
+  // sourced from the server-side finalize so we don't need a follow-up fetch.
   if (sessionPhase === 'dialogue_phase' && dialogueCards && dialoguePersonalization) {
+    if (teachMeComplete) {
+      return (
+        <div className="app">
+          <div className="chat-container">
+            <div className="summary-card" data-testid="teach-me-complete">
+              <h2>Nice work!</h2>
+              {teachMeConceptsCovered.length > 0 && (
+                <div className="summary-content">
+                  <p>You've covered:</p>
+                  <div className="summary-chips">
+                    {teachMeConceptsCovered.map((c, i) => (
+                      <span key={i} className="summary-chip">{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {teachMeCompletionMessage && (
+                <p className="summary-card-message">{teachMeCompletionMessage}</p>
+              )}
+              <button
+                onClick={handleStartPracticeFromCTA}
+                className="restart-button"
+                data-testid="start-practice-cta"
+              >
+                Let's Practice — put it to work!
+              </button>
+              <button
+                onClick={handleDoneForNow}
+                className="restart-button restart-button--ghost"
+              >
+                I'm done for now
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="app baatcheet-active">
         <BaatcheetViewer
@@ -1312,6 +1350,13 @@ export default function ChatSession() {
           cards={dialogueCards}
           personalization={dialoguePersonalization}
           initialCardIdx={dialogueInitialIdx}
+          onComplete={(info) => {
+            setIsComplete(true);
+            setTeachMeComplete(true);
+            setTeachMeConceptsCovered(info.concepts_covered || []);
+            setTeachMeGuidelineId(info.guideline_id || null);
+            if (info.coverage != null) setCoverage(info.coverage);
+          }}
         />
       </div>
     );
