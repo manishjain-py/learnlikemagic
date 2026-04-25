@@ -165,6 +165,92 @@ def launch_audio_review_job(
     return job_id
 
 
+def launch_baatcheet_dialogue_job(
+    db: Session,
+    *,
+    book_id: str,
+    chapter_id: str,
+    guideline_id: str,
+    force: bool = False,
+    review_rounds: int = 1,
+    total_items: int = 1,
+) -> str:
+    """Acquire lock + launch Baatcheet dialogue (Stage 5b). Returns job_id."""
+    from book_ingestion_v2.api.sync_routes import _run_baatcheet_dialogue_generation
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+
+    job_id = ChapterJobService(db).acquire_lock(
+        book_id=book_id,
+        chapter_id=chapter_id,
+        guideline_id=guideline_id,
+        job_type=V2JobType.BAATCHEET_DIALOGUE_GENERATION.value,
+        total_items=total_items,
+    )
+    run_in_background_v2(
+        _run_baatcheet_dialogue_generation, job_id, book_id,
+        chapter_id, guideline_id, str(force), str(review_rounds),
+    )
+    return job_id
+
+
+def launch_baatcheet_visual_job(
+    db: Session,
+    *,
+    book_id: str,
+    chapter_id: str,
+    guideline_id: str,
+    force: bool = False,
+    total_items: int = 1,
+) -> str:
+    """Acquire lock + launch Baatcheet visual enrichment (Stage 5c). Returns job_id."""
+    from book_ingestion_v2.api.sync_routes import _run_baatcheet_visual_enrichment
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+
+    job_id = ChapterJobService(db).acquire_lock(
+        book_id=book_id,
+        chapter_id=chapter_id,
+        guideline_id=guideline_id,
+        job_type=V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value,
+        total_items=total_items,
+    )
+    run_in_background_v2(
+        _run_baatcheet_visual_enrichment, job_id, book_id,
+        chapter_id, guideline_id, str(force),
+    )
+    return job_id
+
+
+def launch_baatcheet_audio_review_job(
+    db: Session,
+    *,
+    book_id: str,
+    chapter_id: str,
+    guideline_id: str,
+    language: Optional[str] = None,
+    total_items: int = 1,
+) -> str:
+    """Acquire lock + launch opt-in Baatcheet audio review. Returns job_id.
+
+    Not part of the default pipeline — invoked manually by the admin button
+    when an editor spots TTS defects on a topic's dialogue.
+    """
+    from book_ingestion_v2.api.sync_routes import _run_baatcheet_audio_review
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+
+    job_id = ChapterJobService(db).acquire_lock(
+        book_id=book_id,
+        chapter_id=chapter_id,
+        guideline_id=guideline_id,
+        job_type=V2JobType.BAATCHEET_AUDIO_REVIEW.value,
+        total_items=total_items,
+    )
+    run_in_background_v2(
+        _run_baatcheet_audio_review, job_id, book_id,
+        chapter_id, guideline_id, language or "",
+    )
+    return job_id
+
+
 def launch_audio_synthesis_job(
     db: Session,
     *,
@@ -195,6 +281,8 @@ def launch_audio_synthesis_job(
 # Keys match `StageId` values in models/schemas.py.
 LAUNCHER_BY_STAGE = {
     "explanations": launch_explanation_job,
+    "baatcheet_dialogue": launch_baatcheet_dialogue_job,
+    "baatcheet_visuals": launch_baatcheet_visual_job,
     "visuals": launch_visual_job,
     "check_ins": launch_check_in_job,
     "practice_bank": launch_practice_bank_job,

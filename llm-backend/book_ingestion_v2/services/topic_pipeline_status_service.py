@@ -49,6 +49,8 @@ _PRACTICE_DONE_THRESHOLD = 30
 
 _STAGE_JOB_TYPE: dict[StageId, str] = {
     "explanations": V2JobType.EXPLANATION_GENERATION.value,
+    "baatcheet_dialogue": V2JobType.BAATCHEET_DIALOGUE_GENERATION.value,
+    "baatcheet_visuals": V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value,
     "visuals": V2JobType.VISUAL_ENRICHMENT.value,
     "check_ins": V2JobType.CHECK_IN_ENRICHMENT.value,
     "practice_bank": V2JobType.PRACTICE_BANK_GENERATION.value,
@@ -86,6 +88,8 @@ class TopicPipelineStatusService:
 
         stages: list[StageStatus] = [
             self._stage_explanations(guideline.id, explanations),
+            self._stage_baatcheet_dialogue(guideline.id, explanations),
+            self._stage_baatcheet_visuals(guideline.id),
             self._stage_visuals(guideline.id, explanations),
             self._stage_check_ins(guideline.id, explanations),
             self._stage_practice_bank(guideline.id, explanations, content_anchor),
@@ -452,6 +456,98 @@ class TopicPipelineStatusService:
         return _build_stage(
             "audio_review", state, summary, warnings, job=job, is_stale=is_stale
         )
+
+    def _stage_baatcheet_dialogue(self, guideline_id: str, explanations) -> StageStatus:
+        """Stage 5b — Baatcheet dialogue generation status.
+
+        Stale signal here uses `source_content_hash`, NOT timestamp comparison:
+        variant A's `cards_json` is mutated in-place by visuals/check-ins/audio
+        stages, so timestamp comparison would over-trigger (every audio refresh
+        would mark the dialogue stale). Hash captures semantic identity only.
+        """
+        from shared.repositories.dialogue_repository import DialogueRepository
+
+        explanations_done = any(bool(e.cards_json) for e in explanations)
+        job = self._latest_job_for_guideline(
+            chapter_id="", guideline_id=guideline_id,
+            job_type=_STAGE_JOB_TYPE["baatcheet_dialogue"],
+        )
+        if not explanations_done:
+            return _build_blocked("baatcheet_dialogue", blocked_by="explanations", job=job)
+
+        repo = DialogueRepository(self.db)
+        dialogue = repo.get_by_guideline_id(guideline_id)
+        artifact_present = bool(dialogue and dialogue.cards_json)
+        is_stale = repo.is_stale(guideline_id) if artifact_present else False
+
+        warnings: list[str] = []
+        if is_stale:
+            warnings.append(
+                "Variant A has changed since dialogue was generated — regenerate to refresh"
+            )
+
+        if artifact_present:
+            card_count = len(dialogue.cards_json)
+            summary = f"{card_count} dialogue card(s)" + (" (stale)" if is_stale else "")
+            state = "warning" if is_stale else "done"
+        else:
+            summary = "No dialogue yet"
+            state = "ready"
+
+        state, summary, warnings = self._overlay_job_state(
+            state=state, summary=summary, warnings=warnings,
+            job=job, artifact_present=artifact_present,
+        )
+        return _build_stage(
+            "baatcheet_dialogue", state, summary, warnings,
+            job=job, is_stale=is_stale,
+        )
+
+    def _stage_baatcheet_visuals(self, guideline_id: str) -> StageStatus:
+        """Stage 5c — PixiJS visuals on Baatcheet `visual` cards."""
+        from shared.repositories.dialogue_repository import DialogueRepository
+
+        repo = DialogueRepository(self.db)
+        dialogue = repo.get_by_guideline_id(guideline_id)
+        job = self._latest_job_for_guideline(
+            chapter_id="", guideline_id=guideline_id,
+            job_type=_STAGE_JOB_TYPE["baatcheet_visuals"],
+        )
+        if not dialogue or not dialogue.cards_json:
+            return _build_blocked(
+                "baatcheet_visuals", blocked_by="baatcheet_dialogue", job=job,
+            )
+
+        total_visual_cards = 0
+        cards_with_visuals = 0
+        for card in dialogue.cards_json:
+            if isinstance(card, dict) and card.get("card_type") == "visual":
+                total_visual_cards += 1
+                ve = card.get("visual_explanation")
+                if isinstance(ve, dict) and ve.get("pixi_code"):
+                    cards_with_visuals += 1
+
+        if total_visual_cards == 0:
+            # No visual cards on this dialogue — Stage 5c is trivially "done".
+            return _build_stage(
+                "baatcheet_visuals", "done",
+                "No visual cards in this dialogue", [], job=job,
+            )
+
+        artifact_present = cards_with_visuals > 0
+        if cards_with_visuals == total_visual_cards:
+            state: StageState = "done"
+        elif cards_with_visuals > 0:
+            state = "warning"
+        else:
+            state = "ready"
+        summary = f"{cards_with_visuals}/{total_visual_cards} visual cards have PixiJS"
+
+        state, summary, warnings = self._overlay_job_state(
+            state=state, summary=summary, warnings=[],
+            job=job, artifact_present=artifact_present,
+        )
+        return _build_stage("baatcheet_visuals", state, summary, warnings, job=job)
 
     def _stage_audio_synthesis(self, guideline_id: str, explanations) -> StageStatus:
         explanations_done = any(bool(e.cards_json) for e in explanations)

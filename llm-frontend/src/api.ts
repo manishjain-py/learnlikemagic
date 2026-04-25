@@ -65,10 +65,13 @@ export interface Goal {
   guideline_id: string;
 }
 
+export type TeachMeMode = 'explain' | 'baatcheet';
+
 export interface CreateSessionRequest {
   student: Student;
   goal: Goal;
   mode?: 'teach_me' | 'clarify_doubts';
+  teach_me_mode?: TeachMeMode;
 }
 
 export interface VisualExplanation {
@@ -169,6 +172,74 @@ export interface CardPhaseDTO {
   available_variants: number;
 }
 
+// ───── Baatcheet (dialogue phase) ─────
+
+export type DialogueSpeaker = 'tutor' | 'peer';
+export type DialogueCardType =
+  | 'welcome'
+  | 'tutor_turn'
+  | 'peer_turn'
+  | 'visual'
+  | 'check_in'
+  | 'summary';
+
+export interface DialogueLine {
+  display: string;
+  audio: string;
+  audio_url?: string | null;
+}
+
+export interface DialogueCard {
+  card_id: string;
+  card_idx: number;
+  card_type: DialogueCardType;
+  speaker: DialogueSpeaker | null;
+  speaker_name: string | null;
+  title: string | null;
+  lines: DialogueLine[];
+  audio_url: string | null;
+  includes_student_name: boolean;
+  visual: string | null;
+  visual_intent: string | null;
+  visual_explanation: VisualExplanation | null;
+  check_in: CheckInActivity | null;
+}
+
+export interface DialoguePhaseDTO {
+  current_card_idx: number;
+  total_cards: number;
+}
+
+export interface Personalization {
+  student_name: string | null;
+  fallback_student_name: string;
+  topic_name: string;
+}
+
+export interface CardProgressRequest {
+  phase: 'card_phase' | 'dialogue_phase';
+  card_idx: number;
+  mark_complete?: boolean;
+  check_in_events?: Array<Record<string, unknown>>;
+}
+
+export interface TeachMeOptionState {
+  available: boolean;
+  card_count: number | null;
+  is_stale: boolean;
+  in_progress_session_id: string | null;
+  completed_session_id: string | null;
+  current_card_idx: number | null;
+  total_cards: number | null;
+  is_complete: boolean;
+}
+
+export interface TeachMeOptionsResponse {
+  guideline_id: string;
+  baatcheet: TeachMeOptionState;
+  explain: TeachMeOptionState;
+}
+
 export interface BlankItem {
   blank_id: number;
   correct_answer: string;
@@ -192,21 +263,27 @@ export interface Turn {
   audio_text?: string | null;
   hints: string[];
   step_idx: number;
-  mastery_score: number;
+  mastery_score?: number;
   is_complete?: boolean;
   visual_explanation?: VisualExplanation | null;
   question_format?: QuestionFormat | null;
   concepts_discussed?: string[];
   // Card phase fields (pre-computed explanations)
   explanation_cards?: ExplanationCard[];
-  session_phase?: 'card_phase' | 'interactive';
+  session_phase?: 'card_phase' | 'dialogue_phase' | 'interactive';
   card_phase_state?: CardPhaseDTO;
+  // Baatcheet (dialogue phase) fields
+  dialogue_cards?: DialogueCard[];
+  dialogue_phase_state?: DialoguePhaseDTO;
+  teach_me_mode?: TeachMeMode;
+  personalization?: Personalization;
 }
 
 export interface CreateSessionResponse {
   session_id: string;
   first_turn: Turn;
   mode?: string;
+  teach_me_mode?: TeachMeMode;
   past_discussions?: Array<{ session_date: string; concepts_discussed: string[] }>;
 }
 
@@ -402,6 +479,7 @@ export interface TopicProgress {
 export interface ResumableSession {
   session_id: string;
   mode: 'teach_me';
+  teach_me_mode?: TeachMeMode | null;
   coverage: number;
   current_step: number;
   total_steps: number;
@@ -431,6 +509,24 @@ export async function getResumableSession(guidelineId: string): Promise<Resumabl
   const response = await apiFetch(`/sessions/resumable?guideline_id=${guidelineId}`);
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Failed to check resumable session: ${response.statusText}`);
+  return response.json();
+}
+
+export async function getTeachMeOptions(guidelineId: string): Promise<TeachMeOptionsResponse> {
+  const response = await apiFetch(`/sessions/teach-me-options?guideline_id=${guidelineId}`);
+  if (!response.ok) throw new Error(`Failed to fetch teach-me options: ${response.statusText}`);
+  return response.json();
+}
+
+export async function postCardProgress(
+  sessionId: string,
+  payload: CardProgressRequest,
+): Promise<{ session_id: string; phase: string; card_idx: number; is_complete: boolean }> {
+  const response = await apiFetch(`/sessions/${sessionId}/card-progress`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to post card progress: ${response.statusText}`);
   return response.json();
 }
 
@@ -465,6 +561,7 @@ export async function getSessionReplay(sessionId: string): Promise<any> {
 export interface GuidelineSessionEntry {
   session_id: string;
   mode: string;
+  teach_me_mode?: TeachMeMode | null;
   created_at: string | null;
   is_complete: boolean;
   coverage: number | null;
@@ -659,7 +756,11 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
 // Text-to-speech
 // ──────────────────────────────────────────────
 
-export async function synthesizeSpeech(text: string, language: string = 'en'): Promise<Blob> {
+export async function synthesizeSpeech(
+  text: string,
+  language: string = 'en',
+  opts: { voiceRole?: 'tutor' | 'peer' } = {},
+): Promise<Blob> {
   // Can't use apiFetch — it parses JSON, but we need a raw audio blob.
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (_accessToken) {
@@ -669,10 +770,13 @@ export async function synthesizeSpeech(text: string, language: string = 'en'): P
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
 
+  const body: Record<string, unknown> = { text, language };
+  if (opts.voiceRole) body.voice_role = opts.voiceRole;
+
   const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ text, language }),
+    body: JSON.stringify(body),
     signal: controller.signal,
   }).finally(() => clearTimeout(timeout));
 

@@ -76,6 +76,15 @@ export default function ModeSelectPage() {
   };
 
   const handleModeSelect = async (mode: SelectableMode) => {
+    // Teach Me now leads to a sub-chooser (Baatcheet vs. Explain) — never
+    // create the session directly.
+    if (mode === 'teach_me') {
+      navigate(
+        `/learn/${encodeURIComponent(subject!)}/${encodeURIComponent(chapter!)}/${encodeURIComponent(topic!)}/teach`,
+        { state: { guidelineId, topicKey: resolvedTopicKey } },
+      );
+      return;
+    }
     setSessionError(null);
     setCreatingMode(mode);
     try {

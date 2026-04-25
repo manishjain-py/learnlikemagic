@@ -10,6 +10,7 @@ class CreateSessionRequest(BaseModel):
     student: Student
     goal: Goal
     mode: Literal["teach_me", "clarify_doubts"] = "teach_me"
+    teach_me_mode: Optional[Literal["explain", "baatcheet"]] = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -17,7 +18,53 @@ class CreateSessionResponse(BaseModel):
     session_id: str
     first_turn: Dict[str, Any]
     mode: str = "teach_me"
+    teach_me_mode: Optional[Literal["explain", "baatcheet"]] = None
     past_discussions: Optional[list[dict]] = None
+
+
+# ── Teach Me sub-chooser ──
+
+
+class TeachMeOptionState(BaseModel):
+    """Per-submode availability + in-progress state for the chooser."""
+    available: bool
+    card_count: Optional[int] = None
+    is_stale: bool = False
+    in_progress_session_id: Optional[str] = None
+    completed_session_id: Optional[str] = None
+    current_card_idx: Optional[int] = None
+    total_cards: Optional[int] = None
+    is_complete: bool = False
+
+
+class TeachMeOptionsResponse(BaseModel):
+    """Response for GET /sessions/teach-me-options — drives the chooser."""
+    guideline_id: str
+    baatcheet: TeachMeOptionState
+    explain: TeachMeOptionState
+
+
+class CardProgressRequest(BaseModel):
+    """Request body for POST /sessions/{id}/card-progress.
+
+    Single endpoint covers fwd/back nav, summary-card completion, and
+    optional check-in struggle event sink.
+    """
+    phase: Literal["card_phase", "dialogue_phase"]
+    card_idx: int = Field(..., ge=0, description="0-based card index just navigated to")
+    mark_complete: bool = False
+    check_in_events: list[Dict[str, Any]] = Field(default_factory=list)
+
+
+class Personalization(BaseModel):
+    """Personalization context surfaced to the frontend on session start.
+
+    Frontend uses these values to substitute `{student_name}` / `{topic_name}`
+    in display + audio strings for cards flagged `includes_student_name`.
+    """
+    student_name: Optional[str] = None
+    fallback_student_name: str = "friend"
+    topic_name: str
 
 
 class StepRequest(BaseModel):
@@ -119,6 +166,7 @@ class ResumableSessionResponse(BaseModel):
     """Response for GET /sessions/resumable."""
     session_id: str
     mode: str = "teach_me"
+    teach_me_mode: Optional[Literal["explain", "baatcheet"]] = None
     coverage: float
     current_step: int
     total_steps: int
@@ -148,6 +196,7 @@ class GuidelineSessionEntry(BaseModel):
     """A session summary for a specific guideline."""
     session_id: str
     mode: str
+    teach_me_mode: Optional[Literal["explain", "baatcheet"]] = None
     created_at: Optional[str] = None
     is_complete: bool
     coverage: Optional[float] = None

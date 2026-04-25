@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Meera">
+  <defs>
+    <linearGradient id="peerBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7A2F66" />
+      <stop offset="100%" stop-color="#3D173B" />
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="url(#peerBg)" />
+  <!-- shoulders -->
+  <path d="M16 110 Q60 78 104 110 L104 120 L16 120 Z" fill="#C44E8E" />
+  <!-- head -->
+  <circle cx="60" cy="54" r="22" fill="#E0B07F" />
+  <!-- hair (two long braids) -->
+  <path d="M38 44 Q60 22 82 44 Q60 30 38 44 Z" fill="#1A0F0F" />
+  <path d="M38 50 Q34 70 36 88 L42 88 Q44 68 42 50 Z" fill="#1A0F0F" />
+  <path d="M82 50 Q86 70 84 88 L78 88 Q76 68 78 50 Z" fill="#1A0F0F" />
+  <!-- bindi dot -->
+  <circle cx="60" cy="40" r="1.5" fill="#D63A3A" />
+  <!-- eyes (closed crescents = friendly) -->
+  <path d="M50 56 Q53 60 56 56" stroke="#1F1F1F" stroke-width="2" fill="none" stroke-linecap="round" />
+  <path d="M64 56 Q67 60 70 56" stroke="#1F1F1F" stroke-width="2" fill="none" stroke-linecap="round" />
+  <!-- smile -->
+  <path d="M52 68 Q60 74 68 68" stroke="#7A4F2F" stroke-width="2" fill="none" stroke-linecap="round" />
+</svg>

@@ -939,9 +939,14 @@ def _run_audio_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
     guideline_id: str = "",
 ):
-    """Background task for TTS audio generation and S3 upload."""
+    """Background task for TTS audio generation and S3 upload.
+
+    Synthesizes audio for both the variant A explanation cards AND (if
+    present) the Baatcheet dialogue cards for each guideline. Voice routing
+    branches on `card.speaker` for dialogue cards.
+    """
     import json as _json
-    from shared.models.entities import TeachingGuideline, TopicExplanation
+    from shared.models.entities import TeachingGuideline, TopicExplanation, TopicDialogue
     from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
     from sqlalchemy.orm import attributes
@@ -993,6 +998,24 @@ def _run_audio_generation(
                     db.rollback()
                     topic_had_failure = True
                     errors.append(f"{topic} ({explanation.variant_key}): {e}")
+
+            # Baatcheet dialogue audio (parallel namespace, voice routed by speaker).
+            # Skipped silently when no dialogue exists for this guideline.
+            dialogue = db.query(TopicDialogue).filter(
+                TopicDialogue.guideline_id == guideline.id,
+            ).first()
+            if dialogue is not None:
+                try:
+                    updated_dialogue_cards = audio_svc.generate_for_topic_dialogue(dialogue)
+                    if updated_dialogue_cards is not None:
+                        dialogue.cards_json = updated_dialogue_cards
+                        attributes.flag_modified(dialogue, "cards_json")
+                        db.commit()
+                except Exception as e:
+                    logger.error(f"Dialogue audio failed for guideline={guideline.id}: {e}")
+                    db.rollback()
+                    topic_had_failure = True
+                    errors.append(f"{topic} (dialogue): {e}")
 
             if topic_had_failure:
                 failed += 1
@@ -2321,3 +2344,413 @@ def _run_refresher_generation(
 
     except Exception:
         raise  # run_in_background_v2 handles marking the job as failed
+
+
+# ─────────────────────────── Baatcheet (Stage 5b/5c) ──────────────────────
+
+
+@router.post(
+    "/generate-baatcheet-dialogue",
+    response_model=FanOutJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def generate_baatcheet_dialogue(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope generation"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic generation"),
+    force: bool = Query(False, description="Regenerate even if a dialogue already exists"),
+    review_rounds: int = Query(1, ge=0, le=5),
+    db: Session = Depends(get_db),
+):
+    """Stage 5b — generate the Baatcheet dialogue.
+
+    Requires variant A explanations to exist. Scoping: guideline_id (single
+    topic) > chapter_id (fan-out) > book-wide.
+    """
+    from book_ingestion_v2.services.stage_launchers import launch_baatcheet_dialogue_job
+
+    try:
+        return _fan_out(
+            db,
+            launcher=launch_baatcheet_dialogue_job,
+            book_id=book_id,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={"force": force, "review_rounds": review_rounds},
+        )
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Baatcheet dialogue gen failed for book {book_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+@router.post(
+    "/generate-baatcheet-visuals",
+    response_model=FanOutJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def generate_baatcheet_visuals(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None, description="Optional chapter_id to scope enrichment"),
+    guideline_id: Optional[str] = Query(None, description="Optional guideline_id for single-topic enrichment"),
+    force: bool = Query(False, description="Regenerate visuals even where they already exist"),
+    db: Session = Depends(get_db),
+):
+    """Stage 5c — fill PixiJS visuals on the Baatcheet dialogue's `visual` cards."""
+    from book_ingestion_v2.services.stage_launchers import launch_baatcheet_visual_job
+
+    try:
+        return _fan_out(
+            db,
+            launcher=launch_baatcheet_visual_job,
+            book_id=book_id,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+            launcher_kwargs={"force": force},
+        )
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Baatcheet visual gen failed for book {book_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+@router.post(
+    "/review-baatcheet-audio",
+    response_model=FanOutJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def review_baatcheet_audio(
+    book_id: str,
+    chapter_id: Optional[str] = Query(None),
+    guideline_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Opt-in safety valve — runs the existing audio_text_review LLM logic
+    against `topic_dialogues.cards_json`. Not part of the default pipeline."""
+    from book_ingestion_v2.services.stage_launchers import (
+        launch_baatcheet_audio_review_job,
+    )
+
+    try:
+        return _fan_out(
+            db,
+            launcher=launch_baatcheet_audio_review_job,
+            book_id=book_id,
+            chapter_id=chapter_id,
+            guideline_id=guideline_id,
+        )
+    except ChapterJobLockError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Baatcheet audio review failed for book {book_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def _run_baatcheet_dialogue_generation(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False",
+    review_rounds_str: str = "1",
+):
+    """Background task — Stage 5b dialogue generation."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+        BaatcheetDialogueGeneratorService,
+        DialogueValidationError,
+    )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    force = force_str.lower() == "true"
+    review_rounds = int(review_rounds_str)
+    job_service = ChapterJobService(db)
+
+    try:
+        settings = get_settings()
+        llm_config_svc = LLMConfigService(db)
+        try:
+            config = llm_config_svc.get_config("baatcheet_dialogue_generator")
+        except Exception:
+            config = llm_config_svc.get_config("explanation_generator")
+
+        llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            provider=config["provider"],
+            model_id=config["model_id"],
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        )
+
+        service = BaatcheetDialogueGeneratorService(db, llm_service)
+
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                raise ValueError(f"Guideline {guideline_id} not found")
+
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
+
+            stage_collector: list = []
+            try:
+                dialogue = service.generate_for_guideline(
+                    guideline,
+                    review_rounds=review_rounds,
+                    stage_collector=stage_collector,
+                    force=force,
+                )
+                completed = 1 if dialogue else 0
+                failed = 0 if dialogue else 1
+                errors = [] if dialogue else [f"{topic}: dialogue not produced"]
+            except DialogueValidationError as e:
+                completed = 0
+                failed = 1
+                errors = [f"{topic}: validators rejected after refine ({e})"]
+            except Exception as e:
+                completed = 0
+                failed = 1
+                errors = [f"{topic}: {e}"]
+
+            if stage_collector:
+                try:
+                    job_service.append_stage_snapshots(job_id, stage_collector)
+                except Exception as e:
+                    logger.warning(f"append_stage_snapshots failed for job {job_id}: {e}")
+
+            job_service.update_progress(
+                job_id, current_item=None, completed=completed, failed=failed,
+                detail=_json.dumps({
+                    "completed": completed, "failed": failed, "errors": errors,
+                }),
+            )
+            final_status = "completed" if failed == 0 else "completed_with_errors"
+        else:
+            from shared.models.entities import TeachingGuideline as TG
+            query = db.query(TG).filter(
+                TG.book_id == book_id,
+                TG.review_status == "APPROVED",
+            )
+            if chapter_id:
+                from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+                chapter = ChapterRepository(db).get_by_id(chapter_id)
+                if chapter:
+                    query = query.filter(TG.chapter_key == f"chapter-{chapter.chapter_number}")
+            guidelines = query.order_by(TG.topic_sequence).all()
+            completed = 0
+            failed = 0
+            errors: list[str] = []
+            for g in guidelines:
+                try:
+                    service.generate_for_guideline(
+                        g, review_rounds=review_rounds, force=force,
+                    )
+                    completed += 1
+                except Exception as e:
+                    failed += 1
+                    errors.append(f"{g.topic_title or g.topic}: {e}")
+            job_service.update_progress(
+                job_id, current_item=None, completed=completed, failed=failed,
+                detail=_json.dumps({
+                    "completed": completed, "failed": failed, "errors": errors[:10],
+                }),
+            )
+            final_status = "completed" if failed == 0 else "completed_with_errors"
+
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception as e:
+        logger.error(f"Baatcheet dialogue gen job {job_id} failed: {e}")
+        job_service.release_lock(job_id, status="failed", error=str(e))
+
+
+def _run_baatcheet_visual_enrichment(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False",
+):
+    """Background task — Stage 5c PixiJS visuals on dialogue cards."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.baatcheet_visual_enrichment_service import (
+        BaatcheetVisualEnrichmentService,
+    )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    force = force_str.lower() == "true"
+    job_service = ChapterJobService(db)
+
+    try:
+        settings = get_settings()
+        llm_config_svc = LLMConfigService(db)
+        try:
+            config = llm_config_svc.get_config("animation_code_gen")
+        except Exception:
+            try:
+                config = llm_config_svc.get_config("animation_enrichment")
+            except Exception:
+                config = llm_config_svc.get_config("explanation_generator")
+
+        llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            provider=config["provider"],
+            model_id=config["model_id"],
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        )
+
+        service = BaatcheetVisualEnrichmentService(db, llm_service)
+
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                raise ValueError(f"Guideline {guideline_id} not found")
+
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(job_id, current_item=topic, completed=0, failed=0)
+
+            heartbeat_fn = lambda: job_service.update_progress(
+                job_id, current_item=topic, completed=0, failed=0,
+            )
+            stage_collector: list = []
+            per = service.enrich_guideline(
+                guideline, force=force,
+                heartbeat_fn=heartbeat_fn, stage_collector=stage_collector,
+            )
+
+            if stage_collector:
+                try:
+                    job_service.append_stage_snapshots(job_id, stage_collector)
+                except Exception as e:
+                    logger.warning(f"append_stage_snapshots failed for job {job_id}: {e}")
+
+            completed = 1 if per["failed"] == 0 else 0
+            failed = per["failed"]
+            job_service.update_progress(
+                job_id, current_item=None, completed=completed, failed=failed,
+                detail=_json.dumps(per),
+            )
+            final_status = "completed" if failed == 0 else "completed_with_errors"
+        else:
+            result = service.enrich_chapter(
+                book_id, chapter_id=chapter_id or None,
+                force=force, job_service=job_service, job_id=job_id,
+            )
+            final_status = (
+                "completed" if result.get("failed", 0) == 0 else "completed_with_errors"
+            )
+
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception as e:
+        logger.error(f"Baatcheet visual enrichment job {job_id} failed: {e}")
+        job_service.release_lock(job_id, status="failed", error=str(e))
+
+
+def _run_baatcheet_audio_review(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", language: str = "",
+):
+    """Background task — opt-in audio text review against topic_dialogues."""
+    import json as _json
+    from config import get_settings
+    from shared.models.entities import TeachingGuideline
+    from shared.services.llm_config_service import LLMConfigService
+    from shared.services.llm_service import LLMService
+    from book_ingestion_v2.services.baatcheet_audio_review_service import (
+        BaatcheetAudioReviewService,
+    )
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+    job_service = ChapterJobService(db)
+    try:
+        settings = get_settings()
+        llm_config_svc = LLMConfigService(db)
+        try:
+            config = llm_config_svc.get_config("audio_text_review")
+        except Exception:
+            config = llm_config_svc.get_config("explanation_generator")
+
+        llm_service = LLMService(
+            api_key=settings.openai_api_key,
+            provider=config["provider"],
+            model_id=config["model_id"],
+            gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
+            anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
+        )
+
+        service = BaatcheetAudioReviewService(db, llm_service, language=language or "en")
+
+        if guideline_id:
+            guideline = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).first()
+            if not guideline:
+                raise ValueError(f"Guideline {guideline_id} not found")
+            result = service.review_guideline(guideline)
+            completed = 1 if result.get("failed", 0) == 0 else 0
+            failed = result.get("failed", 0)
+        else:
+            from shared.models.entities import TeachingGuideline as TG
+            query = db.query(TG).filter(
+                TG.book_id == book_id,
+                TG.review_status == "APPROVED",
+            )
+            if chapter_id:
+                from book_ingestion_v2.repositories.chapter_repository import ChapterRepository
+                chapter = ChapterRepository(db).get_by_id(chapter_id)
+                if chapter:
+                    query = query.filter(TG.chapter_key == f"chapter-{chapter.chapter_number}")
+            guidelines = query.all()
+            completed = 0
+            failed = 0
+            agg = {"cards_reviewed": 0, "cards_revised": 0, "errors": []}
+            for g in guidelines:
+                try:
+                    res = service.review_guideline(g)
+                    agg["cards_reviewed"] += res.get("cards_reviewed", 0)
+                    agg["cards_revised"] += res.get("cards_revised", 0)
+                    if res.get("failed", 0):
+                        failed += 1
+                        agg["errors"].extend(res.get("errors", [])[:3])
+                    else:
+                        completed += 1
+                except Exception as e:
+                    failed += 1
+                    agg["errors"].append(f"{g.topic_title or g.topic}: {e}")
+            result = agg
+
+        job_service.update_progress(
+            job_id, current_item=None, completed=completed, failed=failed,
+            detail=_json.dumps(result),
+        )
+        final_status = "completed" if failed == 0 else "completed_with_errors"
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception as e:
+        logger.error(f"Baatcheet audio review job {job_id} failed: {e}")
+        job_service.release_lock(job_id, status="failed", error=str(e))

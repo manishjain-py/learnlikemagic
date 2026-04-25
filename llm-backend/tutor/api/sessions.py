@@ -20,6 +20,11 @@ from shared.models import (
     ReportCardResponse,
     GuidelineSessionsResponse,
 )
+from shared.models.schemas import (
+    CardProgressRequest,
+    TeachMeOptionsResponse,
+    TeachMeOptionState,
+)
 from tutor.services import SessionService, ReportCardService
 from tutor.models.agent_logs import get_agent_log_store
 from tutor.models.session_state import SessionState
@@ -154,10 +159,113 @@ def get_resumable_session(
     return ResumableSessionResponse(
         session_id=session.id,
         mode=session_state.mode,
+        teach_me_mode=session_state.teach_me_mode if session_state.mode == "teach_me" else None,
         coverage=session_state.coverage_percentage,
         current_step=session_state.current_step,
         total_steps=total_steps,
         concepts_covered=list(session_state.concepts_covered_set),
+    )
+
+
+@router.get("/teach-me-options", response_model=TeachMeOptionsResponse)
+def get_teach_me_options(
+    guideline_id: str,
+    current_user=Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Aggregator for the Teach Me sub-chooser.
+
+    Returns availability + in-progress / completed session pointers for both
+    submodes (Baatcheet, Explain) for the given guideline. Frontend uses
+    this to:
+      - disable the Baatcheet card when no dialogue exists for the topic,
+      - show the resume CTA with progress when a session exists,
+      - show the stale badge (Baatcheet only) when variant A's content
+        hash has drifted from the dialogue's stored hash.
+    """
+    from shared.models.entities import Session as SessionModel
+    from shared.repositories.dialogue_repository import DialogueRepository
+    from shared.repositories.explanation_repository import ExplanationRepository
+
+    dialogue_repo = DialogueRepository(db)
+    explanation_repo = ExplanationRepository(db)
+
+    dialogue = dialogue_repo.get_by_guideline_id(guideline_id)
+    has_baatcheet = bool(dialogue and dialogue.cards_json)
+    is_stale = dialogue_repo.is_stale(guideline_id) if has_baatcheet else False
+    has_explain = explanation_repo.has_explanations(guideline_id)
+
+    def _option(submode: str, *, available: bool, card_count: Optional[int],
+                stale: bool = False) -> TeachMeOptionState:
+        # Look up the most recent session for this submode. We do NOT require
+        # is_paused — exit-mid-dialogue without explicit pause must still
+        # surface the resume CTA (PRD §FR-33). Latest one wins.
+        row = (
+            db.query(SessionModel)
+            .filter(
+                SessionModel.user_id == current_user.id,
+                SessionModel.guideline_id == guideline_id,
+                SessionModel.mode == "teach_me",
+            )
+            .order_by(SessionModel.updated_at.desc())
+            .all()
+        )
+        # Filter by teach_me_mode in Python because old rows may have NULL.
+        row = [r for r in row if (r.teach_me_mode or "explain") == submode]
+        latest = row[0] if row else None
+
+        in_progress_id = None
+        completed_id = None
+        current_idx = None
+        total = card_count
+        is_complete = False
+        if latest:
+            try:
+                state = SessionState.model_validate_json(latest.state_json)
+                if state.is_complete:
+                    completed_id = latest.id
+                    is_complete = True
+                else:
+                    in_progress_id = latest.id
+                if submode == "baatcheet" and state.dialogue_phase:
+                    current_idx = state.dialogue_phase.current_card_idx
+                    total = state.dialogue_phase.total_cards or total
+                elif submode == "explain" and state.card_phase:
+                    current_idx = state.card_phase.current_card_idx
+                    total = state.card_phase.total_cards or total
+            except Exception:
+                pass
+
+        return TeachMeOptionState(
+            available=available,
+            card_count=card_count,
+            is_stale=stale,
+            in_progress_session_id=in_progress_id,
+            completed_session_id=completed_id,
+            current_card_idx=current_idx,
+            total_cards=total,
+            is_complete=is_complete,
+        )
+
+    baatcheet = _option(
+        "baatcheet",
+        available=has_baatcheet,
+        card_count=len(dialogue.cards_json) if has_baatcheet else None,
+        stale=is_stale,
+    )
+    # Explain card count varies per variant; use first variant if present.
+    explain_card_count: Optional[int] = None
+    if has_explain:
+        variants = explanation_repo.get_by_guideline_id(guideline_id)
+        if variants:
+            first = next((v for v in variants if v.variant_key == "A"), variants[0])
+            explain_card_count = len(first.cards_json or [])
+    explain = _option(
+        "explain", available=has_explain, card_count=explain_card_count,
+    )
+
+    return TeachMeOptionsResponse(
+        guideline_id=guideline_id, baatcheet=baatcheet, explain=explain,
     )
 
 
@@ -237,6 +345,37 @@ def get_session_replay(
 
             state["_replay_explanation_cards"] = base_cards
 
+    # Include dialogue cards on Baatcheet sessions so the viewer can rehydrate
+    # on deep-link / refresh without an extra round trip.
+    dialogue_phase = state.get("dialogue_phase")
+    if dialogue_phase and dialogue_phase.get("guideline_id"):
+        from shared.repositories.dialogue_repository import DialogueRepository
+
+        dialogue = DialogueRepository(db).get_by_guideline_id(
+            dialogue_phase["guideline_id"]
+        )
+        if dialogue and dialogue.cards_json:
+            state["_replay_dialogue_cards"] = dialogue.cards_json
+
+            # Surface personalization values so the frontend can substitute
+            # {student_name}/{topic_name} on personalized cards. Topic name
+            # comes from the guideline; student name from the session's
+            # student_context (already in state_json).
+            from shared.models.entities import TeachingGuideline
+            guideline = (
+                db.query(TeachingGuideline)
+                .filter(TeachingGuideline.id == dialogue_phase["guideline_id"])
+                .first()
+            )
+            student_ctx = state.get("student_context") or {}
+            state["_replay_dialogue_personalization"] = {
+                "student_name": student_ctx.get("student_name"),
+                "fallback_student_name": "friend",
+                "topic_name": (
+                    (guideline.topic_title or guideline.topic) if guideline else ""
+                ),
+            }
+
     return state
 
 
@@ -247,9 +386,15 @@ def create_session(
     current_user=Depends(get_optional_user),
 ):
     """Create a new learning session and get the first question."""
+    from tutor.services.session_service import BaatcheetUnavailableError
     try:
         service = SessionService(db)
         return service.create_new_session(request, user_id=current_user.id if current_user else None)
+    except BaatcheetUnavailableError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "baatcheet_unavailable", "message": str(e)},
+        )
     except HTTPException:
         raise
     except LearnLikeMagicException as e:
@@ -261,6 +406,44 @@ def create_session(
             status_code=500,
             detail={"message": f"Error creating session: {e}", "type": type(e).__name__},
         )
+
+
+@router.post("/{session_id}/card-progress")
+def record_card_progress(
+    session_id: str,
+    request: CardProgressRequest,
+    current_user=Depends(get_optional_user),
+    db: DBSession = Depends(get_db),
+):
+    """Persist card-deck navigation + optional completion + check-in events.
+
+    Single endpoint covers Explain (`card_phase`) and Baatcheet (`dialogue_phase`).
+    Frontend calls on every fwd/back nav (debounced) and immediately when the
+    summary card becomes visible with `mark_complete=true`. Server is the
+    source of truth for resume.
+    """
+    repo = SessionRepository(db)
+    session_row = repo.get_by_id(session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_session_ownership(session_row, current_user)
+
+    try:
+        service = SessionService(db)
+        return service.record_card_progress(
+            session_id,
+            phase=request.phase,
+            card_idx=request.card_idx,
+            mark_complete=request.mark_complete,
+            check_in_events=request.check_in_events,
+        )
+    except HTTPException:
+        raise
+    except LearnLikeMagicException as e:
+        raise e.to_http_exception()
+    except Exception as e:
+        logger.error(f"Error recording card progress: {e}")
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
 
 
 @router.post("/{session_id}/step", response_model=StepResponse)

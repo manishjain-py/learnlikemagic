@@ -83,6 +83,12 @@ _LLM_CONFIG_SEEDS = [
         "model_id": "gpt-4o-mini",
         "description": "Practice free-form grading + per-pick wrong-answer rationale",
     },
+    {
+        "component_key": "baatcheet_dialogue_generator",
+        "provider": "claude_code",
+        "model_id": "claude-opus-4-7",
+        "description": "Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera)",
+    },
 ]
 
 
@@ -133,6 +139,10 @@ def migrate():
 
         # Topic explanations table (created by create_all, verify + seed LLM config)
         _apply_topic_explanations_table(db_manager)
+
+        # Baatcheet — topic_dialogues table + sessions.teach_me_mode column
+        _apply_topic_dialogues_table(db_manager)
+        _apply_sessions_teach_me_mode_column(db_manager)
 
         # Issues table (created by create_all, seed LLM config)
         _apply_issues_table(db_manager)
@@ -751,6 +761,78 @@ def _apply_topic_explanations_table(db_manager):
         model_id="claude-opus-4-7",
         description="Check-in card generation (match-the-pairs activities for explanation cards)",
     )
+
+
+def _apply_topic_dialogues_table(db_manager):
+    """Verify topic_dialogues table exists (created by Base.metadata.create_all).
+
+    Ensures the unique-on-guideline_id index exists for the unique=True
+    column on the ORM model — Postgres normally creates the index for a
+    column-level UNIQUE constraint, but on existing deployments where the
+    table predated the constraint we make the index idempotent here.
+    Also seeds the baatcheet_dialogue_generator LLM config.
+    """
+    inspector = inspect(db_manager.engine)
+    if "topic_dialogues" not in inspector.get_table_names():
+        print("  ⚠ topic_dialogues table not found — will be created by create_all()")
+    else:
+        print("  ✓ topic_dialogues table exists")
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("topic_dialogues")}
+        with db_manager.engine.connect() as conn:
+            if "idx_topic_dialogues_guideline" not in existing_indexes:
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_topic_dialogues_guideline "
+                    "ON topic_dialogues(guideline_id)"
+                ))
+            conn.commit()
+
+    _ensure_llm_config(
+        db_manager,
+        component_key="baatcheet_dialogue_generator",
+        provider="claude_code",
+        model_id="claude-opus-4-7",
+        description="Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera)",
+    )
+
+
+def _apply_sessions_teach_me_mode_column(db_manager):
+    """Add `teach_me_mode` column + rebuild paused-session unique index.
+
+    Distinguishes the two Teach Me submodes ("explain" / "baatcheet") within
+    `mode == "teach_me"`. Existing rows backfill to "explain". Idempotent.
+    The paused-session unique index is rebuilt to include teach_me_mode so
+    that a paused Baatcheet and a paused Explain session can coexist for the
+    same (user, guideline). A non-unique lookup index supports the resume CTA.
+    """
+    inspector = inspect(db_manager.engine)
+    if "sessions" not in inspector.get_table_names():
+        return
+    existing_columns = {c["name"] for c in inspector.get_columns("sessions")}
+
+    with db_manager.engine.connect() as conn:
+        if "teach_me_mode" not in existing_columns:
+            print("  Adding teach_me_mode column to sessions...")
+            conn.execute(text(
+                "ALTER TABLE sessions ADD COLUMN teach_me_mode VARCHAR DEFAULT 'explain'"
+            ))
+            conn.execute(text(
+                "UPDATE sessions SET teach_me_mode = 'explain' "
+                "WHERE mode = 'teach_me' AND teach_me_mode IS NULL"
+            ))
+            print("  ✓ teach_me_mode column added (existing teach_me rows backfilled)")
+
+        print("  Rebuilding paused-session unique index to include teach_me_mode...")
+        conn.execute(text("DROP INDEX IF EXISTS idx_sessions_one_paused_per_user_guideline"))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_paused_per_user_guideline "
+            "ON sessions(user_id, guideline_id, mode, teach_me_mode) WHERE is_paused = TRUE"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_guideline_teach_mode "
+            "ON sessions(user_id, guideline_id, mode, teach_me_mode, updated_at DESC)"
+        ))
+        conn.commit()
+        print("  ✓ paused-session unique index rebuilt with teach_me_mode")
 
 
 def _ensure_llm_config(db_manager, component_key, provider, model_id, description):

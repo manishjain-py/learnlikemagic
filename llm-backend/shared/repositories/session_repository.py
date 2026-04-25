@@ -231,6 +231,10 @@ class SessionRepository:
             results.append({
                 "session_id": row.id,
                 "mode": session_state.mode,
+                "teach_me_mode": (
+                    session_state.teach_me_mode
+                    if session_state.mode == "teach_me" else None
+                ),
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "is_complete": is_complete,
                 "coverage": coverage,

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Mr. Verma">
+  <defs>
+    <linearGradient id="tutorBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1F2A60" />
+      <stop offset="100%" stop-color="#0E1442" />
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="url(#tutorBg)" />
+  <!-- shoulders -->
+  <path d="M16 110 Q60 78 104 110 L104 120 L16 120 Z" fill="#3F4E96" />
+  <!-- head -->
+  <circle cx="60" cy="52" r="22" fill="#E9C39A" />
+  <!-- hair -->
+  <path d="M40 44 Q60 22 80 44 Q70 32 60 32 Q50 32 40 44 Z" fill="#262626" />
+  <!-- glasses -->
+  <circle cx="52" cy="55" r="6" fill="none" stroke="#1F2A60" stroke-width="2" />
+  <circle cx="68" cy="55" r="6" fill="none" stroke="#1F2A60" stroke-width="2" />
+  <line x1="58" y1="55" x2="62" y2="55" stroke="#1F2A60" stroke-width="2" />
+  <!-- mouth -->
+  <path d="M52 66 Q60 70 68 66" stroke="#7A4F2F" stroke-width="2" fill="none" stroke-linecap="round" />
+</svg>

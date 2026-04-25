@@ -21,7 +21,10 @@ import {
   QuestionFormat,
   CheckInActivity,
   CheckInEventDTO,
+  DialogueCard,
+  Personalization,
 } from '../api';
+import BaatcheetViewer from '../components/teach/BaatcheetViewer';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -135,8 +138,12 @@ export default function ChatSession() {
   const [playingSlideId, setPlayingSlideId] = useState<string | null>(null);
 
   // Card phase state (pre-computed explanations)
-  const [sessionPhase, setSessionPhase] = useState<'card_phase' | 'interactive'>('interactive');
+  const [sessionPhase, setSessionPhase] = useState<'card_phase' | 'dialogue_phase' | 'interactive'>('interactive');
   const [explanationCards, setExplanationCards] = useState<ExplanationCard[]>([]);
+  // Baatcheet (dialogue phase) state — populated from firstTurn or replay.
+  const [dialogueCards, setDialogueCards] = useState<DialogueCard[] | null>(null);
+  const [dialoguePersonalization, setDialoguePersonalization] = useState<Personalization | null>(null);
+  const [dialogueInitialIdx, setDialogueInitialIdx] = useState(0);
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
@@ -406,8 +413,20 @@ export default function ChatSession() {
 
     if (locState?.firstTurn) {
       // Fresh session from ModeSelectPage
+      // Baatcheet (dialogue) phase short-circuits the explanation/card path.
+      if (
+        locState.firstTurn.session_phase === 'dialogue_phase' &&
+        locState.firstTurn.dialogue_cards
+      ) {
+        setSessionPhase('dialogue_phase');
+        setDialogueCards(locState.firstTurn.dialogue_cards);
+        setDialoguePersonalization(locState.firstTurn.personalization || null);
+        setDialogueInitialIdx(
+          locState.firstTurn.dialogue_phase_state?.current_card_idx ?? 0,
+        );
+      }
       // Check for card phase (pre-computed explanations)
-      if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
+      else if (locState.firstTurn.session_phase === 'card_phase' && locState.firstTurn.explanation_cards) {
         setSessionPhase('card_phase');
         const cards = annotateCards(locState.firstTurn.explanation_cards);
         setExplanationCards(cards);
@@ -473,6 +492,25 @@ export default function ChatSession() {
           if (state.mode) setSessionMode(state.mode);
           if (state.concepts_discussed) setConceptsDiscussed(state.concepts_discussed);
 
+          // Hydrate dialogue phase (Baatcheet) on resume / deep-link.
+          if (state._replay_dialogue_cards && state.dialogue_phase) {
+            setDialogueCards(state._replay_dialogue_cards);
+            setDialoguePersonalization(
+              state._replay_dialogue_personalization || {
+                student_name: null,
+                fallback_student_name: 'friend',
+                topic_name: '',
+              },
+            );
+            const initialIdx = state.dialogue_phase.current_card_idx ?? 0;
+            setDialogueInitialIdx(initialIdx);
+            if (state.dialogue_phase.active) {
+              setSessionPhase('dialogue_phase');
+            }
+            // else: completed dialogue — viewer still renders for review
+            // when the user lands on this URL.
+          }
+
           // Hydrate card phase — active or completed
           if (state._replay_explanation_cards) {
             const replayCards = annotateCards(state._replay_explanation_cards);
@@ -487,17 +525,21 @@ export default function ChatSession() {
             }
 
             if (state.card_phase?.active) {
-              // Card phase still in progress — restore card navigation state
+              // Card phase still in progress — restore card navigation state.
+              // current_card_idx is the 0-based index into cards_json. The welcome
+              // card is cards_json[0] and the carousel maps 1:1 onto cards_json,
+              // so slideIdx == current_card_idx (no +1 — the previous +1 was an
+              // off-by-one that double-counted the welcome).
               let slideIdx = 0;
               if (state.card_phase.current_card_idx != null) {
-                slideIdx = state.card_phase.current_card_idx + 1; // +1 for welcome slide
+                slideIdx = state.card_phase.current_card_idx;
               } else {
                 const savedPos = localStorage.getItem(`slide-pos-${sessionId}`);
                 if (savedPos) slideIdx = parseInt(savedPos, 10);
               }
               setSessionPhase('card_phase');
               setCurrentSlideIdx(slideIdx);
-              prevSlidesLen.current = state._replay_explanation_cards.length + 1; // +1 for welcome slide
+              prevSlidesLen.current = state._replay_explanation_cards.length;
               setCardPhaseState({
                 current_variant_key: state.card_phase.current_variant_key,
                 current_card_idx: slideIdx,
@@ -1252,6 +1294,22 @@ export default function ChatSession() {
         <div className="chat-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <p>Loading session...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Baatcheet (dialogue) phase — render the standalone viewer. Skips the
+  // entire explanation-card carousel below; the viewer owns its own deck +
+  // audio + check-in + progress posting.
+  if (sessionPhase === 'dialogue_phase' && dialogueCards && dialoguePersonalization) {
+    return (
+      <div className="app baatcheet-active">
+        <BaatcheetViewer
+          sessionId={sessionId || ''}
+          cards={dialogueCards}
+          personalization={dialoguePersonalization}
+          initialCardIdx={dialogueInitialIdx}
+        />
       </div>
     );
   }

@@ -707,6 +707,53 @@ export async function deleteVisuals(
   return apiFetch(`/admin/v2/books/${bookId}/visuals?guideline_id=${guidelineId}`, { method: 'DELETE' });
 }
 
+// ───── Baatcheet (Stage 5b/5c) admin actions ─────
+
+export async function generateBaatcheetDialogue(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean; reviewRounds?: number },
+): Promise<FanOutJobResponse> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.force) params.set('force', 'true');
+  if (opts?.reviewRounds !== undefined) params.set('review_rounds', opts.reviewRounds.toString());
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<FanOutJobResponse>(
+    `/admin/v2/books/${bookId}/generate-baatcheet-dialogue${qs}`,
+    { method: 'POST' }
+  );
+}
+
+export async function generateBaatcheetVisuals(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string; force?: boolean },
+): Promise<FanOutJobResponse> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  if (opts?.force) params.set('force', 'true');
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<FanOutJobResponse>(
+    `/admin/v2/books/${bookId}/generate-baatcheet-visuals${qs}`,
+    { method: 'POST' }
+  );
+}
+
+export async function reviewBaatcheetAudio(
+  bookId: string,
+  opts?: { chapterId?: string; guidelineId?: string },
+): Promise<FanOutJobResponse> {
+  const params = new URLSearchParams();
+  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
+  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<FanOutJobResponse>(
+    `/admin/v2/books/${bookId}/review-baatcheet-audio${qs}`,
+    { method: 'POST' }
+  );
+}
+
 export interface VisualStageSnapshotV2 {
   guideline_id: string;
   topic_title: string;
@@ -928,6 +975,8 @@ export async function getLatestAudioReviewJob(
 
 export type StageId =
   | 'explanations'
+  | 'baatcheet_dialogue'
+  | 'baatcheet_visuals'
   | 'visuals'
   | 'check_ins'
   | 'practice_bank'

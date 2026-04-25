@@ -3,6 +3,7 @@
 import asyncio
 import io
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -11,6 +12,10 @@ from google.api_core.client_options import ClientOptions
 from pydantic import BaseModel, Field
 
 from auth.middleware.auth_middleware import get_optional_user
+from book_ingestion_v2.services.audio_generation_service import (
+    PEER_VOICE,
+    TUTOR_VOICE,
+)
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +48,10 @@ def _get_tts_client() -> texttospeech.TextToSpeechClient:
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
     language: str = Field(default='hinglish', pattern=r'^(en|hi|hinglish)$')
+    # Allowlisted role; never accept arbitrary Google voice IDs from the
+    # frontend. Baatcheet uses "peer" for Meera's lines; everything else
+    # falls through to the language-mapped tutor voice.
+    voice_role: Literal["tutor", "peer"] = "tutor"
 
 
 @router.post("")
@@ -56,13 +65,16 @@ async def text_to_speech(
 
         synthesis_input = texttospeech.SynthesisInput(text=request.text)
 
-        # Select voice based on language preference
-        voice_map = {
-            "en": ("en-US", "en-US-Chirp3-HD-Kore"),
-            "hi": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
-            "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
-        }
-        lang_code, voice_name = voice_map.get(request.language, ("en-US", "en-US-Chirp3-HD-Kore"))
+        if request.voice_role == "peer":
+            lang_code, voice_name = PEER_VOICE
+        else:
+            # Select voice based on language preference (tutor default).
+            voice_map = {
+                "en": ("en-US", "en-US-Chirp3-HD-Kore"),
+                "hi": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
+                "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
+            }
+            lang_code, voice_name = voice_map.get(request.language, ("en-US", "en-US-Chirp3-HD-Kore"))
 
         voice = texttospeech.VoiceSelectionParams(
             language_code=lang_code,

@@ -20,6 +20,16 @@ const STAGE_LABELS: Record<StageId, StageLabel> = {
     title: 'Explanations',
     adminPath: (b, c) => `/admin/books-v2/${b}/explanations/${c}`,
   },
+  baatcheet_dialogue: {
+    number: '①ʙ',
+    title: 'Baatcheet dialogue',
+    adminPath: (b, c) => `/admin/books-v2/${b}/explanations/${c}`,
+  },
+  baatcheet_visuals: {
+    number: '①ᴄ',
+    title: 'Baatcheet visuals',
+    adminPath: (b, c) => `/admin/books-v2/${b}/explanations/${c}`,
+  },
   visuals: {
     number: '②',
     title: 'Visuals',

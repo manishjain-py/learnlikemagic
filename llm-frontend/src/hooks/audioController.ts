@@ -67,3 +67,25 @@ export function getCachedBlob(url: string | undefined | null): Promise<Blob> | n
   if (!url) return null;
   return blobCache.get(url) ?? null;
 }
+
+// ─── Synthetic-key blobs (runtime TTS for personalized cards) ────────────
+//
+// usePersonalizedAudio synthesizes audio for cards flagged
+// `includes_student_name` at session start (the student's actual name has to
+// be substituted into the placeholder before TTS). Those blobs are stored
+// here under a synthetic key (`personalized:{card_id}:{line_idx}`) and the
+// playback path resolves the synthetic key to a `blob:` URL it can play.
+
+const clientBlobs = new Map<string, Blob>();
+
+export function attachClientAudioBlob(syntheticKey: string, blob: Blob): void {
+  clientBlobs.set(syntheticKey, blob);
+}
+
+export function getClientAudioBlob(syntheticKey: string): Blob | null {
+  return clientBlobs.get(syntheticKey) ?? null;
+}
+
+export function clearClientAudioBlobs(): void {
+  clientBlobs.clear();
+}

@@ -1,0 +1,18 @@
+TOPIC: {topic_name}
+SUBJECT: {subject}, Grade {grade}
+
+TEACHING GUIDELINE:
+{guideline_text}
+
+VARIANT A EXPLANATION CARDS (the dialogue must teach the same content):
+{variant_a_cards_json}
+
+COMMON MISCONCEPTIONS (soft — at least 1–2 should surface via Meera):
+{misconceptions_list}
+
+CURRENT DIALOGUE CARDS (cards 2..N — card 1 is welcome and is prepended separately):
+{cards_json}
+
+{validator_issues_section}
+
+{prior_topics_section}
