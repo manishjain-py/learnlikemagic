@@ -4,7 +4,9 @@ Covers the minimum set called out in `docs/feature-development/baatcheet/
 pr121-fix-plan.md` §"Tests to add" — the regressions any V1 ship should be
 guarded against:
 
-* F1 — `Session.teach_me_mode` ORM round-trip persists the submode.
+* F1 — `Session.teach_me_mode` ORM round-trip persists the submode; the
+  paused-session unique index includes `teach_me_mode` so paused Baatcheet +
+  paused Explain coexist for the same `(user, guideline)`.
 * F4 — `count_dialogue_audio_items` counts dialogue clips alongside variant A
   so the audio_synthesis status tile doesn't read "done" with missing dialogue
   MP3s.
@@ -19,8 +21,6 @@ guarded against:
 * F9 — emoji range covers Misc Technical (`⏰`, `▶`, `□`, etc.).
 * Voice routing — `speaker == "peer"` → `PEER_VOICE`; otherwise → tutor.
 * TTS allowlist — `voice_role` Pydantic field rejects arbitrary values.
-* `/teach-me-options` aggregator — paused Baatcheet + paused Explain coexist
-  for the same `(user, guideline)`.
 
 The TTS / S3 / LLM clients are stubbed so these run offline.
 """
@@ -32,6 +32,8 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from pydantic import ValidationError
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 
 # ─── F1: Session.teach_me_mode ORM round-trip ─────────────────────────────
@@ -42,14 +44,17 @@ class TestSessionTeachMeModeOrmRoundTrip:
     SQLAlchemy. Without the ORM column it AttributeErrors at filter
     construction. This test fails immediately if the column is missing."""
 
-    def test_teach_me_mode_column_present_on_orm(self):
+    def test_teach_me_mode_column_is_queryable(self, db_session):
+        """Real query through the ORM — fails if the column is missing or the
+        type can't be bound. More durable than asserting on str(expr)'s bind
+        naming, which depends on SQLAlchemy version."""
         from shared.models.entities import Session as SessionModel
-        # Column descriptor must be queryable as an SQLAlchemy expression.
-        assert hasattr(SessionModel, "teach_me_mode")
-        col = SessionModel.teach_me_mode
-        # Property class works as a SQL expression in filters.
-        expr = col == "baatcheet"
-        assert str(expr).endswith(" = :teach_me_mode_1")
+        rows = (
+            db_session.query(SessionModel)
+            .filter(SessionModel.teach_me_mode == "baatcheet")
+            .all()
+        )
+        assert rows == []
 
     def test_teach_me_mode_persists_baatcheet_value(self, db_session):
         from shared.models.entities import Session as SessionModel
@@ -97,12 +102,27 @@ class TestSessionTeachMeModeOrmRoundTrip:
         )
         assert fetched.teach_me_mode == "explain"
 
-    def test_paused_baatcheet_and_paused_explain_coexist(self, db_session):
+    def test_paused_unique_index_allows_coexist_and_blocks_dupes(self, db_session):
         """PRD §FR-4: a paused Baatcheet and a paused Explain session for the
-        same (user, guideline) must be able to coexist. The unique index
-        rebuild includes `teach_me_mode`, so different submodes don't
-        collide on the partial unique constraint."""
+        same (user, guideline) must coexist; two paused rows with the SAME
+        teach_me_mode must collide on the partial unique index.
+
+        The migration that builds this index (db.py:_apply_sessions_teach_me_mode_column)
+        runs against Postgres. The ORM `__table_args__` only declares the
+        non-unique lookup index, so the SQLite test fixture would otherwise
+        accept any combination. We materialize the production partial unique
+        index here so this test fails if the migration's column list regresses.
+        """
         from shared.models.entities import Session as SessionModel
+
+        # Mirror the production partial unique index on the in-memory engine.
+        # SQLite supports partial indexes; `is_paused` is stored as 0/1.
+        db_session.execute(text(
+            "CREATE UNIQUE INDEX idx_sessions_one_paused_per_user_guideline "
+            "ON sessions(user_id, guideline_id, mode, teach_me_mode) "
+            "WHERE is_paused = 1"
+        ))
+        db_session.commit()
 
         baatcheet = SessionModel(
             id="paused-baat",
@@ -117,7 +137,7 @@ class TestSessionTeachMeModeOrmRoundTrip:
             teach_me_mode="explain", is_paused=True,
         )
         db_session.add_all([baatcheet, explain])
-        db_session.commit()  # would IntegrityError if the index didn't include teach_me_mode
+        db_session.commit()  # different teach_me_mode → both fit
 
         rows = (
             db_session.query(SessionModel)
@@ -126,6 +146,20 @@ class TestSessionTeachMeModeOrmRoundTrip:
         )
         modes = {r.teach_me_mode for r in rows}
         assert modes == {"baatcheet", "explain"}
+
+        # Negative case: two paused rows with the SAME teach_me_mode must
+        # collide. If a future migration drops teach_me_mode from the index,
+        # the first assert above would still pass — this one would not.
+        dup = SessionModel(
+            id="paused-baat-2",
+            student_json="{}", goal_json="{}", state_json="{}",
+            user_id="u1", guideline_id="g1", mode="teach_me",
+            teach_me_mode="baatcheet", is_paused=True,
+        )
+        db_session.add(dup)
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+        db_session.rollback()
 
 
 # ─── F4: count_dialogue_audio_items ───────────────────────────────────────
@@ -480,8 +514,7 @@ class TestFinalizeBaatcheetSessionConceptTokens:
     so coverage is identical between Explain and Baatcheet for the same topic."""
 
     def _make_session_with_dialogue_phase(self):
-        from shared.models.domain import Student
-        from tutor.models.session_state import SessionState, DialoguePhaseState, create_session
+        from tutor.models.session_state import DialoguePhaseState, create_session
         from tutor.models.study_plan import (
             StudyPlan, StudyPlanStep, Topic, TopicGuidelines,
         )
@@ -515,6 +548,8 @@ class TestFinalizeBaatcheetSessionConceptTokens:
             guideline_id="g1", active=True,
             current_card_idx=15, total_cards=25,
         )
+        # Realistic precondition: the user paused mid-deck and is finishing now.
+        session.is_paused = True
         return session
 
     def test_finalize_adds_concept_tokens_to_covered_set(self):
@@ -547,18 +582,21 @@ class TestFinalizeBaatcheetSessionConceptTokens:
         svc.db = MagicMock()
 
         session = self._make_session_with_dialogue_phase()
+        assert session.is_paused is True  # precondition seeded by helper
         svc._finalize_baatcheet_session(session)
         first = set(session.concepts_covered_set)
+        assert session.is_paused is False  # transition happened on first call
 
-        # Second call must not error, must not add stale duplicates.
+        # Second call must not error, must not add stale duplicates, must not
+        # flip is_paused back.
         svc._finalize_baatcheet_session(session)
         second = set(session.concepts_covered_set)
         assert first == second
         assert session.dialogue_phase.completed is True
+        assert session.is_paused is False
 
     def test_finalize_without_dialogue_phase_is_noop(self):
-        from shared.models.domain import Student
-        from tutor.models.session_state import SessionState, create_session
+        from tutor.models.session_state import create_session
         from tutor.models.study_plan import (
             StudyPlan, StudyPlanStep, Topic, TopicGuidelines,
         )

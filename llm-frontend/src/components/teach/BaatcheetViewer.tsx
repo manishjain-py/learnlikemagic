@@ -278,7 +278,11 @@ export default function BaatcheetViewer({
               autoStart={!visited.has(cardIdx)}
             />
           ) : (
-            currentCard.visual_intent && <p>{currentCard.visual_intent}</p>
+            currentCard.visual_intent && (
+              <div className="baatcheet-viewer__line">
+                <p className="baatcheet-viewer__line-text">{currentCard.visual_intent}</p>
+              </div>
+            )
           )}
           {lineDisplay && (
             <div className="baatcheet-viewer__line">{lineDisplay}</div>

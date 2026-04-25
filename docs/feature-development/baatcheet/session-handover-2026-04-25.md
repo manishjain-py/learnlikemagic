@@ -1,32 +1,34 @@
 # Baatcheet — Session Handover
 
 **Date:** 2026-04-25
-**Branch:** `feat/baatcheet-conversational-teach-me` (PR #121, head: `d70524e`)
-**Local sub-branch:** `pr121-review` (same SHA — already fast-forwarded into the feature branch and pushed)
+**Branch:** `feat/baatcheet-conversational-teach-me` (PR #121, head: post-`d1c82d6` review-fix commit pending)
 **Mergeable:** yes
 
 ## What just shipped (this session)
 
-Two commits on top of `80fd901`:
+Three commits on top of `80fd901`:
 
 - `df25bf9` — F1, F2, F3, F4, F5, F6, F7, F9 from `pr121-fix-plan.md` (10 files, +201/−33)
 - `d70524e` — F8 redesign: Baatcheet finalize adds concept tokens, not titles (1 file, +13/−31)
+- `d1c82d6` — Pre-merge polish: CSS (+375 lines), `PEER_VOICE = Leda`, 36-test `test_baatcheet.py` (6 files, +1270/−21)
+
+Plus a post-review fix-up commit (pending) addressing two reviewer findings on `d1c82d6`:
+
+- **CSS pulse clip** — `.speaker-avatar` no longer sets `overflow: hidden`; `<img>` clips itself with `border-radius: 50%`. The `.speaker-avatar__pulse` ring (inset:-6px, scale 1.16) is now actually visible.
+- **`.baatcheet-active` scroll container** — was `min-height:100vh` inside an `overflow:hidden` parent → tall cards clipped on mobile. Now `flex:1; min-height:0; overflow-y:auto` so the dialogue surface scrolls within `.app`'s 100dvh frame.
+- **BaatcheetViewer.tsx:281** — `visual_intent` text fallback wraps in `.baatcheet-viewer__line` so it inherits chalkboard styling instead of bare body text.
+- **`test_baatcheet.py` upgrades** — replaced brittle `str(expr).endswith(...)` ORM-column probe with a real filter query; rewrote `test_paused_baatcheet_and_paused_explain_coexist` to (a) materialize the production partial-unique index on the in-memory engine and (b) add a negative case (two paused rows with the same `teach_me_mode` → `IntegrityError`) so the test actually fails if the migration drops `teach_me_mode` from the index; F8 helper now seeds `is_paused=True` and asserts the True→False transition; dropped dead `Student` / `SessionState` imports; pruned `/teach-me-options` claim from the module docstring.
 
 Migration ran cleanly (`python db.py --migrate` from `llm-backend/` with `venv/bin/python`): `teach_me_mode` column added, 621 teach_me sessions backfilled to `'explain'`, both indexes (paused-unique + lookup) include `teach_me_mode`.
 
-Smoke-tested in Python (no committed unit tests yet):
-- F1 ORM column resolves; the previously-broken `func.coalesce(SessionModel.teach_me_mode, "explain")` filter compiles.
-- F5/F6/F9 validators catch all the new failure modes.
-- F7 `_apply_revisions` works on both dialogue (nested only) and variant-A (top + nested) check-in card shapes.
-- F8 `_finalize_baatcheet_session` adds concept tokens; coverage = 100% for a 2-concept plan; idempotent.
+`tests/unit/test_baatcheet.py`: **36 passed** (post-fixup). Pre-existing 68 failures elsewhere in the suite are unrelated (verified by stashing the branch).
 
 ## What's left — priority order to merge
 
-1. **CSS** for `.baatcheet-viewer*`, `.speaker-avatar*`, `.mode-cards`, `.selection-card.baatcheet-card`, `.selection-card.explain-card` etc. Full class list at `progress.md` §"Pending CSS". Without this the viewer is unstyled and browser test is meaningless.
-2. **Audition + set `PEER_VOICE`** in `llm-backend/book_ingestion_v2/services/audio_generation_service.py`. Pick from `hi-IN-Chirp3-HD-{Aoede,Charon,Fenrir,Leda,Orus,Puck}`. Currently a placeholder (Aoede).
-3. **End-to-end ingestion test** — admin TopicPipelineDashboard → pick a topic with variant A done → `Generate Baatcheet Dialogue` → `Generate Baatcheet Visuals` → `Generate Audio`. Verify `topic_dialogues` row, dialogue MP3s in `audio/{guideline_id}/dialogue/...`, audio_synthesis tile counts both variant-A and dialogue clips (F4 fix).
-4. **Browser smoke test** — depends on (1). Walk: chooser → Baatcheet → welcome auto-plays with student name → check-in dispatch → summary → "Let's Practice" CTA renders → tap → land in Practice. Regress Explain: walk → exit → resume on right card.
-5. **Minimum unit tests** — fix plan §"Tests to add" lists 9. Bare minimum: ORM round-trip (F1), `/teach-me-options` integration, validator failure modes (F5/F6/F9), F7 dialogue-shape revision, F8 coverage tokens, viewer auto-play (F2), Practice CTA renders (F3).
+1. **End-to-end ingestion test** — admin TopicPipelineDashboard → pick a topic with variant A done → `Generate Baatcheet Dialogue` → `Generate Baatcheet Visuals` → `Generate Audio`. Verify `topic_dialogues` row, dialogue MP3s in `audio/{guideline_id}/dialogue/...`, audio_synthesis tile counts both variant-A and dialogue clips (F4 fix).
+2. **Browser smoke test** — walk: chooser → Baatcheet → welcome auto-plays with student name → scroll a tall visual / check-in card on mobile-width → check-in dispatch → summary → "Let's Practice" CTA renders → tap → land in Practice. Regress Explain: walk → exit → resume on right card. Confirm pulse ring is visible on the speaking avatar.
+3. **Audition listen-test on `PEER_VOICE = Leda`** — listen to ~3 dialogue cards Meera-side; if it sounds too similar to Kore, swap to one of Charon/Fenrir/Orus/Puck (male) or Aoede (other female) and re-test.
+4. **Update PR #121 description** to reflect F1–F9 + CSS + PEER_VOICE + tests landed + post-review fixes.
 
 ## Defer to follow-up PRs (not blockers)
 
@@ -74,7 +76,7 @@ Original fix plan claimed both modes contribute zero coverage and proposed seedi
 ```bash
 # 1. Confirm branch + commits
 cd /Users/manishjain/repos/learnlikemagic
-git log -3 --oneline    # expect d70524e, df25bf9, 80fd901
+git log -4 --oneline    # expect post-d1c82d6 fixup, d1c82d6, d70524e, df25bf9
 
 # 2. Confirm PR head
 gh pr view 121 --json headRefOid,mergeable
@@ -85,8 +87,13 @@ import sys; sys.path.insert(0, '/Users/manishjain/repos/learnlikemagic/llm-backe
 from shared.models.entities import Session
 print('teach_me_mode column:', Session.teach_me_mode)
 "
+
+# 4. Run baatcheet unit tests
+cd /Users/manishjain/repos/learnlikemagic/llm-backend
+venv/bin/python -m pytest tests/unit/test_baatcheet.py -v
+# Expect: 36 passed
 ```
 
 ## Open question for the user
 
-PR #121 description still lists F1–F9 fixes as deferred / unverified. Update the PR body to reflect what landed in `df25bf9` + `d70524e`?
+PR #121 description still lists F1–F9 fixes as deferred / unverified. Update the PR body to reflect what landed in `df25bf9` + `d70524e` + `d1c82d6` + the post-review fix-up commit?

@@ -8521,7 +8521,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 /* ── BaatcheetViewer — chalk island inside ChatSession ─────────────────── */
 
 .baatcheet-active {
-  min-height: 100vh;
+  /* Parent .app is height:100dvh + overflow:hidden, so this child must own the
+     scroll. flex:1 + min-height:0 lets the column shrink below content size. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   background: var(--wall-cream);
   padding: var(--sp-3);
 }
@@ -8703,13 +8707,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   width: 96px;
   height: 96px;
   border-radius: 50%;
-  overflow: hidden;
   background: rgba(244, 244, 239, 0.06);
   box-shadow:
     inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
     0 4px 12px rgba(0, 0, 0, 0.35);
-  /* Cross-fade between avatars: <SpeakerAvatar key={speaker}> remounts
-     when the speaker changes, replaying this opacity transition. */
+  /* No overflow:hidden — the pulse ring sits at inset:-6px and animates to
+     scale(1.16); clipping it here would hide the speaking indicator. The img
+     handles its own circle clipping below. */
   animation: speaker-avatar-fade-in 320ms ease-out;
 }
 .speaker-avatar img {
@@ -8717,6 +8721,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 50%;
   user-select: none;
   pointer-events: none;
 }
