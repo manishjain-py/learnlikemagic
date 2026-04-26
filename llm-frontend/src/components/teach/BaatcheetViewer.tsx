@@ -225,6 +225,15 @@ export default function BaatcheetViewer({
     stopAllAudio();
     if (cardIdx > 0) setCardIdx(cardIdx - 1);
   };
+  const handleRestart = () => {
+    if (!window.confirm('Restart from the first card?')) return;
+    stopAllAudio();
+    setVisited(new Set());
+    setSpeaking(false);
+    setCompleted(false);
+    setCardIdx(0);
+    persistProgress(0, false);
+  };
 
   const onCheckInComplete = (_result: CheckInActivityResult) => {
     // Auto-advance after the activity reports completion.
@@ -307,6 +316,17 @@ export default function BaatcheetViewer({
           >
             ← Back
           </button>
+          {cardIdx > 0 && (
+            <button
+              type="button"
+              className="baatcheet-nav-button baatcheet-nav-button--restart"
+              onClick={handleRestart}
+              title="Restart from the first card"
+              aria-label="Restart from the first card"
+            >
+              ↻ Restart
+            </button>
+          )}
           <button
             type="button"
             className="baatcheet-nav-button baatcheet-nav-button--primary"

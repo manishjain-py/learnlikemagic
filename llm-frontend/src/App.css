@@ -2908,6 +2908,19 @@ body {
   cursor: not-allowed;
 }
 
+.explanation-nav-btn.restart {
+  flex: 0 0 auto;
+  padding: 14px 14px;
+  background: transparent;
+  color: #6B7280;
+  border: 1px solid #D4D4D4;
+  font-size: var(--fs-sm);
+}
+.explanation-nav-btn.restart:hover:not(:disabled) {
+  background: #F5F5F5;
+  color: #4B5563;
+}
+
 .explanation-nav-btn.simplify {
   background: transparent;
   color: #5A5A5A;
@@ -8697,6 +8710,14 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 .baatcheet-nav-button--primary:hover:not(:disabled) {
   background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
+}
+
+.baatcheet-nav-button--restart {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.02em;
+  opacity: 0.85;
 }
 
 

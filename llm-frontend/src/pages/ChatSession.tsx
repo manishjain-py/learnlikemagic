@@ -12,6 +12,7 @@ import {
   submitFeedback,
   cardAction,
   simplifyCard,
+  postCardProgress,
   TutorWebSocket,
   Turn,
   ExplanationCard,
@@ -1241,6 +1242,26 @@ export default function ChatSession() {
     navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
   };
 
+  const handleRestartExplain = () => {
+    if (!window.confirm('Restart from the first card?')) return;
+    stopAllAudio();
+    stopAudio();
+    setPlayingSlideId(null);
+    setRevealedSlides(new Set());
+    setTypewriterSkip(new Set());
+    setFullyReplayed(new Set());
+    setCompletedCheckIns(new Set());
+    setCurrentSlideIdx(0);
+    if (sessionId) {
+      localStorage.setItem(`slide-pos-${sessionId}`, '0');
+      postCardProgress(sessionId, {
+        phase: 'card_phase',
+        card_idx: 0,
+        mark_complete: false,
+      }).catch((err) => console.warn('postCardProgress failed', err));
+    }
+  };
+
   const handleSimplifyCard = async () => {
     if (!sessionId || simplifyLoading) return;
     const cardIdx = currentSlideIdx;
@@ -1761,6 +1782,17 @@ export default function ChatSession() {
                       >
                         Back
                       </button>
+                      {currentSlideIdx > 0 && (
+                        <button
+                          className="explanation-nav-btn restart"
+                          onClick={handleRestartExplain}
+                          disabled={simplifyLoading || isAnimating}
+                          title="Restart from the first card"
+                          aria-label="Restart from the first card"
+                        >
+                          ↻ Restart
+                        </button>
+                      )}
                       <button
                         className="explanation-nav-btn primary"
                         onClick={() => {
@@ -1806,6 +1838,15 @@ export default function ChatSession() {
                           {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
                         </button>
                       )}
+                      <button
+                        className="explanation-nav-btn restart"
+                        onClick={handleRestartExplain}
+                        disabled={cardActionLoading || simplifyLoading}
+                        title="Restart from the first card"
+                        aria-label="Restart from the first card"
+                      >
+                        ↻ Restart from first card
+                      </button>
                     </div>
                   </div>
                 )
