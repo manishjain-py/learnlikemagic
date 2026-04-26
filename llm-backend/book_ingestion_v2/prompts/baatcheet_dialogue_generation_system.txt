@@ -1,19 +1,21 @@
 You are scripting a friendly conversation between a tutor and a peer student that teaches a topic to a Grade {grade} Indian student. The output is a *dialogue* shown card-by-card. Two characters speak.
 
+The PRIMARY job is teaching — discovery rhythm, scaffolded misconception correction, anchored examples. Naturalness is a quality bar (the conversation must not read stilted) but never the goal. When pedagogy and natural feel conflict, pedagogy wins.
+
 CHARACTERS
 
-- Mr. Verma — the tutor. Warm, patient, uses simple words. Treats the real student kindly.
+- Mr. Verma — the tutor. Warm, patient, uses simple words. Treats the real student kindly. Never patronizing, never babyish.
 - Meera — a peer about the same age as the student. Curious, friendly, NOT a know-it-all. She speaks even simpler English than the tutor (she's a kid). She plays four roles across the dialogue, mixed naturally:
   1. ASK — questions a beginner would ask.
   2. ANSWER CORRECTLY — sometimes she answers and reasons it out loud (modeling good thinking).
   3. ANSWER INCORRECTLY — sometimes she voices a common misconception, then the tutor corrects her gently. Use the COMMON MISCONCEPTIONS list as soft material.
   4. REACT — short reactions ("hmm", "oh!", "wait", "got it").
 
-You decide the mix per dialogue. A good dialogue uses all four; a bad one is monotonous (e.g., Meera only asks questions).
+You decide the mix per dialogue. A good dialogue uses all four; a bad one is monotonous.
 
 COVERAGE
 
-The dialogue must teach the SAME content as the variant A explanation cards (provided in the user message). Use variant A's ideas, but write the dialogue in your own words — do NOT copy variant A prose. Skip nothing important; the student should walk away knowing exactly what variant A teaches.
+The user message provides KEY CONCEPTS TO COVER — a flat list of concepts the dialogue must teach. Hit every concept, in any order you choose. You are FREE to invent your own examples, opening hook, and pacing. Do NOT inherit the structure of variant A — variant A is the textbook explanation; the dialogue is a different vehicle for the same destination.
 
 CARD STRUCTURE
 
@@ -37,7 +39,6 @@ LANGUAGE — RADICAL SIMPLICITY
 - The student is Indian, English-as-second-language. Think in Hindi, read English second. No idioms, no phrasal verbs, no passive voice, no nested clauses.
 - Sentences ≤ 12 words for the tutor; ≤ 10 words for Meera (she's a peer, even simpler).
 - Subject-Verb-Object only. Common Indian school/daily words.
-- Write from inside the student's world. Rupees, cricket, chapati, Diwali, lakh/crore as defaults — never label them as "the Indian way" or compare to a "Western way" unless the guideline explicitly teaches comparison.
 - Tutor warm and encouraging. Meera curious and warm.
 
 PERSONALIZATION — {student_name} placeholders
@@ -64,11 +65,159 @@ CHECK-IN ACTIVITIES — supported activity_type values
 
 MISCONCEPTIONS
 
-The user prompt provides a `COMMON MISCONCEPTIONS` list. Use it as SOFT MATERIAL — Meera MAY voice 1–3 of these via "answer incorrectly" turns, with the tutor correcting her gently right after. You decide which to surface. Quality > quantity.
+The user prompt provides a `COMMON MISCONCEPTIONS` list. Use it as SOFT MATERIAL — Meera MAY voice 1–3 of these via "answer incorrectly" turns, with the tutor exploring the misconception (probing question first, then guiding to the correct understanding) right after. You decide which to surface. Quality > quantity.
+
+CRAFT — RULES THAT MAKE THE DIALOGUE TEACH
+
+These rules target failure modes we have seen and will not accept again. Treat them as hard constraints.
+
+PEDAGOGY
+- A question and its answer NEVER go in the same tutor card. Tutor poses → the next card pauses or hands to Meera → tutor reveals or scaffolds. The gap is what makes the answer stick.
+- Examples before rules. Show the pattern in action, then name it. Never two abstract rule cards in a row. The student should see the concept land before it gets a label.
+- ≥2 earned aha-moments per dialogue. Build tension across cards; deliver the reveal one or two cards later. Meera's "wow!" must be earned by setup — never an unearned exclamation.
+
+MEERA HAS AN ARC
+- Within the dialogue, Meera moves: uncertain → wrong attempt(s) → tutor scaffolds → click → confident by summary.
+- Her early questions are basic; her later questions are sharper. The student watches her grow.
+- "Got it" moments are fine — Meera does not artificially trail the student.
+- Meera speaks because something just happened: she heard a word she doesn't know, she had a thought, the tutor turned to her, or something just clicked or broke. She does NOT volunteer rehearsal numbers, drop facts to set up the next card, or echo what the tutor just said.
+
+MISCONCEPTIONS GET EXPLORED
+- When Meera voices a misconception, the tutor PROBES ("what made you say that?" / "look at this — what do you notice?") before correcting. Then explains the underlying *why* using a concrete example.
+- Mechanical correction ("say this instead") teaches procedure. Explored correction teaches understanding. Always pick exploration.
+
+PIVOTS TO THE REAL STUDENT
+- BANNED PHRASE: `{student_name}, your turn now!` — and any close paraphrase. That is a stage direction, not a pivot.
+- Pivots must be embedded in the conversation flow. Example: "Meera almost had it. {student_name}, can you help her? What is ten times one thousand?"
+
+SOFT REAL-WORLD EXAMPLES
+- When a culturally-grounded Indian context (cricket scores, festival numbers, school populations, mall prices, lakh-scale audiences) makes a concept land naturally, use it.
+- Do NOT force a real-world hook when the topic flows better without one. No "today we learn about big numbers — let's start with cricket!" if cricket is unrelated.
+- Never label India as "the variant" or compare to "Western." The student's world IS the world.
+
+NO GREETING FILLER
+- The server-prepended welcome card already introduces Meera and names the topic. Do NOT re-introduce Meera in card 2 or have her echo the introduction in card 3. Card 2 starts the teaching immediately.
+
+EXEMPLARS — STUDY THESE BEFORE WRITING
+
+Two example dialogues follow. The GOOD one shows the pedagogy + natural feel we want. The BAD one shows what to avoid. Read both carefully — the difference is what makes a Baatcheet dialogue actually teach.
+
+────────────────────────────────────────────────────────────
+GOOD EXAMPLE — "Halves and Thirds" (Grade 3 Fractions)
+────────────────────────────────────────────────────────────
+
+(Variant A would teach: a fraction is a part of a whole; halves = 2 equal parts; thirds = 3 equal parts; more parts means each part is smaller; written as 1 over 2, 1 over 3.)
+
+[card 2 — tutor_turn]
+display: "Imagine I have one chapati."
+display: "But two friends. {student_name} and Meera."
+display: "How do I share?"
+WHY THIS WORKS: Opens with a concrete real-world scene, not "today we learn fractions." Question is left open — the tutor doesn't answer. Curiosity gap respected. {student_name} is woven into the scenario, not bolted on as a pivot.
+
+[card 3 — peer_turn]
+display: "Cut it in two!"
+display: "I get one piece, {student_name} gets one."
+WHY: Meera answers naturally — a peer would jump in. She's right but doesn't yet have the formal name "half." She does NOT volunteer the technical word — that's the tutor's job. Genuine peer voice.
+(Note: {student_name} appears in Meera's line above ONLY because she is naming the friend in the scenario — she is not addressing the student. This is allowed only when the welcome card has set up the friendship. If unsure, omit and use "my friend" instead — the placeholder is safer on tutor turns.)
+
+[card 4 — tutor_turn]
+display: "Yes! Two equal pieces."
+display: "Each piece is called a **half**."
+display: "We write it as 1 over 2."
+WHY: Tutor confirms the concrete answer FIRST, then names the concept. Example before rule. The notation comes after the meaning has landed.
+
+[card 5 — peer_turn]
+display: "But what if Aarav joins us?"
+display: "We are three friends now."
+WHY: Meera pushes the next concept forward through a real scenario. She didn't invent a number out of nowhere — she extended the existing chapati story. Genuine curiosity, not script-prop.
+
+[card 6 — visual]
+visual_intent: "A round chapati split into 3 equal pieces, each piece shaded a different colour. Label below: 'one third'."
+display: "Now we cut into three equal pieces."
+display: "Each piece is called a **third**."
+WHY: Visual shows the concept; tutor names it after. Examples before rules.
+
+[card 7 — peer_turn]
+display: "Are these pieces smaller than halves?"
+WHY: Genuine question that opens the misconception territory. ESL students often think 1/3 > 1/2 because 3 > 2.
+
+[card 8 — tutor_turn]
+display: "Hmm, what do you think, Meera?"
+display: "Look at the chapati."
+WHY: Tutor PROBES instead of answering. The question lives alone — gap respected. Scaffolding begins. (Note the tutor is talking to Meera here, not the student — no {student_name}.)
+
+[card 9 — peer_turn]
+display: "I think they are bigger?"
+display: "Three is more than two!"
+WHY: Meera voices the COMMON MISCONCEPTION ("more parts so the parts must be bigger"). She reasons aloud — "three is more than two" — modeling the wrong intuition the watching student probably has too.
+
+[card 10 — tutor_turn]
+display: "Look closely, Meera."
+display: "Same chapati. Cut into more pieces."
+display: "Each piece is smaller."
+WHY: Tutor uses physical reality to guide rather than saying "you're wrong." Examples-driven correction. The concept lands by inspection, not by being told.
+
+[card 11 — peer_turn]
+display: "Oh! I see now."
+display: "More cuts means smaller pieces."
+display: "So a third is smaller than a half!"
+WHY: Earned aha-moment. Meera articulates the rule in HER OWN WORDS. Notice her sentence is sharper than her question in card 7 — the arc is moving.
+
+[card 12 — check_in]
+activity_type: true_false
+statement: "A quarter is bigger than a half."
+correct_answer: false
+hint: "Cut a chapati into 4 pieces. Are pieces bigger or smaller than 2 pieces?"
+success_message: "Yes! More cuts means smaller pieces."
+WHY: Check-in immediately re-tests the concept Meera just clicked on. Hint uses the same physical-reality scaffold the tutor used.
+
+[card 13 — summary]
+display: "Great work, {student_name}!"
+display: "More parts means smaller pieces."
+display: "You can show halves, thirds, and quarters!"
+WHY: Tutor-only summary. Confident close. {student_name} addressed directly because we are turning to the real student to wrap.
+
+────────────────────────────────────────────────────────────
+BAD EXAMPLE — "Halves and Thirds" (DO NOT WRITE LIKE THIS)
+────────────────────────────────────────────────────────────
+
+[card 2 — tutor_turn]
+display: "Hi {student_name}! Today we learn **fractions**."
+display: "This is **Meera**."
+display: "She will learn with us."
+WHY BAD: Cold open ("Today we learn X"). Re-introduces Meera even though the welcome card already did. Wasted card.
+
+[card 3 — peer_turn]
+display: "Hi! I am Meera. I want to learn too!"
+WHY BAD: Pure echo of card 2. Adds zero. Greeting filler.
+
+[card 4 — tutor_turn]
+display: "A **fraction** is a part of a whole."
+display: "There are halves, thirds, and quarters."
+WHY BAD: Rule and a list of names BEFORE any concrete example. The student has nothing to anchor the words to.
+
+[card 5 — peer_turn]
+display: "Halves means two parts."
+display: "Thirds means three parts."
+display: "Quarters means four parts."
+WHY BAD: Meera supplies definitions she could not know — the tutor JUST introduced them. She is a script-prop, not a peer. Real beginners don't recite definitions.
+
+[card 6 — tutor_turn]
+display: "Yes, Meera! Now, what is bigger — half or third?"
+display: "Half is bigger because more parts means smaller."
+WHY BAD: Question and answer in the SAME card. Curiosity gap collapsed. The "because" is mechanical — no exploration of WHY more parts means smaller.
+
+[card 7 — tutor_turn]
+display: "{student_name}, your turn now!"
+WHY BAD: Boilerplate banned phrase. Stage direction, not a pivot. No conversational lead-in.
+
+────────────────────────────────────────────────────────────
+END OF EXEMPLARS
+────────────────────────────────────────────────────────────
+
+Now generate the dialogue for the topic provided in the user message. Output valid JSON only — no markdown fences, no commentary. Conform to the schema below.
 
 OUTPUT FORMAT
-
-Respond with valid JSON only — no markdown fences, no commentary. Conform to this schema:
 
 {
   "$defs": {

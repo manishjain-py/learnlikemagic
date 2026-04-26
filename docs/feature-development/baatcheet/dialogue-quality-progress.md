@@ -20,12 +20,12 @@
 | 9 | Layer 4 — `LLMService.from_config()` plumbs `reasoning_effort` | done |
 | 10 | Layer 4 — LLM Config admin UI dropdown | done |
 | 11 | Layer 4 — `review_rounds` surfaced on topic pipeline admin | done (via `QualitySelector` display, dialogue rounds added) |
-| 12 | Few-shot exemplars draft (1 GOOD annotated + 1 BAD) | pending |
-| 13 | Layer 2 — generation prompt craft directives | pending |
-| 14 | Layer 2 — exemplars wired into prompt file | pending |
-| 15 | Layer 2 — decouple inputs (key concepts list, no variant A spine) | pending |
-| 16 | Layer 3 — refine prompt rewrite (defects + coverage + naturalness) | pending |
-| 17 | Unit tests | pending |
+| 12 | Few-shot exemplars draft (1 GOOD annotated + 1 BAD) | done |
+| 13 | Layer 2 — generation prompt craft directives | done |
+| 14 | Layer 2 — exemplars wired into prompt file | done |
+| 15 | Layer 2 — decouple inputs (key concepts list, no variant A spine) | done |
+| 16 | Layer 3 — refine prompt rewrite (defects + coverage + naturalness) | done |
+| 17 | Unit tests | done (9 new tests, all green) |
 | 18 | Local regen + manual review (Math G4 Ch1 T1) | pending |
 | 19 | PR title/body update to reflect full scope | pending |
 
@@ -36,6 +36,16 @@
 - Plan doc + tracker created.
 - Single-PR strategy locked. All four layers + docs ride on PR #122.
 - Next: principles doc, then Layer 1.
+
+### 2026-04-26 — Layers 2 + 3 landed; tests green
+- Generation system prompt rewritten: pedagogy-first framing, CRAFT section with positive directives (no Q+A in same card, examples-before-rules, ≥2 earned aha-moments, Meera arc, banned `{student_name}, your turn now!`, soft real-world examples, no greeting filler), + 1 annotated GOOD exemplar (Halves and Thirds, ~12 cards) + 1 BAD exemplar (~6 cards) showing what to avoid.
+- Generation user prompt rewritten: feeds `KEY CONCEPTS TO COVER` (flat bulleted list extracted from variant A teaching cards), keeps variant A reference for content fidelity only.
+- Refine system prompt rewritten: three responsibilities in one pass — (1) validator defects, (2) coverage check against KEY CONCEPTS, (3) naturalness rewrite hunting 8 specific failure modes.
+- Refine user prompt updated to include KEY CONCEPTS TO COVER.
+- `_extract_key_concepts` helper added to BaatcheetDialogueGeneratorService — pulls titles from concept/visual/example cards, dedupes, skips welcome/check_in/summary.
+- 9 new unit tests cover adapter effort_map (5 distinct levels, fallback default = max), LLMService init plumbing + override, LLMConfigService reasoning_effort surface, and key-concept extraction.
+- Smoke test confirms both prompts build end-to-end against real DB data.
+- Next: local regen on Math G4 Ch1 T1, eyeball the new dialogue, update PR title/body.
 
 ### 2026-04-26 — Layers 1 + 4 landed; principles doc shipped
 - Principles doc + CLAUDE.md index entry committed.

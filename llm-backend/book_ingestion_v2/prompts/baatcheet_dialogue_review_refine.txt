@@ -4,11 +4,14 @@ SUBJECT: {subject}, Grade {grade}
 TEACHING GUIDELINE:
 {guideline_text}
 
-VARIANT A EXPLANATION CARDS (the dialogue must teach the same content):
-{variant_a_cards_json}
+KEY CONCEPTS TO COVER (every concept here must be taught in the dialogue):
+{key_concepts_list}
 
-COMMON MISCONCEPTIONS (soft — at least 1–2 should surface via Meera):
+COMMON MISCONCEPTIONS (soft — at least 1–2 should surface via Meera, with the tutor exploring rather than just naming the right answer):
 {misconceptions_list}
+
+VARIANT A REFERENCE (canonical Explain-mode prose for content fidelity verification only — do NOT inherit ordering):
+{variant_a_cards_json}
 
 CURRENT DIALOGUE CARDS (cards 2..N — card 1 is welcome and is prepended separately):
 {cards_json}

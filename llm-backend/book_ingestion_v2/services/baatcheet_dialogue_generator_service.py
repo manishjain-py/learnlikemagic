@@ -496,6 +496,7 @@ class BaatcheetDialogueGeneratorService:
             .replace("{subject}", guideline.subject or "")
             .replace("{grade}", str(guideline.grade or ""))
             .replace("{guideline_text}", guideline_text)
+            .replace("{key_concepts_list}", self._extract_key_concepts(variant_a))
             .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
             .replace("{misconceptions_list}", self._format_misconceptions(misconceptions))
             .replace("{prior_topics_section}", prior)
@@ -529,6 +530,7 @@ class BaatcheetDialogueGeneratorService:
             .replace("{subject}", guideline.subject or "")
             .replace("{grade}", str(guideline.grade or ""))
             .replace("{guideline_text}", guideline_text)
+            .replace("{key_concepts_list}", self._extract_key_concepts(variant_a))
             .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
             .replace("{misconceptions_list}", self._format_misconceptions(misconceptions))
             .replace("{cards_json}", cards_json_str)
@@ -541,6 +543,29 @@ class BaatcheetDialogueGeneratorService:
         if not items:
             return "(none on file for this topic)"
         return "\n".join(f"- {m}" for m in items)
+
+    @staticmethod
+    def _extract_key_concepts(variant_a) -> str:
+        """Flat bulleted list of concept titles from variant A.
+
+        Pulls titles from concept/visual/example cards (skipping welcome,
+        check_ins, summary). The dialogue must teach every concept here, but
+        is free to choose order, examples, and pacing — variant A's structure
+        is not the dialogue's spine. See `dialogue-quality-impl-plan.md` §3.
+        """
+        cards = variant_a.cards_json or []
+        teaching_types = {"concept", "visual", "example"}
+        titles: list[str] = []
+        seen = set()
+        for c in cards:
+            ct = c.get("card_type")
+            title = (c.get("title") or "").strip()
+            if ct in teaching_types and title and title not in seen:
+                seen.add(title)
+                titles.append(title)
+        if not titles:
+            return "(none extracted — fall back to the variant A reference below)"
+        return "\n".join(f"- {t}" for t in titles)
 
     @staticmethod
     def _prior_topics_section(guideline: TeachingGuideline) -> str:
