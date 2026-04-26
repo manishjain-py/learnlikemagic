@@ -8484,12 +8484,11 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 
 /* ==========================================================================
    BAATCHEET — Conversational Teach Me submode
-   Two scopes:
-     1. .chalkboard-active .selection-step  — TeachMeSubChooser (lives inside
-        AppShell, so chalkboard-active is already set on the parent).
-     2. .baatcheet-active                    — BaatcheetViewer wrapper
-        (ChatSession is OUTSIDE AppShell, so the viewer carries its own
-        chalk-island wrapper without depending on chalkboard-active).
+   Visual chrome (wood frame, chalkboard surface, top nav, bottom rail) is
+   inherited from Explain via .app.chalkboard-active wrapping the viewer in
+   ChatSession. This file only owns the per-card body — head row, speaker
+   chip, prose, and the small inline avatar variant.
+   See docs/feature-development/baatcheet/explain-ux-consistency-audit.md.
    ========================================================================== */
 
 
@@ -8591,44 +8590,27 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 
 
-/* ── BaatcheetViewer — chalk island inside ChatSession ─────────────────── */
-
-.baatcheet-active {
-  /* Parent .app is height:100dvh + overflow:hidden, so this child must own the
-     scroll. flex:1 + min-height:0 lets the column shrink below content size. */
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--wall-cream);
-  padding: var(--sp-3);
-}
+/* ── BaatcheetViewer — content slide on the shared chalkboard surface ──── */
+/* The .focus-carousel parent (provided by ChatSession) supplies the chalkboard
+   green, vignette, and chalk doodles. The viewer itself acts as the slide
+   that scrolls and holds head + body + bottom-nav as siblings. */
 
 .baatcheet-viewer {
   position: relative;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--sp-5) var(--sp-4);
-  border-radius: var(--r-md);
-  background: linear-gradient(180deg, var(--board-green) 0%, var(--board-green-deep) 100%);
-  box-shadow: var(--shadow-board-inset), 0 6px 18px rgba(0, 0, 0, 0.25);
+  flex: 1;
+  width: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 24px 20px 32px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
   color: var(--chalk-white);
   font-family: var(--font-body);
-  isolation: isolate;
-  overflow: hidden;
+  z-index: 1;  /* above .focus-carousel chalk-doodle overlays */
+  animation: baatcheet-card-fade-in 250ms ease-out;
 }
-
-.baatcheet-viewer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.35) 100%),
-    radial-gradient(circle at 18% 22%, rgba(244, 244, 239, 0.04) 0, transparent 18%),
-    radial-gradient(circle at 82% 78%, rgba(244, 244, 239, 0.03) 0, transparent 15%);
-}
-.baatcheet-viewer > * { position: relative; z-index: 1; }
 
 .baatcheet-viewer--empty {
   text-align: center;
@@ -8637,26 +8619,39 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   padding: var(--sp-6);
 }
 
-.baatcheet-viewer__progress {
-  font-family: var(--font-body);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--chalk-white-dim);
-  text-align: center;
-  margin-bottom: var(--sp-4);
+/* Header row: card-type badge on the left, speaker chip on the right */
+.baatcheet-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.baatcheet-viewer__speaker {
-  display: flex;
-  flex-direction: column;
+/* Card-type badge — chalk-toned override of the base .explanation-card-type */
+.baatcheet-viewer .explanation-card-type {
+  color: var(--chalk-white-dim);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+}
+.baatcheet-viewer .explanation-card-type::before {
+  content: '•';
+  color: var(--chalk-gold);
+  margin-right: 6px;
+}
+
+/* Speaker chip — small inline avatar + name */
+.baatcheet-speaker-chip {
+  display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
 }
-
-.baatcheet-viewer__speaker-name {
+.baatcheet-speaker-chip__name {
   font-family: var(--font-body);
   font-size: var(--fs-sm);
   font-weight: 700;
@@ -8665,138 +8660,82 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
+/* Body — prose flows directly on the board, no bubble */
+.baatcheet-viewer__body {
+  max-width: 520px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 .baatcheet-viewer__title {
   font-family: var(--font-body);
   font-weight: 700;
   font-size: var(--fs-xl);
   color: var(--chalk-white);
   margin: 0 0 var(--sp-3);
-  text-align: center;
+  line-height: 1.3;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
-.baatcheet-viewer__line {
-  font-family: var(--font-reading);
-  font-size: var(--fs-lg);
-  line-height: 1.55;
-  color: var(--chalk-white);
-  background: rgba(244, 244, 239, 0.04);
-  border: 1px dashed rgba(244, 244, 239, 0.18);
-  border-radius: var(--r-sm);
-  padding: var(--sp-4);
-  margin: 0 auto var(--sp-4);
-  max-width: 600px;
-}
-
 .baatcheet-viewer__line-text {
+  font-family: var(--font-reading);
+  font-size: var(--type-body-reading);
+  line-height: 1.65;
+  letter-spacing: 0.005em;
+  color: var(--chalk-white);
   margin: 0;
 }
 .baatcheet-viewer__line-text + .baatcheet-viewer__line-text {
-  margin-top: var(--sp-2);
+  margin-top: var(--sp-3);
 }
 
+/* Check-in body — layout only; the dispatcher provides the activity widget */
 .baatcheet-viewer__check-in {
-  background: rgba(244, 244, 239, 0.04);
-  border: 1px dashed rgba(244, 244, 239, 0.18);
-  border-radius: var(--r-md);
-  padding: var(--sp-4);
-  margin-bottom: var(--sp-4);
-}
-.baatcheet-viewer__check-in h3 {
-  font-family: var(--font-body);
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  color: var(--chalk-gold);
-  margin: 0 0 var(--sp-3);
-  text-align: center;
-}
-
-.baatcheet-viewer__visual {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
 }
-.baatcheet-viewer__visual h3 {
-  font-family: var(--font-body);
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  color: var(--chalk-white);
-  margin: 0;
+.baatcheet-viewer__check-in .baatcheet-viewer__title {
   text-align: center;
 }
-.baatcheet-viewer__visual .baatcheet-viewer__line {
-  margin-top: var(--sp-2);
+
+/* Visual body — pixi widget on top, prose underneath, centered */
+.baatcheet-viewer__visual {
+  align-items: center;
+  text-align: center;
+}
+.baatcheet-viewer__visual .baatcheet-viewer__title {
+  text-align: center;
 }
 
-/* Nav row */
-.baatcheet-viewer__nav {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
+/* Card advance: lightweight fade + small slide-in (full translateX carousel
+   would require all cards to mount at once — deferred). Keyed on cardIdx
+   via React key on the wrapper, so the animation replays on advance. */
+@keyframes baatcheet-card-fade-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
-
-.baatcheet-nav-button {
-  flex: 1;
-  padding: 12px 18px;
-  border-radius: var(--r-pill);
-  border: 1.5px dashed rgba(244, 244, 239, 0.4);
-  background: rgba(244, 244, 239, 0.08);
-  color: var(--chalk-white);
-  font-family: var(--font-body);
-  font-size: var(--fs-md);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
-}
-.baatcheet-nav-button:hover:not(:disabled) {
-  background: rgba(244, 244, 239, 0.16);
-  border-color: var(--chalk-white-dim);
-  transform: translateY(-1px);
-}
-.baatcheet-nav-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.baatcheet-nav-button--primary {
-  background: linear-gradient(180deg, var(--parchment) 0%, #EDE1BF 100%);
-  color: var(--cb-ink-dark);
-  border: 1px solid var(--parchment-edge);
-  box-shadow: var(--shadow-parchment);
-}
-.baatcheet-nav-button--primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
-}
-
-/* Two-class specificity so the mobile `.baatcheet-nav-button` override later
-   in the cascade doesn't reset our padding/font on small screens. */
-.baatcheet-nav-button.baatcheet-nav-button--restart {
-  flex: 0 0 auto;
-  padding: 12px 14px;
-  font-size: var(--fs-sm);
-  letter-spacing: 0.02em;
-  opacity: 0.85;
+@media (prefers-reduced-motion: reduce) {
+  .baatcheet-viewer { animation: none; }
 }
 
 
-/* ── Speaker avatar — circular swap with cross-fade + speaking pulse ───── */
+/* ── Speaker avatar — small inline chip variant ────────────────────────── */
+/* Used only in BaatcheetViewer; sits inline with the speaker name in the
+   .baatcheet-card-head row. */
 
 .speaker-avatar {
   position: relative;
-  width: 96px;
-  height: 96px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: rgba(244, 244, 239, 0.06);
   box-shadow:
     inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
-    0 4px 12px rgba(0, 0, 0, 0.35);
-  /* No overflow:hidden — the pulse ring sits at inset:-6px and animates to
-     scale(1.16); clipping it here would hide the speaking indicator. The img
-     handles its own circle clipping below. */
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+  /* No overflow:hidden — the pulse ring sits at inset:-4px and animates to
+     scale(1.16); clipping it here would hide the speaking indicator. */
   animation: speaker-avatar-fade-in 320ms ease-out;
 }
 .speaker-avatar img {
@@ -8812,13 +8751,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 .speaker-avatar--speaking {
   box-shadow:
     inset 0 0 0 2px var(--chalk-gold),
-    0 0 0 4px rgba(244, 199, 108, 0.35),
-    0 4px 14px rgba(0, 0, 0, 0.4);
+    0 0 0 3px rgba(244, 199, 108, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .speaker-avatar__pulse {
   position: absolute;
-  inset: -6px;
+  inset: -4px;
   border-radius: 50%;
   border: 2px solid var(--chalk-gold);
   opacity: 0.55;
@@ -8843,7 +8782,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 
 
-/* ── Mobile tightening for both scopes ─────────────────────────────────── */
+/* ── Mobile tightening ─────────────────────────────────────────────────── */
 
 @media (max-width: 600px) {
   .chalkboard-active .selection-card.baatcheet-card,
@@ -8854,19 +8793,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
     font-size: var(--fs-lg);
   }
   .baatcheet-viewer {
-    padding: var(--sp-4) var(--sp-3);
-    border-radius: var(--r-sm);
+    padding: 20px 16px 28px;
   }
-  .baatcheet-viewer__line {
+  .baatcheet-viewer__line-text {
     font-size: var(--fs-md);
-    padding: var(--sp-3);
   }
   .speaker-avatar {
-    width: 76px;
-    height: 76px;
-  }
-  .baatcheet-nav-button {
-    font-size: var(--fs-sm);
-    padding: 10px 14px;
+    width: 40px;
+    height: 40px;
   }
 }

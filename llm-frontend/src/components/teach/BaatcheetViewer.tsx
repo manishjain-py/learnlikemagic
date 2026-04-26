@@ -1,15 +1,29 @@
 /**
  * BaatcheetViewer — renders a Baatcheet (Mr. Verma + Meera) dialogue.
  *
- * Self-contained sibling to ChatSession's ExplanationViewer (which still
- * lives inline in ChatSession.tsx — extraction deferred). Owns:
- *   - carousel state (current_card_idx)
- *   - SpeakerAvatar cross-fade per turn
+ * Visual chrome inherits from Explain — the card lives inside a
+ * `.app.chalkboard-active` shell provided by ChatSession. This component
+ * renders only the per-card body (card-type badge, speaker chip, prose,
+ * bottom nav). See docs/feature-development/baatcheet/explain-ux-consistency-audit.md.
+ *
+ * Owns:
+ *   - card index state (current_card_idx)
  *   - audio playback (pre-rendered MP3 OR synthetic-key blob for personalized)
  *   - check-in dispatch (reuses CheckInDispatcher)
  *   - server-side progress posting (debounced) + summary completion mark
+ *
+ * Exposes (via ref):
+ *   - replayCurrent(): re-trigger playback for the current card
+ *   - stopAudio(): halt any in-flight playback
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import {
   postCardProgress,
   type CardProgressResponse,
@@ -34,6 +48,17 @@ import CheckInDispatcher, {
 import ConfirmDialog from '../ConfirmDialog';
 import VisualExplanationComponent from '../VisualExplanation';
 
+export interface BaatcheetViewerProgress {
+  cardIdx: number;
+  totalCards: number;
+  speaking: boolean;
+}
+
+export interface BaatcheetViewerHandle {
+  replayCurrent: () => void;
+  stopAudio: () => void;
+}
+
 interface Props {
   sessionId: string;
   cards: DialogueCard[];
@@ -41,6 +66,7 @@ interface Props {
   initialCardIdx?: number;
   language?: string;
   onComplete?: (info: CardProgressResponse) => void;
+  onProgressChange?: (progress: BaatcheetViewerProgress) => void;
 }
 
 const PROGRESS_DEBOUNCE_MS = 500;
@@ -52,14 +78,28 @@ function materializeText(text: string, p: Personalization): string {
     .replaceAll('{topic_name}', p.topic_name);
 }
 
-export default function BaatcheetViewer({
-  sessionId,
-  cards,
-  personalization,
-  initialCardIdx = 0,
-  language = 'hinglish',
-  onComplete,
-}: Props) {
+function cardTypeBadge(cardType: DialogueCard['card_type']): string | null {
+  switch (cardType) {
+    case 'dialogue': return 'DIALOGUE';
+    case 'visual': return 'VISUAL';
+    case 'check_in': return 'CHECK-IN';
+    case 'summary': return 'SUMMARY';
+    default: return null;
+  }
+}
+
+const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function BaatcheetViewer(
+  {
+    sessionId,
+    cards,
+    personalization,
+    initialCardIdx = 0,
+    language = 'hinglish',
+    onComplete,
+    onProgressChange,
+  },
+  ref,
+) {
   const totalCards = cards.length;
   const [cardIdx, setCardIdx] = useState(() =>
     Math.max(0, Math.min(initialCardIdx, Math.max(0, totalCards - 1))),
@@ -71,8 +111,14 @@ export default function BaatcheetViewer({
   const [speaking, setSpeaking] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
+  // Bumping this re-triggers the playback effect for the current card.
+  const [replayCounter, setReplayCounter] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const debounceRef = useRef<number | null>(null);
+  // Set true when the parent calls stopAudio() — the playback loop checks
+  // this between lines and breaks out instead of advancing to the next line
+  // after stopAllAudio() has paused the current one.
+  const cancelPlaybackRef = useRef(false);
 
   // Kick off runtime TTS for personalized cards in parallel (cap 4).
   usePersonalizedAudio(cards, personalization, language);
@@ -96,11 +142,14 @@ export default function BaatcheetViewer({
 
   // ─── Audio playback ────────────────────────────────────────────────────
   // Plays each line of the current card sequentially. Auto-plays the first
-  // time a card is visited; revisited cards stay silent (PRD §FR-31).
+  // time a card is visited; revisited cards stay silent (PRD §FR-31). A
+  // bump to `replayCounter` re-triggers playback even on revisited cards
+  // so the top-nav replay button works.
   useEffect(() => {
     if (!currentCard) return;
     const isFirstVisit = !visited.has(cardIdx);
-    if (!isFirstVisit) return;
+    const isReplay = replayCounter > 0;
+    if (!isFirstVisit && !isReplay) return;
     if (currentCard.card_type === 'check_in') {
       // CheckInDispatcher handles its own audio.
       return;
@@ -108,11 +157,12 @@ export default function BaatcheetViewer({
 
     let cancelled = false;
     let cleanup: (() => void) | null = null;
+    cancelPlaybackRef.current = false;
     setSpeaking(true);
 
     (async () => {
       for (let lineIdx = 0; lineIdx < currentCard.lines.length; lineIdx++) {
-        if (cancelled) break;
+        if (cancelled || cancelPlaybackRef.current) break;
         const line = currentCard.lines[lineIdx];
 
         let blob: Blob | null = null;
@@ -136,7 +186,7 @@ export default function BaatcheetViewer({
           }
         }
 
-        if (!blob || cancelled) continue;
+        if (!blob || cancelled || cancelPlaybackRef.current) continue;
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audioRef.current = audio;
@@ -153,6 +203,10 @@ export default function BaatcheetViewer({
         await new Promise<void>((resolve) => {
           audio.addEventListener('ended', () => resolve(), { once: true });
           audio.addEventListener('error', () => resolve(), { once: true });
+          // 'pause' fires when stopAllAudio() pauses this line — without it
+          // the loop would hang on stop, never advancing to the cancelled
+          // check on the next iteration.
+          audio.addEventListener('pause', () => resolve(), { once: true });
           void audio.play().catch(() => resolve());
         });
         cleanup?.();
@@ -168,7 +222,7 @@ export default function BaatcheetViewer({
       setSpeaking(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardIdx]);
+  }, [cardIdx, replayCounter]);
 
   // Mark visited after the playback effect runs at least once.
   useEffect(() => {
@@ -179,6 +233,27 @@ export default function BaatcheetViewer({
       return next;
     });
   }, [cardIdx]);
+
+  // ─── Imperative handle (replay / stop driven by parent's nav button) ──
+  useImperativeHandle(ref, () => ({
+    replayCurrent: () => {
+      cancelPlaybackRef.current = true;
+      stopAllAudio();
+      // Bumping replayCounter triggers a fresh playback effect run, which
+      // resets cancelPlaybackRef.current back to false on entry.
+      setReplayCounter((n) => n + 1);
+    },
+    stopAudio: () => {
+      cancelPlaybackRef.current = true;
+      stopAllAudio();
+      setSpeaking(false);
+    },
+  }), []);
+
+  // ─── Progress mirroring (parent renders counter + audio button) ───────
+  useEffect(() => {
+    onProgressChange?.({ cardIdx, totalCards, speaking });
+  }, [cardIdx, totalCards, speaking, onProgressChange]);
 
   // ─── Server-side progress persistence ─────────────────────────────────
   const persistProgress = useCallback(
@@ -220,15 +295,18 @@ export default function BaatcheetViewer({
 
   // ─── Navigation ────────────────────────────────────────────────────────
   const goNext = () => {
+    cancelPlaybackRef.current = true;
     stopAllAudio();
     if (cardIdx < totalCards - 1) setCardIdx(cardIdx + 1);
   };
   const goPrev = () => {
+    cancelPlaybackRef.current = true;
     stopAllAudio();
     if (cardIdx > 0) setCardIdx(cardIdx - 1);
   };
   const performRestart = () => {
     setRestartConfirmOpen(false);
+    cancelPlaybackRef.current = true;
     stopAllAudio();
     setVisited(new Set());
     setSpeaking(false);
@@ -261,32 +339,40 @@ export default function BaatcheetViewer({
 
   const visualExplanation = currentCard.visual_explanation;
   const visualPixiCode = visualExplanation?.pixi_code || null;
+  const cardBadge = cardTypeBadge(currentCard.card_type);
 
   return (
-    <div className="baatcheet-viewer" data-card-type={currentCard.card_type}>
-      <div className="baatcheet-viewer__progress">
-        Card {cardIdx + 1} / {totalCards}
-      </div>
-
-      {/* Speaker avatar + name (hidden for visual + summary cards if no speaker) */}
-      {currentCard.speaker && (
-        <div className="baatcheet-viewer__speaker">
-          <SpeakerAvatar speaker={currentCard.speaker} speaking={speaking} />
-          {speakerName && <div className="baatcheet-viewer__speaker-name">{speakerName}</div>}
+    <div
+      className="baatcheet-viewer"
+      data-card-type={currentCard.card_type}
+      // re-key on cardIdx so React replays the slide-fade animation on advance
+      key={`baatcheet-card-${cardIdx}`}
+    >
+      {(cardBadge || (currentCard.speaker && speakerName)) && (
+        <div className="baatcheet-card-head">
+          {cardBadge && (
+            <span className="explanation-card-type">{cardBadge}</span>
+          )}
+          {currentCard.speaker && speakerName && (
+            <div className="baatcheet-speaker-chip" data-speaker={currentCard.speaker}>
+              <SpeakerAvatar speaker={currentCard.speaker} speaking={speaking} />
+              <span className="baatcheet-speaker-chip__name">{speakerName}</span>
+            </div>
+          )}
         </div>
       )}
 
       {currentCard.card_type === 'check_in' && currentCard.check_in ? (
-        <div className="baatcheet-viewer__check-in">
-          {currentCard.title && <h3>{currentCard.title}</h3>}
+        <div className="baatcheet-viewer__body baatcheet-viewer__check-in">
+          {currentCard.title && <h3 className="baatcheet-viewer__title">{currentCard.title}</h3>}
           <CheckInDispatcher
             checkIn={currentCard.check_in}
             onComplete={onCheckInComplete}
           />
         </div>
       ) : currentCard.card_type === 'visual' ? (
-        <div className="baatcheet-viewer__visual">
-          {currentCard.title && <h3>{currentCard.title}</h3>}
+        <div className="baatcheet-viewer__body baatcheet-viewer__visual">
+          {currentCard.title && <h3 className="baatcheet-viewer__title">{currentCard.title}</h3>}
           {visualPixiCode && visualExplanation ? (
             <VisualExplanationComponent
               visual={visualExplanation}
@@ -294,17 +380,15 @@ export default function BaatcheetViewer({
             />
           ) : (
             currentCard.visual_intent && (
-              <div className="baatcheet-viewer__line">
-                <p className="baatcheet-viewer__line-text">{currentCard.visual_intent}</p>
-              </div>
+              <p className="baatcheet-viewer__line-text">{currentCard.visual_intent}</p>
             )
           )}
-          {lineDisplay && (
-            <div className="baatcheet-viewer__line">{lineDisplay}</div>
-          )}
+          {lineDisplay && lineDisplay.split('\n').map((line, i) => (
+            <p key={i} className="baatcheet-viewer__line-text">{line}</p>
+          ))}
         </div>
       ) : (
-        <div className="baatcheet-viewer__line">
+        <div className="baatcheet-viewer__body">
           {currentCard.title && <h3 className="baatcheet-viewer__title">{currentCard.title}</h3>}
           {lineDisplay.split('\n').map((line, i) => (
             <p key={i} className="baatcheet-viewer__line-text">{line}</p>
@@ -313,50 +397,54 @@ export default function BaatcheetViewer({
       )}
 
       {currentCard.card_type !== 'check_in' && (
-        <div className="baatcheet-viewer__nav">
-          <button
-            type="button"
-            className="baatcheet-nav-button"
-            onClick={goPrev}
-            disabled={cardIdx === 0}
-          >
-            ← Back
-          </button>
-          {showRestart && (
+        <div className="explanation-nav">
+          <div className="explanation-nav-row">
             <button
               type="button"
-              className="baatcheet-nav-button baatcheet-nav-button--restart"
-              onClick={handleRestart}
-              title="Restart from the first card"
-              aria-label="Restart from the first card"
+              className="explanation-nav-btn secondary"
+              onClick={goPrev}
+              disabled={cardIdx === 0}
             >
-              ↻ Restart
+              Back
             </button>
-          )}
-          <button
-            type="button"
-            className="baatcheet-nav-button baatcheet-nav-button--primary"
-            onClick={goNext}
-            disabled={cardIdx >= totalCards - 1}
-          >
-            {currentCard.card_type === 'summary' ? 'Done' : 'Next →'}
-          </button>
+            {showRestart && (
+              <button
+                type="button"
+                className="explanation-nav-btn restart"
+                onClick={handleRestart}
+                title="Restart from the first card"
+                aria-label="Restart from the first card"
+              >
+                ↻ Restart
+              </button>
+            )}
+            <button
+              type="button"
+              className="explanation-nav-btn primary"
+              onClick={goNext}
+              disabled={cardIdx >= totalCards - 1}
+            >
+              {currentCard.card_type === 'summary' ? 'Done' : 'Next'}
+            </button>
+          </div>
         </div>
       )}
 
       {/* Restart-only row for check-in cards — Back/Next are gated by the
           activity itself, but a stuck student still needs an escape hatch. */}
       {currentCard.card_type === 'check_in' && cardIdx > 0 && (
-        <div className="baatcheet-viewer__nav baatcheet-viewer__nav--restart-only">
-          <button
-            type="button"
-            className="baatcheet-nav-button baatcheet-nav-button--restart"
-            onClick={handleRestart}
-            title="Restart from the first card"
-            aria-label="Restart from the first card"
-          >
-            ↻ Restart
-          </button>
+        <div className="explanation-nav">
+          <div className="explanation-nav-row">
+            <button
+              type="button"
+              className="explanation-nav-btn restart"
+              onClick={handleRestart}
+              title="Restart from the first card"
+              aria-label="Restart from the first card"
+            >
+              ↻ Restart
+            </button>
+          </div>
         </div>
       )}
 
@@ -371,4 +459,6 @@ export default function BaatcheetViewer({
       />
     </div>
   );
-}
+});
+
+export default BaatcheetViewer;
