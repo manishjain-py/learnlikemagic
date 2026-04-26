@@ -26,8 +26,8 @@
 | 15 | Layer 2 — decouple inputs (key concepts list, no variant A spine) | done |
 | 16 | Layer 3 — refine prompt rewrite (defects + coverage + naturalness) | done |
 | 17 | Unit tests | done (9 new tests, all green) |
-| 18 | Local regen + manual review (Math G4 Ch1 T1) | pending |
-| 19 | PR title/body update to reflect full scope | pending |
+| 18 | Local regen + manual review (Math G4 Ch1 T1) | partial — pipeline ran end-to-end with `review_rounds=1`; final validator caught a stray `=` in `check_in.instruction` so output didn't persist (validator working as designed). Re-run with `review_rounds=2` (balanced default) recommended for clean end-to-end. |
+| 19 | PR title/body update to reflect full scope | done |
 
 ## Updates
 
@@ -36,6 +36,14 @@
 - Plan doc + tracker created.
 - Single-PR strategy locked. All four layers + docs ride on PR #122.
 - Next: principles doc, then Layer 1.
+
+### 2026-04-26 — End-to-end regen attempt (Math G4 Ch1 T1)
+- Ran `service.generate_for_guideline(force=True, review_rounds=1)` on the production topic.
+- Generation pass: 13.5 min, $2.90, 21KB JSON output, claude-opus-4-7 + `--effort max`. New system prompt (with craft directives + exemplars) used as `--append-system-prompt-file`.
+- Refine pass: 25.5 min, $3.81, 17KB JSON output, new refine system prompt used.
+- Final validator (raise_on_fail=True) FAILED on: `card 9: banned pattern in check_in.instruction (/(?<![a-zA-Z])=(?![a-zA-Z])/)` — the LLM left a stray naked `=` sign inside a check_in.instruction. Output not persisted; old dialogue still in DB.
+- Verdict: pipeline is wired correctly end-to-end; validator caught a real defect (working as designed). Single refine round wasn't enough to fully clean the LLM output — a second round (the `thorough` quality default) would have received the validator issue list and corrected it.
+- No re-run executed in this session ($6.71 spent so far). Recommended next step for the editor: regen this topic via the admin UI with `thorough` quality, which runs 2 refine rounds. If similar defects keep slipping past round 1, consider bumping `balanced` baatcheet_dialogue rounds from 1 → 2 in `topic_pipeline_orchestrator.py`.
 
 ### 2026-04-26 — Layers 2 + 3 landed; tests green
 - Generation system prompt rewritten: pedagogy-first framing, CRAFT section with positive directives (no Q+A in same card, examples-before-rules, ≥2 earned aha-moments, Meera arc, banned `{student_name}, your turn now!`, soft real-world examples, no greeting filler), + 1 annotated GOOD exemplar (Halves and Thirds, ~12 cards) + 1 BAD exemplar (~6 cards) showing what to avoid.
