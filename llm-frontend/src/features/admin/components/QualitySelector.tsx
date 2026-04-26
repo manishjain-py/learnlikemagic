@@ -1,10 +1,11 @@
 /**
  * QualitySelector — popover UI for Fast / Balanced / Thorough.
  *
- * Maps to per-stage review_rounds on the backend:
- *   fast      → 0/0/0/0
- *   balanced  → 2/1/1/2
- *   thorough  → 3/2/2/3
+ * Read-only display of per-stage review_rounds (mirrors backend QUALITY_ROUNDS
+ * in topic_pipeline_orchestrator.py). Order: expl / dial / vis / chk / prac.
+ *   fast      → 0 / 0 / 0 / 0 / 0
+ *   balanced  → 2 / 1 / 1 / 1 / 2
+ *   thorough  → 3 / 2 / 2 / 2 / 3
  */
 import React, { useEffect, useRef } from 'react';
 import type { QualityLevel } from '../api/adminApiV2';
@@ -21,19 +22,19 @@ const OPTIONS: QualityOption[] = [
     level: 'fast',
     title: 'Fast',
     subtitle: 'Initial generation only, no review-refine rounds.',
-    rounds: '0 / 0 / 0 / 0',
+    rounds: '0 / 0 / 0 / 0 / 0',
   },
   {
     level: 'balanced',
     title: 'Balanced',
     subtitle: 'Moderate review-refine. Default.',
-    rounds: '2 / 1 / 1 / 2',
+    rounds: '2 / 1 / 1 / 1 / 2',
   },
   {
     level: 'thorough',
     title: 'Thorough',
     subtitle: 'Maximum review-refine. Slower.',
-    rounds: '3 / 2 / 2 / 3',
+    rounds: '3 / 2 / 2 / 2 / 3',
   },
 ];
 
@@ -102,7 +103,7 @@ const QualitySelector: React.FC<QualitySelectorProps> = ({
           padding: '4px 6px',
         }}
       >
-        Quality (expl / vis / chk / prac rounds)
+        Quality (expl / dial / vis / chk / prac rounds)
       </div>
       {OPTIONS.map((opt) => (
         <button

@@ -49,6 +49,7 @@ def extract_toc_from_images(
             api_key=settings.openai_api_key,
             provider=config["provider"],
             model_id=config["model_id"],
+            reasoning_effort=config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )

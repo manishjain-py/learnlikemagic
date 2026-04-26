@@ -4,7 +4,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { getLLMConfigs, updateLLMConfig, getLLMConfigOptions } from '../api/adminApi';
-import { LLMConfig, LLMConfigOptions } from '../types';
+import {
+  LLMConfig,
+  LLMConfigOptions,
+  ReasoningEffort,
+  REASONING_EFFORT_OPTIONS,
+} from '../types';
 
 const LLMConfigPage: React.FC = () => {
   const [configs, setConfigs] = useState<LLMConfig[]>([]);
@@ -12,8 +17,10 @@ const LLMConfigPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Track edits per row: componentKey → {provider, model_id}
-  const [edits, setEdits] = useState<Record<string, { provider: string; model_id: string }>>({});
+  // Track edits per row: componentKey → {provider, model_id, reasoning_effort}
+  const [edits, setEdits] = useState<
+    Record<string, { provider: string; model_id: string; reasoning_effort: ReasoningEffort }>
+  >({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [saveSuccess, setSaveSuccess] = useState<Record<string, boolean>>({});
 
@@ -39,22 +46,34 @@ const LLMConfigPage: React.FC = () => {
   };
 
   const getEditValue = (config: LLMConfig) => {
-    return edits[config.component_key] || { provider: config.provider, model_id: config.model_id };
+    return (
+      edits[config.component_key] || {
+        provider: config.provider,
+        model_id: config.model_id,
+        reasoning_effort: config.reasoning_effort,
+      }
+    );
   };
 
   const hasChanges = (config: LLMConfig) => {
     const edit = edits[config.component_key];
     if (!edit) return false;
-    return edit.provider !== config.provider || edit.model_id !== config.model_id;
+    return (
+      edit.provider !== config.provider ||
+      edit.model_id !== config.model_id ||
+      edit.reasoning_effort !== config.reasoning_effort
+    );
   };
 
   const handleProviderChange = (config: LLMConfig, newProvider: string) => {
     const models = options[newProvider] || [];
+    const current = getEditValue(config);
     setEdits(prev => ({
       ...prev,
       [config.component_key]: {
         provider: newProvider,
         model_id: models[0] || '',
+        reasoning_effort: current.reasoning_effort,
       },
     }));
   };
@@ -67,12 +86,25 @@ const LLMConfigPage: React.FC = () => {
     }));
   };
 
+  const handleEffortChange = (config: LLMConfig, newEffort: ReasoningEffort) => {
+    const current = getEditValue(config);
+    setEdits(prev => ({
+      ...prev,
+      [config.component_key]: { ...current, reasoning_effort: newEffort },
+    }));
+  };
+
   const handleSave = async (config: LLMConfig) => {
     const edit = getEditValue(config);
     setSaving(prev => ({ ...prev, [config.component_key]: true }));
     setSaveSuccess(prev => ({ ...prev, [config.component_key]: false }));
     try {
-      await updateLLMConfig(config.component_key, edit.provider, edit.model_id);
+      await updateLLMConfig(
+        config.component_key,
+        edit.provider,
+        edit.model_id,
+        edit.reasoning_effort,
+      );
       // Clear edit state and reload
       setEdits(prev => {
         const next = { ...prev };
@@ -128,6 +160,7 @@ const LLMConfigPage: React.FC = () => {
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Description</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Provider</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Model</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Reasoning</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Updated</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', fontSize: '14px', color: '#374151' }}></th>
               </tr>
@@ -178,6 +211,25 @@ const LLMConfigPage: React.FC = () => {
                       >
                         {(options[edit.provider] || []).map(m => (
                           <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <select
+                        value={edit.reasoning_effort}
+                        onChange={(e) =>
+                          handleEffortChange(config, e.target.value as ReasoningEffort)
+                        }
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '4px',
+                          border: '1px solid #D1D5DB',
+                          fontSize: '13px',
+                          backgroundColor: changed ? '#FEF9C3' : 'white',
+                        }}
+                      >
+                        {REASONING_EFFORT_OPTIONS.map(e => (
+                          <option key={e} value={e}>{e}</option>
                         ))}
                       </select>
                     </td>

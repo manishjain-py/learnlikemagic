@@ -20,14 +20,18 @@ class LLMConfigService:
         self.repo = LLMConfigRepository(db)
 
     def get_config(self, component_key: str) -> dict:
-        """Return {provider, model_id} for a component. Raises if missing."""
+        """Return {provider, model_id, reasoning_effort} for a component. Raises if missing."""
         row = self.repo.get_by_key(component_key)
         if not row:
             raise LLMConfigNotFoundError(
                 f"LLM config not found for component '{component_key}'. "
                 f"Add it via /admin/llm-config or run 'python db.py --migrate' to seed defaults."
             )
-        return {"provider": row.provider, "model_id": row.model_id}
+        return {
+            "provider": row.provider,
+            "model_id": row.model_id,
+            "reasoning_effort": row.reasoning_effort or "max",
+        }
 
     def get_all_configs(self) -> list[dict]:
         """Return all configs as dicts."""
@@ -37,6 +41,7 @@ class LLMConfigService:
                 "component_key": r.component_key,
                 "provider": r.provider,
                 "model_id": r.model_id,
+                "reasoning_effort": r.reasoning_effort or "max",
                 "description": r.description,
                 "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 "updated_by": r.updated_by,
@@ -49,14 +54,19 @@ class LLMConfigService:
         component_key: str,
         provider: str,
         model_id: str,
+        reasoning_effort: str = "max",
         updated_by: Optional[str] = None,
     ) -> dict:
-        """Update provider+model for a component. Returns the updated config."""
-        row = self.repo.upsert(component_key, provider, model_id, updated_by)
+        """Update provider+model+reasoning_effort for a component."""
+        row = self.repo.upsert(
+            component_key, provider, model_id,
+            reasoning_effort=reasoning_effort, updated_by=updated_by,
+        )
         return {
             "component_key": row.component_key,
             "provider": row.provider,
             "model_id": row.model_id,
+            "reasoning_effort": row.reasoning_effort or "max",
             "description": row.description,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             "updated_by": row.updated_by,

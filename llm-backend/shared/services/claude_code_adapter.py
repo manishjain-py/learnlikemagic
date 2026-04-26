@@ -122,9 +122,17 @@ class ClaudeCodeAdapter:
         # rejections. We want Claude Code to use its own auth.
         clean_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
-        # Map reasoning_effort to Claude CLI --effort flag (default: high)
-        effective_effort = reasoning_effort if reasoning_effort and reasoning_effort != "none" else "high"
-        effort_map = {"low": "low", "medium": "medium", "high": "high", "xhigh": "max"}
+        # Map reasoning_effort to Claude CLI --effort flag.
+        # CLI accepts: low, medium, high, xhigh, max (max is the top tier).
+        # Default fallback is "max" — admin tunes per-component via llm_config.
+        effective_effort = reasoning_effort if reasoning_effort and reasoning_effort != "none" else "max"
+        effort_map = {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max",
+        }
         cli_effort = effort_map.get(effective_effort, effective_effort)
         cmd.extend(["--effort", cli_effort])
 

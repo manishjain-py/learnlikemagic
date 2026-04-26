@@ -260,6 +260,7 @@ class LLMConfig(Base):
     provider = Column(String, nullable=False)           # "openai", "anthropic", "google"
     model_id = Column(String, nullable=False)           # "gpt-5.2", "claude-opus-4-6", etc.
     description = Column(String, nullable=True)         # Human-readable description
+    reasoning_effort = Column(String, nullable=False, default="max")  # low|medium|high|xhigh|max
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String, nullable=True)
 

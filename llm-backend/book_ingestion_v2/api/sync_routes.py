@@ -1112,6 +1112,7 @@ def _run_audio_text_review(
             api_key=settings.openai_api_key,
             provider=config["provider"],
             model_id=config["model_id"],
+            reasoning_effort=config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )
@@ -1199,6 +1200,7 @@ def _run_explanation_generation(
         api_key=settings.openai_api_key,
         provider=config["provider"],
         model_id=config["model_id"],
+        reasoning_effort=config["reasoning_effort"],
         gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
         anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
     )
@@ -1301,6 +1303,7 @@ def _run_visual_enrichment(
         api_key=settings.openai_api_key,
         provider=config["provider"],
         model_id=config["model_id"],
+        reasoning_effort=config["reasoning_effort"],
         gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
         anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
     )
@@ -1843,6 +1846,7 @@ def _run_check_in_enrichment(
         api_key=settings.openai_api_key,
         provider=config["provider"],
         model_id=config["model_id"],
+        reasoning_effort=config["reasoning_effort"],
         gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
         anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
     )
@@ -2106,6 +2110,7 @@ def _run_practice_bank_generation(
         api_key=settings.openai_api_key,
         provider=config["provider"],
         model_id=config["model_id"],
+        reasoning_effort=config["reasoning_effort"],
         gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
         anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
     )
@@ -2316,6 +2321,7 @@ def _run_refresher_generation(
         api_key=settings.openai_api_key,
         provider=config["provider"],
         model_id=config["model_id"],
+        reasoning_effort=config["reasoning_effort"],
         gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
         anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
     )
@@ -2496,6 +2502,7 @@ def _run_baatcheet_dialogue_generation(
             api_key=settings.openai_api_key,
             provider=config["provider"],
             model_id=config["model_id"],
+            reasoning_effort=config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )
@@ -2617,6 +2624,7 @@ def _run_baatcheet_visual_enrichment(
             api_key=settings.openai_api_key,
             provider=config["provider"],
             model_id=config["model_id"],
+            reasoning_effort=config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )
@@ -2699,6 +2707,7 @@ def _run_baatcheet_audio_review(
             api_key=settings.openai_api_key,
             provider=config["provider"],
             model_id=config["model_id"],
+            reasoning_effort=config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )

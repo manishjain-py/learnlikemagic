@@ -30,6 +30,7 @@ class LLMConfigRepository:
         component_key: str,
         provider: str,
         model_id: str,
+        reasoning_effort: str = "max",
         updated_by: Optional[str] = None,
     ) -> LLMConfig:
         """Insert or update a config row."""
@@ -37,6 +38,7 @@ class LLMConfigRepository:
         if row:
             row.provider = provider
             row.model_id = model_id
+            row.reasoning_effort = reasoning_effort
             row.updated_by = updated_by
             row.updated_at = datetime.utcnow()
         else:
@@ -44,6 +46,7 @@ class LLMConfigRepository:
                 component_key=component_key,
                 provider=provider,
                 model_id=model_id,
+                reasoning_effort=reasoning_effort,
                 updated_by=updated_by,
             )
             self.db.add(row)

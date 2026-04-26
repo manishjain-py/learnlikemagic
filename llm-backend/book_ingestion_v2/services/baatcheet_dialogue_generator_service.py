@@ -445,9 +445,10 @@ class BaatcheetDialogueGeneratorService:
         system_file = (
             _GENERATION_SYSTEM_FILE if self.llm.provider == "claude_code" else None
         )
+        # reasoning_effort intentionally omitted — LLMService uses the
+        # per-component default from llm_config (admin-tunable).
         response = self.llm.call(
             prompt=prompt,
-            reasoning_effort="high",
             json_schema=None if system_file else self._generation_schema,
             schema_name="DialogueGenerationOutput",
             system_prompt_file=system_file,
@@ -471,7 +472,6 @@ class BaatcheetDialogueGeneratorService:
         )
         response = self.llm.call(
             prompt=prompt,
-            reasoning_effort="high",
             json_schema=None if system_file else self._generation_schema,
             schema_name="DialogueGenerationOutput",
             system_prompt_file=system_file,
