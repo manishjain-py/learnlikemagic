@@ -31,6 +31,7 @@ import SpeakerAvatar from '../baatcheet/SpeakerAvatar';
 import CheckInDispatcher, {
   type CheckInActivityResult,
 } from '../CheckInDispatcher';
+import ConfirmDialog from '../ConfirmDialog';
 import VisualExplanationComponent from '../VisualExplanation';
 
 interface Props {
@@ -69,6 +70,7 @@ export default function BaatcheetViewer({
   const [visited, setVisited] = useState<Set<number>>(() => new Set());
   const [speaking, setSpeaking] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const debounceRef = useRef<number | null>(null);
 
@@ -225,6 +227,19 @@ export default function BaatcheetViewer({
     stopAllAudio();
     if (cardIdx > 0) setCardIdx(cardIdx - 1);
   };
+  const performRestart = () => {
+    setRestartConfirmOpen(false);
+    stopAllAudio();
+    setVisited(new Set());
+    setSpeaking(false);
+    setCompleted(false);
+    setCardIdx(0);
+    // Server sync is handled by the cardIdx-change effect — no explicit
+    // persistProgress call needed here.
+  };
+  const handleRestart = () => setRestartConfirmOpen(true);
+  const showRestart =
+    cardIdx > 0 && currentCard?.card_type !== 'summary';
 
   const onCheckInComplete = (_result: CheckInActivityResult) => {
     // Auto-advance after the activity reports completion.
@@ -307,6 +322,17 @@ export default function BaatcheetViewer({
           >
             ← Back
           </button>
+          {showRestart && (
+            <button
+              type="button"
+              className="baatcheet-nav-button baatcheet-nav-button--restart"
+              onClick={handleRestart}
+              title="Restart from the first card"
+              aria-label="Restart from the first card"
+            >
+              ↻ Restart
+            </button>
+          )}
           <button
             type="button"
             className="baatcheet-nav-button baatcheet-nav-button--primary"
@@ -317,6 +343,32 @@ export default function BaatcheetViewer({
           </button>
         </div>
       )}
+
+      {/* Restart-only row for check-in cards — Back/Next are gated by the
+          activity itself, but a stuck student still needs an escape hatch. */}
+      {currentCard.card_type === 'check_in' && cardIdx > 0 && (
+        <div className="baatcheet-viewer__nav baatcheet-viewer__nav--restart-only">
+          <button
+            type="button"
+            className="baatcheet-nav-button baatcheet-nav-button--restart"
+            onClick={handleRestart}
+            title="Restart from the first card"
+            aria-label="Restart from the first card"
+          >
+            ↻ Restart
+          </button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={restartConfirmOpen}
+        title="Restart from the beginning?"
+        message="You'll go back to the first card. Your progress on this topic stays saved."
+        confirmLabel="Restart"
+        cancelLabel="Keep going"
+        onConfirm={performRestart}
+        onCancel={() => setRestartConfirmOpen(false)}
+      />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   submitFeedback,
   cardAction,
   simplifyCard,
+  postCardProgress,
   TutorWebSocket,
   Turn,
   ExplanationCard,
@@ -25,6 +26,7 @@ import {
   Personalization,
 } from '../api';
 import BaatcheetViewer from '../components/teach/BaatcheetViewer';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -192,6 +194,11 @@ export default function ChatSession() {
   const [isFeedbackTranscribing, setIsFeedbackTranscribing] = useState(false);
   const isSpeaking = playingSlideId !== null;
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
+  // Bumped by handleRestartExplain to force-remount slides so
+  // TypewriterMarkdown's component-internal `started` / `completedRef` state
+  // is cleared and the typewriter + audio replay from scratch.
+  const [explainRestartEpoch, setExplainRestartEpoch] = useState(0);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const focusTrackRef = useRef<HTMLDivElement>(null);
   const prevSlidesLen = useRef(0);
 
@@ -1241,6 +1248,43 @@ export default function ChatSession() {
     navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
   };
 
+  const handleRestartExplain = () => setRestartConfirmOpen(true);
+
+  const performRestartExplain = () => {
+    setRestartConfirmOpen(false);
+    stopAllAudio();
+    stopAudio();
+    setPlayingSlideId(null);
+    setRevealedSlides(new Set());
+    setTypewriterSkip(new Set());
+    setFullyReplayed(new Set());
+    setCompletedCheckIns(new Set());
+    setCurrentSlideIdx(0);
+    // Mirror the reset in cardPhaseState so any code reading
+    // current_card_idx (today: none, but defensive) sees 0.
+    setCardPhaseState((prev) =>
+      prev ? { ...prev, current_card_idx: 0 } : prev,
+    );
+    // Force-remount slide subtrees: TypewriterMarkdown keeps `started` +
+    // `completedRef` in component-internal state. Without a key bump, an
+    // already-completed card returns its full markdown via the early-return
+    // at TypewriterMarkdown.tsx:415-424 and never re-fires onRevealComplete,
+    // leaving Next disabled forever.
+    setExplainRestartEpoch((e) => e + 1);
+    if (sessionId) {
+      localStorage.setItem(`slide-pos-${sessionId}`, '0');
+      // The server doesn't read this for resume today (Explain uses
+      // localStorage for resume position; see comment near session
+      // hydration). We still write it so server state is consistent if/when
+      // Explain migrates to /card-progress for resume.
+      postCardProgress(sessionId, {
+        phase: 'card_phase',
+        card_idx: 0,
+        mark_complete: false,
+      }).catch((err) => console.warn('postCardProgress failed', err));
+    }
+  };
+
   const handleSimplifyCard = async () => {
     if (!sessionId || simplifyLoading) return;
     const cardIdx = currentSlideIdx;
@@ -1555,7 +1599,7 @@ export default function ChatSession() {
                 >
                   {carouselSlides.map((slide, i) => (
                     <div
-                      key={slide.id}
+                      key={`${slide.id}-r${explainRestartEpoch}`}
                       className="focus-slide"
                       onClick={() => {
                         // Tap to skip typewriter on explanation cards
@@ -1761,6 +1805,17 @@ export default function ChatSession() {
                       >
                         Back
                       </button>
+                      {currentSlideIdx > 0 && (
+                        <button
+                          className="explanation-nav-btn restart"
+                          onClick={handleRestartExplain}
+                          disabled={simplifyLoading || isAnimating}
+                          title="Restart from the first card"
+                          aria-label="Restart from the first card"
+                        >
+                          ↻ Restart
+                        </button>
+                      )}
                       <button
                         className="explanation-nav-btn primary"
                         onClick={() => {
@@ -1806,6 +1861,15 @@ export default function ChatSession() {
                           {variantsShown >= (cardPhaseState?.available_variants ?? 0) ? "I still need help" : "Try a different approach"}
                         </button>
                       )}
+                      <button
+                        className="explanation-nav-btn restart"
+                        onClick={handleRestartExplain}
+                        disabled={cardActionLoading || simplifyLoading}
+                        title="Restart from the first card"
+                        aria-label="Restart from the first card"
+                      >
+                        ↻ Restart from first card
+                      </button>
                     </div>
                   </div>
                 )
@@ -1938,6 +2002,16 @@ export default function ChatSession() {
           onClose={() => setDevToolsOpen(false)}
         />
       )}
+      <ConfirmDialog
+        open={restartConfirmOpen}
+        title="Restart from the beginning?"
+        message="You'll go back to the first card. Your progress on this topic stays saved."
+        confirmLabel="Restart"
+        cancelLabel="Keep going"
+        onConfirm={performRestartExplain}
+        onCancel={() => setRestartConfirmOpen(false)}
+      />
+
       {/* Feedback Modal */}
       {feedbackModalOpen && (
         <div className="feedback-modal-backdrop" onClick={() => !feedbackSubmitting && setFeedbackModalOpen(false)}>
