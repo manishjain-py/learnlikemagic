@@ -8712,7 +8712,9 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   background: linear-gradient(180deg, #FBF2D8 0%, var(--parchment) 100%);
 }
 
-.baatcheet-nav-button--restart {
+/* Two-class specificity so the mobile `.baatcheet-nav-button` override later
+   in the cascade doesn't reset our padding/font on small screens. */
+.baatcheet-nav-button.baatcheet-nav-button--restart {
   flex: 0 0 auto;
   padding: 12px 14px;
   font-size: var(--fs-sm);

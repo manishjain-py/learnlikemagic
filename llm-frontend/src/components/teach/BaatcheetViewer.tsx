@@ -232,8 +232,11 @@ export default function BaatcheetViewer({
     setSpeaking(false);
     setCompleted(false);
     setCardIdx(0);
-    persistProgress(0, false);
+    // Server sync is handled by the cardIdx-change effect — no explicit
+    // persistProgress call needed here.
   };
+  const showRestart =
+    cardIdx > 0 && currentCard?.card_type !== 'summary';
 
   const onCheckInComplete = (_result: CheckInActivityResult) => {
     // Auto-advance after the activity reports completion.
@@ -316,7 +319,7 @@ export default function BaatcheetViewer({
           >
             ← Back
           </button>
-          {cardIdx > 0 && (
+          {showRestart && (
             <button
               type="button"
               className="baatcheet-nav-button baatcheet-nav-button--restart"
@@ -334,6 +337,22 @@ export default function BaatcheetViewer({
             disabled={cardIdx >= totalCards - 1}
           >
             {currentCard.card_type === 'summary' ? 'Done' : 'Next →'}
+          </button>
+        </div>
+      )}
+
+      {/* Restart-only row for check-in cards — Back/Next are gated by the
+          activity itself, but a stuck student still needs an escape hatch. */}
+      {currentCard.card_type === 'check_in' && cardIdx > 0 && (
+        <div className="baatcheet-viewer__nav baatcheet-viewer__nav--restart-only">
+          <button
+            type="button"
+            className="baatcheet-nav-button baatcheet-nav-button--restart"
+            onClick={handleRestart}
+            title="Restart from the first card"
+            aria-label="Restart from the first card"
+          >
+            ↻ Restart
           </button>
         </div>
       )}

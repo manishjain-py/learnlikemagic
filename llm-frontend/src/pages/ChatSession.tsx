@@ -193,6 +193,10 @@ export default function ChatSession() {
   const [isFeedbackTranscribing, setIsFeedbackTranscribing] = useState(false);
   const isSpeaking = playingSlideId !== null;
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
+  // Bumped by handleRestartExplain to force-remount slides so
+  // TypewriterMarkdown's component-internal `started` / `completedRef` state
+  // is cleared and the typewriter + audio replay from scratch.
+  const [explainRestartEpoch, setExplainRestartEpoch] = useState(0);
   const focusTrackRef = useRef<HTMLDivElement>(null);
   const prevSlidesLen = useRef(0);
 
@@ -1252,8 +1256,23 @@ export default function ChatSession() {
     setFullyReplayed(new Set());
     setCompletedCheckIns(new Set());
     setCurrentSlideIdx(0);
+    // Mirror the reset in cardPhaseState so any code reading
+    // current_card_idx (today: none, but defensive) sees 0.
+    setCardPhaseState((prev) =>
+      prev ? { ...prev, current_card_idx: 0 } : prev,
+    );
+    // Force-remount slide subtrees: TypewriterMarkdown keeps `started` +
+    // `completedRef` in component-internal state. Without a key bump, an
+    // already-completed card returns its full markdown via the early-return
+    // at TypewriterMarkdown.tsx:415-424 and never re-fires onRevealComplete,
+    // leaving Next disabled forever.
+    setExplainRestartEpoch((e) => e + 1);
     if (sessionId) {
       localStorage.setItem(`slide-pos-${sessionId}`, '0');
+      // The server doesn't read this for resume today (Explain uses
+      // localStorage for resume position; see comment near session
+      // hydration). We still write it so server state is consistent if/when
+      // Explain migrates to /card-progress for resume.
       postCardProgress(sessionId, {
         phase: 'card_phase',
         card_idx: 0,
@@ -1576,7 +1595,7 @@ export default function ChatSession() {
                 >
                   {carouselSlides.map((slide, i) => (
                     <div
-                      key={slide.id}
+                      key={`${slide.id}-r${explainRestartEpoch}`}
                       className="focus-slide"
                       onClick={() => {
                         // Tap to skip typewriter on explanation cards
