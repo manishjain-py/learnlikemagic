@@ -857,6 +857,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             api_key=settings.openai_api_key,
             provider=tutor_config["provider"],
             model_id=tutor_config["model_id"],
+            reasoning_effort=tutor_config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )
