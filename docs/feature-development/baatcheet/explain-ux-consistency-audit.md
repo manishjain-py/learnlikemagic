@@ -70,7 +70,7 @@ Not wrong to show a speaker — Baatcheet *is* a dialogue. But pixel real estate
 | | Explain | Baatcheet |
 |---|---|---|
 | Position | Fixed-feel bottom rail + safe-area | Inside the card, scrolls with content |
-| Primary CTA | Indigo gradient `#667eea → #764ba2`, 4px bottom-press | Cream parchment `var(--parchment) → #EDE1BF` |
+| Primary CTA | Indigo vertical gradient `#6C7DE8 → #5B6FE0` (via `--cb-action-primary`), pill shadow + `translateY(1px)` on press (App.css:4404-4414) | Cream parchment `var(--parchment) → #EDE1BF` |
 | Secondary | Grey pill `#F0F0F0` | Translucent on-board, **1.5px dashed** border |
 | Restart | Same row, ghost variant | Flex 0 0 auto, narrower, 14px, 0.85 opacity |
 | Escape hatch | ✅ "I didn't understand" | ❌ none — student gets stuck |
@@ -129,7 +129,7 @@ The one Baatcheet-specific element worth preserving — and shrinking — is the
 ### P0 — Same nav
 
 4. Adopt Explain top nav: home + breadcrumb + audio-replay (`.focus-audio-btn`) + tabular-nums counter `1/8`. Drop in-card "Card 3 / 8".
-5. Adopt Explain bottom nav: same `.explanation-nav-btn` for Back/Restart/Next, indigo-gradient primary, 4px-bottom-border press. Pick **one** primary CTA color across the app — keep indigo (established "forward" signal).
+5. Adopt Explain bottom nav: same `.explanation-nav-btn` for Back/Restart/Next. Primary uses the chalkboard indigo via `--cb-action-primary` (`#5B6FE0`, gradient start `#6C7DE8`), pill shadow + `translateY(1px)` press — **reach for the token, not raw hex**. Note: `--color-primary` (`#667eea`) and `--color-accent` (`#764ba2`) are the legacy brand gradient still used on welcome/summary surfaces; the chalkboard nav is its own indigo. Pick one across the chalkboard surface — keep `--cb-action-primary`. (Separate cleanup: align summary card CTA to the same token so end-of-deck doesn't pop into the brand gradient.)
 6. Add **"I didn't understand"** to Baatcheet — wires to tutor-agent simplification, same UX as Explain.
 
 ### P1 — Same motion
