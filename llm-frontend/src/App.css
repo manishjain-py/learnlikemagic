@@ -8592,24 +8592,36 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 
 /* ── BaatcheetViewer — content slide on the shared chalkboard surface ──── */
 /* The .focus-carousel parent (provided by ChatSession) supplies the chalkboard
-   green, vignette, and chalk doodles. The viewer itself acts as the slide
-   that scrolls and holds head + body + bottom-nav as siblings. */
+   green, vignette, and chalk doodles. The viewer is a flex column that holds
+   the carousel track + bottom nav as siblings. Each card is a .focus-slide
+   inside the track — it owns its own scroll and padding. */
 
 .baatcheet-viewer {
   position: relative;
   flex: 1;
   width: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 24px 20px 32px;
+  min-height: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
   color: var(--chalk-white);
   font-family: var(--font-body);
   z-index: 1;  /* above .focus-carousel chalk-doodle overlays */
-  animation: baatcheet-card-fade-in 250ms ease-out;
+}
+
+.baatcheet-viewer .focus-track-container {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+/* Per-slide chalk surface — sits on the chalkboard via inheritance from
+   .baatcheet-viewer. Layout (flex 0 0 100%, scroll, padding) comes from the
+   shared .focus-slide rule. */
+.baatcheet-slide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
 }
 
 .baatcheet-viewer--empty {
@@ -8677,6 +8689,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
+/* Fallback prose line — used only on visual cards with no pixi_code, where
+   visual_intent is shown as a plain paragraph. Dialogue lines flow through
+   TypewriterMarkdown's spotlight and inherit chalk styling from
+   .chalkboard-active .focus-tutor-msg. */
 .baatcheet-viewer__line-text {
   font-family: var(--font-reading);
   font-size: var(--type-body-reading);
@@ -8684,9 +8700,6 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   letter-spacing: 0.005em;
   color: var(--chalk-white);
   margin: 0;
-}
-.baatcheet-viewer__line-text + .baatcheet-viewer__line-text {
-  margin-top: var(--sp-3);
 }
 
 /* Check-in body — layout only; the dispatcher provides the activity widget */
@@ -8708,15 +8721,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   text-align: center;
 }
 
-/* Card advance: lightweight fade + small slide-in (full translateX carousel
-   would require all cards to mount at once — deferred). Keyed on cardIdx
-   via React key on the wrapper, so the animation replays on advance. */
-@keyframes baatcheet-card-fade-in {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
+/* Card advance is now driven by the shared .focus-track translateX (300ms
+   ease-out) — every card mounts in DOM, the track shifts to bring the active
+   one into view. See .focus-track in §Focus Carousel. */
 @media (prefers-reduced-motion: reduce) {
-  .baatcheet-viewer { animation: none; }
+  .baatcheet-viewer .focus-track {
+    transition: none !important;
+  }
 }
 
 
@@ -8792,7 +8803,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   .chalkboard-active .mode-card-title {
     font-size: var(--fs-lg);
   }
-  .baatcheet-viewer {
+  .baatcheet-viewer .focus-slide {
     padding: 20px 16px 28px;
   }
   .baatcheet-viewer__line-text {
