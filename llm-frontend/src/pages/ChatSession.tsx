@@ -26,6 +26,7 @@ import {
   Personalization,
 } from '../api';
 import BaatcheetViewer from '../components/teach/BaatcheetViewer';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
 import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
@@ -197,6 +198,7 @@ export default function ChatSession() {
   // TypewriterMarkdown's component-internal `started` / `completedRef` state
   // is cleared and the typewriter + audio replay from scratch.
   const [explainRestartEpoch, setExplainRestartEpoch] = useState(0);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const focusTrackRef = useRef<HTMLDivElement>(null);
   const prevSlidesLen = useRef(0);
 
@@ -1246,8 +1248,10 @@ export default function ChatSession() {
     navigate(`/learn/${encodeURIComponent(subject)}/${encodeURIComponent(chapter)}/${encodeURIComponent(topic)}`);
   };
 
-  const handleRestartExplain = () => {
-    if (!window.confirm('Restart from the first card?')) return;
+  const handleRestartExplain = () => setRestartConfirmOpen(true);
+
+  const performRestartExplain = () => {
+    setRestartConfirmOpen(false);
     stopAllAudio();
     stopAudio();
     setPlayingSlideId(null);
@@ -1998,6 +2002,16 @@ export default function ChatSession() {
           onClose={() => setDevToolsOpen(false)}
         />
       )}
+      <ConfirmDialog
+        open={restartConfirmOpen}
+        title="Restart from the beginning?"
+        message="You'll go back to the first card. Your progress on this topic stays saved."
+        confirmLabel="Restart"
+        cancelLabel="Keep going"
+        onConfirm={performRestartExplain}
+        onCancel={() => setRestartConfirmOpen(false)}
+      />
+
       {/* Feedback Modal */}
       {feedbackModalOpen && (
         <div className="feedback-modal-backdrop" onClick={() => !feedbackSubmitting && setFeedbackModalOpen(false)}>
