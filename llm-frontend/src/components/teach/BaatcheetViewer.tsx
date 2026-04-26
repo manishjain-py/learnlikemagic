@@ -31,7 +31,6 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -245,14 +244,35 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
         URL.revokeObjectURL(url);
       });
 
+      // `speaking` stays true through the whole card delivery, not per-line —
+      // toggling it between lines would flicker the parent's audio button
+      // every ~1s (audio end → 900ms TW transition + word typing → next audio
+      // start). Cleared by markRevealed / cardIdx-change / stopAudio /
+      // performRestart.
       setSpeaking(true);
       await new Promise<void>((resolve) => {
-        audio.addEventListener('ended', () => resolve(), { once: true });
-        audio.addEventListener('error', () => resolve(), { once: true });
+        let resolved = false;
+        const done = () => {
+          if (resolved) return;
+          resolved = true;
+          window.clearTimeout(safetyTimer);
+          resolve();
+        };
+        // 12s inner safety — keeps us under TypewriterMarkdown's 15s
+        // onBlockTyped timeout so TW doesn't advance to the next line while
+        // this audio is still playing (which would overlap the next line's
+        // audio). Pausing here triggers the 'pause' listener below, which
+        // calls done() — `resolved` guards re-entry.
+        const safetyTimer = window.setTimeout(() => {
+          try { audio.pause(); } catch { /* ignore */ }
+          done();
+        }, 12_000);
+        audio.addEventListener('ended', done, { once: true });
+        audio.addEventListener('error', done, { once: true });
         // 'pause' fires when stopAllAudio() pauses this line — without it the
         // promise hangs and the typewriter waits forever.
-        audio.addEventListener('pause', () => resolve(), { once: true });
-        void audio.play().catch(() => resolve());
+        audio.addEventListener('pause', done, { once: true });
+        void audio.play().catch(done);
       });
 
       unregister();
