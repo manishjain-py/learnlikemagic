@@ -4,6 +4,8 @@ How we author conversational teaching dialogues for Baatcheet — the pre-script
 
 Pairs with `interactive-teaching.md` (live tutoring), `how-to-explain.md` (variant A explanations), `easy-english.md` (language).
 
+**Visual chrome** (chalkboard surface, top nav, bottom rail, button styling, motion) is inherited from Explain — see `typography.md` §4 and `ux-design.md`. This doc covers content authoring only.
+
 ## 1. Pedagogy First
 
 The dialogue's primary job is teaching — discovery rhythm, scaffolded misconception correction, examples-before-rules. Naturalness is a quality bar (the conversation must not read stilted) but never the destination. When pedagogy and natural feel conflict, pedagogy wins.

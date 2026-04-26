@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, useLocation, useOutletContext } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { debugLog } from '../debugLog';
@@ -25,7 +25,10 @@ import {
   DialogueCard,
   Personalization,
 } from '../api';
-import BaatcheetViewer from '../components/teach/BaatcheetViewer';
+import BaatcheetViewer, {
+  type BaatcheetViewerHandle,
+  type BaatcheetViewerProgress,
+} from '../components/teach/BaatcheetViewer';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
@@ -146,6 +149,23 @@ export default function ChatSession() {
   const [dialogueCards, setDialogueCards] = useState<DialogueCard[] | null>(null);
   const [dialoguePersonalization, setDialoguePersonalization] = useState<Personalization | null>(null);
   const [dialogueInitialIdx, setDialogueInitialIdx] = useState(0);
+  // Baatcheet progress mirrored from BaatcheetViewer so the top-nav audio
+  // button + counter render in the same shell as Explain.
+  const baatcheetRef = useRef<BaatcheetViewerHandle>(null);
+  const [baatcheetProgress, setBaatcheetProgress] = useState<BaatcheetViewerProgress>({
+    cardIdx: 0, totalCards: 0, speaking: false,
+  });
+  const handleBaatcheetProgress = useCallback((p: BaatcheetViewerProgress) => {
+    setBaatcheetProgress(p);
+  }, []);
+  const handleBaatcheetAudioToggle = useCallback(() => {
+    if (!baatcheetRef.current) return;
+    if (baatcheetProgress.speaking) {
+      baatcheetRef.current.stopAudio();
+    } else {
+      baatcheetRef.current.replayCurrent();
+    }
+  }, [baatcheetProgress.speaking]);
   const [cardPhaseState, setCardPhaseState] = useState<CardPhaseDTO | null>(null);
   const [cardActionLoading, setCardActionLoading] = useState(false);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
@@ -1387,21 +1407,86 @@ export default function ChatSession() {
         </div>
       );
     }
+    const baatcheetCardCount = baatcheetProgress.totalCards;
     return (
-      <div className="app baatcheet-active">
-        <BaatcheetViewer
-          sessionId={sessionId || ''}
-          cards={dialogueCards}
-          personalization={dialoguePersonalization}
-          initialCardIdx={dialogueInitialIdx}
-          onComplete={(info) => {
-            setIsComplete(true);
-            setTeachMeComplete(true);
-            setTeachMeConceptsCovered(info.concepts_covered || []);
-            setTeachMeGuidelineId(info.guideline_id || null);
-            if (info.coverage != null) setCoverage(info.coverage);
-          }}
-        />
+      <div className="app chalkboard-active">
+        <nav className="nav-bar">
+          <button className="nav-home-btn" onClick={() => navigate('/learn')} aria-label="Home">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+
+          <span className="nav-center nav-breadcrumb">
+            {subject && <>{subject}</>}
+            {chapter && <> &rsaquo; {chapter}</>}
+            {topic && <> &rsaquo; {topic}</>}
+          </span>
+
+          <div className="nav-actions">
+            {sessionId && !isComplete && (
+              <button
+                onClick={() => setFeedbackModalOpen(true)}
+                className="nav-action-btn feedback-btn"
+                disabled={feedbackCount >= 3}
+                title={feedbackCount >= 3 ? 'Feedback limit reached' : 'Share feedback'}
+              >
+                Feedback
+              </button>
+            )}
+            {baatcheetCardCount > 0 && (
+              <>
+                <button
+                  className={`focus-audio-btn${baatcheetProgress.speaking ? ' playing' : ''}`}
+                  onClick={handleBaatcheetAudioToggle}
+                  aria-label={baatcheetProgress.speaking ? 'Stop audio' : 'Replay audio'}
+                  title={baatcheetProgress.speaking ? 'Stop audio' : 'Replay audio'}
+                >
+                  {baatcheetProgress.speaking ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="5" width="4" height="14" rx="1" />
+                      <rect x="14" y="5" width="4" height="14" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                  )}
+                </button>
+                <span className="focus-counter">{baatcheetProgress.cardIdx + 1}/{baatcheetCardCount}</span>
+              </>
+            )}
+            {sessionId && (
+              <button
+                onClick={() => setDevToolsOpen(true)}
+                className="nav-action-btn"
+                title="Dev Tools"
+              >
+                Dev
+              </button>
+            )}
+          </div>
+        </nav>
+        <div className="focus-carousel">
+          <BaatcheetViewer
+            ref={baatcheetRef}
+            sessionId={sessionId || ''}
+            cards={dialogueCards}
+            personalization={dialoguePersonalization}
+            initialCardIdx={dialogueInitialIdx}
+            onProgressChange={handleBaatcheetProgress}
+            onComplete={(info) => {
+              setIsComplete(true);
+              setTeachMeComplete(true);
+              setTeachMeConceptsCovered(info.concepts_covered || []);
+              setTeachMeGuidelineId(info.guideline_id || null);
+              if (info.coverage != null) setCoverage(info.coverage);
+            }}
+          />
+        </div>
       </div>
     );
   }
