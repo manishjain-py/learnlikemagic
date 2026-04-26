@@ -391,7 +391,6 @@ class TopicExtractionOrchestrator:
                     status="completed",
                     model_provider=config["provider"],
                     model_id=config["model_id"],
-                    reasoning_effort=config["reasoning_effort"],
                     prompt_hash=chunk_processor.get_prompt_hash(),
                     completed_at=datetime.utcnow(),
                 )
@@ -413,7 +412,6 @@ class TopicExtractionOrchestrator:
                     error_message=str(e),
                     model_provider=config["provider"],
                     model_id=config["model_id"],
-                    reasoning_effort=config["reasoning_effort"],
                 )
                 self.chunk_repo.create(chunk_record)
                 failed += 1

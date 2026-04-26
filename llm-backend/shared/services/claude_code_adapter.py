@@ -19,6 +19,28 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 
+_CLI_EFFORT_MAP = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "xhigh",
+    "max": "max",
+}
+
+
+def _resolve_cli_effort(reasoning_effort: Optional[str], fallback: str) -> str:
+    """Map a service-level reasoning_effort to the CLI `--effort` value.
+
+    Service-level values pass through 1:1 (the CLI accepts the same five
+    levels). Empty / "none" / unrecognised values return `fallback` so each
+    callsite can pick a sensible default for its workload (e.g. OCR uses
+    "low", general inference uses "max").
+    """
+    if not reasoning_effort or reasoning_effort == "none":
+        return fallback
+    return _CLI_EFFORT_MAP.get(reasoning_effort, fallback)
+
+
 class ClaudeCodeAdapter:
     """Adapter that calls the Claude Code CLI as an LLM backend."""
 
@@ -122,18 +144,8 @@ class ClaudeCodeAdapter:
         # rejections. We want Claude Code to use its own auth.
         clean_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
-        # Map reasoning_effort to Claude CLI --effort flag.
-        # CLI accepts: low, medium, high, xhigh, max (max is the top tier).
         # Default fallback is "max" — admin tunes per-component via llm_config.
-        effective_effort = reasoning_effort if reasoning_effort and reasoning_effort != "none" else "max"
-        effort_map = {
-            "low": "low",
-            "medium": "medium",
-            "high": "high",
-            "xhigh": "xhigh",
-            "max": "max",
-        }
-        cli_effort = effort_map.get(effective_effort, effective_effort)
+        cli_effort = _resolve_cli_effort(reasoning_effort, fallback="max")
         cmd.extend(["--effort", cli_effort])
 
         logger.info(json.dumps({
@@ -281,8 +293,10 @@ class ClaudeCodeAdapter:
             }
         }))
 
-        effort_map = {"low": "low", "medium": "medium", "high": "high", "xhigh": "max"}
-        cli_effort = effort_map.get(reasoning_effort, "low")
+        # OCR usually only needs "low"; fallback applies when caller passes
+        # "none" or an unrecognised value. Pre-fix this used a 4-key map and
+        # silently downgraded "max" → "low".
+        cli_effort = _resolve_cli_effort(reasoning_effort, fallback="low")
 
         cmd = [
             "claude",

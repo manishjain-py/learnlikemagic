@@ -37,6 +37,16 @@
 - Single-PR strategy locked. All four layers + docs ride on PR #122.
 - Next: principles doc, then Layer 1.
 
+### 2026-04-26 — Code-review pass: 8 findings addressed
+- **#1 ChapterChunk crash (block):** dropped `reasoning_effort` from both `ChapterChunk(...)` calls in `topic_extraction_orchestrator.py:391, 415`. The over-broad regex insertion that caused this is the lesson; tests now guard.
+- **#2 `call_vision_sync` conflation + silent downgrade (block):** extracted shared `_resolve_cli_effort(reasoning_effort, fallback)` helper; both `call_sync` (fallback=`max`) and `call_vision_sync` (fallback=`low`) now use the 5-key identity map. No more `xhigh→max` conflation; no more `max→low` downgrade.
+- **#3 Streaming path bypass (block):** `LLMService.call_stream` now applies the same `effort = caller_value if not "none" else self.reasoning_effort` fallback as `.call()`. Live tutor streaming (OpenAI) now honors the `tutor` row's `reasoning_effort` setting. Base agent's existing `_reasoning_effort="none"` default routes through the new fallback so no agent-side change required.
+- **#4 `_extract_key_concepts` dropped `analogy` (block, cheap):** added `analogy` to teaching types; corrected docstring (variant A's actual vocab is concept|example|visual|analogy|summary|welcome).
+- **#5 Exemplar contradicts CRAFT rule (block, cheap):** GOOD exemplar card 3 now uses "my friend" instead of `{student_name}`; removed contradictory inline note. The exemplar now matches the rule it's teaching.
+- **#7 Permissive `__init__` default:** LLMService logs a `warning` when constructed with `reasoning_effort="none"` to surface forgotten-callsite plumbing.
+- **#8 Test coverage:** added 8 tests covering the bug surface — `_resolve_cli_effort` round-trips, `call_vision_sync` doesn't downgrade `max`, `call_stream` honors construction default + override, `ChapterChunk` constructs with the orchestrator's exact kwargs (success + failure branches), `_extract_key_concepts` includes `analogy`. Total now 17 tests, all green.
+- **#6 PR narrative (decided):** updated `dialogue-quality-impl-plan.md` to make explicit that the DB-row default is `max` but eight production services deliberately pin lower values via explicit `.call()` args — those are intentional per-stage choices, not bugs.
+
 ### 2026-04-26 — End-to-end regen attempt (Math G4 Ch1 T1)
 - Ran `service.generate_for_guideline(force=True, review_rounds=1)` on the production topic.
 - Generation pass: 13.5 min, $2.90, 21KB JSON output, claude-opus-4-7 + `--effort max`. New system prompt (with craft directives + exemplars) used as `--append-system-prompt-file`.

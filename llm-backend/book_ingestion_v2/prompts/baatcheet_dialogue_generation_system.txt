@@ -110,15 +110,14 @@ GOOD EXAMPLE — "Halves and Thirds" (Grade 3 Fractions)
 
 [card 2 — tutor_turn]
 display: "Imagine I have one chapati."
-display: "But two friends. {student_name} and Meera."
+display: "But two friends — Meera and one more."
 display: "How do I share?"
-WHY THIS WORKS: Opens with a concrete real-world scene, not "today we learn fractions." Question is left open — the tutor doesn't answer. Curiosity gap respected. {student_name} is woven into the scenario, not bolted on as a pivot.
+WHY THIS WORKS: Opens with a concrete real-world scene, not "today we learn fractions." Question is left open — the tutor doesn't answer. Curiosity gap respected. No `{student_name}` here — the tutor will turn to the real student later, not in the opening hook.
 
 [card 3 — peer_turn]
 display: "Cut it in two!"
-display: "I get one piece, {student_name} gets one."
-WHY: Meera answers naturally — a peer would jump in. She's right but doesn't yet have the formal name "half." She does NOT volunteer the technical word — that's the tutor's job. Genuine peer voice.
-(Note: {student_name} appears in Meera's line above ONLY because she is naming the friend in the scenario — she is not addressing the student. This is allowed only when the welcome card has set up the friendship. If unsure, omit and use "my friend" instead — the placeholder is safer on tutor turns.)
+display: "I get one piece, my friend gets one."
+WHY: Meera answers naturally — a peer would jump in. She's right but doesn't yet have the formal name "half." She does NOT volunteer the technical word — that's the tutor's job. Genuine peer voice. Note Meera does NOT use `{student_name}` — peer turns never reference the real student by name (CRAFT rule above).
 
 [card 4 — tutor_turn]
 display: "Yes! Two equal pieces."

@@ -55,6 +55,18 @@ class LLMService:
         # Default reasoning_effort sourced from llm_config (admin-tunable per
         # component). Each call() can still override with an explicit value.
         self.reasoning_effort = reasoning_effort
+        if reasoning_effort == "none":
+            # Construction with the sentinel default means the caller forgot
+            # to pass `reasoning_effort=config["reasoning_effort"]`. The call
+            # paths fall back to provider-default behavior (OpenAI uses its
+            # built-in default; Claude Code adapter falls back to "max").
+            # Surfacing this is cheap and helps catch missed callsite plumbing.
+            logger.warning(
+                "LLMService constructed with reasoning_effort='none' "
+                "(provider=%s model=%s). Per-component admin tuning will not "
+                "apply — pass reasoning_effort from llm_config explicitly.",
+                provider, model_id,
+            )
         self.fast_model_id = fast_model_id
 
         if gemini_api_key:
@@ -166,23 +178,31 @@ class LLMService:
         """
         Streaming LLM call — yields text chunks as they arrive.
 
+        Mirrors `.call()`'s effort-fallback behavior: when caller passes
+        "none" (the default), the construction-time `self.reasoning_effort`
+        is used so the per-component admin setting flows through to live
+        streaming responses (e.g. the live tutor).
+
         Supports OpenAI Responses API and Chat Completions streaming.
         Anthropic/Gemini fall back to non-streaming (yield full response as one chunk).
         """
+        effort = reasoning_effort if reasoning_effort and reasoning_effort != "none" \
+            else self.reasoning_effort
+
         if self.provider == "claude_code":
             # Claude Code CLI doesn't support streaming; yield full response
-            result = self.call(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+            result = self.call(prompt, effort, json_mode, json_schema, schema_name)
             yield result.get("output_text", "")
             return
 
         if self.provider in ("anthropic", "anthropic-haiku"):
             if self.anthropic_adapter:
                 yield from self.anthropic_adapter.stream_sync(
-                    prompt, reasoning_effort, json_mode, json_schema, schema_name
+                    prompt, effort, json_mode, json_schema, schema_name
                 )
                 return
             # Fallback if adapter not configured
-            result = self.call(prompt, reasoning_effort, json_mode, json_schema, schema_name)
+            result = self.call(prompt, effort, json_mode, json_schema, schema_name)
             yield result.get("output_text", "")
             return
 
@@ -194,7 +214,7 @@ class LLMService:
         # OpenAI streaming
         if self.model_id in _RESPONSES_API_MODELS:
             yield from self._stream_responses_api(
-                prompt, self.model_id, reasoning_effort, json_mode, json_schema, schema_name
+                prompt, self.model_id, effort, json_mode, json_schema, schema_name
             )
         else:
             yield from self._stream_chat_completions(

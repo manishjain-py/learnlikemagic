@@ -85,8 +85,22 @@ Reasoning effort `"max"` (Layer 1). Existing rounds unchanged: 0 on `fast`, 1 on
 
 **Backend:**
 - `LLMConfigService` returns `reasoning_effort` alongside `provider`, `model_id`.
-- `LLMService.from_config()` reads `reasoning_effort` from config; `.call()` consumes it.
+- `LLMService.from_config()` reads `reasoning_effort` from config; `.call()` consumes it as the default when caller passes `"none"`.
 - Components passing explicit `reasoning_effort=` in code keep working (override path).
+
+**Important — call-site overrides win.** The admin DB knob is the *default*; explicit `reasoning_effort=` arguments on `.call()` still override. Eight production services deliberately pin a lower value for latency/cost reasons:
+| Service | Pinned effort |
+|---|---|
+| `explanation_generator_service.py:356,439` | `"high"` |
+| `chapter_topic_planner_service.py:54` | `"high"` |
+| `refresher_topic_generator_service.py:215` | `"high"` |
+| `study_plans/services/generator_service.py:141` | `"high"` |
+| `audio_text_review_service.py:298` | `"medium"` |
+| `practice_bank_generator_service.py:417,459` | `"medium"` |
+| `check_in_enrichment_service.py:434,489` | `"medium"` |
+| `animation_enrichment_service.py:538,606` | `"low"` / `"medium"` |
+
+These were not changed in this PR — they encode deliberate per-stage choices. To change them, drop the explicit arg in code (admin then tunes via the UI knob). The tracker captures this for reviewers.
 
 **LLM Config admin page** (`llm-frontend/src/features/admin/pages/LLMConfigPage.tsx`):
 - New column "Reasoning effort" with dropdown: low/medium/high/xhigh/max.
