@@ -1,7 +1,7 @@
 # Baatcheet — Dialogue Quality Analysis & Improvement Plan
 
 **Date:** 2026-04-25
-**Status:** Draft
+**Status:** Diagnosis complete. Locked decisions and final approach live in `dialogue-quality-impl-plan.md`. Progress: `dialogue-quality-progress.md`.
 **Depends on:** Baatcheet V1 (`PRD.md`, `impl-plan.md`)
 
 ---
