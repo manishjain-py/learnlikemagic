@@ -96,10 +96,21 @@ export interface GuidelineReview {
 
 // ===== LLM Config Types =====
 
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = [
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+
 export interface LLMConfig {
   component_key: string;
   provider: string;
   model_id: string;
+  reasoning_effort: ReasoningEffort;
   description: string | null;
   updated_at: string | null;
   updated_by: string | null;

@@ -17,9 +17,13 @@ AVAILABLE_MODELS = {
 }
 
 
+VALID_REASONING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+
+
 class UpdateLLMConfigRequest(BaseModel):
     provider: str
     model_id: str
+    reasoning_effort: str = "max"
 
 
 @router.get("/llm-config")
@@ -35,7 +39,7 @@ def update_llm_config(
     request: UpdateLLMConfigRequest,
     db: DBSession = Depends(get_db),
 ):
-    """Update provider + model for a component."""
+    """Update provider + model + reasoning_effort for a component."""
     # Validate provider
     if request.provider not in AVAILABLE_MODELS:
         raise HTTPException(
@@ -51,11 +55,20 @@ def update_llm_config(
                    f"Valid: {AVAILABLE_MODELS[request.provider]}",
         )
 
+    # Validate reasoning_effort
+    if request.reasoning_effort not in VALID_REASONING_EFFORTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown reasoning_effort '{request.reasoning_effort}'. "
+                   f"Valid: {sorted(VALID_REASONING_EFFORTS)}",
+        )
+
     service = LLMConfigService(db)
     result = service.update_config(
         component_key=component_key,
         provider=request.provider,
         model_id=request.model_id,
+        reasoning_effort=request.reasoning_effort,
     )
     db.commit()
     return result

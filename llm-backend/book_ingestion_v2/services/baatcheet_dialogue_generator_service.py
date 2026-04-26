@@ -445,9 +445,10 @@ class BaatcheetDialogueGeneratorService:
         system_file = (
             _GENERATION_SYSTEM_FILE if self.llm.provider == "claude_code" else None
         )
+        # reasoning_effort intentionally omitted — LLMService uses the
+        # per-component default from llm_config (admin-tunable).
         response = self.llm.call(
             prompt=prompt,
-            reasoning_effort="high",
             json_schema=None if system_file else self._generation_schema,
             schema_name="DialogueGenerationOutput",
             system_prompt_file=system_file,
@@ -471,7 +472,6 @@ class BaatcheetDialogueGeneratorService:
         )
         response = self.llm.call(
             prompt=prompt,
-            reasoning_effort="high",
             json_schema=None if system_file else self._generation_schema,
             schema_name="DialogueGenerationOutput",
             system_prompt_file=system_file,
@@ -496,6 +496,7 @@ class BaatcheetDialogueGeneratorService:
             .replace("{subject}", guideline.subject or "")
             .replace("{grade}", str(guideline.grade or ""))
             .replace("{guideline_text}", guideline_text)
+            .replace("{key_concepts_list}", self._extract_key_concepts(variant_a))
             .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
             .replace("{misconceptions_list}", self._format_misconceptions(misconceptions))
             .replace("{prior_topics_section}", prior)
@@ -529,6 +530,7 @@ class BaatcheetDialogueGeneratorService:
             .replace("{subject}", guideline.subject or "")
             .replace("{grade}", str(guideline.grade or ""))
             .replace("{guideline_text}", guideline_text)
+            .replace("{key_concepts_list}", self._extract_key_concepts(variant_a))
             .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
             .replace("{misconceptions_list}", self._format_misconceptions(misconceptions))
             .replace("{cards_json}", cards_json_str)
@@ -541,6 +543,35 @@ class BaatcheetDialogueGeneratorService:
         if not items:
             return "(none on file for this topic)"
         return "\n".join(f"- {m}" for m in items)
+
+    @staticmethod
+    def _extract_key_concepts(variant_a) -> str:
+        """Flat bulleted list of concept titles from variant A.
+
+        Variant A emits the card_types: concept | example | visual | analogy |
+        summary | welcome (see `explanation_generator_service.py:44`). We pull
+        titles from the four teaching types and skip the structural ones
+        (welcome, summary). Analogy cards often carry the load-bearing
+        intuition for a topic — omitting them would let the refine round's
+        coverage check pass with a real concept missing.
+
+        The dialogue must teach every concept here, but is free to choose
+        order, examples, and pacing — variant A's structure is not the
+        dialogue's spine. See `dialogue-quality-impl-plan.md` §3.
+        """
+        cards = variant_a.cards_json or []
+        teaching_types = {"concept", "visual", "example", "analogy"}
+        titles: list[str] = []
+        seen = set()
+        for c in cards:
+            ct = c.get("card_type")
+            title = (c.get("title") or "").strip()
+            if ct in teaching_types and title and title not in seen:
+                seen.add(title)
+                titles.append(title)
+        if not titles:
+            return "(none extracted — fall back to the variant A reference below)"
+        return "\n".join(f"- {t}" for t in titles)
 
     @staticmethod
     def _prior_topics_section(guideline: TeachingGuideline) -> str:

@@ -31,6 +31,7 @@ The `docs/principles/` folder captures the core vision and philosophy behind how
 | `docs/principles/easy-english.md` | Language accessibility for Indian ESL students (no idioms, simple grammar, Indian contexts) |
 | `docs/principles/practice-mode.md` | How Let's Practice works (offline bank, no hints during set, evaluation-as-learning) |
 | `docs/principles/typography.md` | Research-backed typography strategy for student-facing UI (fonts, sizes, weights, line-heights, role tokens) |
+| `docs/principles/baatcheet-dialogue-craft.md` | Craft rules for Baatcheet conversational dialogues (Mr. Verma + Meera; pedagogy first, naturalness as quality bar) |
 
 ## Documentation Index
 

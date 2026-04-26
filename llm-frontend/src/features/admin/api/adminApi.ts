@@ -166,12 +166,17 @@ export async function getLLMConfigs(): Promise<LLMConfig[]> {
 export async function updateLLMConfig(
   componentKey: string,
   provider: string,
-  modelId: string
+  modelId: string,
+  reasoningEffort: string
 ): Promise<LLMConfig> {
   return apiFetch<LLMConfig>(`/api/admin/llm-config/${componentKey}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, model_id: modelId }),
+    body: JSON.stringify({
+      provider,
+      model_id: modelId,
+      reasoning_effort: reasoningEffort,
+    }),
   });
 }
 

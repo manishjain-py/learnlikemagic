@@ -66,6 +66,7 @@ class SessionService:
             api_key=settings.openai_api_key,
             provider=tutor_config["provider"],
             model_id=tutor_config["model_id"],
+            reasoning_effort=tutor_config["reasoning_effort"],
             fast_model_id=fast_config["model_id"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
@@ -715,6 +716,7 @@ class SessionService:
                 api_key=settings.openai_api_key,
                 provider=gen_config["provider"],
                 model_id=gen_config["model_id"],
+                reasoning_effort=gen_config["reasoning_effort"],
                 gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
                 anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
             )
@@ -910,6 +912,7 @@ class SessionService:
             api_key=settings.openai_api_key,
             provider=gen_config["provider"],
             model_id=gen_config["model_id"],
+            reasoning_effort=gen_config["reasoning_effort"],
             gemini_api_key=settings.gemini_api_key if settings.gemini_api_key else None,
             anthropic_api_key=settings.anthropic_api_key if settings.anthropic_api_key else None,
         )

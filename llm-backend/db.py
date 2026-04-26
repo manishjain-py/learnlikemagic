@@ -160,6 +160,9 @@ def migrate():
         # Destructive cleanup: drop legacy exam + chat-practice session data and columns
         _cleanup_exam_and_old_practice_data(db_manager)
 
+        # Add reasoning_effort column to llm_config (idempotent)
+        _apply_llm_config_reasoning_effort_column(db_manager)
+
         # Seed LLM config defaults (only if table is empty)
         _seed_llm_config(db_manager)
 
@@ -472,9 +475,11 @@ def _apply_v2_tables(db_manager):
         )).fetchone()
         if not exists:
             conn.execute(text(
-                "INSERT INTO llm_config (component_key, provider, model_id, description) "
+                "INSERT INTO llm_config "
+                "(component_key, provider, model_id, description, reasoning_effort) "
                 "VALUES ('book_ingestion_v2', 'openai', 'gpt-5.2', "
-                "'Book ingestion V2 pipeline (chunk extraction, consolidation, merge)')"
+                "'Book ingestion V2 pipeline (chunk extraction, consolidation, merge)', "
+                "'max')"
             ))
             print("  ✓ Seeded book_ingestion_v2 llm_config")
         conn.commit()
@@ -616,9 +621,10 @@ def _apply_kid_enrichment_tables(db_manager):
             )).fetchone()
             if tutor_row:
                 conn.execute(text(
-                    "INSERT INTO llm_config (component_key, provider, model_id, description) "
+                    "INSERT INTO llm_config "
+                    "(component_key, provider, model_id, description, reasoning_effort) "
                     "VALUES ('personality_derivation', :provider, :model_id, "
-                    "'Kid personality derivation from enrichment profile')"
+                    "'Kid personality derivation from enrichment profile', 'max')"
                 ), {"provider": tutor_row[0], "model_id": tutor_row[1]})
                 print("  ✓ Seeded personality_derivation LLM config (copied from tutor)")
         conn.commit()
@@ -868,7 +874,8 @@ def _apply_sessions_teach_me_mode_column(db_manager):
         print("  ✓ paused-session unique index rebuilt with teach_me_mode")
 
 
-def _ensure_llm_config(db_manager, component_key, provider, model_id, description):
+def _ensure_llm_config(db_manager, component_key, provider, model_id, description,
+                       reasoning_effort: str = "max"):
     """Insert an LLM config entry if the component_key is missing.
 
     Unlike _seed_llm_config() which only runs on empty tables, this is idempotent
@@ -880,9 +887,11 @@ def _ensure_llm_config(db_manager, component_key, provider, model_id, descriptio
         ), {"key": component_key}).fetchone()
         if not exists:
             conn.execute(text(
-                "INSERT INTO llm_config (component_key, provider, model_id, description) "
-                "VALUES (:key, :provider, :model, :desc)"
-            ), {"key": component_key, "provider": provider, "model": model_id, "desc": description})
+                "INSERT INTO llm_config "
+                "(component_key, provider, model_id, description, reasoning_effort) "
+                "VALUES (:key, :provider, :model, :desc, :effort)"
+            ), {"key": component_key, "provider": provider, "model": model_id,
+                "desc": description, "effort": reasoning_effort})
             conn.commit()
             print(f"  ✓ Seeded {component_key} LLM config")
 
@@ -979,6 +988,23 @@ def _cleanup_exam_and_old_practice_data(db_manager):
             print("  ✓ Dropped sessions.exam_score + sessions.exam_total columns")
 
 
+def _apply_llm_config_reasoning_effort_column(db_manager):
+    """Add reasoning_effort column to llm_config if missing; backfill to 'max'."""
+    inspector = inspect(db_manager.engine)
+    if "llm_config" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("llm_config")}
+    if "reasoning_effort" in existing:
+        return
+    with db_manager.engine.connect() as conn:
+        print("  Adding reasoning_effort column to llm_config...")
+        conn.execute(text(
+            "ALTER TABLE llm_config ADD COLUMN reasoning_effort VARCHAR NOT NULL DEFAULT 'max'"
+        ))
+        conn.commit()
+        print("  ✓ reasoning_effort column added (default 'max', existing rows backfilled)")
+
+
 def _seed_llm_config(db_manager):
     """Seed llm_config table with defaults if empty."""
     with db_manager.engine.connect() as conn:
@@ -991,10 +1017,12 @@ def _seed_llm_config(db_manager):
         for seed in _LLM_CONFIG_SEEDS:
             conn.execute(
                 text(
-                    "INSERT INTO llm_config (component_key, provider, model_id, description) "
-                    "VALUES (:component_key, :provider, :model_id, :description)"
+                    "INSERT INTO llm_config "
+                    "(component_key, provider, model_id, description, reasoning_effort) "
+                    "VALUES (:component_key, :provider, :model_id, :description, "
+                    ":reasoning_effort)"
                 ),
-                seed,
+                {**seed, "reasoning_effort": seed.get("reasoning_effort", "max")},
             )
         conn.commit()
         print(f"  ✓ Seeded {len(_LLM_CONFIG_SEEDS)} llm_config rows")
