@@ -53,8 +53,8 @@ _REVIEW_REFINE_SYSTEM_FILE = str(_PROMPTS_DIR / "baatcheet_dialogue_review_refin
 
 # Welcome card 1 is prepended server-side; LLM produces cards 2..N.
 # After the welcome is added, total = LLM_count + 1.
-MIN_TOTAL_CARDS = 25       # matches prompt's "25–30 target, 25 floor" + welcome card
-MAX_TOTAL_CARDS = 35       # absolute ceiling (PRD §FR-11 hard cap)
+MIN_TOTAL_CARDS = 25       # V2 plan card_plan floor (25 lenient) + welcome
+MAX_TOTAL_CARDS = 42       # V2 plan card_plan max (40) + welcome (1) + 1 slack
 MIN_CHECK_IN_SPACING = 4   # cards between two check-in cards (PRD §FR-12)
 
 DEFAULT_REVIEW_ROUNDS = 1
