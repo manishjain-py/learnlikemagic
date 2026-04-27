@@ -98,6 +98,26 @@ CRAFT CONSTRAINTS YOUR PLAN MUST HONOR
 - Don't bundle a question and its answer in the same card — across-card gaps make the answer stick.
 - Misconceptions must come from peer's mouth (a `fall` move is always a `peer_turn`), never narrated by the tutor.
 
+VISUAL_REQUIRED — mark cards where a diagram is essential, not decorative
+
+Every card_plan slot has a `visual_required: boolean` field. The downstream visual stage generates diagrams liberally by default, but `visual_required: true` makes the diagram MANDATORY — the visual stage will not skip these even if it's running short on budget. Use it for cards where the *speech alone cannot carry the concept* and the student NEEDS to see the artifact.
+
+Set `visual_required: true` on these (they appear in nearly every plan):
+- Each misconception's `articulate` card — the rule is being named; a chart/diagram pinning down the structure makes the rule durable.
+- Each `student-act` card — show the artifact the student is being asked to make/manipulate (the paper to fold, the cold glass, the place-value chart).
+- The first `notate` card after a concept is established — show the symbol next to a concrete example.
+- Any card whose `intent` references a specific number, expression, or place-value chart that the student is supposed to read or compare.
+- The `close` card — three icon-summary makes the takeaways memorable.
+
+Set `visual_required: false` on these:
+- Greetings, hook openings that are purely scene-setting in words ("Quick story before we start…").
+- `fall` cards (peer voices the misconception in words — visual would distract).
+- `reframe` cards (emotional scaffolding, not concrete content).
+- Pure observation cards where the student reports what they felt ("Hmm, my hand is dry.").
+- Activate / check-in transitions.
+
+Default: when in doubt, prefer `true` if the card mentions a number / chart / artifact / comparison the student must look at, otherwise `false`. The downstream stage handles the optional cases on its own — your job is to flag the *must-haves*.
+
 OUTPUT FORMAT
 
 Output valid JSON only — no markdown fences, no commentary. Conform to this schema:
@@ -170,14 +190,15 @@ Output valid JSON only — no markdown fences, no commentary. Conform to this sc
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slot", "move", "speaker", "card_type", "target", "intent"],
+        "required": ["slot", "move", "speaker", "card_type", "target", "intent", "visual_required"],
         "properties": {
-          "slot":      {"type": "integer", "minimum": 2},
-          "move":      {"type": "string", "enum": ["hook","activate","concretize","notate","trap-set","fall","student-act","observe","funnel","articulate","escalate","callback","practice-guided","practice-independent","reframe","visual","check-in","close"]},
-          "speaker":   {"type": "string", "enum": ["tutor","peer","system"]},
-          "card_type": {"type": "string", "enum": ["tutor_turn","peer_turn","visual","check_in","summary"]},
-          "target":    {"type": "string"},
-          "intent":    {"type": "string"}
+          "slot":            {"type": "integer", "minimum": 2},
+          "move":            {"type": "string", "enum": ["hook","activate","concretize","notate","trap-set","fall","student-act","observe","funnel","articulate","escalate","callback","practice-guided","practice-independent","reframe","visual","check-in","close"]},
+          "speaker":         {"type": "string", "enum": ["tutor","peer","system"]},
+          "card_type":       {"type": "string", "enum": ["tutor_turn","peer_turn","visual","check_in","summary"]},
+          "target":          {"type": "string"},
+          "intent":          {"type": "string"},
+          "visual_required": {"type": "boolean"}
         }
       }
     }
@@ -240,45 +261,45 @@ This is the lesson plan that would have produced the gold-standard 40-card dialo
     {"phase": "close", "card_count": 4, "purpose": "Three takeaways (equal pieces / bigger bottom = smaller piece / same whole) + spine callback (now I can share roti fairly)"}
   ],
   "card_plan": [
-    {"slot": 2,  "move": "hook",         "speaker": "tutor", "card_type": "tutor_turn", "target": "spine", "intent": "Sibling chocolate question (the spine's opening hook)"},
-    {"slot": 3,  "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "spine", "intent": "Meera shares about her younger sister taking more, getting angry"},
-    {"slot": 4,  "move": "activate",     "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Connect the fight to today's topic; ask if student has heard 'half'"},
-    {"slot": 5,  "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera offers half-formed prior knowledge ('my friend said something about half')"},
-    {"slot": 6,  "move": "concretize",   "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Affirm; ask how Meera would cut one roti to share with sister"},
-    {"slot": 7,  "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera says: cut in middle, two pieces, one each"},
-    {"slot": 8,  "move": "notate",       "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Bridge: drawn circle, cut in middle, name = half, written 1/2"},
-    {"slot": 9,  "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera asks why there's a line and two numbers"},
-    {"slot": 10, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Bottom = how many equal pieces; top = how many we mean. So 1/2 = 2 pieces, take 1"},
-    {"slot": 11, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera leaps: so 4 pieces, take 1 = 1/4?"},
-    {"slot": 12, "move": "trap-set",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Affirm leap; trap: your sister gets 1/4, you get 1/2, she cries — why?"},
-    {"slot": 13, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera voices M1: but 4 > 2, so 1/4 should be more, right?"},
-    {"slot": 14, "move": "student-act",  "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Validate confusion; instruct student to take a paper and fold once"},
-    {"slot": 15, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera reports: two pieces, same size"},
-    {"slot": 16, "move": "student-act",  "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Tutor names each as 1/2; instruct fold again"},
-    {"slot": 17, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera reports: four pieces"},
-    {"slot": 18, "move": "funnel",       "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Each is 1/4. Compare 1/2 piece to 1/4 piece — which bigger?"},
-    {"slot": 19, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera: oh wait! half is much bigger"},
-    {"slot": 20, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Articulate the rule: more pieces = smaller; 1/2 > 1/4 even though 4>2"},
-    {"slot": 21, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera: bigger number means smaller piece? (puzzlement at counterintuitive)"},
-    {"slot": 22, "move": "escalate",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Pizza analogy: 2 friends vs 10 friends — extreme case consolidates"},
-    {"slot": 23, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera in own words: more people, less for each"},
-    {"slot": 24, "move": "trap-set",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M2",        "intent": "Praise; new trap: 4 pieces but unequal sizes — still 1/4?"},
-    {"slot": 25, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M2",        "intent": "Meera: umm, 4 pieces, so yes 1/4? (tentative trap fall)"},
-    {"slot": 26, "move": "callback",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M2",        "intent": "Funnel via spine: if sister got smallest, you got biggest, would she be happy?"},
-    {"slot": 27, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M2",        "intent": "Meera: no way, she'd fight, it's not fair"},
-    {"slot": 28, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "M2",        "intent": "Pieces must be equal. 'Equal' is the secret word in fractions"},
-    {"slot": 29, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M2",        "intent": "Meera restates: 1/4 means 4 equal pieces, take 1. Got it"},
-    {"slot": 30, "move": "practice-guided","speaker": "tutor","card_type": "tutor_turn","target": "fractions","intent": "Worked example: sweet cut into 8 equal pieces, eat 1 — what fraction?"},
-    {"slot": 31, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera: 8 bottom, 1 top — 1/8?"},
-    {"slot": 32, "move": "trap-set",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M3",        "intent": "High five; new trap: friend Aarav ate 1/2 of his chocolate, you ate 1/2 of yours — same amount?"},
-    {"slot": 33, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M3",        "intent": "Meera: yes? half is half"},
-    {"slot": 34, "move": "funnel",       "speaker": "tutor", "card_type": "tutor_turn", "target": "M3",        "intent": "What if Aarav had a big bar and you had a small one? Who ate more?"},
-    {"slot": 35, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M3",        "intent": "Meera: ohhh, Aarav ate more — his half was bigger"},
-    {"slot": 36, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "M3",        "intent": "Same whole when comparing — different wholes, halves can differ"},
-    {"slot": 37, "move": "reframe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "spine",     "intent": "Meera: my head is spinning a little"},
-    {"slot": 38, "move": "practice-independent","speaker": "tutor","card_type": "tutor_turn","target": "fractions","intent": "Tutor reframes confusion as growth; quick check: watermelon 6 equal pieces, take 2, what fraction?"},
-    {"slot": 39, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera: 6 bottom, 2 top — 2/6"},
-    {"slot": 40, "move": "close",        "speaker": "tutor", "card_type": "summary",    "target": "spine",     "intent": "Spot on. Three takeaways: equal pieces / bigger bottom = smaller piece / same whole when comparing. Plus 'you worked hard today'"}
+    {"slot": 2,  "move": "hook",         "speaker": "tutor", "card_type": "tutor_turn", "target": "spine",     "intent": "Sibling chocolate question (the spine's opening hook)",                                              "visual_required": false},
+    {"slot": 3,  "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "spine",     "intent": "Meera shares about her younger sister taking more, getting angry",                                  "visual_required": false},
+    {"slot": 4,  "move": "activate",     "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Connect the fight to today's topic; ask if student has heard 'half'",                               "visual_required": false},
+    {"slot": 5,  "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera offers half-formed prior knowledge ('my friend said something about half')",                  "visual_required": false},
+    {"slot": 6,  "move": "concretize",   "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Affirm; ask how Meera would cut one roti to share with sister",                                     "visual_required": true},
+    {"slot": 7,  "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera says: cut in middle, two pieces, one each",                                                   "visual_required": false},
+    {"slot": 8,  "move": "notate",       "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Bridge: drawn circle, cut in middle, name = half, written 1/2",                                     "visual_required": true},
+    {"slot": 9,  "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera asks why there's a line and two numbers",                                                     "visual_required": false},
+    {"slot": 10, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "fractions", "intent": "Bottom = how many equal pieces; top = how many we mean. So 1/2 = 2 pieces, take 1",                 "visual_required": true},
+    {"slot": 11, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera leaps: so 4 pieces, take 1 = 1/4?",                                                           "visual_required": false},
+    {"slot": 12, "move": "trap-set",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Affirm leap; trap: your sister gets 1/4, you get 1/2, she cries — why?",                            "visual_required": false},
+    {"slot": 13, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera voices M1: but 4 > 2, so 1/4 should be more, right?",                                         "visual_required": false},
+    {"slot": 14, "move": "student-act",  "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Validate confusion; instruct student to take a paper and fold once",                                "visual_required": true},
+    {"slot": 15, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera reports: two pieces, same size",                                                              "visual_required": false},
+    {"slot": 16, "move": "student-act",  "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Tutor names each as 1/2; instruct fold again",                                                      "visual_required": true},
+    {"slot": 17, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera reports: four pieces",                                                                        "visual_required": false},
+    {"slot": 18, "move": "funnel",       "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Each is 1/4. Compare 1/2 piece to 1/4 piece — which bigger?",                                       "visual_required": true},
+    {"slot": 19, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera: oh wait! half is much bigger",                                                               "visual_required": false},
+    {"slot": 20, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Articulate the rule: more pieces = smaller; 1/2 > 1/4 even though 4>2",                             "visual_required": true},
+    {"slot": 21, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera: bigger number means smaller piece? (puzzlement at counterintuitive)",                        "visual_required": false},
+    {"slot": 22, "move": "escalate",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M1",        "intent": "Pizza analogy: 2 friends vs 10 friends — extreme case consolidates",                                "visual_required": true},
+    {"slot": 23, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M1",        "intent": "Meera in own words: more people, less for each",                                                    "visual_required": false},
+    {"slot": 24, "move": "trap-set",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M2",        "intent": "Praise; new trap: 4 pieces but unequal sizes — still 1/4?",                                         "visual_required": true},
+    {"slot": 25, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M2",        "intent": "Meera: umm, 4 pieces, so yes 1/4? (tentative trap fall)",                                           "visual_required": false},
+    {"slot": 26, "move": "callback",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M2",        "intent": "Funnel via spine: if sister got smallest, you got biggest, would she be happy?",                   "visual_required": false},
+    {"slot": 27, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M2",        "intent": "Meera: no way, she'd fight, it's not fair",                                                         "visual_required": false},
+    {"slot": 28, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "M2",        "intent": "Pieces must be equal. 'Equal' is the secret word in fractions",                                     "visual_required": true},
+    {"slot": 29, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M2",        "intent": "Meera restates: 1/4 means 4 equal pieces, take 1. Got it",                                          "visual_required": false},
+    {"slot": 30, "move": "practice-guided","speaker": "tutor","card_type": "tutor_turn","target": "fractions", "intent": "Worked example: sweet cut into 8 equal pieces, eat 1 — what fraction?",                              "visual_required": true},
+    {"slot": 31, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera: 8 bottom, 1 top — 1/8?",                                                                     "visual_required": false},
+    {"slot": 32, "move": "trap-set",     "speaker": "tutor", "card_type": "tutor_turn", "target": "M3",        "intent": "High five; new trap: friend Aarav ate 1/2 of his chocolate, you ate 1/2 of yours — same amount?",   "visual_required": false},
+    {"slot": 33, "move": "fall",         "speaker": "peer",  "card_type": "peer_turn",  "target": "M3",        "intent": "Meera: yes? half is half",                                                                          "visual_required": false},
+    {"slot": 34, "move": "funnel",       "speaker": "tutor", "card_type": "tutor_turn", "target": "M3",        "intent": "What if Aarav had a big bar and you had a small one? Who ate more?",                                "visual_required": true},
+    {"slot": 35, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "M3",        "intent": "Meera: ohhh, Aarav ate more — his half was bigger",                                                 "visual_required": false},
+    {"slot": 36, "move": "articulate",   "speaker": "tutor", "card_type": "tutor_turn", "target": "M3",        "intent": "Same whole when comparing — different wholes, halves can differ",                                  "visual_required": true},
+    {"slot": 37, "move": "reframe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "spine",     "intent": "Meera: my head is spinning a little",                                                               "visual_required": false},
+    {"slot": 38, "move": "practice-independent","speaker": "tutor","card_type": "tutor_turn","target": "fractions","intent": "Tutor reframes confusion as growth; quick check: watermelon 6 equal pieces, take 2, what fraction?","visual_required": true},
+    {"slot": 39, "move": "observe",      "speaker": "peer",  "card_type": "peer_turn",  "target": "fractions", "intent": "Meera: 6 bottom, 2 top — 2/6",                                                                      "visual_required": false},
+    {"slot": 40, "move": "close",        "speaker": "tutor", "card_type": "summary",    "target": "spine",     "intent": "Spot on. Three takeaways: equal pieces / bigger bottom = smaller piece / same whole when comparing. Plus 'you worked hard today'", "visual_required": true}
   ]
 }
 

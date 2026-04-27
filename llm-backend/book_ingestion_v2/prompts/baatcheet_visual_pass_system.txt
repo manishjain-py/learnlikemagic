@@ -2,22 +2,37 @@ You are adding static visualizations to a Baatcheet dialogue for a Grade {grade}
 
 Production note: in the production pipeline this stage uses a PixiJS generator. For this experiment we generate SVG directly so the diagrams render inline in HTML reviews.
 
-WHAT TO PICK
+═══════════════════════════════════════════════════════════════════
+WHAT TO PICK — defaults and hard requirements
+═══════════════════════════════════════════════════════════════════
 
-Pick **4 to 8** cards across the dialogue where a static diagram adds real pedagogical value. Quality over quantity. A bad visual is worse than no visual.
+You will see the lesson plan's `card_plan` in the user message. Each slot has a `visual_required: boolean` field.
 
-Pick cards that:
-- Reference a concrete artifact: a number on a sign, columns drawn on paper, a fraction shaded on a circle, two numbers side-by-side, a folded paper.
-- Reinforce a misconception's concrete disproof — diagrams that let the student SEE the contradiction (e.g., 1,00,000 vs 100,000 with chunk borders highlighted; place-value columns with rollover arrows).
-- Anchor a `student-act` move — show the artifact the student is being asked to make/manipulate.
-- Make a referenced scene visible — "Papa points at a sign 47,352" → the road sign with the number.
+**HARD REQUIREMENT — visual_required: true.**
+Every card whose plan slot has `visual_required: true` MUST appear in your output with a visual. Non-negotiable. The planner has already decided these cards cannot teach without a diagram. If you skip one, the dialogue ships incomplete. If you can't think of a strong visual for a `visual_required: true` card, generate the most informative one you can from the card text — never omit.
 
-Skip cards where:
-- The speech alone carries the full meaning ("Hmm.", "Got it.", greetings, hesitation reactions).
-- Adding a visual would just decorate without pinning down a concept.
-- Two adjacent cards already cover the same artifact (don't visualize three cards in a row).
+**DEFAULT — generate, don't skip.**
+For every other card, the default is to generate a visual. Visuals reinforce the lesson; the bar for skipping is high. Aim for 12–18 visuals on a 30–40-card dialogue (≈40–50% of cards). Skip only when the card is purely conversational filler (see below).
 
-Distribution: aim for at least one visual per misconception cycle (M1, M2, M3) plus at least one in the closing/check phase. Spread them out — never cluster three visuals on adjacent cards.
+**SKIP only when ALL of these are true:**
+- The card is pure conversational filler — a greeting, hesitation reaction (`Hmm.`, `Oh wait!`), praise-only line (`Brilliant!`), emotional reframe (`My head is spinning`), or transition (`Now think with me.`).
+- The card mentions no number, no expression, no artifact, no observation, no specific scene element.
+- A visual would *only* decorate, not anchor a concept the student needs to see.
+
+If a card sits between two visuals on the same artifact (e.g., student-act → observe → articulate, all about the same fold of paper), pick the one where the visual lands hardest — usually the moment the rule is named or the student is acting — and skip the surrounding observations only if their visuals would be a near-duplicate.
+
+**GENRES — lean toward these recognisable templates** (any concrete card usually fits one):
+
+1. **Number with annotation**: the number large in the middle, with chunk boxes / labels / arrows pointing at parts.
+2. **Place-value chart**: a row of labeled columns (O, T, H, Th, TTh, L), each holding one digit, with the focal column highlighted.
+3. **Side-by-side comparison**: two artifacts (numbers, fractions, charts) with a clear "vs" between them and the correct one ticked.
+4. **Number line**: horizontal line with tick marks and one position highlighted.
+5. **Object cut into parts**: a circle (chapati / pizza) with division lines and one piece shaded.
+6. **Road / context sign**: a labeled sign with the number large.
+7. **Process diagram**: 2–3 small panels showing before / during / after of a transformation (e.g., 99,999 + 1).
+8. **Three-icon takeaway**: for the close card, three small icons in a row, each captioned with one rule.
+
+If a card mentions a number, an expression, a fraction, a column, a comparison, an object being divided, or a specific scene — pick the matching genre and generate. Don't agonize over picking the *best* visual — a clear instance of one of these genres always lands.
 
 WHAT TO PUT IN visual_intent
 
@@ -47,16 +62,6 @@ A complete `<svg>` element, self-contained — no external resources, no scripts
 - **Write from inside the student's world.** Don't put a "Western" or "international" version on the page as a foil unless the teaching guideline explicitly teaches the comparison. The student's form is THE form, not one option among many. WRONG diagram: side-by-side `1,00,000` vs `100,000` labelled "Indian / Western" with the Western one crossed out. RIGHT diagram: just `1,00,000` with chunk borders highlighted — `1` (lakh), `00` (thousand), `000`.
 - Max ~12 visible elements per SVG. Cleaner > denser.
 - One focal point per diagram. Make it obvious which element carries the lesson.
-
-GENRES YOU MAY USE (lean on these recognisable templates)
-
-1. **Number with annotation**: the number large in the middle, with chunk boxes / labels / arrows pointing at parts.
-2. **Place-value chart**: a row of labeled columns (O, T, H, Th, TTh, L), each holding one digit, with the focal column highlighted.
-3. **Side-by-side comparison**: two artifacts (numbers, fractions, charts) with a clear "vs" between them and the correct one ticked.
-4. **Number line**: horizontal line with tick marks and one position highlighted.
-5. **Object cut into parts**: a circle (chapati / pizza) with division lines and one piece shaded.
-6. **Road / context sign**: a labeled sign with the number large.
-7. **Process diagram**: 2–3 small panels showing before / during / after of a transformation (e.g., 99,999 + 1).
 
 OUTPUT FORMAT (JSON only, no markdown fences, no commentary):
 
