@@ -741,6 +741,198 @@ class TestDialogueCardSchema:
             DialogueCard(card_idx=1, card_type="something_new")
 
 
+# ─── V2 designed-lesson plan: persistence + validation ───────────────────
+
+
+def _sample_plan():
+    """Minimal plan that satisfies _validate_plan (2-3 misconceptions, 25-40
+    card_plan entries, spine.situation present)."""
+    return {
+        "misconceptions": [
+            {"id": "M1", "name": "evap-only-when-boiling", "description": "...", "evidence_note": "...", "concrete_disproof": "wet fingertip dries"},
+            {"id": "M2", "name": "clouds-are-cotton", "description": "...", "evidence_note": "...", "concrete_disproof": "cold glass droplets"},
+        ],
+        "spine": {
+            "situation": "wet school uniform on terrace clothesline",
+            "particulars": ["Meera", "white uniform", "terrace"],
+            "opening_hook": "where does the water go?",
+            "midpoint_callbacks": ["mid-a", "mid-b"],
+            "closing_resolution": "tomorrow's rain may be yesterday's uniform water",
+        },
+        "concrete_materials": [{"item": "fingertip with water", "use": "feel evaporation directly"}],
+        "macro_structure": [
+            {"phase": "hook", "card_count": 6, "purpose": "open with terrace"},
+            {"phase": "cycle_M1", "card_count": 7, "purpose": "trap-fall-resolve"},
+        ],
+        "card_plan": [
+            {"slot": i, "move": "hook", "speaker": "tutor", "card_type": "tutor_turn",
+             "target": "spine", "intent": "open"}
+            for i in range(2, 32)  # 30 slots → in 25-40 range
+        ],
+    }
+
+
+class TestLessonPlanValidator:
+    """Lightweight plan-shape validator. Detailed schema lives in the prompt;
+    this is a backstop against LLM drift that would corrupt the dialogue stage."""
+
+    def test_valid_plan_passes(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import _validate_plan
+        _validate_plan(_sample_plan())  # no raise
+
+    def test_missing_top_level_keys_raises(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _validate_plan, LessonPlanValidationError,
+        )
+        with pytest.raises(LessonPlanValidationError, match="missing keys"):
+            _validate_plan({"misconceptions": [], "spine": {}, "card_plan": []})
+
+    def test_card_plan_too_short_raises(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _validate_plan, LessonPlanValidationError,
+        )
+        plan = _sample_plan()
+        plan["card_plan"] = plan["card_plan"][:5]
+        with pytest.raises(LessonPlanValidationError, match="card_plan must be 25-40"):
+            _validate_plan(plan)
+
+    def test_card_plan_too_long_raises(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _validate_plan, LessonPlanValidationError,
+        )
+        plan = _sample_plan()
+        plan["card_plan"] = plan["card_plan"] * 2  # 60 entries
+        with pytest.raises(LessonPlanValidationError, match="card_plan must be 25-40"):
+            _validate_plan(plan)
+
+    def test_misconceptions_wrong_count_raises(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _validate_plan, LessonPlanValidationError,
+        )
+        plan = _sample_plan()
+        plan["misconceptions"] = []
+        with pytest.raises(LessonPlanValidationError, match="2-3 entries"):
+            _validate_plan(plan)
+
+    def test_spine_missing_situation_raises(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _validate_plan, LessonPlanValidationError,
+        )
+        plan = _sample_plan()
+        plan["spine"] = {}
+        with pytest.raises(LessonPlanValidationError, match="spine must have"):
+            _validate_plan(plan)
+
+
+class TestTopicDialoguePlanJsonRoundTrip:
+    """V2 plan_json column on topic_dialogues. A regression here means the
+    plan that drove generation is lost, breaking provenance + Phase 6
+    autoresearch (which optimises against the plan)."""
+
+    def test_plan_json_persists_via_orm(self, db_session):
+        from shared.models.entities import TopicDialogue
+        plan = _sample_plan()
+        d = TopicDialogue(
+            id="td-1",
+            guideline_id="g-1",
+            cards_json=[{"card_idx": 1, "card_type": "welcome"}],
+            plan_json=plan,
+            generator_model="claude-opus-4-7",
+        )
+        db_session.add(d)
+        db_session.commit()
+
+        fetched = db_session.query(TopicDialogue).filter(TopicDialogue.id == "td-1").first()
+        assert fetched.plan_json is not None
+        assert len(fetched.plan_json["misconceptions"]) == 2
+        assert fetched.plan_json["spine"]["situation"].startswith("wet school uniform")
+        assert len(fetched.plan_json["card_plan"]) == 30
+
+    def test_plan_json_nullable_for_v1_rows(self, db_session):
+        """Existing V1 rows pre-date the plan stage. Column must be nullable."""
+        from shared.models.entities import TopicDialogue
+        d = TopicDialogue(
+            id="td-v1",
+            guideline_id="g-v1",
+            cards_json=[{"card_idx": 1, "card_type": "welcome"}],
+            generator_model="claude-opus-4-7",
+            # plan_json omitted
+        )
+        db_session.add(d)
+        db_session.commit()
+        fetched = db_session.query(TopicDialogue).filter(TopicDialogue.id == "td-v1").first()
+        assert fetched.plan_json is None
+
+
+class TestDialogueRepositoryUpsertWithPlan:
+    """DialogueRepository.upsert is the only call site that writes
+    topic_dialogues. The plan_json kwarg must flow through to the row."""
+
+    def test_upsert_persists_plan_json(self, db_session):
+        from shared.repositories.dialogue_repository import DialogueRepository
+        from shared.models.entities import TopicDialogue
+
+        repo = DialogueRepository(db_session)
+        plan = _sample_plan()
+        d = repo.upsert(
+            guideline_id="g-up",
+            cards_json=[{"card_idx": 1, "card_type": "welcome"}],
+            generator_model="claude-opus-4-7",
+            plan_json=plan,
+        )
+        assert d.plan_json is not None
+        assert d.plan_json["spine"]["situation"].startswith("wet school uniform")
+
+        # Re-fetch via the repo to confirm it survived round-trip
+        refetched = repo.get_by_guideline_id("g-up")
+        assert refetched is not None
+        assert refetched.plan_json["spine"]["situation"].startswith("wet school uniform")
+
+    def test_upsert_without_plan_works(self, db_session):
+        """Backward compat: upsert without plan_json (e.g., legacy callers
+        or partial-state recovery) must not crash."""
+        from shared.repositories.dialogue_repository import DialogueRepository
+
+        repo = DialogueRepository(db_session)
+        d = repo.upsert(
+            guideline_id="g-legacy",
+            cards_json=[{"card_idx": 1, "card_type": "welcome"}],
+            generator_model="claude-opus-4-7",
+        )
+        assert d.plan_json is None
+
+    def test_upsert_replaces_plan_on_regenerate(self, db_session):
+        """upsert is delete-then-insert — re-running generation with a fresh
+        plan should overwrite the old plan, not stack two rows."""
+        from shared.repositories.dialogue_repository import DialogueRepository
+        from shared.models.entities import TopicDialogue
+
+        repo = DialogueRepository(db_session)
+        plan_v1 = _sample_plan()
+        plan_v1["spine"]["situation"] = "first run"
+        repo.upsert(
+            guideline_id="g-regen",
+            cards_json=[{"card_idx": 1, "card_type": "welcome"}],
+            generator_model="claude-opus-4-7",
+            plan_json=plan_v1,
+        )
+
+        plan_v2 = _sample_plan()
+        plan_v2["spine"]["situation"] = "second run"
+        repo.upsert(
+            guideline_id="g-regen",
+            cards_json=[{"card_idx": 1, "card_type": "welcome"}],
+            generator_model="claude-opus-4-7",
+            plan_json=plan_v2,
+        )
+
+        rows = db_session.query(TopicDialogue).filter(
+            TopicDialogue.guideline_id == "g-regen"
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].plan_json["spine"]["situation"] == "second run"
+
+
 # ─── Hash invariants ──────────────────────────────────────────────────────
 
 

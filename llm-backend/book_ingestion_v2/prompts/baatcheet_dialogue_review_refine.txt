@@ -1,16 +1,10 @@
 TOPIC: {topic_name}
 SUBJECT: {subject}, Grade {grade}
 
-TEACHING GUIDELINE:
-{guideline_text}
+LESSON PLAN (the spec — every card slot's `move`+`intent`+`speaker`+`target` must be realized):
+{lesson_plan_json}
 
-KEY CONCEPTS TO COVER (every concept here must be taught in the dialogue):
-{key_concepts_list}
-
-COMMON MISCONCEPTIONS (soft — at least 1–2 should surface via Meera, with the tutor exploring rather than just naming the right answer):
-{misconceptions_list}
-
-VARIANT A REFERENCE (canonical Explain-mode prose for content fidelity verification only — do NOT inherit ordering):
+VARIANT A REFERENCE (the canonical Explain-mode prose for content fidelity check only — do NOT inherit ordering or copy examples):
 {variant_a_cards_json}
 
 CURRENT DIALOGUE CARDS (cards 2..N — card 1 is welcome and is prepended separately):

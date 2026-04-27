@@ -356,6 +356,10 @@ class TopicDialogue(Base):
         unique=True,
     )
     cards_json = Column(JSONB, nullable=False)
+    # V2 designed-lesson plan (misconceptions, spine, macro_structure, card_plan).
+    # Nullable for backward compatibility with V1 rows generated before the
+    # plan stage existed.
+    plan_json = Column(JSONB, nullable=True)
     generator_model = Column(String, nullable=True)
     source_variant_key = Column(String, nullable=False, default="A")
     source_explanation_id = Column(String, nullable=True)

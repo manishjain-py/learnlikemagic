@@ -52,6 +52,7 @@ Thumbs.db
 llm-backend/autoresearch/tutor_teaching_quality/evaluation/runs/
 llm-backend/autoresearch/book_ingestion_quality/evaluation/runs/
 llm-backend/autoresearch/explanation_quality/evaluation/runs/
+llm-backend/scripts/baatcheet_v2_outputs/
 
 # Docs copied into backend during Docker build
 llm-backend/docs/

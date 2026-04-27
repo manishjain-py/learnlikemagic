@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 # ─── Prompt files (same split-prompt pattern as Explain) ────────────────────
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+_LESSON_PLAN_PROMPT = (_PROMPTS_DIR / "baatcheet_lesson_plan_generation.txt").read_text()
+_LESSON_PLAN_SYSTEM_FILE = str(_PROMPTS_DIR / "baatcheet_lesson_plan_generation_system.txt")
 _GENERATION_PROMPT = (_PROMPTS_DIR / "baatcheet_dialogue_generation.txt").read_text()
 _GENERATION_SYSTEM_FILE = str(_PROMPTS_DIR / "baatcheet_dialogue_generation_system.txt")
 _REVIEW_REFINE_PROMPT = (_PROMPTS_DIR / "baatcheet_dialogue_review_refine.txt").read_text()
@@ -135,6 +137,37 @@ class DialogueValidationError(Exception):
     whether to retry via review-refine or fail the job. Final pass after the
     last refine round runs with raise_on_fail=True so persistent failure
     propagates to the background task and marks the job failed."""
+
+
+class LessonPlanValidationError(Exception):
+    """Raised when the V2 lesson-plan stage produces output that's missing a
+    top-level key or has the wrong shape. The dialogue stage depends on plan
+    structure (card_plan slots, misconceptions list, spine particulars) so a
+    malformed plan would silently corrupt the dialogue downstream."""
+
+
+def _validate_plan(plan: dict) -> None:
+    """Lightweight schema check on lesson-plan output. Raises if a required
+    top-level key is missing or has the wrong cardinality. Detailed schema is
+    enforced by the prompt — this is a backstop against LLM drift, not a
+    duplicate validator."""
+    required = {"misconceptions", "spine", "concrete_materials", "macro_structure", "card_plan"}
+    missing = required - set(plan or {})
+    if missing:
+        raise LessonPlanValidationError(f"lesson plan missing keys: {sorted(missing)}")
+    miscs = plan.get("misconceptions")
+    if not isinstance(miscs, list) or not (2 <= len(miscs) <= 3):
+        raise LessonPlanValidationError(
+            f"lesson plan misconceptions must be 2-3 entries (got {len(miscs) if isinstance(miscs, list) else type(miscs).__name__})"
+        )
+    card_plan = plan.get("card_plan")
+    if not isinstance(card_plan, list) or not (25 <= len(card_plan) <= 40):
+        raise LessonPlanValidationError(
+            f"lesson plan card_plan must be 25-40 entries (got {len(card_plan) if isinstance(card_plan, list) else type(card_plan).__name__})"
+        )
+    spine = plan.get("spine")
+    if not isinstance(spine, dict) or "situation" not in spine:
+        raise LessonPlanValidationError("lesson plan spine must have 'situation'")
 
 
 def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> list[str]:
@@ -288,15 +321,18 @@ def _card_output_to_dict(card: DialogueCardOutput) -> dict:
 class BaatcheetDialogueGeneratorService:
     """Generate the Baatcheet dialogue for a teaching guideline.
 
-    Pipeline:
+    Pipeline (V2 designed-lesson architecture):
       1. Load variant A (raises if missing — caller must run Stage 5 first).
-      2. LLM generates cards 2..N (no welcome).
-      3. Review-refine N rounds. The refine prompt receives the validator's
-         issue list when present so the LLM targets specific fixes.
-      4. Prepend the literal welcome card 1 server-side.
-      5. Re-index card_idx 1..N.
-      6. Final validation with raise_on_fail=True. No silent truncation.
-      7. Persist with source_content_hash + source_explanation_id.
+      2. LLM generates a structured lesson plan (misconceptions, spine,
+         macro_structure, card_plan).
+      3. LLM generates cards 2..N realizing the plan.
+      4. Review-refine N rounds against the plan. The refine prompt receives
+         the validator's issue list and the plan so the LLM targets both
+         mechanical fixes and plan-adherence in one pass.
+      5. Prepend the literal welcome card 1 server-side.
+      6. Re-index card_idx 1..N.
+      7. Final validation with raise_on_fail=True. No silent truncation.
+      8. Persist with source_content_hash + source_explanation_id + plan_json.
     """
 
     def __init__(self, db: DBSession, llm_service: LLMService):
@@ -355,8 +391,23 @@ class BaatcheetDialogueGeneratorService:
         guideline_meta = self.guideline_repo._parse_metadata(guideline.metadata_json)
         misconceptions = guideline_meta.common_misconceptions if guideline_meta else []
 
-        # Step 1: Generate cards 2..N (no welcome)
-        gen_output = self._generate_dialogue(guideline, variant_a, misconceptions)
+        # Step 1: Generate the lesson plan (misconceptions + spine + card_plan).
+        # Plan is the primary spec for both dialogue + refine; the upstream
+        # guideline misconceptions become starting points the planner refines.
+        plan = self._generate_lesson_plan(guideline, variant_a, misconceptions)
+        self._refresh_db_session()
+
+        if stage_collector is not None:
+            stage_collector.append({
+                "guideline_id": guideline.id,
+                "topic_title": topic,
+                "stage": "lesson_plan",
+                "plan": plan,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+
+        # Step 2: Generate cards 2..N realizing the plan (no welcome)
+        gen_output = self._generate_dialogue(plan, guideline, variant_a)
         self._refresh_db_session()
         cards = gen_output.cards
 
@@ -369,11 +420,11 @@ class BaatcheetDialogueGeneratorService:
                 "timestamp": datetime.utcnow().isoformat(),
             })
 
-        # Step 2: Review-refine N rounds, feeding validator issues each time
+        # Step 3: Review-refine N rounds against the plan, feeding validator issues
         last_issues: list[str] = []
         for round_num in range(1, review_rounds + 1):
             refined_output = self._review_and_refine(
-                cards, guideline, variant_a, misconceptions, validator_issues=last_issues,
+                cards, plan, guideline, variant_a, validator_issues=last_issues,
             )
             self._refresh_db_session()
             cards = refined_output.cards
@@ -400,7 +451,7 @@ class BaatcheetDialogueGeneratorService:
                 )
                 break
 
-        # Step 3: Prepend welcome card 1, re-index, final validation
+        # Step 4: Prepend welcome card 1, re-index, final validation
         final_cards: list[DialogueCardOutput] = (
             [self._build_welcome_card_pydantic(guideline)] + list(cards)
         )
@@ -409,7 +460,7 @@ class BaatcheetDialogueGeneratorService:
 
         _validate_cards(final_cards, raise_on_fail=True)  # No silent truncation
 
-        # Step 4: Persist with content hash
+        # Step 5: Persist with content hash + plan
         cards_dicts = [_card_output_to_dict(c) for c in final_cards]
         content_hash = compute_explanation_content_hash(
             variant_a.cards_json, variant_a.summary_json,
@@ -422,6 +473,7 @@ class BaatcheetDialogueGeneratorService:
             source_variant_key="A",
             source_explanation_id=variant_a.id,
             source_content_hash=content_hash,
+            plan_json=plan,
         )
 
         logger.info(json.dumps({
@@ -435,13 +487,40 @@ class BaatcheetDialogueGeneratorService:
 
     # ─── LLM calls ────────────────────────────────────────────────────────
 
-    def _generate_dialogue(
+    def _generate_lesson_plan(
         self,
         guideline: TeachingGuideline,
         variant_a,
         misconceptions: list[str],
+    ) -> dict:
+        """V2 Stage 5b.0: produce a structured lesson plan that the dialogue
+        stage realizes. Returns the parsed JSON dict (validated for required
+        top-level keys; detailed schema enforced by the prompt)."""
+        prompt = self._build_lesson_plan_prompt(guideline, variant_a, misconceptions)
+        system_file = (
+            _LESSON_PLAN_SYSTEM_FILE if self.llm.provider == "claude_code" else None
+        )
+        response = self.llm.call(
+            prompt=prompt,
+            json_schema=None,  # plan schema is large + nested; enforced by prompt
+            schema_name="LessonPlanOutput",
+            system_prompt_file=system_file,
+        )
+        parsed = self.llm.parse_json_response(response["output_text"])
+        if not isinstance(parsed, dict):
+            raise LessonPlanValidationError(
+                f"lesson plan output was not a JSON object (got {type(parsed).__name__})"
+            )
+        _validate_plan(parsed)
+        return parsed
+
+    def _generate_dialogue(
+        self,
+        plan: dict,
+        guideline: TeachingGuideline,
+        variant_a,
     ) -> DialogueGenerationOutput:
-        prompt = self._build_generation_prompt(guideline, variant_a, misconceptions)
+        prompt = self._build_generation_prompt(plan, guideline, variant_a)
         system_file = (
             _GENERATION_SYSTEM_FILE if self.llm.provider == "claude_code" else None
         )
@@ -459,13 +538,13 @@ class BaatcheetDialogueGeneratorService:
     def _review_and_refine(
         self,
         cards: list[DialogueCardOutput],
+        plan: dict,
         guideline: TeachingGuideline,
         variant_a,
-        misconceptions: list[str],
         validator_issues: list[str],
     ) -> DialogueGenerationOutput:
         prompt = self._build_refine_prompt(
-            cards, guideline, variant_a, misconceptions, validator_issues,
+            cards, plan, guideline, variant_a, validator_issues,
         )
         system_file = (
             _REVIEW_REFINE_SYSTEM_FILE if self.llm.provider == "claude_code" else None
@@ -481,39 +560,53 @@ class BaatcheetDialogueGeneratorService:
 
     # ─── Prompt builders ───────────────────────────────────────────────────
 
-    def _build_generation_prompt(
+    def _build_lesson_plan_prompt(
         self,
         guideline: TeachingGuideline,
         variant_a,
         misconceptions: list[str],
     ) -> str:
-        topic = guideline.topic_title or guideline.topic
-        guideline_text = guideline.guideline or guideline.description or ""
-        prior = self._prior_topics_section(guideline)
-
-        return (_GENERATION_PROMPT
-            .replace("{topic_name}", topic)
+        """V2 Stage 5b.0 — feed the planner the topic, guideline, key concepts
+        from variant A, and upstream misconceptions as starting points."""
+        return (_LESSON_PLAN_PROMPT
+            .replace("{topic_name}", guideline.topic_title or guideline.topic)
             .replace("{subject}", guideline.subject or "")
             .replace("{grade}", str(guideline.grade or ""))
-            .replace("{guideline_text}", guideline_text)
+            .replace("{guideline_text}", guideline.guideline or guideline.description or "")
             .replace("{key_concepts_list}", self._extract_key_concepts(variant_a))
             .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
             .replace("{misconceptions_list}", self._format_misconceptions(misconceptions))
-            .replace("{prior_topics_section}", prior)
+            .replace("{prior_topics_section}", self._prior_topics_section(guideline))
+        )
+
+    def _build_generation_prompt(
+        self,
+        plan: dict,
+        guideline: TeachingGuideline,
+        variant_a,
+    ) -> str:
+        """V2 Stage 5b.1 — feed the dialogue stage the lesson plan as primary
+        spec. Variant A is kept for content fidelity check only."""
+        return (_GENERATION_PROMPT
+            .replace("{topic_name}", guideline.topic_title or guideline.topic)
+            .replace("{subject}", guideline.subject or "")
+            .replace("{grade}", str(guideline.grade or ""))
+            .replace("{lesson_plan_json}", json.dumps(plan, indent=2))
+            .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
+            .replace("{prior_topics_section}", self._prior_topics_section(guideline))
         )
 
     def _build_refine_prompt(
         self,
         cards: list[DialogueCardOutput],
+        plan: dict,
         guideline: TeachingGuideline,
         variant_a,
-        misconceptions: list[str],
         validator_issues: list[str],
     ) -> str:
-        topic = guideline.topic_title or guideline.topic
-        guideline_text = guideline.guideline or guideline.description or ""
-        prior = self._prior_topics_section(guideline)
-
+        """V2 Stage 5b.2 — feed the refine stage the plan + the current cards.
+        Refine validates plan-followed AND fixes any validator-flagged defects
+        in one pass."""
         cards_for_review = [c.model_dump() for c in cards]
         cards_json_str = json.dumps(cards_for_review, indent=2)
 
@@ -526,16 +619,14 @@ class BaatcheetDialogueGeneratorService:
             issues_section = ""
 
         return (_REVIEW_REFINE_PROMPT
-            .replace("{topic_name}", topic)
+            .replace("{topic_name}", guideline.topic_title or guideline.topic)
             .replace("{subject}", guideline.subject or "")
             .replace("{grade}", str(guideline.grade or ""))
-            .replace("{guideline_text}", guideline_text)
-            .replace("{key_concepts_list}", self._extract_key_concepts(variant_a))
+            .replace("{lesson_plan_json}", json.dumps(plan, indent=2))
             .replace("{variant_a_cards_json}", json.dumps(variant_a.cards_json, indent=2))
-            .replace("{misconceptions_list}", self._format_misconceptions(misconceptions))
             .replace("{cards_json}", cards_json_str)
             .replace("{validator_issues_section}", issues_section)
-            .replace("{prior_topics_section}", prior)
+            .replace("{prior_topics_section}", self._prior_topics_section(guideline))
         )
 
     @staticmethod

@@ -1,0 +1,10 @@
+TOPIC: {topic_name}
+SUBJECT: {subject}, Grade {grade}
+
+LESSON PLAN (for context — narrative spine, misconceptions, materials, per-card moves):
+{lesson_plan_json}
+
+DIALOGUE CARDS (don't modify; only annotate which cards get visuals):
+{dialogue_cards_json}
+
+Pick the 4-8 cards that benefit most from a static diagram and generate the SVG for each. Output valid JSON only conforming to the schema in the system prompt — no markdown fences.

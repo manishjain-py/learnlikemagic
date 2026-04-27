@@ -801,12 +801,21 @@ def _apply_topic_dialogues_table(db_manager):
     else:
         print("  ✓ topic_dialogues table exists")
         existing_indexes = {idx["name"] for idx in inspector.get_indexes("topic_dialogues")}
+        existing_columns = {col["name"] for col in inspector.get_columns("topic_dialogues")}
         with db_manager.engine.connect() as conn:
             if "idx_topic_dialogues_guideline" not in existing_indexes:
                 conn.execute(text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_topic_dialogues_guideline "
                     "ON topic_dialogues(guideline_id)"
                 ))
+            # V2 designed-lesson plan column. Idempotent ALTER for deployments
+            # that pre-date the V2 plan stage.
+            if "plan_json" not in existing_columns:
+                print("  Adding plan_json column to topic_dialogues...")
+                conn.execute(text(
+                    "ALTER TABLE topic_dialogues ADD COLUMN plan_json JSONB"
+                ))
+                print("  ✓ plan_json column added")
             conn.commit()
 
     _ensure_llm_config(

@@ -67,6 +67,7 @@ class DialogueRepository:
         source_variant_key: str = "A",
         source_explanation_id: Optional[str] = None,
         source_content_hash: Optional[str] = None,
+        plan_json: Optional[dict] = None,
     ) -> TopicDialogue:
         """Delete-then-insert. Same pattern as ExplanationRepository.upsert."""
         self.db.query(TopicDialogue).filter(
@@ -76,6 +77,7 @@ class DialogueRepository:
             id=str(uuid4()),
             guideline_id=guideline_id,
             cards_json=cards_json,
+            plan_json=plan_json,
             generator_model=generator_model,
             source_variant_key=source_variant_key,
             source_explanation_id=source_explanation_id,

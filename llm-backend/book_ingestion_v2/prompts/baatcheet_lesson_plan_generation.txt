@@ -1,0 +1,18 @@
+TOPIC: {topic_name}
+SUBJECT: {subject}, Grade {grade}
+
+TEACHING GUIDELINE:
+{guideline_text}
+
+KEY CONCEPTS TO COVER (the dialogue must teach every concept here; you decide order, examples, pacing):
+{key_concepts_list}
+
+COMMON MISCONCEPTIONS (research notes from upstream — use these as starting points; you may refine, replace, or add to reach your final 2-3 misconceptions):
+{misconceptions_list}
+
+VARIANT A REFERENCE (the canonical Explain-mode prose for this topic — for content fidelity check only; do NOT inherit its ordering or copy its examples):
+{variant_a_cards_json}
+
+{prior_topics_section}
+
+Design the lesson plan now. Output valid JSON only conforming to the schema in the system prompt — no markdown fences, no commentary.

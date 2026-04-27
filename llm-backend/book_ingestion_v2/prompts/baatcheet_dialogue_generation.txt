@@ -1,16 +1,12 @@
 TOPIC: {topic_name}
 SUBJECT: {subject}, Grade {grade}
 
-TEACHING GUIDELINE:
-{guideline_text}
+LESSON PLAN (designed by the planner — realize each card_plan entry as a DialogueCardOutput; preserve slot → card_idx mapping):
+{lesson_plan_json}
 
-KEY CONCEPTS TO COVER (every concept here must be taught in the dialogue; you decide order, examples, pacing):
-{key_concepts_list}
-
-COMMON MISCONCEPTIONS (soft — Meera MAY voice 1–3 of these via "answer incorrectly" turns, then the tutor explores the misconception gently):
-{misconceptions_list}
-
-VARIANT A REFERENCE (the canonical Explain-mode prose for this topic — for content fidelity verification only; do NOT inherit its ordering or copy its examples):
+VARIANT A REFERENCE (the canonical Explain-mode prose for content fidelity check only — do NOT inherit its ordering or copy its examples):
 {variant_a_cards_json}
 
 {prior_topics_section}
+
+Realize the lesson plan now. Output valid JSON conforming to the schema in the system prompt — no markdown fences, no commentary. card_idx values must match the lesson plan's slot field exactly. Total cards = number of entries in card_plan.
