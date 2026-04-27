@@ -772,6 +772,66 @@ def _sample_plan():
     }
 
 
+class TestJSONPreambleTolerance:
+    """The refine stage's dense plan-adherence prompt occasionally leads the
+    model to narrate before/after the JSON despite explicit "JSON only"
+    instructions. The extractor must handle preamble that itself contains
+    curly-brace literals like `{student_name}` or `{topic_name}` — a naive
+    first-`{` to last-`}` scan would slice through that and fail."""
+
+    def test_clean_json_passes_through(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _parse_json_with_preamble_tolerance,
+        )
+        assert _parse_json_with_preamble_tolerance('{"a": 1}') == {"a": 1}
+
+    def test_preamble_stripped(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _parse_json_with_preamble_tolerance,
+        )
+        text = "Looking at this dialogue, I need to fix several issues:\n\n" \
+               '{"cards": [{"card_idx": 2}]}'
+        assert _parse_json_with_preamble_tolerance(text) == {"cards": [{"card_idx": 2}]}
+
+    def test_trailing_prose_stripped(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _parse_json_with_preamble_tolerance,
+        )
+        text = '{"a": 1}\n\nThat is my answer.'
+        assert _parse_json_with_preamble_tolerance(text) == {"a": 1}
+
+    def test_markdown_fence_unwrapped(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _parse_json_with_preamble_tolerance,
+        )
+        text = "Here:\n\n```json\n" + '{"a": 1}' + "\n```\n"
+        assert _parse_json_with_preamble_tolerance(text) == {"a": 1}
+
+    def test_preamble_with_curly_brace_literals(self):
+        """Real failure mode: refine prompt's preamble references
+        `{student_name}` and `{topic_name}` literally. Naive scan would
+        slice into those — must skip past."""
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _parse_json_with_preamble_tolerance,
+        )
+        text = (
+            "Looking at this dialogue, I need to fix:\n"
+            "- Card 12 lacks `{student_name}`\n"
+            "- Card 22 has issues with {topic_name}\n\n"
+            '{"cards": [{"card_idx": 2, "card_type": "tutor_turn"}]}'
+        )
+        out = _parse_json_with_preamble_tolerance(text)
+        assert out == {"cards": [{"card_idx": 2, "card_type": "tutor_turn"}]}
+
+    def test_no_json_raises_llmserviceerror(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            _parse_json_with_preamble_tolerance,
+        )
+        from shared.services.llm_service import LLMServiceError
+        with pytest.raises(LLMServiceError, match="No JSON object found"):
+            _parse_json_with_preamble_tolerance("No JSON anywhere here")
+
+
 class TestLessonPlanValidator:
     """Lightweight plan-shape validator. Detailed schema lives in the prompt;
     this is a backstop against LLM drift that would corrupt the dialogue stage."""

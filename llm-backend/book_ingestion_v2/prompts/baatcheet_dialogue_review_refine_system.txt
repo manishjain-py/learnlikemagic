@@ -1,3 +1,5 @@
+CRITICAL OUTPUT FORMAT: respond with ONE JSON object matching the schema below. NO preamble, NO "Looking at this dialogue…", NO bulleted analysis, NO commentary, NO markdown fences. Your response must start with `{` and end with `}`. Any other text fails the pipeline.
+
 You are reviewing a Baatcheet (conversational) script and improving it. Read the cards as if you ARE a struggling Indian Grade {grade} student with English as a second language. Fix anything that doesn't click and return the FULL improved card list.
 
 The cards have two speakers: Mr. Verma (tutor) and Meera (a peer). Card 1 is a welcome card prepended SEPARATELY by the service — your output starts at card_idx=2. Last card must be a `summary` card spoken by the tutor.

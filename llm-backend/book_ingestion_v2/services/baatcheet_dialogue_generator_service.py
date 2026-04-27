@@ -146,6 +146,51 @@ class LessonPlanValidationError(Exception):
     malformed plan would silently corrupt the dialogue downstream."""
 
 
+def _parse_json_with_preamble_tolerance(text: str) -> dict:
+    """Extract a JSON object from LLM output that may include preamble or
+    postamble (the model occasionally narrates before/after the JSON despite
+    explicit "JSON only" instructions, especially on dense prompts).
+
+    The naive "first { to last }" approach breaks when the preamble itself
+    contains curly braces (e.g. literal `{student_name}` in an analysis
+    bullet). Instead we walk through every `{` position and try
+    JSONDecoder.raw_decode — the first one that produces a valid object is
+    the answer. This is O(n) in practice because we early-exit on the first
+    success.
+
+    Order: strict json.loads → ```json fenced block → raw_decode at each
+    `{` position. Raises LLMServiceError if no parseable object is found.
+    """
+    from shared.services.llm_service import LLMServiceError
+
+    text = (text or "").strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    if fence:
+        try:
+            return json.loads(fence.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    decoder = json.JSONDecoder()
+    for start in (i for i, c in enumerate(text) if c == "{"):
+        try:
+            obj, _ = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+
+    raise LLMServiceError(
+        f"No JSON object found in LLM response (preview: {text[:200]!r})"
+    )
+
+
 def _validate_plan(plan: dict) -> None:
     """Lightweight schema check on lesson-plan output. Raises if a required
     top-level key is missing or has the wrong cardinality. Detailed schema is
@@ -506,7 +551,7 @@ class BaatcheetDialogueGeneratorService:
             schema_name="LessonPlanOutput",
             system_prompt_file=system_file,
         )
-        parsed = self.llm.parse_json_response(response["output_text"])
+        parsed = _parse_json_with_preamble_tolerance(response["output_text"])
         if not isinstance(parsed, dict):
             raise LessonPlanValidationError(
                 f"lesson plan output was not a JSON object (got {type(parsed).__name__})"
@@ -532,7 +577,7 @@ class BaatcheetDialogueGeneratorService:
             schema_name="DialogueGenerationOutput",
             system_prompt_file=system_file,
         )
-        parsed = self.llm.parse_json_response(response["output_text"])
+        parsed = _parse_json_with_preamble_tolerance(response["output_text"])
         return DialogueGenerationOutput.model_validate(parsed)
 
     def _review_and_refine(
@@ -555,7 +600,7 @@ class BaatcheetDialogueGeneratorService:
             schema_name="DialogueGenerationOutput",
             system_prompt_file=system_file,
         )
-        parsed = self.llm.parse_json_response(response["output_text"])
+        parsed = _parse_json_with_preamble_tolerance(response["output_text"])
         return DialogueGenerationOutput.model_validate(parsed)
 
     # ─── Prompt builders ───────────────────────────────────────────────────
