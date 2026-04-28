@@ -153,6 +153,9 @@ def migrate():
         # Topic Pipeline Dashboard — guideline_id + split active-job indexes
         _apply_chapter_jobs_guideline_id(db_manager)
 
+        # Topic Pipeline DAG (Phase 2) — per-stage durable state
+        _apply_topic_stage_runs_table(db_manager)
+
         # Practice v2 tables (create_all handles base tables; this adds the partial
         # unique index + seeds practice_bank_generator / practice_grader LLM configs)
         _apply_practice_tables(db_manager)
@@ -274,11 +277,15 @@ def _apply_chapter_jobs_guideline_id(db_manager):
         # 2. Backfill guideline_id for historical post-sync rows.
         #    For those rows, chapter_id overloaded stored a guideline UUID. We
         #    copy it to guideline_id iff that value resolves to a
-        #    teaching_guidelines.id.
+        #    teaching_guidelines.id. The Baatcheet types were added to the
+        #    set in Phase 2 — historical rows for those stages also stored
+        #    guideline_id-in-chapter_id, so they need the same backfill.
         post_sync_types = (
             "'v2_explanation_generation', 'v2_visual_enrichment', "
             "'v2_check_in_enrichment', 'v2_practice_bank_generation', "
-            "'v2_audio_text_review', 'v2_audio_generation'"
+            "'v2_audio_text_review', 'v2_audio_generation', "
+            "'v2_baatcheet_dialogue_generation', 'v2_baatcheet_visual_enrichment', "
+            "'v2_baatcheet_audio_review'"
         )
         backfill_sql = (
             "UPDATE chapter_processing_jobs SET guideline_id = chapter_id "
@@ -312,6 +319,38 @@ def _apply_chapter_jobs_guideline_id(db_manager):
         ))
         conn.commit()
         print("  ✓ chapter_processing_jobs guideline_id migration applied")
+
+
+def _apply_topic_stage_runs_table(db_manager):
+    """Phase 2 — verify topic_stage_runs table + ensure partial index on is_stale.
+
+    The table itself is created by `Base.metadata.create_all()` (the ORM
+    model is in `book_ingestion_v2/models/database.py`). The partial index
+    `WHERE is_stale = TRUE` is portable across Postgres and SQLite via the
+    Index dialect kwargs, so create_all emits it on a fresh DB. This helper
+    re-issues the CREATE for existing deployments where the index may be
+    missing. Idempotent.
+    """
+    inspector = inspect(db_manager.engine)
+    if "topic_stage_runs" not in inspector.get_table_names():
+        print("  ⚠ topic_stage_runs table not found — will be created by create_all()")
+        return
+
+    existing_indexes = {idx["name"] for idx in inspector.get_indexes("topic_stage_runs")}
+
+    with db_manager.engine.connect() as conn:
+        if "idx_topic_stage_runs_state" not in existing_indexes:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_topic_stage_runs_state "
+                "ON topic_stage_runs (state)"
+            ))
+        if "idx_topic_stage_runs_is_stale" not in existing_indexes:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_topic_stage_runs_is_stale "
+                "ON topic_stage_runs (is_stale) WHERE is_stale = TRUE"
+            ))
+        conn.commit()
+    print("  ✓ topic_stage_runs table + indexes verified")
 
 
 def _apply_practice_mode_support(db_manager):

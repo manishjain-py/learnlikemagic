@@ -470,15 +470,139 @@ def _count_chunks(page_repo, chapter_id: str) -> int:
     return len(build_chunk_windows(page_numbers))
 
 
+def _write_topic_stage_run_started(session, job_id: str, *, started_at):
+    """Phase 2 — mark the matching `topic_stage_runs` row as 'running'.
+
+    No-op when the job has no `guideline_id` (chapter-scope job) or its
+    `job_type` doesn't map to a DAG stage. Wrapped in a broad except so a
+    failure here never blocks the actual stage execution — `topic_stage_runs`
+    is observability state, not a critical write path. The except always
+    rolls back so the caller's session is left in a usable transaction
+    state regardless.
+    """
+    try:
+        from book_ingestion_v2.dag.launcher_map import JOB_TYPE_TO_STAGE_ID
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+        from book_ingestion_v2.repositories.topic_stage_run_repository import (
+            TopicStageRunRepository,
+        )
+        job = session.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id
+        ).first()
+        if not job or not job.guideline_id:
+            return
+        stage_id = JOB_TYPE_TO_STAGE_ID.get(job.job_type)
+        if not stage_id:
+            return
+        TopicStageRunRepository(session).upsert_running(
+            guideline_id=job.guideline_id,
+            stage_id=stage_id,
+            job_id=job_id,
+            started_at=started_at,
+        )
+    except Exception as e:
+        logger.warning(
+            f"topic_stage_runs running-write failed for job {job_id}: {e}",
+            exc_info=True,
+        )
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+
+def _write_topic_stage_run_terminal(
+    session,
+    job_id: str,
+    *,
+    started_at,
+    override_state: Optional[str] = None,
+    error_summary: Optional[str] = None,
+):
+    """Phase 2 — write the matching `topic_stage_runs` row terminal state.
+
+    Reads the job row to derive `(guideline_id, stage_id, terminal_state)`.
+    Maps job statuses: `completed`/`completed_with_errors` → `done`, `failed`
+    → `failed`. If `override_state` is given (exception path), that wins.
+
+    Skips silently when the job is still `running` or `pending` — the
+    stage's `target_fn` is responsible for releasing the lock; an unreleased
+    lock is a bug in `target_fn`, not the wrapper.
+    """
+    from datetime import datetime
+
+    try:
+        from book_ingestion_v2.dag.launcher_map import JOB_TYPE_TO_STAGE_ID
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+        from book_ingestion_v2.repositories.topic_stage_run_repository import (
+            TopicStageRunRepository,
+        )
+        job = session.query(ChapterProcessingJob).filter(
+            ChapterProcessingJob.id == job_id
+        ).first()
+        if not job or not job.guideline_id:
+            return
+        stage_id = JOB_TYPE_TO_STAGE_ID.get(job.job_type)
+        if not stage_id:
+            return
+
+        if override_state is not None:
+            terminal_state = override_state
+        elif job.status in ("completed", "completed_with_errors"):
+            terminal_state = "done"
+        elif job.status == "failed":
+            terminal_state = "failed"
+        else:
+            logger.warning(
+                f"topic_stage_runs terminal-write skipped for job {job_id}: "
+                f"job status is {job.status!r} (target_fn likely forgot to "
+                f"release the lock)"
+            )
+            return
+
+        completed_at = datetime.utcnow()
+        duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+        summary: Optional[dict] = None
+        if error_summary:
+            summary = {"error": error_summary[:500]}
+        elif terminal_state == "failed" and job.error_message:
+            summary = {"error": job.error_message[:500]}
+
+        TopicStageRunRepository(session).upsert_terminal(
+            guideline_id=job.guideline_id,
+            stage_id=stage_id,
+            state=terminal_state,
+            completed_at=completed_at,
+            duration_ms=duration_ms,
+            started_at=started_at,
+            summary=summary,
+            last_job_id=job_id,
+        )
+    except Exception as e:
+        logger.warning(
+            f"topic_stage_runs terminal-write failed for job {job_id}: {e}",
+            exc_info=True,
+        )
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+
 def run_in_background_v2(target_fn, job_id: str, *args):
     """
     V2 background task runner — adapts V1 pattern for chapter jobs.
 
     Uses independent DB session and ChapterJobService for lifecycle.
+    Phase 2: writes per-stage state to `topic_stage_runs` via the
+    `_write_topic_stage_run_*` helpers, treating this wrapper as the
+    single point of capture for all 8 topic-DAG stages.
     """
     import threading
     import time
     import logging
+    from datetime import datetime
     from database import get_db_manager
 
     logger = logging.getLogger(__name__)
@@ -486,20 +610,52 @@ def run_in_background_v2(target_fn, job_id: str, *args):
     def wrapper():
         db_manager = get_db_manager()
         session = db_manager.session_factory()
+        started_at = datetime.utcnow()
         try:
             job_service = ChapterJobService(session)
             job_service.start_job(job_id)
 
+            # Use a fresh session for the started-write so a transient DB
+            # failure here can't leave `session` in a `PendingRollbackError`
+            # state when target_fn picks it up.
+            started_session = db_manager.session_factory()
+            try:
+                _write_topic_stage_run_started(
+                    started_session, job_id, started_at=started_at,
+                )
+            finally:
+                started_session.close()
+
             # Re-create orchestrator/service with the background session
             target_fn(session, job_id, *args)
+
+            # Use a fresh session for the terminal write — `target_fn` may
+            # have refreshed `session` internally (legitimately, after
+            # long LLM calls), leaving it in an unknown state.
+            terminal_session = db_manager.session_factory()
+            try:
+                _write_topic_stage_run_terminal(
+                    terminal_session, job_id, started_at=started_at,
+                )
+            finally:
+                terminal_session.close()
 
         except Exception as e:
             logger.error(f"V2 background task failed: {e}", exc_info=True)
             # Use a fresh session for error handling — the original may be dead
-            # after a long LLM call timed out the DB connection
+            # after a long LLM call timed out the DB connection. Write the
+            # observability terminal row BEFORE release_lock so a failing
+            # release_lock can't drop the row.
             try:
                 error_session = db_manager.session_factory()
                 try:
+                    _write_topic_stage_run_terminal(
+                        error_session,
+                        job_id,
+                        started_at=started_at,
+                        override_state="failed",
+                        error_summary=str(e),
+                    )
                     job_service = ChapterJobService(error_session)
                     job_service.release_lock(job_id, status="failed", error=str(e))
                 finally:
