@@ -269,8 +269,16 @@ function formatDuration(ms: number): string {
   return `${m}m ${rs}s`;
 }
 
+// Backend `topic_stage_runs` writes naive UTC datetimes via `datetime.utcnow()`.
+// FastAPI serializes them without an offset (e.g. "2026-04-29T01:23:17.499756").
+// `new Date(...)` on such a string parses as LOCAL time, so we coerce to UTC.
+function parseBackendDatetime(iso: string): Date {
+  const hasOffset = /([Zz]|[+-]\d{2}:?\d{2})$/.test(iso);
+  return new Date(hasOffset ? iso : `${iso}Z`);
+}
+
 function formatRelativeTime(iso: string): string {
-  const ts = new Date(iso).getTime();
+  const ts = parseBackendDatetime(iso).getTime();
   if (Number.isNaN(ts)) return '';
   const diff = Date.now() - ts;
   if (diff < 0) return 'just now';
@@ -323,9 +331,18 @@ const TopicDAGView: React.FC = () => {
   const pollTimerRef = useRef<number | null>(null);
   const aliveRef = useRef(true);
 
-  // Step 1 — resolve guideline_id from (book, chapter, topic_key) once.
+  // Step 1 — resolve guideline_id from (book, chapter, topic_key).
+  // Resetting topic-scoped state on every param change is critical for
+  // correctness: actions (rerun/run-all/cancel) read `guidelineId` from
+  // closure, and an unreset id would target the previous topic.
   useEffect(() => {
     aliveRef.current = true;
+    setGuidelineId(null);
+    setDag(null);
+    setTopicTitle('');
+    setSelectedStageId(null);
+    setResolveError(null);
+    setToast(null);
     if (!bookId || !chapterId || !topicKey) return;
 
     let cancelled = false;
@@ -396,8 +413,10 @@ const TopicDAGView: React.FC = () => {
 
   const tick = useCallback(async () => {
     if (!aliveRef.current) return;
+    if (document.hidden) return; // resumed by visibilitychange handler below
     const next = await fetchDAG();
     if (!aliveRef.current) return;
+    if (document.hidden) return;
     const interval = isAnyActive(next) ? POLL_FAST_MS : POLL_SLOW_MS;
     pollTimerRef.current = window.setTimeout(tick, interval);
   }, [fetchDAG]);
@@ -408,7 +427,10 @@ const TopicDAGView: React.FC = () => {
     tick();
 
     const onVisibility = () => {
-      if (!document.hidden && aliveRef.current) {
+      if (!aliveRef.current) return;
+      if (document.hidden) {
+        clearTimer();
+      } else {
         clearTimer();
         tick();
       }
@@ -602,6 +624,12 @@ const TopicDAGView: React.FC = () => {
 
   const cascade: CascadeInfo | null = dag?.cascade ?? null;
   const cascadeActive = !!cascade && (!!cascade.running || cascade.pending.length > 0);
+  const cascadeCancelling = !!cascade?.cancelled;
+  // Server-side cascade.pending contains the running stage too; the user-facing
+  // "remaining" count is everything pending minus whatever's currently running.
+  const remainingStages = cascade
+    ? cascade.pending.filter((s) => s !== cascade.running)
+    : [];
   const selectedRow = selectedStageId ? stageRowById[selectedStageId] : null;
   const selectedDef = selectedStageId
     ? definition?.stages.find((s) => s.id === selectedStageId)
@@ -686,19 +714,30 @@ const TopicDAGView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCancel}
-                disabled={actionInFlight === 'cancel'}
+                disabled={actionInFlight === 'cancel' || cascadeCancelling}
+                title={
+                  cascadeCancelling
+                    ? 'Cancellation requested — the running stage is finishing'
+                    : undefined
+                }
                 style={{
                   padding: '6px 14px',
                   fontSize: 13,
                   fontWeight: 600,
                   color: 'white',
-                  backgroundColor: actionInFlight === 'cancel' ? '#9CA3AF' : '#DC2626',
+                  backgroundColor:
+                    actionInFlight === 'cancel' || cascadeCancelling ? '#9CA3AF' : '#DC2626',
                   border: 'none',
                   borderRadius: 4,
-                  cursor: actionInFlight === 'cancel' ? 'not-allowed' : 'pointer',
+                  cursor:
+                    actionInFlight === 'cancel' || cascadeCancelling
+                      ? 'not-allowed'
+                      : 'pointer',
                 }}
               >
-                {actionInFlight === 'cancel' ? 'Cancelling…' : '✕ Cancel cascade'}
+                {actionInFlight === 'cancel' || cascadeCancelling
+                  ? 'Cancelling…'
+                  : '✕ Cancel cascade'}
               </button>
             ) : (
               <button
@@ -747,16 +786,11 @@ const TopicDAGView: React.FC = () => {
               Running: <code>{cascade.running ?? '—'}</code>
             </span>
             <span>
-              Pending: {cascade.pending.length}
-              {cascade.pending.length > 0 && (
-                <code style={{ marginLeft: 4 }}>{cascade.pending.join(', ')}</code>
+              Remaining: {remainingStages.length}
+              {remainingStages.length > 0 && (
+                <code style={{ marginLeft: 4 }}>{remainingStages.join(', ')}</code>
               )}
             </span>
-            {cascade.halted_at && (
-              <span style={{ color: '#991B1B', fontWeight: 600 }}>
-                Halted: {cascade.halted_at}
-              </span>
-            )}
             {cascade.cancelled && (
               <span style={{ color: '#92400E', fontWeight: 600 }}>Cancelled</span>
             )}
@@ -1034,12 +1068,12 @@ function SidePanel({
               {row.duration_ms != null && <div>Duration: {formatDuration(row.duration_ms)}</div>}
               {row.started_at && (
                 <div>
-                  Started: {new Date(row.started_at).toLocaleString()} ({formatRelativeTime(row.started_at)})
+                  Started: {parseBackendDatetime(row.started_at).toLocaleString()} ({formatRelativeTime(row.started_at)})
                 </div>
               )}
               {row.completed_at && (
                 <div>
-                  Completed: {new Date(row.completed_at).toLocaleString()} ({formatRelativeTime(row.completed_at)})
+                  Completed: {parseBackendDatetime(row.completed_at).toLocaleString()} ({formatRelativeTime(row.completed_at)})
                 </div>
               )}
             </div>
