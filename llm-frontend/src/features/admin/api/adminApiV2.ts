@@ -1116,3 +1116,105 @@ export async function runChapterPipelineAll(
     { method: 'POST', body: JSON.stringify(body) },
   );
 }
+
+// ===== Topic Pipeline DAG (v2) — React Flow dashboard =====
+
+export type TopicStageRunState = 'pending' | 'running' | 'done' | 'failed';
+
+export interface DAGStageDefinition {
+  id: string;
+  scope: string;
+  label: string;
+  depends_on: string[];
+}
+
+export interface DAGDefinitionResponse {
+  stages: DAGStageDefinition[];
+}
+
+export interface TopicDAGStageRow {
+  stage_id: string;
+  label: string;
+  depends_on: string[];
+  state: TopicStageRunState;
+  is_stale?: boolean;
+  started_at?: string | null;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  last_job_id?: string | null;
+  summary?: Record<string, unknown> | null;
+}
+
+export interface CascadeInfo {
+  cascade_id: string;
+  running?: string | null;
+  halted_at?: string | null;
+  cancelled: boolean;
+  pending: string[];
+  started_at: string;
+  stage_results: Record<string, string>;
+}
+
+export interface TopicDAGResponse {
+  guideline_id: string;
+  stages: TopicDAGStageRow[];
+  cascade?: CascadeInfo | null;
+}
+
+export interface StartCascadeRequest {
+  force?: boolean;
+  quality_level?: QualityLevel;
+}
+
+export interface RunAllCascadeRequest {
+  quality_level?: QualityLevel;
+}
+
+export interface CascadeKickoffResponse {
+  cascade_id: string;
+  pending: string[];
+  running?: string | null;
+  message?: string;
+}
+
+export interface CascadeCancelResponse {
+  cancelled: boolean;
+}
+
+export async function getDAGDefinition(): Promise<DAGDefinitionResponse> {
+  return apiFetch<DAGDefinitionResponse>('/admin/v2/dag/definition');
+}
+
+export async function getTopicDAG(guidelineId: string): Promise<TopicDAGResponse> {
+  return apiFetch<TopicDAGResponse>(`/admin/v2/topics/${guidelineId}/dag`);
+}
+
+export async function rerunStageCascade(
+  guidelineId: string,
+  stageId: string,
+  body: StartCascadeRequest = {},
+): Promise<CascadeKickoffResponse> {
+  return apiFetch<CascadeKickoffResponse>(
+    `/admin/v2/topics/${guidelineId}/stages/${stageId}/rerun`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export async function runAllStagesCascade(
+  guidelineId: string,
+  body: RunAllCascadeRequest = {},
+): Promise<CascadeKickoffResponse> {
+  return apiFetch<CascadeKickoffResponse>(
+    `/admin/v2/topics/${guidelineId}/dag/run-all`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export async function cancelCascade(
+  guidelineId: string,
+): Promise<CascadeCancelResponse> {
+  return apiFetch<CascadeCancelResponse>(
+    `/admin/v2/topics/${guidelineId}/dag/cancel`,
+    { method: 'POST' },
+  );
+}
