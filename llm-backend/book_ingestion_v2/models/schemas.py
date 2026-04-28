@@ -470,3 +470,72 @@ class FanOutJobResponse(BaseModel):
     launched: int
     job_ids: List[str]
     skipped_guidelines: List[str] = []
+
+
+# ───── Phase 3 — Topic DAG cascade ─────
+
+
+class DAGStageDefinition(BaseModel):
+    id: str
+    scope: str
+    label: str
+    depends_on: List[str]
+
+
+class DAGDefinitionResponse(BaseModel):
+    stages: List[DAGStageDefinition]
+
+
+TopicStageRunState = Literal["pending", "running", "done", "failed"]
+
+
+class TopicDAGStageRow(BaseModel):
+    """Per-stage state for the DAG view. Combines the durable
+    `topic_stage_runs` row with the DAG topology."""
+
+    stage_id: str
+    label: str
+    depends_on: List[str]
+    state: TopicStageRunState
+    is_stale: bool = False
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    last_job_id: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+
+
+class CascadeInfo(BaseModel):
+    cascade_id: str
+    running: Optional[str] = None
+    halted_at: Optional[str] = None
+    cancelled: bool = False
+    pending: List[str] = []
+    started_at: datetime
+    stage_results: Dict[str, str] = {}
+
+
+class TopicDAGResponse(BaseModel):
+    guideline_id: str
+    stages: List[TopicDAGStageRow]
+    cascade: Optional[CascadeInfo] = None
+
+
+class StartCascadeRequest(BaseModel):
+    force: bool = True
+    quality_level: QualityLevel = "balanced"
+
+
+class RunAllCascadeRequest(BaseModel):
+    quality_level: QualityLevel = "balanced"
+
+
+class CascadeKickoffResponse(BaseModel):
+    cascade_id: str
+    pending: List[str] = []
+    running: Optional[str] = None
+    message: Optional[str] = None
+
+
+class CascadeCancelResponse(BaseModel):
+    cancelled: bool

@@ -74,6 +74,7 @@ class TopicPipelineStatusService:
         stages: list[StageStatus] = [stage.status_check(ctx) for stage in DAG.stages]
 
         self._backfill_topic_stage_runs(guideline.id, stages)
+        self._overlay_topic_stage_run_signals(guideline.id, stages)
 
         return TopicPipelineStatusResponse(
             topic_key=topic_key,
@@ -267,6 +268,38 @@ class TopicPipelineStatusService:
             except Exception:
                 pass
 
+    def _overlay_topic_stage_run_signals(
+        self, guideline_id: str, stages: list[StageStatus]
+    ) -> None:
+        """Phase 3 — overlay row-only signals onto reconstruction results.
+
+        Reconstruction (`status_check` per stage) is rich on
+        `done`/`warning`/`ready`/`blocked`/`failed`/`running` because it
+        reads artifacts + the latest job. But the cascade-marked
+        `is_stale` flag lives only in `topic_stage_runs` rows; without
+        this overlay the dashboard would never show "stage X is done
+        but its inputs are now stale".
+
+        Wrapped in a broad except — the response is still useful even
+        if the overlay fails. Rolls back on failure for session
+        hygiene.
+        """
+        try:
+            rows = TopicStageRunRepository(self.db).list_for_topic(guideline_id)
+            stale_set = {r.stage_id for r in rows if r.is_stale}
+            for s in stages:
+                if s.stage_id in stale_set:
+                    s.is_stale = True
+        except Exception as e:
+            logger.warning(
+                f"is_stale overlay failed for guideline={guideline_id}: {e}",
+                exc_info=True,
+            )
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+
     def _reconcile_stuck_running_rows(
         self, repo: TopicStageRunRepository, by_stage: dict
     ) -> None:
@@ -327,6 +360,27 @@ class TopicPipelineStatusService:
                 summary=summary,
                 last_job_id=job.id,
             )
+
+            # Phase 3 — fire the cascade hook so an active cascade can
+            # advance past a dead worker. The terminal-write hook in
+            # `run_in_background_v2` covers the happy path; this covers
+            # the orphan-recovery path. Wrapped so a cascade bug can't
+            # break the reconciliation write above.
+            try:
+                from book_ingestion_v2.dag.cascade import (
+                    get_cascade_orchestrator,
+                )
+                get_cascade_orchestrator().on_stage_complete(
+                    guideline_id=row.guideline_id,
+                    stage_id=row.stage_id,
+                    terminal_state=terminal_state,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"cascade on_stage_complete failed during reconciliation "
+                    f"of stage={row.stage_id}: {e}",
+                    exc_info=True,
+                )
 
     # ───── Staleness anchor ─────
 
