@@ -1,6 +1,18 @@
 """SQLAlchemy ORM models for Book Ingestion V2."""
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, DateTime, Index, UniqueConstraint, text
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Text,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from shared.models.entities import Base
 
 
@@ -259,4 +271,59 @@ class ChapterTopic(Base):
         UniqueConstraint("chapter_id", "topic_key", name="uq_chapter_topics_chapter_key"),
         Index("idx_chapter_topics_book", "book_id"),
         Index("idx_chapter_topics_chapter", "chapter_id"),
+    )
+
+
+class TopicStageRun(Base):
+    """Latest-only per-stage state for the topic-pipeline DAG (Phase 2).
+
+    One row per `(guideline_id, stage_id)`. Written by the
+    `run_in_background_v2` hook on stage entry (`state='running'`) and on
+    terminal (`state in ('done','failed')`). Historical runs live in
+    `chapter_processing_jobs`; this table is the durable, queryable view
+    used by the dashboard + cascade orchestrator.
+
+    `is_stale` is reserved for Phase 3 cascade staleness; defaults to FALSE.
+    `content_anchor` snapshots the staleness signal (e.g. parent stage's
+    `content_anchor`) at the moment a stage reaches `done`.
+    """
+    __tablename__ = "topic_stage_runs"
+
+    guideline_id = Column(
+        String,
+        ForeignKey("teaching_guidelines.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    stage_id = Column(String, primary_key=True, nullable=False)
+    state = Column(String, nullable=False, default="pending")
+    is_stale = Column(Boolean, nullable=False, default=False)
+
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    last_job_id = Column(
+        String,
+        ForeignKey("chapter_processing_jobs.id"),
+        nullable=True,
+    )
+    content_anchor = Column(String, nullable=True)
+    summary_json = Column(JSONB, nullable=True)
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_topic_stage_runs_state", "state"),
+        Index(
+            "idx_topic_stage_runs_is_stale",
+            "is_stale",
+            postgresql_where=text("is_stale = TRUE"),
+            sqlite_where=text("is_stale = TRUE"),
+        ),
     )

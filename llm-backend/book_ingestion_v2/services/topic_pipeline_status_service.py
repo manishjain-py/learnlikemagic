@@ -8,6 +8,11 @@ Staleness for downstream stages is anchored to
 `max(topic_explanations.created_at)` for the guideline — stable across
 in-place `cards_json` writes during visuals/check-ins/audio synthesis
 (which advance `updated_at` but are not semantic invalidations).
+
+Phase 2: every read-time pass also backfills `topic_stage_runs` rows for
+terminal stages that pre-date the table. The backfill is a write-only side
+effect — the response shape is unchanged. Phase 3+ will start preferring
+those rows on read for cascade staleness.
 """
 from __future__ import annotations
 
@@ -26,6 +31,9 @@ from book_ingestion_v2.models.schemas import (
     StageCountsByState,
     StageStatus,
     TopicPipelineStatusResponse,
+)
+from book_ingestion_v2.repositories.topic_stage_run_repository import (
+    TopicStageRunRepository,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +72,8 @@ class TopicPipelineStatusService:
         )
 
         stages: list[StageStatus] = [stage.status_check(ctx) for stage in DAG.stages]
+
+        self._backfill_topic_stage_runs(guideline.id, stages)
 
         return TopicPipelineStatusResponse(
             topic_key=topic_key,
@@ -192,6 +202,43 @@ class TopicPipelineStatusService:
             .filter(TopicExplanation.guideline_id == guideline_id)
             .all()
         )
+
+    # ───── Phase 2 lazy backfill ─────
+
+    def _backfill_topic_stage_runs(
+        self, guideline_id: str, stages: list[StageStatus]
+    ) -> None:
+        """Insert `topic_stage_runs` rows for terminal stages that lack one.
+
+        Runs once per `get_pipeline_status` call. The first read after Phase
+        2 ships populates rows for every existing terminal stage; later
+        reads find rows present and skip. Only `done` and `failed` are
+        backfilled — `warning`/`ready`/`blocked`/`running` are not modelled
+        in the topic_stage_runs state vocabulary (4 states vs. 6).
+
+        Wrapped in a broad except so a backfill DB error never breaks the
+        read response — backfill is best-effort observability.
+        """
+        try:
+            repo = TopicStageRunRepository(self.db)
+            existing = {r.stage_id for r in repo.list_for_topic(guideline_id)}
+            for s in stages:
+                if s.stage_id in existing:
+                    continue
+                if s.state not in ("done", "failed"):
+                    continue
+                repo.upsert_backfill(
+                    guideline_id=guideline_id,
+                    stage_id=s.stage_id,
+                    state=s.state,
+                    completed_at=s.last_job_completed_at,
+                    last_job_id=s.last_job_id,
+                )
+        except Exception as e:
+            logger.warning(
+                f"topic_stage_runs backfill failed for guideline={guideline_id}: {e}",
+                exc_info=True,
+            )
 
     # ───── Staleness anchor ─────
 
