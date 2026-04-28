@@ -27,6 +27,7 @@ from book_ingestion_v2.api import page_routes as v2_page_routes
 from book_ingestion_v2.api import processing_routes as v2_processing_routes
 from book_ingestion_v2.api import sync_routes as v2_sync_routes
 from book_ingestion_v2.api import visual_preview_routes as v2_visual_preview_routes
+from book_ingestion_v2.api import dag_routes as v2_dag_routes
 
 # Validate configuration on startup
 validate_required_settings()
@@ -122,6 +123,7 @@ app.include_router(v2_page_routes.router)   # Book Ingestion V2: /admin/v2/books
 app.include_router(v2_processing_routes.router)  # Book Ingestion V2: processing, topics, jobs
 app.include_router(v2_sync_routes.router)        # Book Ingestion V2: sync + results
 app.include_router(v2_visual_preview_routes.router)  # Book Ingestion V2: visual preview store
+app.include_router(v2_dag_routes.router)             # Book Ingestion V2: topic DAG cascade (Phase 3)
 app.include_router(issue_routes.router)          # Issue reporting: /issues/*
 
 

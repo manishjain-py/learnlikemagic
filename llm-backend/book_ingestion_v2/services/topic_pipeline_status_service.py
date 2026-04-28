@@ -74,6 +74,7 @@ class TopicPipelineStatusService:
         stages: list[StageStatus] = [stage.status_check(ctx) for stage in DAG.stages]
 
         self._backfill_topic_stage_runs(guideline.id, stages)
+        self._overlay_topic_stage_run_signals(guideline.id, stages)
 
         return TopicPipelineStatusResponse(
             topic_key=topic_key,
@@ -262,6 +263,38 @@ class TopicPipelineStatusService:
             # request handler may still close the session cleanly) doesn't
             # hit a `PendingRollbackError` because a backfill commit died
             # mid-flight.
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+
+    def _overlay_topic_stage_run_signals(
+        self, guideline_id: str, stages: list[StageStatus]
+    ) -> None:
+        """Phase 3 — overlay row-only signals onto reconstruction results.
+
+        Reconstruction (`status_check` per stage) is rich on
+        `done`/`warning`/`ready`/`blocked`/`failed`/`running` because it
+        reads artifacts + the latest job. But the cascade-marked
+        `is_stale` flag lives only in `topic_stage_runs` rows; without
+        this overlay the dashboard would never show "stage X is done
+        but its inputs are now stale".
+
+        Wrapped in a broad except — the response is still useful even
+        if the overlay fails. Rolls back on failure for session
+        hygiene.
+        """
+        try:
+            rows = TopicStageRunRepository(self.db).list_for_topic(guideline_id)
+            stale_set = {r.stage_id for r in rows if r.is_stale}
+            for s in stages:
+                if s.stage_id in stale_set:
+                    s.is_stale = True
+        except Exception as e:
+            logger.warning(
+                f"is_stale overlay failed for guideline={guideline_id}: {e}",
+                exc_info=True,
+            )
             try:
                 self.db.rollback()
             except Exception:

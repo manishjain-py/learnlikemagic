@@ -569,8 +569,13 @@ def _write_topic_stage_run_terminal(
         elif terminal_state == "failed" and job.error_message:
             summary = {"error": job.error_message[:500]}
 
+        # Snapshot before the commit — SQLAlchemy expires `job` on
+        # commit by default, and the cascade hook (below) needs these
+        # values without re-querying.
+        guideline_id = job.guideline_id
+
         TopicStageRunRepository(session).upsert_terminal(
-            guideline_id=job.guideline_id,
+            guideline_id=guideline_id,
             stage_id=stage_id,
             state=terminal_state,
             completed_at=completed_at,
@@ -588,6 +593,26 @@ def _write_topic_stage_run_terminal(
             session.rollback()
         except Exception:
             pass
+        # Don't fire the cascade hook if we couldn't write the terminal
+        # row — the cascade reads from those rows to plan next steps.
+        return
+
+    # Phase 3 — fire the cascade hook AFTER the row is written. Wrapped
+    # in its own try/except so a cascade bug can't break the terminal
+    # observability write the rest of the system depends on.
+    try:
+        from book_ingestion_v2.dag.cascade import get_cascade_orchestrator
+
+        get_cascade_orchestrator().on_stage_complete(
+            guideline_id=guideline_id,
+            stage_id=stage_id,
+            terminal_state=terminal_state,
+        )
+    except Exception as e:
+        logger.warning(
+            f"cascade on_stage_complete failed for job {job_id}: {e}",
+            exc_info=True,
+        )
 
 
 def run_in_background_v2(target_fn, job_id: str, *args):
