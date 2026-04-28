@@ -13,9 +13,9 @@
 **Single source of truth:** `book_ingestion_v2/dag/topic_pipeline_dag.py` (Python module), with one `book_ingestion_v2/stages/{stage_id}.py` file per stage exporting a `Stage` object. Adding a stage = create one file + add one line to the DAG.
 
 **Phases (each independently shippable):**
-1. Declare the DAG + refactor stages into modules — no behaviour change
-2. Persist `topic_stage_runs` rows + stage timing
-3. Cascade orchestrator + rerun APIs
+1. Declare the DAG + refactor stages into modules — no behaviour change ✅ shipped 2026-04-28 (PR #127)
+2. Persist `topic_stage_runs` rows + stage timing ✅ shipped 2026-04-28 (PR #128)
+3. Cascade orchestrator + rerun APIs ← **next**
 4. `baatcheet_visuals` V2 refactor (the one substantive runtime change)
 5. React Flow UI replaces stage ladder
 6. Cross-DAG warning + tests + polish
