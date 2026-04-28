@@ -543,6 +543,246 @@ class TestStatusServiceLazyBackfill:
 # ---------------------------------------------------------------------------
 
 
+class TestPostSyncJobTypesBaatcheetCapture:
+    """Reviewer1 P1.1 regression — Baatcheet stages must keep their
+    guideline_id through `acquire_lock` so the Phase 2 hook can write a
+    topic_stage_runs row. Pre-fix, BAATCHEET_DIALOGUE_GENERATION wasn't in
+    POST_SYNC_JOB_TYPES, so acquire_lock forced guideline_id=None.
+    """
+
+    @pytest.mark.parametrize("job_type,expected_stage_id", [
+        (V2JobType.BAATCHEET_DIALOGUE_GENERATION.value, "baatcheet_dialogue"),
+        (V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value, "baatcheet_visuals"),
+    ])
+    def test_baatcheet_stage_captured_via_acquire_lock(
+        self, db_session, seed_topic, job_type, expected_stage_id,
+    ):
+        from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+
+        job_id = ChapterJobService(db_session).acquire_lock(
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=seed_topic["guideline_id"],
+            job_type=job_type,
+        )
+
+        job = db_session.query(ChapterProcessingJob).filter_by(id=job_id).first()
+        assert job.guideline_id == seed_topic["guideline_id"], (
+            "Baatcheet job must retain guideline_id — POST_SYNC_JOB_TYPES gap"
+        )
+
+        _write_topic_stage_run_started(db_session, job_id, started_at=datetime.utcnow())
+        row = TopicStageRunRepository(db_session).get(
+            seed_topic["guideline_id"], expected_stage_id,
+        )
+        assert row is not None
+        assert row.state == "running"
+        assert row.last_job_id == job_id
+
+
+class TestObservabilityWriteFailureIsolation:
+    """Reviewer1 P1.2 regression — a failing topic_stage_runs write must not
+    leave the caller's session in a poisoned PendingRollbackError state.
+    The hook helpers rollback in their broad except so the session stays
+    usable for follow-up work (target_fn, request handling).
+    """
+
+    def test_started_write_failure_rolls_back_session(
+        self, db_session, seed_topic, monkeypatch,
+    ):
+        job = _add_job(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=seed_topic["guideline_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            status="running",
+        )
+
+        # Simulate a DB error during the running upsert.
+        def boom(self, *args, **kwargs):
+            raise RuntimeError("simulated commit failure")
+        monkeypatch.setattr(
+            TopicStageRunRepository, "upsert_running", boom,
+        )
+
+        # The helper must swallow the error and leave the session usable —
+        # subsequent reads on db_session should not raise.
+        _write_topic_stage_run_started(
+            db_session, job.id, started_at=datetime.utcnow(),
+        )
+        # Smoke: session still usable.
+        db_session.query(ChapterProcessingJob).count()
+
+    def test_terminal_write_failure_rolls_back_session(
+        self, db_session, seed_topic, monkeypatch,
+    ):
+        job = _add_job(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=seed_topic["guideline_id"],
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            status="completed",
+        )
+
+        def boom(self, *args, **kwargs):
+            raise RuntimeError("simulated commit failure")
+        monkeypatch.setattr(
+            TopicStageRunRepository, "upsert_terminal", boom,
+        )
+
+        _write_topic_stage_run_terminal(
+            db_session, job.id, started_at=datetime.utcnow() - timedelta(seconds=1),
+        )
+        db_session.query(ChapterProcessingJob).count()
+
+
+class TestStuckRunningReconciliation:
+    """Reviewer1 P2 — a row stuck at `running` whose `last_job_id` is now
+    terminal must be reconciled by the lazy backfill. Otherwise heartbeat
+    reaping leaves the row mismatched and Phase 3 cascade reads garbage.
+    """
+
+    def _add_explanation(self, db, gid):
+        expl = TopicExplanation(
+            id=str(uuid.uuid4()), guideline_id=gid,
+            variant_key="A", variant_label="Variant A",
+            cards_json=[{"card_type": "explain"}],
+        )
+        db.add(expl)
+        db.commit()
+
+    def test_running_row_reconciled_when_job_failed(self, db_session, seed_topic):
+        gid = seed_topic["guideline_id"]
+        self._add_explanation(db_session, gid)
+
+        # Seed: failed job + stuck-running topic_stage_runs row.
+        started = datetime.utcnow() - timedelta(seconds=30)
+        completed = datetime.utcnow()
+        job = _add_job(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            status="failed",
+            error="heartbeat stale",
+        )
+        job.started_at = started
+        job.completed_at = completed
+        db_session.commit()
+
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_running(gid, "explanations", job_id=job.id, started_at=started)
+
+        svc = TopicPipelineStatusService(db_session)
+        svc.get_pipeline_status(
+            seed_topic["book_id"], seed_topic["chapter_id"], seed_topic["topic_key"],
+        )
+
+        row = repo.get(gid, "explanations")
+        assert row.state == "failed"
+        assert row.completed_at == completed
+        assert row.duration_ms == 30000
+        assert row.summary_json == {
+            "error": "heartbeat stale", "reconciled": True,
+        }
+        assert row.last_job_id == job.id
+
+    def test_running_row_reconciled_when_job_completed(self, db_session, seed_topic):
+        gid = seed_topic["guideline_id"]
+        self._add_explanation(db_session, gid)
+
+        started = datetime.utcnow() - timedelta(seconds=15)
+        completed = datetime.utcnow()
+        job = _add_job(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            job_type=V2JobType.VISUAL_ENRICHMENT.value,
+            status="completed",
+        )
+        job.started_at = started
+        job.completed_at = completed
+        db_session.commit()
+
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_running(gid, "visuals", job_id=job.id, started_at=started)
+
+        svc = TopicPipelineStatusService(db_session)
+        svc.get_pipeline_status(
+            seed_topic["book_id"], seed_topic["chapter_id"], seed_topic["topic_key"],
+        )
+
+        row = repo.get(gid, "visuals")
+        assert row.state == "done"
+        assert row.duration_ms == 15000
+        assert row.summary_json == {"reconciled": True}
+
+    def test_running_row_left_alone_when_job_still_running(
+        self, db_session, seed_topic,
+    ):
+        gid = seed_topic["guideline_id"]
+        self._add_explanation(db_session, gid)
+
+        job = _add_job(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            status="running",
+        )
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_running(gid, "explanations", job_id=job.id)
+
+        svc = TopicPipelineStatusService(db_session)
+        svc.get_pipeline_status(
+            seed_topic["book_id"], seed_topic["chapter_id"], seed_topic["topic_key"],
+        )
+
+        row = repo.get(gid, "explanations")
+        assert row.state == "running"  # not reconciled — job is still live
+
+    def test_running_row_left_alone_when_job_missing(self, db_session, seed_topic):
+        # Job was hard-deleted; row points at a no-longer-existent job_id.
+        # Reconciliation should skip silently rather than blow up.
+        gid = seed_topic["guideline_id"]
+        self._add_explanation(db_session, gid)
+
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_running(gid, "explanations", job_id="ghost-job-id")
+
+        svc = TopicPipelineStatusService(db_session)
+        svc.get_pipeline_status(
+            seed_topic["book_id"], seed_topic["chapter_id"], seed_topic["topic_key"],
+        )
+
+        row = repo.get(gid, "explanations")
+        assert row.state == "running"
+
+
+class TestUpsertBackfillStateValidation:
+    """Reviewer2 minor #2 — upsert_backfill must reject non-terminal states
+    so a future caller can't write garbage."""
+
+    def test_rejects_running_state(self, db_session, seed_topic):
+        repo = TopicStageRunRepository(db_session)
+        with pytest.raises(ValueError):
+            repo.upsert_backfill(
+                seed_topic["guideline_id"], "explanations", state="running",
+            )
+
+    def test_rejects_pending_state(self, db_session, seed_topic):
+        repo = TopicStageRunRepository(db_session)
+        with pytest.raises(ValueError):
+            repo.upsert_backfill(
+                seed_topic["guideline_id"], "explanations", state="pending",
+            )
+
+
 class TestDashboardRenderingUnchanged:
     """Phase 2 acceptance: existing dashboards render identically.
 

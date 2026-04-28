@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 _HEARTBEAT_THRESHOLD = timedelta(seconds=HEARTBEAT_STALE_THRESHOLD)
 _PENDING_THRESHOLD = timedelta(seconds=PENDING_STALE_THRESHOLD)
 
-# Post-sync job types REQUIRE a guideline_id.
+# Post-sync job types REQUIRE a guideline_id. The Baatcheet stages were
+# previously absent from this set — `acquire_lock` then forced
+# guideline_id=NULL for them, which broke topic-scope tracking (Phase 2
+# topic_stage_runs writes skip rows with no guideline_id) and conflated
+# them with chapter-level jobs in the active-job indexes.
 POST_SYNC_JOB_TYPES: frozenset[str] = frozenset(
     {
         V2JobType.EXPLANATION_GENERATION.value,
@@ -41,6 +45,9 @@ POST_SYNC_JOB_TYPES: frozenset[str] = frozenset(
         V2JobType.PRACTICE_BANK_GENERATION.value,
         V2JobType.AUDIO_TEXT_REVIEW.value,
         V2JobType.AUDIO_GENERATION.value,
+        V2JobType.BAATCHEET_DIALOGUE_GENERATION.value,
+        V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value,
+        V2JobType.BAATCHEET_AUDIO_REVIEW.value,
     }
 )
 

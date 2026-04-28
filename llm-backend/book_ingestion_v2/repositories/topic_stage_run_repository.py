@@ -158,7 +158,16 @@ class TopicStageRunRepository:
         reconstructable; `started_at` and `duration_ms` stay NULL because
         we never measured them. Idempotent: a second backfill on the same
         key updates in place rather than inserting a duplicate.
+
+        `state` must be a terminal value — backfill is only meaningful for
+        stages that already finished. Use `upsert_running` /
+        `upsert_terminal` for the live hook path.
         """
+        if state not in TERMINAL_STATES:
+            raise ValueError(
+                f"upsert_backfill called with non-terminal state {state!r}; "
+                f"expected one of {TERMINAL_STATES}"
+            )
         row = self.get(guideline_id, stage_id)
         if row is None:
             row = TopicStageRun(guideline_id=guideline_id, stage_id=stage_id)

@@ -476,7 +476,9 @@ def _write_topic_stage_run_started(session, job_id: str, *, started_at):
     No-op when the job has no `guideline_id` (chapter-scope job) or its
     `job_type` doesn't map to a DAG stage. Wrapped in a broad except so a
     failure here never blocks the actual stage execution — `topic_stage_runs`
-    is observability state, not a critical write path.
+    is observability state, not a critical write path. The except always
+    rolls back so the caller's session is left in a usable transaction
+    state regardless.
     """
     try:
         from book_ingestion_v2.dag.launcher_map import JOB_TYPE_TO_STAGE_ID
@@ -503,6 +505,10 @@ def _write_topic_stage_run_started(session, job_id: str, *, started_at):
             f"topic_stage_runs running-write failed for job {job_id}: {e}",
             exc_info=True,
         )
+        try:
+            session.rollback()
+        except Exception:
+            pass
 
 
 def _write_topic_stage_run_terminal(
@@ -578,6 +584,10 @@ def _write_topic_stage_run_terminal(
             f"topic_stage_runs terminal-write failed for job {job_id}: {e}",
             exc_info=True,
         )
+        try:
+            session.rollback()
+        except Exception:
+            pass
 
 
 def run_in_background_v2(target_fn, job_id: str, *args):
@@ -605,7 +615,16 @@ def run_in_background_v2(target_fn, job_id: str, *args):
             job_service = ChapterJobService(session)
             job_service.start_job(job_id)
 
-            _write_topic_stage_run_started(session, job_id, started_at=started_at)
+            # Use a fresh session for the started-write so a transient DB
+            # failure here can't leave `session` in a `PendingRollbackError`
+            # state when target_fn picks it up.
+            started_session = db_manager.session_factory()
+            try:
+                _write_topic_stage_run_started(
+                    started_session, job_id, started_at=started_at,
+                )
+            finally:
+                started_session.close()
 
             # Re-create orchestrator/service with the background session
             target_fn(session, job_id, *args)
@@ -624,12 +643,12 @@ def run_in_background_v2(target_fn, job_id: str, *args):
         except Exception as e:
             logger.error(f"V2 background task failed: {e}", exc_info=True)
             # Use a fresh session for error handling — the original may be dead
-            # after a long LLM call timed out the DB connection
+            # after a long LLM call timed out the DB connection. Write the
+            # observability terminal row BEFORE release_lock so a failing
+            # release_lock can't drop the row.
             try:
                 error_session = db_manager.session_factory()
                 try:
-                    job_service = ChapterJobService(error_session)
-                    job_service.release_lock(job_id, status="failed", error=str(e))
                     _write_topic_stage_run_terminal(
                         error_session,
                         job_id,
@@ -637,6 +656,8 @@ def run_in_background_v2(target_fn, job_id: str, *args):
                         override_state="failed",
                         error_summary=str(e),
                     )
+                    job_service = ChapterJobService(error_session)
+                    job_service.release_lock(job_id, status="failed", error=str(e))
                 finally:
                     error_session.close()
             except Exception:

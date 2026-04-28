@@ -208,22 +208,40 @@ class TopicPipelineStatusService:
     def _backfill_topic_stage_runs(
         self, guideline_id: str, stages: list[StageStatus]
     ) -> None:
-        """Insert `topic_stage_runs` rows for terminal stages that lack one.
+        """Reconcile + backfill `topic_stage_runs` rows.
 
-        Runs once per `get_pipeline_status` call. The first read after Phase
-        2 ships populates rows for every existing terminal stage; later
-        reads find rows present and skip. Only `done` and `failed` are
-        backfilled — `warning`/`ready`/`blocked`/`running` are not modelled
-        in the topic_stage_runs state vocabulary (4 states vs. 6).
+        Two passes (both write-only side effects — the response shape is
+        unchanged):
+
+        1. **Reconcile stuck-running rows.** If a row says `running` but
+           its `last_job_id` resolves to a terminal job
+           (`completed`/`completed_with_errors`/`failed`), update the row
+           to the matching terminal state with timing derived from the
+           job. This catches the orphan case where the worker died after
+           `upsert_running` but before the terminal-write hook (heartbeat
+           reaping marks the job failed but does not touch
+           `topic_stage_runs`).
+
+        2. **Backfill missing rows.** For stages that reconstruction shows
+           are `done`/`failed` and no row exists, write a derived row.
+
+        The 4-state row vocabulary (`pending|running|done|failed`) is
+        narrower than the read-side `StageStatus` (adds
+        `warning`/`ready`/`blocked`); only `done`/`failed` get backfilled.
 
         Wrapped in a broad except so a backfill DB error never breaks the
-        read response — backfill is best-effort observability.
+        read response. The except rolls back so the caller's session
+        stays usable.
         """
         try:
             repo = TopicStageRunRepository(self.db)
-            existing = {r.stage_id for r in repo.list_for_topic(guideline_id)}
+            rows = repo.list_for_topic(guideline_id)
+            by_stage = {r.stage_id: r for r in rows}
+
+            self._reconcile_stuck_running_rows(repo, by_stage)
+
             for s in stages:
-                if s.stage_id in existing:
+                if s.stage_id in by_stage:
                     continue
                 if s.state not in ("done", "failed"):
                     continue
@@ -238,6 +256,76 @@ class TopicPipelineStatusService:
             logger.warning(
                 f"topic_stage_runs backfill failed for guideline={guideline_id}: {e}",
                 exc_info=True,
+            )
+            # The backfill shares the caller's session — rollback so
+            # downstream code (the status response is read-only, but the
+            # request handler may still close the session cleanly) doesn't
+            # hit a `PendingRollbackError` because a backfill commit died
+            # mid-flight.
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+
+    def _reconcile_stuck_running_rows(
+        self, repo: TopicStageRunRepository, by_stage: dict
+    ) -> None:
+        """If a row says `running` but its job is terminal, fix the row.
+
+        Heartbeat reaping (`ChapterJobService._mark_stale`) marks the
+        chapter_processing_jobs row failed but doesn't touch
+        topic_stage_runs — without this reconciliation, a dead worker
+        leaves a stuck `running` row that Phase 3 cascade would read as
+        live and never advance past.
+        """
+        from book_ingestion_v2.models.database import ChapterProcessingJob
+
+        stuck = [
+            r for r in by_stage.values()
+            if r.state == "running" and r.last_job_id
+        ]
+        if not stuck:
+            return
+
+        job_ids = [r.last_job_id for r in stuck]
+        jobs = (
+            self.db.query(ChapterProcessingJob)
+            .filter(ChapterProcessingJob.id.in_(job_ids))
+            .all()
+        )
+        jobs_by_id = {j.id: j for j in jobs}
+
+        for row in stuck:
+            job = jobs_by_id.get(row.last_job_id)
+            if job is None:
+                continue
+            if job.status in ("completed", "completed_with_errors"):
+                terminal_state = "done"
+            elif job.status == "failed":
+                terminal_state = "failed"
+            else:
+                continue  # job still running — leave the row alone
+
+            duration_ms = None
+            if job.started_at and job.completed_at:
+                duration_ms = int(
+                    (job.completed_at - job.started_at).total_seconds() * 1000
+                )
+            summary = None
+            if terminal_state == "failed" and job.error_message:
+                summary = {"error": job.error_message[:500], "reconciled": True}
+            elif terminal_state == "done":
+                summary = {"reconciled": True}
+
+            repo.upsert_terminal(
+                guideline_id=row.guideline_id,
+                stage_id=row.stage_id,
+                state=terminal_state,
+                completed_at=job.completed_at,
+                duration_ms=duration_ms,
+                started_at=job.started_at,
+                summary=summary,
+                last_job_id=job.id,
             )
 
     # ───── Staleness anchor ─────

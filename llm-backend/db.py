@@ -277,11 +277,15 @@ def _apply_chapter_jobs_guideline_id(db_manager):
         # 2. Backfill guideline_id for historical post-sync rows.
         #    For those rows, chapter_id overloaded stored a guideline UUID. We
         #    copy it to guideline_id iff that value resolves to a
-        #    teaching_guidelines.id.
+        #    teaching_guidelines.id. The Baatcheet types were added to the
+        #    set in Phase 2 — historical rows for those stages also stored
+        #    guideline_id-in-chapter_id, so they need the same backfill.
         post_sync_types = (
             "'v2_explanation_generation', 'v2_visual_enrichment', "
             "'v2_check_in_enrichment', 'v2_practice_bank_generation', "
-            "'v2_audio_text_review', 'v2_audio_generation'"
+            "'v2_audio_text_review', 'v2_audio_generation', "
+            "'v2_baatcheet_dialogue_generation', 'v2_baatcheet_visual_enrichment', "
+            "'v2_baatcheet_audio_review'"
         )
         backfill_sql = (
             "UPDATE chapter_processing_jobs SET guideline_id = chapter_id "
