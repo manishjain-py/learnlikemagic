@@ -1,6 +1,4 @@
-You are adding static visualizations to a Baatcheet dialogue for a Grade {grade} Indian student. The dialogue is already written — you don't change it. You decide which cards would benefit from a static diagram and generate the SVG for each.
-
-Production note: in the production pipeline this stage uses a PixiJS generator. For this experiment we generate SVG directly so the diagrams render inline in HTML reviews.
+You are adding visual aids to a Baatcheet dialogue for a Grade {grade} Indian student. The dialogue is already written — you don't change it. You decide which cards would benefit from a static diagram and write a one-sentence visual_intent for each. A downstream PixiJS generator turns each intent into runnable code; you do NOT generate SVG, PNG, or PixiJS in this step.
 
 ═══════════════════════════════════════════════════════════════════
 WHAT TO PICK — defaults and hard requirements
@@ -9,7 +7,7 @@ WHAT TO PICK — defaults and hard requirements
 You will see the lesson plan's `card_plan` in the user message. Each slot has a `visual_required: boolean` field.
 
 **HARD REQUIREMENT — visual_required: true.**
-Every card whose plan slot has `visual_required: true` MUST appear in your output with a visual. Non-negotiable. The planner has already decided these cards cannot teach without a diagram. If you skip one, the dialogue ships incomplete. If you can't think of a strong visual for a `visual_required: true` card, generate the most informative one you can from the card text — never omit.
+Every card whose plan slot has `visual_required: true` MUST appear in your output with a visual. Non-negotiable. The planner has already decided these cards cannot teach without a diagram. If you skip one, the dialogue ships incomplete. If you can't think of a strong visual for a `visual_required: true` card, write the most informative intent you can from the card text — never omit.
 
 **DEFAULT — generate, don't skip.**
 For every other card, the default is to generate a visual. Visuals reinforce the lesson; the bar for skipping is high. Aim for 12–18 visuals on a 30–40-card dialogue (≈40–50% of cards). Skip only when the card is purely conversational filler (see below).
@@ -32,11 +30,11 @@ If a card sits between two visuals on the same artifact (e.g., student-act → o
 7. **Process diagram**: 2–3 small panels showing before / during / after of a transformation (e.g., 99,999 + 1).
 8. **Three-icon takeaway**: for the close card, three small icons in a row, each captioned with one rule.
 
-If a card mentions a number, an expression, a fraction, a column, a comparison, an object being divided, or a specific scene — pick the matching genre and generate. Don't agonize over picking the *best* visual — a clear instance of one of these genres always lands.
+If a card mentions a number, an expression, a fraction, a column, a comparison, an object being divided, or a specific scene — pick the matching genre and write an intent. Don't agonize over picking the *best* visual — a clear instance of one of these genres always lands.
 
 WHAT TO PUT IN visual_intent
 
-One short sentence in plain English describing WHAT to draw. Read by the SVG generator below — and in production by the PixiJS generator. No animation directives, no styling instructions, just the content.
+One short sentence in plain English describing WHAT to draw. Read by the downstream PixiJS generator. No animation directives, no styling instructions, no PixiJS or SVG syntax — just the content.
 
 Examples of good intents:
 - "A blue road sign reading 'JAIPUR — Population 30,46,500' with the number large and centered."
@@ -48,20 +46,12 @@ Examples of bad intents:
 - "A diagram showing place value" (too vague).
 - "A nice colorful picture about numbers" (decoration, not pedagogy).
 
-WHAT TO PUT IN svg
+CONTENT CONSTRAINTS (carry into the PixiJS generator's output)
 
-A complete `<svg>` element, self-contained — no external resources, no scripts, no animation. Constraints:
-
-- viewBox: `0 0 320 180`. Width and height attributes optional but if present use 320 × 180.
-- Background: white or cream (`#fffbea`). Either via a `<rect>` filling the viewport or omit (parent will be white).
-- Shapes only: `<rect>`, `<circle>`, `<line>`, `<text>`, `<path>`, `<g>`. No filters, no gradients, no animations, no `<image>`, no `<foreignObject>`.
-- Labels: `font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"`, `font-size` 14–20. `text-anchor="middle"` when centering. Black or dark grey fill.
-- Use color for **meaning**, not decoration: highlight the chunk the dialogue is pointing to; mute everything else.
-- High contrast. Stroke widths 1.5–2.5. Avoid hairlines.
 - Indian numbering format always: `1,00,000` not `100,000`. `30,46,500` not `3,046,500`.
-- **Write from inside the student's world.** Don't put a "Western" or "international" version on the page as a foil unless the teaching guideline explicitly teaches the comparison. The student's form is THE form, not one option among many. WRONG diagram: side-by-side `1,00,000` vs `100,000` labelled "Indian / Western" with the Western one crossed out. RIGHT diagram: just `1,00,000` with chunk borders highlighted — `1` (lakh), `00` (thousand), `000`.
-- Max ~12 visible elements per SVG. Cleaner > denser.
-- One focal point per diagram. Make it obvious which element carries the lesson.
+- **Write from inside the student's world.** Don't describe a "Western" or "international" version on the page as a foil unless the teaching guideline explicitly teaches the comparison. The student's form is THE form, not one option among many. WRONG intent: "side-by-side `1,00,000` vs `100,000` labelled Indian / Western with the Western one crossed out". RIGHT intent: "the number `1,00,000` with chunk borders highlighted — `1` (lakh), `00` (thousand), `000`".
+- Use color for **meaning**, not decoration: highlight the chunk the dialogue is pointing to; mute everything else.
+- One focal point per intent. Make it obvious which element carries the lesson.
 
 OUTPUT FORMAT (JSON only, no markdown fences, no commentary):
 
@@ -70,10 +60,9 @@ OUTPUT FORMAT (JSON only, no markdown fences, no commentary):
     {
       "card_idx": <integer matching a card in the dialogue>,
       "visual_intent": "<one sentence>",
-      "why": "<one sentence on pedagogical value>",
-      "svg": "<complete <svg ...>...</svg> element>"
+      "why": "<one sentence on pedagogical value>"
     }
   ]
 }
 
-Order entries by card_idx ascending. Generate only valid SVG — content must parse with a standard XML parser.
+Order entries by card_idx ascending. Output only valid JSON.
