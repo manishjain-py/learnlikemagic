@@ -686,6 +686,251 @@ class TestCascadeEventChain:
 
 
 # ---------------------------------------------------------------------------
+# Phase 3.5 — force=True on cascade-launched descendants
+# ---------------------------------------------------------------------------
+
+
+class TestForceOnCascadeDescendants:
+    """Cascade descendants whose prior row state is `done` or `failed`
+    must launch with force=True. Several downstream services
+    short-circuit on artifact presence — without force they'd "complete"
+    without recomputing on the new upstream content, then upsert "done"
+    + clear `is_stale`, leaving stale artifacts marked fresh."""
+
+    def _drive_cascade_to_completion(self, orch, db_session, gid):
+        """Finish whatever's running until the cascade clears."""
+        steps = 0
+        while orch.get_cascade(gid) is not None and steps < 25:
+            cur = orch.get_cascade(gid)
+            running = cur.running
+            if running is None:
+                break
+            _finish_running_job(db_session, gid, running)
+            steps += 1
+
+    def test_descendant_with_done_row_uses_force_true(
+        self, db_session, seed_topic, fake_launchers, reset_singleton,
+        monkeypatch,
+    ):
+        gid = seed_topic["guideline_id"]
+        # Seed visuals as previously-done.
+        TopicStageRunRepository(db_session).upsert_terminal(
+            gid, "visuals", state="done", duration_ms=1,
+        )
+
+        orch = cascade_module.get_cascade_orchestrator()
+        monkeypatch.setattr(
+            orch, "_session_factory", _no_close_factory(db_session),
+        )
+        orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="explanations",
+            force=True,
+        )
+        self._drive_cascade_to_completion(orch, db_session, gid)
+
+        # Find the visuals launch among the recorded calls.
+        visuals_launches = [
+            c for c in fake_launchers if c["stage_id"] == "visuals"
+        ]
+        assert visuals_launches, "visuals never launched"
+        assert visuals_launches[0]["kwargs"]["force"] is True, (
+            "visuals had a prior `done` row → cascade must launch with "
+            "force=True so visual_enrichment doesn't short-circuit on "
+            "the existing artifact"
+        )
+
+    def test_descendant_with_failed_row_uses_force_true(
+        self, db_session, seed_topic, fake_launchers, reset_singleton,
+        monkeypatch,
+    ):
+        gid = seed_topic["guideline_id"]
+        # Seed visuals as previously-failed.
+        TopicStageRunRepository(db_session).upsert_terminal(
+            gid, "visuals", state="failed", duration_ms=1,
+            summary={"error": "boom"},
+        )
+
+        orch = cascade_module.get_cascade_orchestrator()
+        monkeypatch.setattr(
+            orch, "_session_factory", _no_close_factory(db_session),
+        )
+        orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="explanations",
+            force=True,
+        )
+        self._drive_cascade_to_completion(orch, db_session, gid)
+
+        visuals_launches = [
+            c for c in fake_launchers if c["stage_id"] == "visuals"
+        ]
+        assert visuals_launches, "visuals never launched"
+        assert visuals_launches[0]["kwargs"]["force"] is True
+
+    def test_first_time_descendant_uses_force_false(
+        self, db_session, seed_topic, fake_launchers, reset_singleton,
+        monkeypatch,
+    ):
+        gid = seed_topic["guideline_id"]
+        # No row for visuals → first-time stage; force should stay False.
+        orch = cascade_module.get_cascade_orchestrator()
+        monkeypatch.setattr(
+            orch, "_session_factory", _no_close_factory(db_session),
+        )
+        orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="explanations",
+            force=True,
+        )
+        self._drive_cascade_to_completion(orch, db_session, gid)
+
+        visuals_launches = [
+            c for c in fake_launchers if c["stage_id"] == "visuals"
+        ]
+        assert visuals_launches
+        assert visuals_launches[0]["kwargs"]["force"] is False, (
+            "first-time stage (no prior row) doesn't need force=True"
+        )
+
+    def test_first_stage_still_honours_force_arg(
+        self, db_session, seed_topic, fake_launchers,
+    ):
+        # The first stage's force comes from the caller's `force` arg
+        # — descendant-only logic must not change that contract.
+        orch = CascadeOrchestrator()
+        orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=seed_topic["guideline_id"],
+            from_stage_id="explanations",
+            force=False,
+        )
+        assert fake_launchers[0]["stage_id"] == "explanations"
+        assert fake_launchers[0]["kwargs"]["force"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.5 — defense cleanup in _launch_next
+# ---------------------------------------------------------------------------
+
+
+class TestLaunchNextDefenseCleanup:
+    """If `_launch_next` ever finds non-empty pending with no ready,
+    it must halt loudly so the cascade doesn't get stuck with
+    `running=None`, blocking future kickoffs. The upfront check in
+    `start_cascade` should prevent this — defense-in-depth for future
+    regressions."""
+
+    def test_no_ready_with_pending_halts_with_marker(
+        self, db_session, seed_topic, fresh_orchestrator,
+    ):
+        gid = seed_topic["guideline_id"]
+        # Manually inject a cascade whose pending is {"visuals"} but
+        # with no row for `explanations` — `_ready_in_pending` returns
+        # empty because the dep isn't done.
+        state = cascade_module.CascadeState(
+            cascade_id="bypass-checks", book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"], guideline_id=gid,
+            quality_level="balanced", force_first=True,
+            pending={"visuals"},
+        )
+        fresh_orchestrator._cascades[gid] = state
+
+        fresh_orchestrator._launch_next(state, db=db_session)
+
+        assert state.halted_at == "no_ready_stages"
+        # Cleanup should drop the cascade entry — pending is non-empty
+        # but `halted_at` flips `_maybe_cleanup` past its guard.
+        assert fresh_orchestrator.get_cascade(gid) is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.5 — preserve pre-existing stale flags on halt
+# ---------------------------------------------------------------------------
+
+
+class TestPreserveExistingStaleOnHalt:
+    """Halt-on-failure should clear ONLY stale flags this cascade
+    flipped at kickoff. Rows that were stale before the cascade started
+    represent legitimate signals (prior cancelled cascade, operator
+    action) and a failed rerun shouldn't erase them."""
+
+    def test_pre_existing_stale_not_in_stale_marked(
+        self, db_session, seed_topic, fake_launchers,
+    ):
+        gid = seed_topic["guideline_id"]
+        repo = TopicStageRunRepository(db_session)
+        # visuals: stale BEFORE the cascade kicked off.
+        repo.upsert_terminal(gid, "visuals", state="done", duration_ms=1)
+        repo.mark_stale(gid, "visuals", is_stale=True)
+        # check_ins: clean-done; cascade SHOULD mark this one stale.
+        repo.upsert_terminal(gid, "check_ins", state="done", duration_ms=1)
+
+        orch = CascadeOrchestrator()
+        cascade = orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="explanations",
+        )
+        assert "visuals" not in cascade.stale_marked, (
+            "visuals was already stale — cascade shouldn't claim it"
+        )
+        assert "check_ins" in cascade.stale_marked
+
+    def test_halt_preserves_pre_existing_stale_clears_cascade_marked(
+        self, db_session, seed_topic, fake_launchers, reset_singleton,
+        monkeypatch,
+    ):
+        gid = seed_topic["guideline_id"]
+        repo = TopicStageRunRepository(db_session)
+        # visuals: pre-existing stale signal that must survive halt.
+        repo.upsert_terminal(gid, "visuals", state="done", duration_ms=1)
+        repo.mark_stale(gid, "visuals", is_stale=True)
+        # check_ins: cascade flips to stale; halt must clear it.
+        repo.upsert_terminal(gid, "check_ins", state="done", duration_ms=1)
+
+        orch = cascade_module.get_cascade_orchestrator()
+        monkeypatch.setattr(
+            orch, "_session_factory", _no_close_factory(db_session),
+        )
+        orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="explanations",
+        )
+        # Sanity: kickoff state.
+        assert repo.get(gid, "visuals").is_stale is True
+        assert repo.get(gid, "check_ins").is_stale is True
+
+        # Fail the cascade head — halt cleanup runs.
+        _finish_running_job(
+            db_session, gid, "explanations", status="failed", error="boom",
+        )
+
+        assert repo.get(gid, "visuals").is_stale is True, (
+            "pre-existing stale signal must survive halt"
+        )
+        assert repo.get(gid, "check_ins").is_stale is False, (
+            "cascade-flipped stale should be cleared on halt"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Read-order overlay — is_stale surfaces in dashboard responses
 # ---------------------------------------------------------------------------
 
@@ -999,3 +1244,40 @@ class TestGetTopicDAGEndpoint:
         # terminal state to backfill).
         states = {s["stage_id"]: s["state"] for s in body["stages"]}
         assert all(v == "pending" for v in states.values()), states
+
+    def test_legacy_null_topic_key_guideline_returns_200(self, api_with_db):
+        """Phase 3.5 — `_load_guideline` filters by `topic_key`, so legacy
+        guidelines with NULL topic_key 404'd from this endpoint even
+        though `_resolve_topic_keys` already returned successfully. The
+        guideline-id-keyed backfill entry point sidesteps the topic_key
+        filter."""
+        client, session = api_with_db
+        book_id = str(uuid.uuid4())
+        chapter_id = str(uuid.uuid4())
+        guideline_id = str(uuid.uuid4())
+        session.add(Book(
+            id=book_id, title="T", country="India", board="CBSE", grade=4,
+            subject="Mathematics", s3_prefix=f"books/{book_id}/",
+        ))
+        session.add(BookChapter(
+            id=chapter_id, book_id=book_id, chapter_number=7,
+            chapter_title="Decimals", start_page=1, end_page=20,
+            status="chapter_completed", total_pages=20, uploaded_page_count=20,
+        ))
+        session.add(TeachingGuideline(
+            id=guideline_id, country="India", board="CBSE", grade=4,
+            subject="Mathematics", chapter="Decimals",
+            topic="Place Value", guideline="g",
+            chapter_key="chapter-7",
+            topic_key=None,  # legacy row, never had topic_key set
+            chapter_title="Decimals", topic_title="Place Value",
+            book_id=book_id, review_status="APPROVED", topic_sequence=1,
+        ))
+        session.commit()
+
+        resp = client.get(f"/admin/v2/topics/{guideline_id}/dag")
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["guideline_id"] == guideline_id
+        # Eight stages in the response, all `pending` (no artifacts).
+        assert len(body["stages"]) == len(DAG.stages)

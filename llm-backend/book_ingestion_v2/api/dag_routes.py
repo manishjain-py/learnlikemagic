@@ -186,25 +186,15 @@ def get_topic_dag(guideline_id: str, db: Session = Depends(get_db)):
     Triggers lazy backfill of `topic_stage_runs` so the response
     reflects current artifact reality even for topics that pre-date
     Phase 2.
+
+    Uses the guideline-id-keyed backfill entry point so legacy topics
+    with NULL `topic_key` don't 404 — `get_pipeline_status` filters by
+    topic_key and would miss them.
     """
-    book_id, chapter_id, topic_key = _resolve_topic_keys(db, guideline_id)
-
-    # Drive backfill via the existing status service (Phase 2 entry
-    # point). Reads the artifact tables and inserts missing rows; we
-    # don't use its response shape, but the side effect is what makes
-    # the dag-view accurate for legacy topics.
-    try:
-        TopicPipelineStatusService(db).get_pipeline_status(
-            book_id, chapter_id, topic_key
-        )
-    except LookupError:
-        # Should not happen — `_resolve_topic_keys` already verified
-        # the guideline exists. Treat as 404 for symmetry.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Guideline {guideline_id} not found",
-        )
-
+    _, chapter_id, _ = _resolve_topic_keys(db, guideline_id)
+    TopicPipelineStatusService(db).run_backfill_for_guideline(
+        guideline_id, chapter_id
+    )
     return _build_dag_view(db, guideline_id)
 
 

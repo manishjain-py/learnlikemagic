@@ -86,6 +86,47 @@ class TopicPipelineStatusService:
             stages=stages,
         )
 
+    def run_backfill_for_guideline(
+        self, guideline_id: str, chapter_id: str
+    ) -> None:
+        """Run the Phase 2 backfill side effect without topic_key resolution.
+
+        The DAG endpoint reaches this with `guideline_id` already in
+        hand. `get_pipeline_status` requires `(book_id, chapter_id,
+        topic_key)` and `_load_guideline` filters on `topic_key`, which
+        excludes legacy guidelines whose `topic_key` is NULL — those
+        topics 404 from `/topics/{guideline_id}/dag` even though the id
+        resolved fine. This entry point skips topic_key entirely: load
+        explanations by id, run each stage's `status_check`, backfill
+        `topic_stage_runs`. The DAG view reads `is_stale` directly off
+        the rows, so we don't need the overlay step here.
+
+        No-ops if the guideline can't be found — the endpoint already
+        returned 404 via `_resolve_topic_keys` before calling this.
+        """
+        from shared.models.entities import TeachingGuideline
+
+        guideline = (
+            self.db.query(TeachingGuideline)
+            .filter(TeachingGuideline.id == guideline_id)
+            .first()
+        )
+        if not guideline:
+            return
+
+        explanations = self._load_explanations(guideline_id)
+        ctx = StatusContext(
+            db=self.db,
+            guideline_id=guideline_id,
+            chapter_id=chapter_id,
+            explanations=explanations,
+            content_anchor=self._content_anchor(explanations),
+        )
+        stages: list[StageStatus] = [
+            stage.status_check(ctx) for stage in DAG.stages
+        ]
+        self._backfill_topic_stage_runs(guideline_id, stages)
+
     def get_chapter_topic_statuses(
         self, book_id: str, chapter_id: str
     ) -> list[TopicPipelineStatusResponse]:
