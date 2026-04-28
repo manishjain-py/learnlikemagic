@@ -7,4 +7,4 @@ LESSON PLAN (for context — narrative spine, misconceptions, materials, per-car
 DIALOGUE CARDS (don't modify; only annotate which cards get visuals):
 {dialogue_cards_json}
 
-Generate visuals per the system prompt: every card whose plan slot has `visual_required: true` MUST get a visual; default-generate for any other card with concrete content; skip only conversational filler. Output valid JSON only conforming to the schema in the system prompt — no markdown fences.
+Pick cards per the system prompt: every card whose plan slot has `visual_required: true` MUST appear with a visual_intent; default-generate for any other card with concrete content; skip only conversational filler. Output valid JSON only conforming to the schema in the system prompt — no markdown fences. Do NOT generate SVG, PNG, or PixiJS — just visual_intent + why per selected card_idx.

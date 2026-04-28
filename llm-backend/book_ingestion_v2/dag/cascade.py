@@ -74,6 +74,11 @@ class CascadeState:
     cancelled: bool = False
     started_at: datetime = field(default_factory=datetime.utcnow)
     stage_results: dict[str, str] = field(default_factory=dict)
+    # Descendants this cascade flagged stale at kickoff. On halt-on-failure
+    # we clear ONLY these — rows that were already stale before the cascade
+    # represent legitimate signals from a prior cascade or operator, and a
+    # failed rerun shouldn't erase them.
+    stale_marked: set[str] = field(default_factory=set)
 
 
 def build_launcher_kwargs(
@@ -211,16 +216,21 @@ class CascadeOrchestrator:
                 raise
 
             # Mark stale on every pending stage that already has a
-            # `done` row. The `from_stage_id` itself is in `running`
-            # now; its terminal write will clear its own stale flag
-            # if it had one.
+            # `done` row AND isn't already stale. Track which rows we
+            # flipped on `cascade.stale_marked` so halt-on-failure only
+            # clears those — pre-existing stale signals from a prior
+            # cancelled cascade or operator action stay intact.
+            #
+            # The `from_stage_id` itself is in `running` now; its
+            # terminal write will clear its own stale flag if it had one.
             repo = TopicStageRunRepository(db)
             for sid in pending:
                 if sid == from_stage_id:
                     continue
                 row = repo.get(guideline_id, sid)
-                if row and row.state == "done":
+                if row and row.state == "done" and not row.is_stale:
                     repo.mark_stale(guideline_id, sid, is_stale=True)
+                    cascade.stale_marked.add(sid)
 
             return cascade
 
@@ -380,6 +390,19 @@ class CascadeOrchestrator:
             state_map = self._build_state_map(db, cascade.guideline_id)
             ready = self._ready_in_pending(cascade, state_map)
             if not ready:
+                # Defense-in-depth: the upfront check in `start_cascade`
+                # rejects from-stages with unmet deps, so we should never
+                # reach here with non-empty pending and no in-flight
+                # stage. If we do (e.g., a future regression in pending
+                # computation), halt loudly instead of orphaning the
+                # cascade with `running=None` and pending stuck in the
+                # dict, which would block future kickoffs.
+                if cascade.pending and cascade.running is None:
+                    cascade.halted_at = "no_ready_stages"
+                    logger.warning(
+                        f"Cascade {cascade.cascade_id} has pending "
+                        f"{cascade.pending} but no ready stages; halting"
+                    )
                 self._maybe_cleanup(cascade)
                 return
 
@@ -387,14 +410,31 @@ class CascadeOrchestrator:
             ready.sort(key=lambda sid: topo_order.index(sid))
             next_stage_id = ready[0]
 
+            # Cascade contract on `force`:
+            # - First stage: honour the caller's `force` (e.g., "rerun
+            #   forcefully from explanations").
+            # - Descendants whose previous run was `done` or `failed`:
+            #   force=True. Several downstream services (visual
+            #   enrichment, audio synthesis) short-circuit when artifacts
+            #   already exist; without force, they declare success
+            #   without recomputing on the new upstream content, then
+            #   `upsert_terminal "done"` clears `is_stale` and we ship
+            #   stale artifacts as fresh.
+            # - Descendants with no prior row: force=False — first-time
+            #   stages don't need it.
             is_first = not cascade.stage_results
+            if is_first:
+                stage_force = cascade.force_first
+            else:
+                prior_state = state_map.get(next_stage_id)
+                stage_force = prior_state in ("done", "failed")
             kwargs = build_launcher_kwargs(
                 next_stage_id,
                 book_id=cascade.book_id,
                 chapter_id=cascade.chapter_id,
                 guideline_id=cascade.guideline_id,
                 quality_level=cascade.quality_level,
-                force=cascade.force_first if is_first else False,
+                force=stage_force,
             )
             # Resolve the launcher via the module-level dict on every call
             # (don't capture at import) so monkeypatched test launchers
@@ -437,23 +477,27 @@ class CascadeOrchestrator:
         return ready
 
     def _clear_stale_on_pending_descendants(self, cascade: CascadeState) -> None:
-        """Clear `is_stale` on every still-pending stage in the cascade.
+        """Clear `is_stale` on stages this cascade flagged at kickoff
+        and that are still pending at halt time.
 
-        Used by halt-on-failure: cascade marked descendants stale at
-        kickoff on the assumption that the rerun would change upstream;
-        a failed rerun means upstream is unchanged, so the stale flags
-        are a lie.
+        Scope is `cascade.stale_marked & cascade.pending`. We don't
+        touch rows that were stale before this cascade started — those
+        signals come from a prior cancelled cascade or operator action
+        and a failed rerun shouldn't erase them. We also don't clear
+        rows for stages this cascade already advanced past (not in
+        pending) — their fresh terminal write owns the stale flag.
 
         Best-effort — opens its own session; swallows DB errors so a
         cleanup glitch can't mask the underlying halt.
         """
-        if not cascade.pending:
+        to_clear = cascade.stale_marked & cascade.pending
+        if not to_clear:
             return
         try:
             db = self._resolve_session_factory()()
             try:
                 repo = TopicStageRunRepository(db)
-                for sid in cascade.pending:
+                for sid in to_clear:
                     repo.mark_stale(cascade.guideline_id, sid, is_stale=False)
             finally:
                 db.close()
