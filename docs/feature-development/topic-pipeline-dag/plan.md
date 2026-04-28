@@ -15,8 +15,8 @@
 **Phases (each independently shippable):**
 1. Declare the DAG + refactor stages into modules — no behaviour change ✅ shipped 2026-04-28 (PR #127)
 2. Persist `topic_stage_runs` rows + stage timing ✅ shipped 2026-04-28 (PR #128)
-3. Cascade orchestrator + rerun APIs ← **next**
-4. `baatcheet_visuals` V2 refactor (the one substantive runtime change)
+3. Cascade orchestrator + rerun APIs ✅ shipped 2026-04-28 (PR #129)
+4. `baatcheet_visuals` V2 refactor (the one substantive runtime change) ← **next**
 5. React Flow UI replaces stage ladder
 6. Cross-DAG warning + tests + polish
 7. (Later, not v1) Chapter DAG — same pattern
