@@ -156,6 +156,9 @@ def migrate():
         # Topic Pipeline DAG (Phase 2) — per-stage durable state
         _apply_topic_stage_runs_table(db_manager)
 
+        # Topic Pipeline DAG (Phase 6) — input-hash column for cross-DAG warning
+        _apply_explanations_input_hash_column(db_manager)
+
         # Practice v2 tables (create_all handles base tables; this adds the partial
         # unique index + seeds practice_bank_generator / practice_grader LLM configs)
         _apply_practice_tables(db_manager)
@@ -351,6 +354,37 @@ def _apply_topic_stage_runs_table(db_manager):
             ))
         conn.commit()
     print("  ✓ topic_stage_runs table + indexes verified")
+
+
+def _apply_explanations_input_hash_column(db_manager):
+    """Phase 6 — add `explanations_input_hash` column to teaching_guidelines.
+
+    Stores a SHA-256 hex of (guideline, prior_topics_context, topic_title)
+    captured on each successful `explanations` stage run. The cross-DAG
+    warning endpoint compares this to a live hash to detect that an
+    upstream chapter resync mutated topic content since the cached
+    explanations were generated.
+
+    Idempotent — checks for the column before adding.
+    """
+    inspector = inspect(db_manager.engine)
+    if "teaching_guidelines" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        col["name"] for col in inspector.get_columns("teaching_guidelines")
+    }
+    if "explanations_input_hash" in existing_columns:
+        return
+
+    with db_manager.engine.connect() as conn:
+        print("  Adding explanations_input_hash column to teaching_guidelines...")
+        conn.execute(text(
+            "ALTER TABLE teaching_guidelines "
+            "ADD COLUMN explanations_input_hash VARCHAR(64)"
+        ))
+        conn.commit()
+    print("  ✓ explanations_input_hash column added")
 
 
 def _apply_practice_mode_support(db_manager):

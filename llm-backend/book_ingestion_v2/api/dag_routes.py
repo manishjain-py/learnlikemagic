@@ -8,6 +8,7 @@ cascade orchestrator's state map is keyed by `guideline_id`.
 Endpoints:
 - GET  /admin/v2/dag/definition                                  → DAG topology (stages, edges)
 - GET  /admin/v2/topics/{guideline_id}/dag                       → per-stage state + cascade
+- GET  /admin/v2/topics/{guideline_id}/cross-dag-warnings        → upstream-mutation banner (Phase 6)
 - POST /admin/v2/topics/{guideline_id}/stages/{stage_id}/rerun   → cascade from stage
 - POST /admin/v2/topics/{guideline_id}/dag/run-all               → cascade over not-done
 - POST /admin/v2/topics/{guideline_id}/dag/cancel                → soft-cancel
@@ -26,12 +27,17 @@ from book_ingestion_v2.dag.cascade import (
     CascadeNotReadyError,
     get_cascade_orchestrator,
 )
+from book_ingestion_v2.dag.cross_dag_warnings import (
+    compute_input_hash_for_guideline,
+)
 from book_ingestion_v2.dag.topic_pipeline_dag import DAG
-from book_ingestion_v2.models.database import BookChapter
+from book_ingestion_v2.models.database import BookChapter, TopicStageRun
 from book_ingestion_v2.models.schemas import (
     CascadeCancelResponse,
     CascadeInfo,
     CascadeKickoffResponse,
+    CrossDagWarning,
+    CrossDagWarningsResponse,
     DAGDefinitionResponse,
     DAGStageDefinition,
     RunAllCascadeRequest,
@@ -302,6 +308,65 @@ def run_all_stages(
         cascade_id=cascade.cascade_id,
         pending=sorted(cascade.pending),
         running=cascade.running,
+    )
+
+
+@router.get(
+    "/topics/{guideline_id}/cross-dag-warnings",
+    response_model=CrossDagWarningsResponse,
+)
+def get_cross_dag_warnings(
+    guideline_id: str, db: Session = Depends(get_db),
+):
+    """Surface upstream-DAG events that may have invalidated this topic's
+    cached `explanations` artefacts.
+
+    A warning fires when the live hash of `(guideline, prior_topics_context,
+    topic_title)` differs from the hash captured at the last successful
+    `explanations` run. Empty list if explanations has never run, or if the
+    stored hash matches the live hash.
+
+    The banner clears automatically the next time `explanations` runs
+    successfully — that run writes a fresh hash, so the live hash matches
+    again.
+    """
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id
+    ).first()
+    if not guideline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Guideline {guideline_id} not found",
+        )
+
+    stored = guideline.explanations_input_hash
+    if not stored:
+        # Explanations has never finished successfully on this topic — no
+        # baseline to compare against. The DAG view already shows the
+        # stage as `pending`/`failed`/`stale`; no separate warning needed.
+        return CrossDagWarningsResponse(warnings=[])
+
+    live = compute_input_hash_for_guideline(guideline)
+    if live == stored:
+        return CrossDagWarningsResponse(warnings=[])
+
+    last_run = db.query(TopicStageRun).filter(
+        TopicStageRun.guideline_id == guideline_id,
+        TopicStageRun.stage_id == "explanations",
+    ).first()
+    last_explanations_at = last_run.completed_at if last_run else None
+
+    return CrossDagWarningsResponse(
+        warnings=[
+            CrossDagWarning(
+                kind="chapter_resynced",
+                message=(
+                    "Chapter content changed since this topic's explanations "
+                    "were last generated. Re-run Explanations to refresh."
+                ),
+                last_explanations_at=last_explanations_at,
+            )
+        ]
     )
 
 

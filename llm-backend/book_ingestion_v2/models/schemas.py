@@ -539,3 +539,19 @@ class CascadeKickoffResponse(BaseModel):
 
 class CascadeCancelResponse(BaseModel):
     cancelled: bool
+
+
+CrossDagWarningKind = Literal["chapter_resynced"]
+
+
+class CrossDagWarning(BaseModel):
+    """Phase 6 — surfaced when upstream DAG mutated topic content after
+    the cached `explanations` artefacts were generated."""
+
+    kind: CrossDagWarningKind
+    message: str
+    last_explanations_at: Optional[datetime] = None
+
+
+class CrossDagWarningsResponse(BaseModel):
+    warnings: List[CrossDagWarning] = []
