@@ -277,15 +277,17 @@ def launch_audio_synthesis_job(
     return job_id
 
 
-# Stage-id → launcher map, consumed by the orchestrator.
-# Keys match `StageId` values in models/schemas.py.
-LAUNCHER_BY_STAGE = {
-    "explanations": launch_explanation_job,
-    "baatcheet_dialogue": launch_baatcheet_dialogue_job,
-    "baatcheet_visuals": launch_baatcheet_visual_job,
-    "visuals": launch_visual_job,
-    "check_ins": launch_check_in_job,
-    "practice_bank": launch_practice_bank_job,
-    "audio_review": launch_audio_review_job,
-    "audio_synthesis": launch_audio_synthesis_job,
-}
+# `LAUNCHER_BY_STAGE` is derived from the DAG and lives at
+# `book_ingestion_v2.dag.launcher_map`. Defining the dict in this module
+# would create a cycle (DAG → stages → this module → DAG), so the canonical
+# location is the dag/ package. The PEP 562 shim below preserves the
+# legacy import path (`from ...stage_launchers import LAUNCHER_BY_STAGE`)
+# for any external caller that hasn't migrated yet — it returns the same
+# dict object, so monkeypatching keeps working.
+def __getattr__(name: str):
+    if name == "LAUNCHER_BY_STAGE":
+        from book_ingestion_v2.dag.launcher_map import LAUNCHER_BY_STAGE
+        return LAUNCHER_BY_STAGE
+    raise AttributeError(
+        f"module {__name__!r} has no attribute {name!r}"
+    )

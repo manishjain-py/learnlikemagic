@@ -1,15 +1,23 @@
-"""TopicPipelineOrchestrator — runs the 6-stage pipeline for one topic in DAG order.
+"""TopicPipelineOrchestrator — runs the topic-scope pipeline for one topic.
 
-Layers:
-  ① → (② ∥ ③ ∥ ④) → ⑤ → ⑥
+Stages run serially in topological order (see `dag/topic_pipeline_dag.py`).
+The DAG is the single source of truth for stage identity, dependencies, and
+ordering — adding a stage means adding one file under
+`book_ingestion_v2/stages/` and one entry in `STAGES`.
 
-Within each layer, stages run in parallel. Layers run sequentially. Halts on
-any stage failure (downstream stages stay in their "ready" state on the hub).
+**Serialized within a topic.** The partial unique index
+`idx_chapter_active_topic_job` enforces at most one active job per
+`(chapter_id, guideline_id)`, so even sibling stages cannot actually run
+concurrently — a second launch hits `ChapterJobLockError`. The lock is
+load-bearing: visuals and check-ins both mutate the same
+`topic_explanations.cards_json` row in-place; concurrent writes would race.
+We rely on cross-topic parallelism (chapter runner spawns multiple
+orchestrators) for throughput.
 
 Design decisions:
-- Polls by `job_id` returned from `launch_<stage>_job`, not `get_latest_job`.
+- Polls by `job_id` returned from `Stage.launch`, not `get_latest_job`.
   Using `get_latest_job` would race with a freshly-committed job row.
-- One DB session per stage thread. Mirrors `run_in_background_v2` isolation.
+- One DB session per stage call. Mirrors `run_in_background_v2` isolation.
 - Holds no lock itself. Each sub-stage acquires its own per-stage lock via
   the launcher; a concurrent super-button press fails loudly at the sub-stage.
 """
@@ -25,12 +33,13 @@ from typing import Callable, Iterable, Optional
 from sqlalchemy.orm import Session
 
 from book_ingestion_v2.constants import HEARTBEAT_STALE_THRESHOLD
+from book_ingestion_v2.dag.launcher_map import LAUNCHER_BY_STAGE
+from book_ingestion_v2.dag.topic_pipeline_dag import DAG
 from book_ingestion_v2.models.schemas import QualityLevel, StageId
 from book_ingestion_v2.services.chapter_job_service import (
     ChapterJobLockError,
     ChapterJobService,
 )
-from book_ingestion_v2.services.stage_launchers import LAUNCHER_BY_STAGE
 
 logger = logging.getLogger(__name__)
 
@@ -59,27 +68,6 @@ QUALITY_ROUNDS: dict[QualityLevel, dict[StageId, int]] = {
         "baatcheet_dialogue": 2,
     },
 }
-
-# DAG layers — each layer runs serially; items within a layer run in parallel.
-#
-# **Serialized within a topic.** The partial unique index
-# `idx_chapter_active_topic_job` enforces at most one active job per
-# `(chapter_id, guideline_id)`, so ②③④ cannot actually run concurrently for
-# the same topic — a second launch hits `ChapterJobLockError`. The lock is
-# load-bearing: ② visuals and ③ check-ins both mutate the same
-# `topic_explanations.cards_json` row in-place; concurrent writes would race.
-# We keep the per-topic serialization and rely on cross-topic parallelism
-# (chapter runner spawns multiple orchestrators) for throughput.
-PIPELINE_LAYERS: list[list[StageId]] = [
-    ["explanations"],
-    ["baatcheet_dialogue"],   # depends only on variant A
-    ["baatcheet_visuals"],    # depends on baatcheet_dialogue
-    ["visuals"],
-    ["check_ins"],
-    ["practice_bank"],
-    ["audio_review"],
-    ["audio_synthesis"],
-]
 
 POLL_INTERVAL_SEC = 5
 # Absolute upper bound on polling — pure safety net. Primary stale detection
@@ -136,38 +124,21 @@ class TopicPipelineOrchestrator:
             f"guideline={self.guideline_id} stages={sorted(needed)}"
         )
 
-        for layer in PIPELINE_LAYERS:
-            to_run: list[StageId] = [s for s in layer if s in needed]
-            if not to_run:
+        for stage in DAG.topo_sort():
+            stage_id: StageId = stage.id  # type: ignore[assignment]
+            if stage_id not in needed:
                 continue
 
-            if len(to_run) == 1:
-                stage = to_run[0]
-                results[stage] = self._run_one_stage(stage)
-            else:
-                with ThreadPoolExecutor(max_workers=len(to_run)) as ex:
-                    futs = {ex.submit(self._run_one_stage, s): s for s in to_run}
-                    for fut in as_completed(futs):
-                        stage = futs[fut]
-                        try:
-                            results[stage] = fut.result()
-                        except Exception as e:
-                            logger.error(
-                                f"Pipeline {self.pipeline_run_id} stage {stage} crashed: {e}",
-                                exc_info=True,
-                            )
-                            results[stage] = "failed"
+            results[stage_id] = self._run_one_stage(stage_id)
 
-            failed = [s for s in to_run if results.get(s) == "failed"]
-            if failed:
+            if results[stage_id] == "failed":
                 logger.warning(
-                    f"Pipeline {self.pipeline_run_id} halted at layer {to_run}; "
-                    f"failed={failed}"
+                    f"Pipeline {self.pipeline_run_id} halted at stage {stage_id}"
                 )
                 return OrchestratorResult(
                     pipeline_run_id=self.pipeline_run_id,
                     stage_results=results,
-                    halted_at_layer=to_run,
+                    halted_at_layer=[stage_id],
                 )
 
         logger.info(f"Pipeline {self.pipeline_run_id} completed: {results}")

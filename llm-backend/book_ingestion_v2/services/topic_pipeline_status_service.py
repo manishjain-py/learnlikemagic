@@ -1,11 +1,13 @@
 """Compute per-topic pipeline status for the admin hub.
 
-Consolidates status for all 6 post-sync stages (Explanations, Visuals,
-Check-ins, Practice bank, Audio review, Audio synthesis) into a single
-response. Staleness is anchored to `max(topic_explanations.created_at)`
-for the guideline — this is stable across in-place `cards_json` writes
-during visuals/check-ins/audio synthesis (which advance `updated_at` but
-are not semantic invalidations).
+Coordinator over the topic-pipeline DAG: loads the shared per-topic context
+once, then dispatches to each stage's `status_check` to populate the
+response. The per-stage logic lives under `book_ingestion_v2/stages/`.
+
+Staleness for downstream stages is anchored to
+`max(topic_explanations.created_at)` for the guideline — stable across
+in-place `cards_json` writes during visuals/check-ins/audio synthesis
+(which advance `updated_at` but are not semantic invalidations).
 """
 from __future__ import annotations
 
@@ -15,15 +17,13 @@ from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
-from book_ingestion_v2.constants import V2JobType
-from book_ingestion_v2.models.database import ChapterProcessingJob
+from book_ingestion_v2.dag.topic_pipeline_dag import DAG
+from book_ingestion_v2.dag.types import StatusContext
 from book_ingestion_v2.models.schemas import (
     ChapterPipelineSummaryResponse,
     ChapterPipelineTopicSummary,
     ChapterPipelineTotals,
     StageCountsByState,
-    StageId,
-    StageState,
     StageStatus,
     TopicPipelineStatusResponse,
 )
@@ -31,38 +31,9 @@ from book_ingestion_v2.models.schemas import (
 logger = logging.getLogger(__name__)
 
 
-# Post-sync job types — during Phase 1, historical rows for these have
-# `chapter_id` overloaded to hold a guideline UUID. Post-Phase-2 migration,
-# the native `guideline_id` column is authoritative.
-_POST_SYNC_JOB_TYPES: frozenset[str] = frozenset(
-    {
-        V2JobType.EXPLANATION_GENERATION.value,
-        V2JobType.VISUAL_ENRICHMENT.value,
-        V2JobType.CHECK_IN_ENRICHMENT.value,
-        V2JobType.PRACTICE_BANK_GENERATION.value,
-        V2JobType.AUDIO_TEXT_REVIEW.value,
-        V2JobType.AUDIO_GENERATION.value,
-    }
-)
-
-_PRACTICE_DONE_THRESHOLD = 30
-
-_STAGE_JOB_TYPE: dict[StageId, str] = {
-    "explanations": V2JobType.EXPLANATION_GENERATION.value,
-    "baatcheet_dialogue": V2JobType.BAATCHEET_DIALOGUE_GENERATION.value,
-    "baatcheet_visuals": V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value,
-    "visuals": V2JobType.VISUAL_ENRICHMENT.value,
-    "check_ins": V2JobType.CHECK_IN_ENRICHMENT.value,
-    "practice_bank": V2JobType.PRACTICE_BANK_GENERATION.value,
-    "audio_review": V2JobType.AUDIO_TEXT_REVIEW.value,
-    "audio_synthesis": V2JobType.AUDIO_GENERATION.value,
-}
-
-_TERMINAL_OK_STATES = {"completed", "completed_with_errors"}
-
-
 class TopicPipelineStatusService:
-    """Read-only service — computes 6-stage pipeline status for one topic."""
+    """Read-only service — computes pipeline status for one topic by
+    delegating to each stage's `status_check`."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -72,7 +43,7 @@ class TopicPipelineStatusService:
     def get_pipeline_status(
         self, book_id: str, chapter_id: str, topic_key: str
     ) -> TopicPipelineStatusResponse:
-        """Return consolidated 6-stage status for a topic.
+        """Return consolidated status for every DAG stage.
 
         Raises LookupError if the guideline cannot be found for the given
         book/chapter/topic_key triple.
@@ -84,18 +55,15 @@ class TopicPipelineStatusService:
             )
 
         explanations = self._load_explanations(guideline.id)
-        content_anchor = self._content_anchor(explanations)
+        ctx = StatusContext(
+            db=self.db,
+            guideline_id=guideline.id,
+            chapter_id=chapter_id,
+            explanations=explanations,
+            content_anchor=self._content_anchor(explanations),
+        )
 
-        stages: list[StageStatus] = [
-            self._stage_explanations(guideline.id, explanations),
-            self._stage_baatcheet_dialogue(guideline.id, explanations),
-            self._stage_baatcheet_visuals(guideline.id),
-            self._stage_visuals(guideline.id, explanations),
-            self._stage_check_ins(guideline.id, explanations),
-            self._stage_practice_bank(guideline.id, explanations, content_anchor),
-            self._stage_audio_review(guideline.id, chapter_id, explanations, content_anchor),
-            self._stage_audio_synthesis(guideline.id, explanations),
-        ]
+        stages: list[StageStatus] = [stage.status_check(ctx) for stage in DAG.stages]
 
         return TopicPipelineStatusResponse(
             topic_key=topic_key,
@@ -232,425 +200,7 @@ class TopicPipelineStatusService:
         """Latest explanation row's `created_at` — stable across in-place writes."""
         return max((e.created_at for e in explanations if e.created_at), default=None)
 
-    # ───── Job lookup (handles historical chapter_id overload during Phase 1) ─────
-
-    def _latest_job_for_guideline(
-        self, chapter_id: str, guideline_id: str, job_type: str
-    ) -> Optional[ChapterProcessingJob]:
-        """Find the latest job for a topic.
-
-        Primary path (post-migration): filter by native `guideline_id` column.
-        Fallback (historical rows): pre-migration post-sync jobs stored the
-        guideline UUID in `chapter_id` with `guideline_id IS NULL`. We OR those
-        in so the status service sees the complete history regardless of
-        migration state.
-        """
-        return (
-            self.db.query(ChapterProcessingJob)
-            .filter(
-                ChapterProcessingJob.job_type == job_type,
-                (ChapterProcessingJob.guideline_id == guideline_id)
-                | (
-                    (ChapterProcessingJob.guideline_id.is_(None))
-                    & (ChapterProcessingJob.chapter_id == guideline_id)
-                ),
-            )
-            .order_by(ChapterProcessingJob.created_at.desc())
-            .first()
-        )
-
-    # ───── Stage computation ─────
-
-    def _stage_explanations(self, guideline_id: str, explanations) -> StageStatus:
-        job = self._latest_job_for_guideline(
-            chapter_id="", guideline_id=guideline_id, job_type=_STAGE_JOB_TYPE["explanations"]
-        )
-        has_cards = any(bool(e.cards_json) for e in explanations)
-        state, summary, warnings = self._derive_state(
-            stage_id="explanations",
-            artifact_present=has_cards,
-            artifact_summary=(
-                f"{len(explanations)} variant(s)" if explanations else "No variants"
-            ),
-            job=job,
-            has_warnings=False,
-            blocked_by=None,
-        )
-        return _build_stage("explanations", state, summary, warnings, job=job)
-
-    def _stage_visuals(self, guideline_id: str, explanations) -> StageStatus:
-        explanations_done = any(bool(e.cards_json) for e in explanations)
-        job = self._latest_job_for_guideline(
-            chapter_id="", guideline_id=guideline_id, job_type=_STAGE_JOB_TYPE["visuals"]
-        )
-
-        if not explanations_done:
-            return _build_blocked("visuals", blocked_by="explanations", job=job)
-
-        cards_with_visuals = 0
-        layout_warnings = 0
-        total_cards = 0
-        for expl in explanations:
-            for card in expl.cards_json or []:
-                total_cards += 1
-                visual = card.get("visual_explanation") if isinstance(card, dict) else None
-                if isinstance(visual, dict) and visual.get("pixi_code"):
-                    cards_with_visuals += 1
-                    if visual.get("layout_warning") is True:
-                        layout_warnings += 1
-
-        artifact_present = cards_with_visuals > 0
-        has_warning = layout_warnings > 0
-        summary = f"{cards_with_visuals}/{total_cards} cards have visuals"
-        warnings = (
-            [f"{layout_warnings} card(s) with layout warning"]
-            if layout_warnings
-            else []
-        )
-        state, summary, warnings = self._derive_state(
-            stage_id="visuals",
-            artifact_present=artifact_present,
-            artifact_summary=summary,
-            job=job,
-            has_warnings=has_warning,
-            blocked_by=None,
-            warnings=warnings,
-        )
-        return _build_stage("visuals", state, summary, warnings, job=job)
-
-    def _stage_check_ins(self, guideline_id: str, explanations) -> StageStatus:
-        explanations_done = any(bool(e.cards_json) for e in explanations)
-        job = self._latest_job_for_guideline(
-            chapter_id="", guideline_id=guideline_id, job_type=_STAGE_JOB_TYPE["check_ins"]
-        )
-
-        if not explanations_done:
-            return _build_blocked("check_ins", blocked_by="explanations", job=job)
-
-        check_in_count = 0
-        for expl in explanations:
-            for card in expl.cards_json or []:
-                if isinstance(card, dict) and card.get("card_type") == "check_in":
-                    check_in_count += 1
-
-        summary = f"{check_in_count} check-in card(s)"
-        state, summary, warnings = self._derive_state(
-            stage_id="check_ins",
-            artifact_present=check_in_count > 0,
-            artifact_summary=summary,
-            job=job,
-            has_warnings=False,
-            blocked_by=None,
-        )
-        return _build_stage("check_ins", state, summary, warnings, job=job)
-
-    def _stage_practice_bank(
-        self, guideline_id: str, explanations, content_anchor: Optional[datetime]
-    ) -> StageStatus:
-        from shared.models.entities import PracticeQuestion
-
-        explanations_done = any(bool(e.cards_json) for e in explanations)
-        job = self._latest_job_for_guideline(
-            chapter_id="",
-            guideline_id=guideline_id,
-            job_type=_STAGE_JOB_TYPE["practice_bank"],
-        )
-
-        if not explanations_done:
-            return _build_blocked("practice_bank", blocked_by="explanations", job=job)
-
-        rows = (
-            self.db.query(PracticeQuestion)
-            .filter(PracticeQuestion.guideline_id == guideline_id)
-            .all()
-        )
-        count = len(rows)
-        earliest = min((r.created_at for r in rows if r.created_at), default=None)
-
-        is_stale = bool(
-            content_anchor
-            and earliest
-            and earliest < content_anchor
-        )
-
-        warnings: list[str] = []
-        if is_stale:
-            warnings.append("Practice bank predates latest explanations — regenerate to refresh")
-
-        if count == 0:
-            state: StageState = "ready" if not _job_failed(job) else "failed"
-            summary = "No practice questions yet"
-        elif count >= _PRACTICE_DONE_THRESHOLD and not is_stale:
-            state = "done"
-            summary = f"{count} questions"
-        else:
-            state = "warning"
-            summary = f"{count} questions" + (" (stale)" if is_stale else " (partial)")
-
-        # Override with running/failed/ready derived from job status
-        state, summary, warnings = self._overlay_job_state(
-            state=state,
-            summary=summary,
-            warnings=warnings,
-            job=job,
-            artifact_present=count > 0,
-        )
-        return _build_stage(
-            "practice_bank", state, summary, warnings, job=job, is_stale=is_stale
-        )
-
-    def _stage_audio_review(
-        self,
-        guideline_id: str,
-        chapter_id: str,
-        explanations,
-        content_anchor: Optional[datetime],
-    ) -> StageStatus:
-        explanations_done = any(bool(e.cards_json) for e in explanations)
-        job = self._latest_job_for_guideline(
-            chapter_id=chapter_id,
-            guideline_id=guideline_id,
-            job_type=_STAGE_JOB_TYPE["audio_review"],
-        )
-
-        if not explanations_done:
-            return _build_blocked("audio_review", blocked_by="explanations", job=job)
-
-        if job is None:
-            return StageStatus(
-                stage_id="audio_review",
-                state="ready",
-                summary="No audio review run yet",
-            )
-
-        is_stale = bool(
-            content_anchor
-            and job.completed_at
-            and job.completed_at < content_anchor
-        )
-
-        warnings: list[str] = []
-        if is_stale:
-            warnings.append("Audio review predates latest explanations — rerun to refresh")
-
-        if job.status == "completed" and not is_stale:
-            state: StageState = "done"
-            summary = f"Reviewed {_fmt_ago(job.completed_at)}"
-        elif job.status == "completed_with_errors" or is_stale:
-            state = "warning"
-            summary = (
-                f"Completed with errors ({_fmt_ago(job.completed_at)})"
-                if job.status == "completed_with_errors"
-                else f"Completed {_fmt_ago(job.completed_at)} (stale)"
-            )
-        elif job.status == "failed":
-            state = "failed"
-            summary = f"Last run failed {_fmt_ago(job.completed_at)}"
-        elif job.status in ("pending", "running"):
-            state = "running"
-            summary = "Running…"
-        else:
-            state = "ready"
-            summary = job.status
-
-        return _build_stage(
-            "audio_review", state, summary, warnings, job=job, is_stale=is_stale
-        )
-
-    def _stage_baatcheet_dialogue(self, guideline_id: str, explanations) -> StageStatus:
-        """Stage 5b — Baatcheet dialogue generation status.
-
-        Stale signal here uses `source_content_hash`, NOT timestamp comparison:
-        variant A's `cards_json` is mutated in-place by visuals/check-ins/audio
-        stages, so timestamp comparison would over-trigger (every audio refresh
-        would mark the dialogue stale). Hash captures semantic identity only.
-        """
-        from shared.repositories.dialogue_repository import DialogueRepository
-
-        # Stage 5b raises if specifically variant A is missing — match that
-        # contract here instead of accepting any variant. (A topic with only
-        # B/C is unusual but possible during partial regeneration.)
-        variant_a_done = any(
-            getattr(e, "variant_key", None) == "A" and bool(e.cards_json)
-            for e in explanations
-        )
-        job = self._latest_job_for_guideline(
-            chapter_id="", guideline_id=guideline_id,
-            job_type=_STAGE_JOB_TYPE["baatcheet_dialogue"],
-        )
-        if not variant_a_done:
-            return _build_blocked("baatcheet_dialogue", blocked_by="explanations", job=job)
-
-        repo = DialogueRepository(self.db)
-        dialogue = repo.get_by_guideline_id(guideline_id)
-        artifact_present = bool(dialogue and dialogue.cards_json)
-        is_stale = repo.is_stale(guideline_id) if artifact_present else False
-
-        warnings: list[str] = []
-        if is_stale:
-            warnings.append(
-                "Variant A has changed since dialogue was generated — regenerate to refresh"
-            )
-
-        if artifact_present:
-            card_count = len(dialogue.cards_json)
-            summary = f"{card_count} dialogue card(s)" + (" (stale)" if is_stale else "")
-            state = "warning" if is_stale else "done"
-        else:
-            summary = "No dialogue yet"
-            state = "ready"
-
-        state, summary, warnings = self._overlay_job_state(
-            state=state, summary=summary, warnings=warnings,
-            job=job, artifact_present=artifact_present,
-        )
-        return _build_stage(
-            "baatcheet_dialogue", state, summary, warnings,
-            job=job, is_stale=is_stale,
-        )
-
-    def _stage_baatcheet_visuals(self, guideline_id: str) -> StageStatus:
-        """Stage 5c — PixiJS visuals on Baatcheet `visual` cards."""
-        from shared.repositories.dialogue_repository import DialogueRepository
-
-        repo = DialogueRepository(self.db)
-        dialogue = repo.get_by_guideline_id(guideline_id)
-        job = self._latest_job_for_guideline(
-            chapter_id="", guideline_id=guideline_id,
-            job_type=_STAGE_JOB_TYPE["baatcheet_visuals"],
-        )
-        if not dialogue or not dialogue.cards_json:
-            return _build_blocked(
-                "baatcheet_visuals", blocked_by="baatcheet_dialogue", job=job,
-            )
-
-        total_visual_cards = 0
-        cards_with_visuals = 0
-        for card in dialogue.cards_json:
-            if isinstance(card, dict) and card.get("card_type") == "visual":
-                total_visual_cards += 1
-                ve = card.get("visual_explanation")
-                if isinstance(ve, dict) and ve.get("pixi_code"):
-                    cards_with_visuals += 1
-
-        if total_visual_cards == 0:
-            # No visual cards on this dialogue — Stage 5c is trivially "done".
-            return _build_stage(
-                "baatcheet_visuals", "done",
-                "No visual cards in this dialogue", [], job=job,
-            )
-
-        artifact_present = cards_with_visuals > 0
-        if cards_with_visuals == total_visual_cards:
-            state: StageState = "done"
-        elif cards_with_visuals > 0:
-            state = "warning"
-        else:
-            state = "ready"
-        summary = f"{cards_with_visuals}/{total_visual_cards} visual cards have PixiJS"
-
-        state, summary, warnings = self._overlay_job_state(
-            state=state, summary=summary, warnings=[],
-            job=job, artifact_present=artifact_present,
-        )
-        return _build_stage("baatcheet_visuals", state, summary, warnings, job=job)
-
-    def _stage_audio_synthesis(self, guideline_id: str, explanations) -> StageStatus:
-        explanations_done = any(bool(e.cards_json) for e in explanations)
-        job = self._latest_job_for_guideline(
-            chapter_id="",
-            guideline_id=guideline_id,
-            job_type=_STAGE_JOB_TYPE["audio_synthesis"],
-        )
-
-        if not explanations_done:
-            return _build_blocked("audio_synthesis", blocked_by="explanations", job=job)
-
-        from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
-        from shared.repositories.dialogue_repository import DialogueRepository
-
-        total_clips = 0
-        clips_with_audio = 0
-        for expl in explanations:
-            t, w = AudioGenerationService.count_audio_items(expl.cards_json or [])
-            total_clips += t
-            clips_with_audio += w
-
-        # Include Baatcheet dialogue clips so super-run doesn't mark the stage
-        # `done` while dialogue MP3s are still missing.
-        dialogue = DialogueRepository(self.db).get_by_guideline_id(guideline_id)
-        if dialogue and dialogue.cards_json:
-            dt, dw = AudioGenerationService.count_dialogue_audio_items(dialogue.cards_json)
-            total_clips += dt
-            clips_with_audio += dw
-
-        if total_clips == 0:
-            summary = "No audio clips yet"
-            artifact_present = False
-        else:
-            summary = f"{clips_with_audio}/{total_clips} audio clips have pre-computed MP3"
-            artifact_present = clips_with_audio > 0
-
-        if total_clips > 0 and clips_with_audio == total_clips:
-            state: StageState = "done"
-        elif 0 < clips_with_audio < total_clips:
-            state = "warning"
-        else:
-            state = "ready"
-
-        state, summary, warnings = self._overlay_job_state(
-            state=state,
-            summary=summary,
-            warnings=[],
-            job=job,
-            artifact_present=artifact_present,
-        )
-        return _build_stage("audio_synthesis", state, summary, warnings, job=job)
-
-    # ───── Shared helpers ─────
-
-    def _derive_state(
-        self,
-        *,
-        stage_id: StageId,
-        artifact_present: bool,
-        artifact_summary: str,
-        job: Optional[ChapterProcessingJob],
-        has_warnings: bool,
-        blocked_by: Optional[StageId],
-        warnings: Optional[list[str]] = None,
-    ) -> tuple[StageState, str, list[str]]:
-        warnings = list(warnings or [])
-        if blocked_by:
-            return "blocked", f"Blocked — run {blocked_by} first", warnings
-
-        if job and job.status in ("pending", "running"):
-            return "running", "Running…", warnings
-
-        if artifact_present:
-            if has_warnings:
-                return "warning", artifact_summary, warnings
-            return "done", artifact_summary, warnings
-
-        # No artifact yet.
-        if job and job.status == "failed":
-            return "failed", job.error_message or "Last run failed", warnings
-        return "ready", artifact_summary, warnings
-
-    def _overlay_job_state(
-        self,
-        *,
-        state: StageState,
-        summary: str,
-        warnings: list[str],
-        job: Optional[ChapterProcessingJob],
-        artifact_present: bool,
-    ) -> tuple[StageState, str, list[str]]:
-        if job and job.status in ("pending", "running"):
-            return "running", "Running…", warnings
-        if not artifact_present and job and job.status == "failed":
-            return "failed", job.error_message or "Last run failed", warnings
-        return state, summary, warnings
+    # ───── pipeline_run_id detection (Phase 2+) ─────
 
     def _detect_pipeline_run_id(self, stages: Iterable[StageStatus]) -> Optional[str]:
         # No persisted pipeline_run table in v1; the value is surfaced only while
@@ -663,69 +213,8 @@ class TopicPipelineStatusService:
 # ───── Module-level helpers ─────
 
 
-def _build_stage(
-    stage_id: StageId,
-    state: StageState,
-    summary: str,
-    warnings: list[str],
-    *,
-    job: Optional[ChapterProcessingJob] = None,
-    is_stale: bool = False,
-) -> StageStatus:
-    return StageStatus(
-        stage_id=stage_id,
-        state=state,
-        summary=summary,
-        warnings=warnings,
-        is_stale=is_stale,
-        last_job_id=(job.id if job else None),
-        last_job_status=(job.status if job else None),
-        last_job_error=(job.error_message if job and job.error_message else None),
-        last_job_completed_at=(job.completed_at if job else None),
-    )
-
-
-def _build_blocked(
-    stage_id: StageId,
-    *,
-    blocked_by: StageId,
-    job: Optional[ChapterProcessingJob] = None,
-) -> StageStatus:
-    return StageStatus(
-        stage_id=stage_id,
-        state="blocked",
-        summary=f"Blocked — run {blocked_by} first",
-        blocked_by=blocked_by,
-        last_job_id=(job.id if job else None),
-        last_job_status=(job.status if job else None),
-        last_job_error=(job.error_message if job and job.error_message else None),
-        last_job_completed_at=(job.completed_at if job else None),
-    )
-
-
-def _job_failed(job: Optional[ChapterProcessingJob]) -> bool:
-    return bool(job and job.status == "failed")
-
-
 def _tally_stage_counts(stages: Iterable[StageStatus]) -> StageCountsByState:
     counts = StageCountsByState()
     for s in stages:
         setattr(counts, s.state, getattr(counts, s.state) + 1)
     return counts
-
-
-def _fmt_ago(ts: Optional[datetime]) -> str:
-    if not ts:
-        return "just now"
-    delta = datetime.utcnow() - ts
-    seconds = int(delta.total_seconds())
-    if seconds < 60:
-        return f"{seconds}s ago"
-    minutes = seconds // 60
-    if minutes < 60:
-        return f"{minutes}m ago"
-    hours = minutes // 60
-    if hours < 48:
-        return f"{hours}h ago"
-    days = hours // 24
-    return f"{days}d ago"
