@@ -26,6 +26,7 @@ from book_ingestion_v2.constants import V2JobType
 from book_ingestion_v2.dag import cascade as cascade_module
 from book_ingestion_v2.dag.cascade import (
     CascadeAlreadyActiveError,
+    CascadeNotReadyError,
     CascadeOrchestrator,
     build_launcher_kwargs,
 )
@@ -249,7 +250,7 @@ class TestComputePending:
         self, fresh_orchestrator
     ):
         pending = fresh_orchestrator._compute_pending(
-            state_map={}, from_stage_id="explanations",
+            state_map={}, stale_set=set(), from_stage_id="explanations",
         )
         assert pending == {s.id for s in DAG.stages}
 
@@ -257,23 +258,34 @@ class TestComputePending:
         self, fresh_orchestrator
     ):
         pending = fresh_orchestrator._compute_pending(
-            state_map={}, from_stage_id="audio_review",
+            state_map={}, stale_set=set(), from_stage_id="audio_review",
         )
         assert pending == {"audio_review", "audio_synthesis"}
 
     def test_run_all_excludes_done_stages(self, fresh_orchestrator):
         state_map = {"explanations": "done", "visuals": "done"}
         pending = fresh_orchestrator._compute_pending(
-            state_map=state_map, from_stage_id=None,
+            state_map=state_map, stale_set=set(), from_stage_id=None,
         )
         assert "explanations" not in pending
         assert "visuals" not in pending
         assert "check_ins" in pending  # no row → pending
 
+    def test_run_all_includes_stale_done_rows(self, fresh_orchestrator):
+        # `visuals` is `done` in state_map but flagged stale — per
+        # plan §2 decision 16, stale-and-done counts as not-done.
+        state_map = {"explanations": "done", "visuals": "done"}
+        pending = fresh_orchestrator._compute_pending(
+            state_map=state_map, stale_set={"visuals"}, from_stage_id=None,
+        )
+        assert "visuals" in pending
+        assert "explanations" not in pending  # not stale, stays done
+
     def test_unknown_stage_id_raises(self, fresh_orchestrator):
         with pytest.raises(ValueError):
             fresh_orchestrator._compute_pending(
-                state_map={}, from_stage_id="not_a_real_stage",
+                state_map={}, stale_set=set(),
+                from_stage_id="not_a_real_stage",
             )
 
 
@@ -432,6 +444,102 @@ class TestStartCascadeFromExplanations:
         # State was cleaned up — no orphan cascade entry.
         assert orch.get_cascade(seed_topic["guideline_id"]) is None
 
+    def test_lock_collision_does_not_commit_stale_flags(
+        self, db_session, seed_topic, monkeypatch,
+    ):
+        # Pre-existing done rows on descendants — these would get
+        # is_stale=True if cascade marked stale before launching.
+        gid = seed_topic["guideline_id"]
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_terminal(gid, "visuals", state="done", duration_ms=100)
+        repo.upsert_terminal(gid, "check_ins", state="done", duration_ms=100)
+
+        # Occupy the per-topic lock so the explanations launch fails.
+        from book_ingestion_v2.services.chapter_job_service import (
+            ChapterJobService as _Svc,
+        )
+        _Svc(db_session).acquire_lock(
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            job_type=V2JobType.VISUAL_ENRICHMENT.value,
+        )
+
+        def real_lock_launcher(db, **kwargs):
+            return _Svc(db).acquire_lock(
+                book_id=kwargs["book_id"],
+                chapter_id=kwargs["chapter_id"],
+                guideline_id=kwargs["guideline_id"],
+                job_type=V2JobType.EXPLANATION_GENERATION.value,
+            )
+        monkeypatch.setitem(LAUNCHER_BY_STAGE, "explanations", real_lock_launcher)
+
+        orch = CascadeOrchestrator()
+        with pytest.raises(ChapterJobLockError):
+            orch.start_cascade(
+                db_session,
+                book_id=seed_topic["book_id"],
+                chapter_id=seed_topic["chapter_id"],
+                guideline_id=gid,
+                from_stage_id="explanations",
+            )
+        # Stale flags must NOT have been committed — cascade rolled
+        # back its in-memory entry, so descendants should be unchanged.
+        assert repo.get(gid, "visuals").is_stale is False
+        assert repo.get(gid, "check_ins").is_stale is False
+
+    def test_rerun_with_unmet_upstream_deps_raises(
+        self, db_session, seed_topic, fake_launchers,
+    ):
+        # `visuals` depends on `explanations`; explanations has no row
+        # (never run) → CascadeNotReadyError, not a stuck cascade.
+        orch = CascadeOrchestrator()
+        with pytest.raises(CascadeNotReadyError):
+            orch.start_cascade(
+                db_session,
+                book_id=seed_topic["book_id"],
+                chapter_id=seed_topic["chapter_id"],
+                guideline_id=seed_topic["guideline_id"],
+                from_stage_id="visuals",
+            )
+        # No orphan cascade entry — future kickoffs aren't blocked.
+        assert orch.get_cascade(seed_topic["guideline_id"]) is None
+
+    def test_rerun_with_stale_upstream_dep_raises(
+        self, db_session, seed_topic, fake_launchers,
+    ):
+        gid = seed_topic["guideline_id"]
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_terminal(gid, "explanations", state="done", duration_ms=1)
+        repo.mark_stale(gid, "explanations", is_stale=True)
+
+        orch = CascadeOrchestrator()
+        with pytest.raises(CascadeNotReadyError):
+            orch.start_cascade(
+                db_session,
+                book_id=seed_topic["book_id"],
+                chapter_id=seed_topic["chapter_id"],
+                guideline_id=gid,
+                from_stage_id="visuals",
+            )
+
+    def test_rerun_with_done_upstream_succeeds(
+        self, db_session, seed_topic, fake_launchers,
+    ):
+        gid = seed_topic["guideline_id"]
+        TopicStageRunRepository(db_session).upsert_terminal(
+            gid, "explanations", state="done", duration_ms=1,
+        )
+        orch = CascadeOrchestrator()
+        cascade = orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="visuals",
+        )
+        assert cascade.running == "visuals"
+
 
 # ---------------------------------------------------------------------------
 # Cascade event chain — full topological run
@@ -512,13 +620,41 @@ class TestCascadeEventChain:
         all_launched = [c["stage_id"] for c in fake_launchers]
         assert all_launched == ["explanations"]
 
-        # The downstream rows that were marked stale stay stale (cascade
-        # halted, didn't reset them).
-        repo = TopicStageRunRepository(db_session)
-        # Visuals had no pre-existing row, so none was marked stale —
-        # mark_stale is a no-op when row missing.
         # explanations row should be `failed`, not `done`.
+        repo = TopicStageRunRepository(db_session)
         assert repo.get(gid, "explanations").state == "failed"
+
+    def test_halt_on_failure_clears_stale_on_descendants(
+        self, db_session, seed_topic, fake_launchers, reset_singleton,
+        monkeypatch,
+    ):
+        # Pre-existing done rows on descendants — cascade kickoff
+        # marked them stale; halt-on-failure should clear them since
+        # the failed rerun didn't actually invalidate their inputs.
+        gid = seed_topic["guideline_id"]
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_terminal(gid, "visuals", state="done", duration_ms=1)
+        repo.upsert_terminal(gid, "check_ins", state="done", duration_ms=1)
+
+        orch = cascade_module.get_cascade_orchestrator()
+        monkeypatch.setattr(orch, "_session_factory", _no_close_factory(db_session))
+        orch.start_cascade(
+            db_session,
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            from_stage_id="explanations",
+        )
+        # Sanity: kickoff did mark them stale.
+        assert repo.get(gid, "visuals").is_stale is True
+        assert repo.get(gid, "check_ins").is_stale is True
+
+        _finish_running_job(
+            db_session, gid, "explanations", status="failed", error="boom",
+        )
+        # After halt, descendants should be back to is_stale=False.
+        assert repo.get(gid, "visuals").is_stale is False
+        assert repo.get(gid, "check_ins").is_stale is False
 
     def test_cancel_mid_cascade_skips_next_launch(
         self, db_session, seed_topic, fake_launchers, reset_singleton,
@@ -623,3 +759,243 @@ class TestTerminalHookFiresCascade:
         started = datetime.utcnow() - timedelta(seconds=1)
         _write_topic_stage_run_terminal(db_session, job.id, started_at=started)
         assert captured == [(gid, "explanations", "done")]
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation path → cascade integration
+# ---------------------------------------------------------------------------
+
+
+class TestReconciliationFiresCascade:
+    def test_stuck_running_reconciliation_calls_on_stage_complete(
+        self, db_session, seed_topic, monkeypatch, reset_singleton,
+    ):
+        # Setup: a stage row says `running` against a job that's
+        # actually `failed` (worker died). Lazy backfill should
+        # reconcile the row AND call cascade.on_stage_complete so an
+        # active cascade waiting on this stage advances.
+        gid = seed_topic["guideline_id"]
+        # Create a failed job (heartbeat reaping marked it failed).
+        job = ChapterProcessingJob(
+            id=str(uuid.uuid4()),
+            book_id=seed_topic["book_id"],
+            chapter_id=seed_topic["chapter_id"],
+            guideline_id=gid,
+            job_type=V2JobType.EXPLANATION_GENERATION.value,
+            status="failed",
+            error_message="Heartbeat stale",
+            started_at=datetime.utcnow() - timedelta(minutes=40),
+            completed_at=datetime.utcnow() - timedelta(minutes=10),
+        )
+        db_session.add(job)
+        db_session.commit()
+        # Stuck `running` row pointing at the now-failed job.
+        repo = TopicStageRunRepository(db_session)
+        repo.upsert_running(gid, "explanations", job_id=job.id)
+        db_session.add(TopicExplanation(
+            id=str(uuid.uuid4()), guideline_id=gid,
+            variant_key="A", variant_label="Variant A",
+            cards_json=[{"card_type": "explain"}],
+        ))
+        db_session.commit()
+
+        captured: list[tuple[str, str, str]] = []
+
+        class CaptureOrchestrator:
+            def on_stage_complete(self, **kwargs):
+                captured.append((
+                    kwargs["guideline_id"],
+                    kwargs["stage_id"],
+                    kwargs["terminal_state"],
+                ))
+
+        monkeypatch.setattr(
+            cascade_module, "get_cascade_orchestrator",
+            lambda: CaptureOrchestrator(),
+        )
+
+        # Trigger the lazy backfill via a status read.
+        TopicPipelineStatusService(db_session).get_pipeline_status(
+            seed_topic["book_id"], seed_topic["chapter_id"],
+            seed_topic["topic_key"],
+        )
+
+        # Reconciliation found the failed job → row flipped to failed
+        # → cascade hook fired with terminal_state="failed".
+        assert (gid, "explanations", "failed") in captured
+        assert repo.get(gid, "explanations").state == "failed"
+
+
+# ---------------------------------------------------------------------------
+# API endpoints
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def api_with_db(reset_singleton):
+    """FastAPI TestClient backed by a thread-safe in-memory SQLite.
+
+    The conftest's `db_session` fixture creates a single-thread engine,
+    which doesn't survive TestClient's per-request thread. We build a
+    fresh engine here with `check_same_thread=False` + StaticPool so
+    every request and the test body share one connection.
+
+    Returns `(client, session)` so tests can both hit the API and
+    inspect the DB.
+    """
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from database import get_db
+    from main import app
+    from shared.models.entities import Base
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    def _override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = _override_get_db
+    client = TestClient(app)
+    try:
+        yield client, session
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+def _seed_topic_in(session):
+    book_id = str(uuid.uuid4())
+    chapter_id = str(uuid.uuid4())
+    guideline_id = str(uuid.uuid4())
+    session.add(Book(
+        id=book_id, title="T", country="India", board="CBSE", grade=4,
+        subject="Mathematics", s3_prefix=f"books/{book_id}/",
+    ))
+    session.add(BookChapter(
+        id=chapter_id, book_id=book_id, chapter_number=5,
+        chapter_title="Fractions", start_page=1, end_page=20,
+        status="chapter_completed", total_pages=20, uploaded_page_count=20,
+    ))
+    session.add(TeachingGuideline(
+        id=guideline_id, country="India", board="CBSE", grade=4,
+        subject="Mathematics", chapter="Fractions",
+        topic="Comparing Fractions", guideline="g",
+        chapter_key="chapter-5", topic_key="comparing-fractions",
+        chapter_title="Fractions", topic_title="Comparing Fractions",
+        book_id=book_id, review_status="APPROVED", topic_sequence=1,
+    ))
+    session.commit()
+    return {
+        "book_id": book_id, "chapter_id": chapter_id,
+        "guideline_id": guideline_id, "topic_key": "comparing-fractions",
+    }
+
+
+class TestDAGDefinitionEndpoint:
+    def test_returns_every_stage(self, api_with_db):
+        client, _ = api_with_db
+        resp = client.get("/admin/v2/dag/definition")
+        assert resp.status_code == 200
+        body = resp.json()
+        ids = {s["id"] for s in body["stages"]}
+        assert ids == {s.id for s in DAG.stages}
+
+
+class TestRerunStageEndpoint:
+    def test_404_unknown_guideline(self, api_with_db):
+        client, _ = api_with_db
+        resp = client.post(
+            "/admin/v2/topics/nonexistent-guideline-id/stages/explanations/rerun",
+        )
+        assert resp.status_code == 404
+
+    def test_400_unknown_stage(self, api_with_db):
+        client, session = api_with_db
+        seed = _seed_topic_in(session)
+        resp = client.post(
+            f"/admin/v2/topics/{seed['guideline_id']}/stages/not_a_real_stage/rerun",
+        )
+        assert resp.status_code == 400
+
+    def test_409_upstream_not_done(self, api_with_db, monkeypatch):
+        client, session = api_with_db
+        seed = _seed_topic_in(session)
+
+        # Stub launchers so the test doesn't hit real services if it
+        # ever reaches the launch path.
+        for sid in [s.id for s in DAG.stages]:
+            monkeypatch.setitem(
+                LAUNCHER_BY_STAGE, sid,
+                lambda db, **kwargs: "stub-job-id",
+            )
+
+        # `visuals` rerun while `explanations` has no row →
+        # upstream_not_done.
+        resp = client.post(
+            f"/admin/v2/topics/{seed['guideline_id']}/stages/visuals/rerun",
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["detail"]["code"] == "upstream_not_done"
+
+
+class TestCancelEndpoint:
+    def test_404_unknown_guideline(self, api_with_db):
+        client, _ = api_with_db
+        resp = client.post(
+            "/admin/v2/topics/nonexistent-guideline-id/dag/cancel",
+        )
+        assert resp.status_code == 404
+
+    def test_no_active_cascade_returns_false(self, api_with_db):
+        client, session = api_with_db
+        seed = _seed_topic_in(session)
+        resp = client.post(f"/admin/v2/topics/{seed['guideline_id']}/dag/cancel")
+        assert resp.status_code == 200
+        assert resp.json() == {"cancelled": False}
+
+
+class TestRunAllEndpoint:
+    def test_all_done_returns_empty_pending(self, api_with_db):
+        client, session = api_with_db
+        seed = _seed_topic_in(session)
+        repo = TopicStageRunRepository(session)
+        for stage in DAG.stages:
+            repo.upsert_terminal(
+                seed["guideline_id"], stage.id, state="done", duration_ms=1,
+            )
+        resp = client.post(f"/admin/v2/topics/{seed['guideline_id']}/dag/run-all")
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["pending"] == []
+        assert body["running"] is None
+
+
+class TestGetTopicDAGEndpoint:
+    def test_no_rows_returns_all_pending_or_reconstruction(self, api_with_db):
+        client, session = api_with_db
+        seed = _seed_topic_in(session)
+        resp = client.get(f"/admin/v2/topics/{seed['guideline_id']}/dag")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Without any explanation artifact, every stage is `pending` in
+        # the row vocabulary (lazy backfill writes nothing because
+        # reconstruction returns ready/blocked, neither of which is a
+        # terminal state to backfill).
+        states = {s["stage_id"]: s["state"] for s in body["stages"]}
+        assert all(v == "pending" for v in states.values()), states

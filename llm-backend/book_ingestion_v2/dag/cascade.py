@@ -51,6 +51,15 @@ class CascadeAlreadyActiveError(Exception):
     """`start_cascade` called while a cascade is already active for the topic."""
 
 
+class CascadeNotReadyError(Exception):
+    """`start_cascade(from_stage_id=X)` called when X has unmet upstream deps.
+
+    Without this guard the cascade registers, finds no ready stage to
+    launch, and gets stuck with `running=None` — blocking future
+    kickoffs until someone hits the cancel endpoint.
+    """
+
+
 @dataclass
 class CascadeState:
     cascade_id: str
@@ -141,7 +150,8 @@ class CascadeOrchestrator:
           stage launches first.
 
         Raises `CascadeAlreadyActiveError` if a cascade is already
-        active for this topic, and `ChapterJobLockError` if the first
+        active for this topic, `CascadeNotReadyError` if `from_stage_id`
+        has unmet upstream deps, and `ChapterJobLockError` if the first
         launch hits the per-topic lock (caller maps to 409).
         """
         with self._lock:
@@ -153,7 +163,26 @@ class CascadeOrchestrator:
                 )
 
             state_map = self._build_state_map(db, guideline_id)
-            pending = self._compute_pending(state_map, from_stage_id)
+            stale_set = self._build_stale_set(db, guideline_id)
+            pending = self._compute_pending(
+                state_map, stale_set, from_stage_id,
+            )
+
+            # Reject upfront if `from_stage_id` has any dep that isn't
+            # `done AND not stale` — otherwise the cascade registers but
+            # `_launch_next` finds nothing ready, leaving an orphan
+            # entry that blocks future kickoffs.
+            if from_stage_id is not None:
+                stage = DAG.get(from_stage_id)
+                missing_deps = [
+                    dep for dep in stage.depends_on
+                    if state_map.get(dep) != "done" or dep in stale_set
+                ]
+                if missing_deps:
+                    raise CascadeNotReadyError(
+                        f"Cannot rerun {from_stage_id!r} — upstream "
+                        f"dep(s) not done or stale: {missing_deps}"
+                    )
 
             cascade = CascadeState(
                 cascade_id=str(uuid.uuid4()),
@@ -170,10 +199,21 @@ class CascadeOrchestrator:
                 # caller decide what to communicate.
                 return cascade
 
+            self._cascades[guideline_id] = cascade
+
+            # Launch BEFORE marking descendants stale — otherwise a
+            # `ChapterJobLockError` on the first launch would commit
+            # `is_stale=True` writes against a cascade that never ran.
+            try:
+                self._launch_next(cascade, db=db)
+            except Exception:
+                self._cascades.pop(guideline_id, None)
+                raise
+
             # Mark stale on every pending stage that already has a
-            # `done` row. The `from_stage_id` itself is about to enter
-            # `running`, which clears stale on the next terminal — no
-            # need to flag it now.
+            # `done` row. The `from_stage_id` itself is in `running`
+            # now; its terminal write will clear its own stale flag
+            # if it had one.
             repo = TopicStageRunRepository(db)
             for sid in pending:
                 if sid == from_stage_id:
@@ -181,14 +221,6 @@ class CascadeOrchestrator:
                 row = repo.get(guideline_id, sid)
                 if row and row.state == "done":
                     repo.mark_stale(guideline_id, sid, is_stale=True)
-
-            self._cascades[guideline_id] = cascade
-
-            try:
-                self._launch_next(cascade, db=db)
-            except Exception:
-                self._cascades.pop(guideline_id, None)
-                raise
 
             return cascade
 
@@ -202,8 +234,10 @@ class CascadeOrchestrator:
         """Terminal-write hook callback. No-op when no cascade is active.
 
         Halt-on-failure: a `failed` terminal sets `halted_at = stage_id`
-        and clears the pending queue; downstream stages keep their
-        `is_stale` flag and stay un-run.
+        and clears the pending queue. Descendants that we flagged
+        stale on cascade kickoff get their `is_stale` cleared on halt
+        — the failed rerun didn't actually change upstream artifacts,
+        so downstream isn't truly stale.
         """
         if terminal_state not in ("done", "failed"):
             return
@@ -224,6 +258,11 @@ class CascadeOrchestrator:
 
             if terminal_state == "failed":
                 cascade.halted_at = stage_id
+                # Clear stale on descendants we flagged at kickoff —
+                # the failed rerun left upstream unchanged, so
+                # descendants are no more stale than before. Best-
+                # effort; a DB error here doesn't break halt semantics.
+                self._clear_stale_on_pending_descendants(cascade)
                 cascade.pending.clear()
                 logger.warning(
                     f"Cascade {cascade.cascade_id} halted at {stage_id} (failed)"
@@ -287,17 +326,40 @@ class CascadeOrchestrator:
     # ───── Internals ─────
 
     def _compute_pending(
-        self, state_map: dict[str, str], from_stage_id: Optional[str]
+        self,
+        state_map: dict[str, str],
+        stale_set: set[str],
+        from_stage_id: Optional[str],
     ) -> set[str]:
+        """Stages this cascade plans to run.
+
+        Run-all (`from_stage_id is None`) follows plan §2 decision 16:
+        "stale and failed are not-done." A stage is pending if its row
+        state isn't `done` OR the row is flagged `is_stale=True`. Stages
+        with no row at all fall through to "not done" and are pending.
+        """
         if from_stage_id is not None:
             if not DAG.has(from_stage_id):
                 raise ValueError(f"Unknown stage: {from_stage_id!r}")
             return {from_stage_id} | DAG.descendants(from_stage_id)
-        return {s.id for s in DAG.stages if state_map.get(s.id) != "done"}
+        pending: set[str] = set()
+        for s in DAG.stages:
+            if state_map.get(s.id) != "done":
+                pending.add(s.id)
+            elif s.id in stale_set:
+                pending.add(s.id)
+        return pending
 
     def _build_state_map(self, db, guideline_id: str) -> dict[str, str]:
         repo = TopicStageRunRepository(db)
         return {r.stage_id: r.state for r in repo.list_for_topic(guideline_id)}
+
+    def _build_stale_set(self, db, guideline_id: str) -> set[str]:
+        repo = TopicStageRunRepository(db)
+        return {
+            r.stage_id for r in repo.list_for_topic(guideline_id)
+            if r.is_stale
+        }
 
     def _launch_next(self, cascade: CascadeState, *, db) -> None:
         """Pick one ready stage from `pending` and launch it.
@@ -373,6 +435,33 @@ class CascadeOrchestrator:
             if ok:
                 ready.append(sid)
         return ready
+
+    def _clear_stale_on_pending_descendants(self, cascade: CascadeState) -> None:
+        """Clear `is_stale` on every still-pending stage in the cascade.
+
+        Used by halt-on-failure: cascade marked descendants stale at
+        kickoff on the assumption that the rerun would change upstream;
+        a failed rerun means upstream is unchanged, so the stale flags
+        are a lie.
+
+        Best-effort — opens its own session; swallows DB errors so a
+        cleanup glitch can't mask the underlying halt.
+        """
+        if not cascade.pending:
+            return
+        try:
+            db = self._resolve_session_factory()()
+            try:
+                repo = TopicStageRunRepository(db)
+                for sid in cascade.pending:
+                    repo.mark_stale(cascade.guideline_id, sid, is_stale=False)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(
+                f"Cascade {cascade.cascade_id} stale cleanup failed on halt: {e}",
+                exc_info=True,
+            )
 
     def _maybe_cleanup(self, cascade: CascadeState) -> None:
         """Drop the cascade entry once nothing is in flight and there's

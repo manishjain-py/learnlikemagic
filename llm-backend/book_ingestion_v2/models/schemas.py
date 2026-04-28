@@ -486,6 +486,9 @@ class DAGDefinitionResponse(BaseModel):
     stages: List[DAGStageDefinition]
 
 
+TopicStageRunState = Literal["pending", "running", "done", "failed"]
+
+
 class TopicDAGStageRow(BaseModel):
     """Per-stage state for the DAG view. Combines the durable
     `topic_stage_runs` row with the DAG topology."""
@@ -493,7 +496,7 @@ class TopicDAGStageRow(BaseModel):
     stage_id: str
     label: str
     depends_on: List[str]
-    state: str  # pending | running | done | failed
+    state: TopicStageRunState
     is_stale: bool = False
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

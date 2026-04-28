@@ -361,6 +361,27 @@ class TopicPipelineStatusService:
                 last_job_id=job.id,
             )
 
+            # Phase 3 — fire the cascade hook so an active cascade can
+            # advance past a dead worker. The terminal-write hook in
+            # `run_in_background_v2` covers the happy path; this covers
+            # the orphan-recovery path. Wrapped so a cascade bug can't
+            # break the reconciliation write above.
+            try:
+                from book_ingestion_v2.dag.cascade import (
+                    get_cascade_orchestrator,
+                )
+                get_cascade_orchestrator().on_stage_complete(
+                    guideline_id=row.guideline_id,
+                    stage_id=row.stage_id,
+                    terminal_state=terminal_state,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"cascade on_stage_complete failed during reconciliation "
+                    f"of stage={row.stage_id}: {e}",
+                    exc_info=True,
+                )
+
     # ───── Staleness anchor ─────
 
     @staticmethod

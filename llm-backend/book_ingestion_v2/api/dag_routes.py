@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from book_ingestion_v2.dag.cascade import (
     CascadeAlreadyActiveError,
+    CascadeNotReadyError,
     get_cascade_orchestrator,
 )
 from book_ingestion_v2.dag.topic_pipeline_dag import DAG
@@ -247,6 +248,11 @@ def rerun_stage(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "cascade_active", "message": str(e)},
         )
+    except CascadeNotReadyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "upstream_not_done", "message": str(e)},
+        )
     except ChapterJobLockError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -315,6 +321,12 @@ def run_all_stages(
 )
 def cancel_cascade(guideline_id: str, db: Session = Depends(get_db)):
     """Soft-cancel any active cascade. The currently running stage
-    finishes; nothing else launches."""
+    finishes; nothing else launches.
+
+    Validates `guideline_id` so a typo'd id 404s rather than silently
+    returning `cancelled=False` (which is indistinguishable from "no
+    cascade was active").
+    """
+    _resolve_topic_keys(db, guideline_id)
     cancelled = get_cascade_orchestrator().cancel(guideline_id)
     return CascadeCancelResponse(cancelled=cancelled)
