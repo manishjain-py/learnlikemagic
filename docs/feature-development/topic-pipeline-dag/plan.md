@@ -18,8 +18,8 @@
 3. Cascade orchestrator + rerun APIs ✅ shipped 2026-04-28 (PR #129)
 3.5. Cascade codex follow-ups (P1 force-per-stage, P1 defense halt, P2 NULL-topic-key 404, P2 scoped stale-clear) ✅ shipped 2026-04-28 (PR #130, bundled with Phase 4)
 4. `baatcheet_visuals` V2 refactor ✅ shipped 2026-04-28 (PR #130, bundled with Phase 3.5)
-5. React Flow UI replaces stage ladder ← **next**
-6. Cross-DAG warning + tests + polish
+5. React Flow UI replaces stage ladder ✅ shipped 2026-04-29 (PR #131)
+6. Cross-DAG warning + tests + polish ← **next**
 7. (Later, not v1) Chapter DAG — same pattern
 
 ## §1 — Pains we're solving
