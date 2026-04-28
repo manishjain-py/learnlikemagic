@@ -1,10 +1,11 @@
 # Baatcheet Dialogue Quality V2 — Designed-Lesson Architecture
 
-**Date:** 2026-04-27
-**Status:** In progress — experimental
+**Date:** 2026-04-27 (updated 2026-04-28)
+**Status:** Phases 0-4.5 done + prod-validated end-to-end on math G4 ch1 topic 1. Phase 4.6 (Stage 5c V2 visual-pass wiring) is the recommended next step — it's the gate to prod visuals on V2 dialogues.
 **Supersedes (content axis):** `dialogue-quality-progress.md` (V1 / PR #122)
 **Companion:** `gold-example-fractions-class4.md` — the benchmark we're aiming for
 **Mode:** try → evaluate → keep/discard/iterate. Log results in §6. Plan is not fixed.
+**Resume here:** §7 "Current state and resume guide" is the single source of truth for where we are + what's next. Read it first if you're picking up from a fresh session.
 
 ## 1. Problem
 
@@ -53,9 +54,13 @@ Why split: plan reviewable before card-fill; plan persists for audit + autoresea
 | 0 | Document V2 framing (this doc + gold example companion) | done | |
 | 1 | Rewrite `docs/principles/baatcheet-dialogue-craft.md` — layer architecture (spine, misconceptions-as-cycles, move grammar, student-concrete) atop existing surface rules | done | |
 | 2 | Draft new lesson-plan prompt + rewrite dialogue-generation prompt that consumes it | done | New: `baatcheet_lesson_plan_generation*.txt`. Rewritten: `baatcheet_dialogue_generation*.txt`. |
-| 3 | Generate 1 topic against new prompts (ad-hoc, no service changes); eyeball-judge against gold | **done — PASS on 1st try** | run01-high: 4.50/5 avg, 39 cards, 3/3 misconception cycles complete, talk-ratio 1.70:1 (V1 was 4.7:1). $1.02, ~5 min. |
-| 4 | If shape recognizable: wire service (`baatcheet_dialogue_generator_service.py`) — add `_generate_lesson_plan()` step, persist plan; regen 3-5 topics; iterate | not started | Recommended next session. |
-| 5 | Add Baatcheet-specific evaluation dimensions (LLM-judged: spine present + threaded? cycle per misconception? move variety? student-concrete moments? takeaways tied to misconceptions? voice texture?) | partial | Mechanical rubric in `baatcheet_v2_eval.py` works; LLM-judge dimensions still TODO. |
+| 3 | Generate 1 topic against new prompts (ad-hoc, no service changes); eyeball-judge against gold | done — PASS on 1st try | run01-high: 4.50/5 avg, 39 cards, 3/3 misconception cycles complete, talk-ratio 1.70:1 (V1 was 4.7:1). $1.02, ~5 min. |
+| 3.5 | Visual-pass (separate stage) | done | 6 SVGs on math run01, $0.62, all well-formed. Selection-by-judgement, 4-8 cards, "quality > quantity". |
+| 3.6 | Cultural-framing rule restoration | done | `feedback_prompt_rule_consolidation` honored — Explain canonical phrasing copied verbatim into V2 lesson-plan + dialogue + visual-pass prompts. |
+| 4 | Wire service (`baatcheet_dialogue_generator_service.py`) — `_generate_lesson_plan()` step, persist plan, refine consumes plan | **done — end-to-end validated on math G4 ch1 topic 1** | Service wiring + DB column + `_validate_plan` + 11 unit tests (commit `484f562`). End-to-end prod run produced dialogue `0b90b017-…`, 4.30/5 mechanical eval, talk ratio 1.78:1. Two real bugs surfaced + fixed: JSON preamble tolerance (`0fa0d88`), card-cap 35→42 (`522f9c4`). |
+| 4.5 | 2nd topic generalization test (non-math) | done — PASS qualitatively | Water cycle Class 4: 4.20/5, talk ratio 2.45:1 (science is more notation-heavy), $1.37 / 6 min, 7 SVGs. Architecture generalizes. Two domains is sufficient evidence — skipped a 3rd topic test. |
+| 4.6 | **Stage 5c V2 visual-pass wiring** — gate to prod visuals on V2 dialogues | **not started — recommended next** | V1 `BaatcheetVisualEnrichmentService` only enriches `card_type=visual` cards; V2 plans don't generate those → prod visuals on V2 dialogues = 0 today. Visual-pass prompts already updated to default-generate + `visual_required` (commit `356b147`); just need to wire the production service. See §7. |
+| 5 | Add Baatcheet-specific evaluation dimensions (LLM-judged: spine present + threaded? cycle per misconception? move variety? student-concrete moments? takeaways tied to misconceptions? voice texture?) | partial | Mechanical rubric in `baatcheet_v2_eval.py` works; has known cosmetic bugs (close-takeaways substring matching, student-act undercount on `concretize` moves). LLM-judge dimensions + token-based matching = Phase 5. |
 | 6 | Autoresearch within new shape | not started | Hold until V2 is in production for ≥1 batch. |
 | 7 | Formalize misconceptions-research stage with citations | not started | Quality lift; not blocking. |
 
@@ -281,3 +286,216 @@ V2 designed-lesson architecture is now wired into the production pipeline. Stage
 - **Phase 6 (autoresearch within new shape):** once shape is locked, optimise spine variety, trap wording, voice texture density. Don't run autoresearch until V2 is in production for at least one batch.
 - **Phase 7 (formalize misconception research):** today the lesson-plan prompt is asked to cite plausible evidence for each misconception. For trust + rigor, a dedicated research stage with web tool use should produce a per-topic misconception bank.
 - **Re-run at `max` effort once** to see if there's a meaningful prose-craft delta vs `high`. If not, default to `high` (5x cheaper).
+
+### 2026-04-27 evening — End-to-end prod-pipeline run on math G4 ch1 topic 1
+
+Goal: validate the full Phase-4 wiring on a real guideline, against the production DB, end to end. Two real bugs surfaced and were fixed during this run.
+
+**Driver:** `llm-backend/scripts/baatcheet_v2_run_stage5b.py` — calls `service.generate_for_guideline()` directly against the prod DB without the HTTP / `chapter_jobs` plumbing. Useful for end-to-end V2 validation on real guidelines without going through the full ingestion harness.
+
+**Guideline:** `23632b15-a6bf-45d5-990e-a04c89bf29ee` — math G4 / "Reading and Writing 5- and 6-Digit Numbers." Variant A existed (24 cards). Existing V1 dialogue (27 cards, no `plan_json`) was overwritten by the V2 output.
+
+**Bug 1 — JSON preamble in refine output (commit `0fa0d88`).**
+- V2 refine prompt's combined R1+R2+R3 density (validator defects + PLAN ADHERENCE + naturalness) is dense enough that even at max effort the model sometimes narrates analysis before the JSON ("Looking at this dialogue, I need to fix several issues: …") despite the explicit "JSON only" instruction.
+- `shared/services/llm_service.parse_json_response` uses strict `json.loads` and crashed.
+- Fix: replaced the 3 service call sites (`_generate_lesson_plan`, `_generate_dialogue`, `_review_and_refine`) with `_parse_json_with_preamble_tolerance`, which:
+  1. Tries strict `json.loads` (fast path for clean output).
+  2. Unwraps ` ```json ` fenced blocks if present.
+  3. Walks each `{` position with `json.JSONDecoder.raw_decode` and returns the first valid object.
+- The naive "first `{` to last `}`" approach fails when preambles contain curly-brace literals like `{student_name}` or `{topic_name}` (the analysis bullets routinely do). The raw_decode-per-position walk skips past them because they don't parse as valid JSON.
+- Belt-and-suspenders: strengthened the refine system prompt's top with "respond with ONE JSON object … your response must start with `{` and end with `}`. Any other text fails the pipeline."
+- +6 unit tests in `TestJSONPreambleTolerance` cover clean JSON, preamble, trailing prose, fenced blocks, the real failure mode (preamble with curly-brace literals), and the no-JSON error path.
+
+**Bug 2 — V1-era card-cap constants (commit `522f9c4`).**
+- V2 plan target is 30-40 slots → final deck (with welcome) is 31-41 cards.
+- `MAX_TOTAL_CARDS = 35` (V1 PRD §FR-11 hard cap from when the budget was 25-30) rejected valid V2 dialogues at the final-validation step. Surfaced as `DialogueValidationError: card count 39 outside [25,35]` after plan + dialogue + refine all completed correctly.
+- Bumped to 42 (V2 cap 41 + 1 slack for the rare extra card). Floor stays at 25 — the plan validator's lenient lower bound. Don't bump again without thinking; runaway dialogues should still fail.
+
+**Resume from partial collector** rather than re-paying ~$2.50 for plan+dialogue+refine. The plan and refined cards were already in `stage_collector_partial.json`, just hadn't survived final validation. Inline resume (one-off Python invocation): `_validate_plan(plan)` → reconstruct `DialogueCardOutput` from cards → prepend welcome → `_validate_cards` → `repo.upsert(plan_json=plan, …)`. Validates the fix without re-running the LLM stages that already succeeded.
+
+**Persisted dialogue (production DB):**
+- `topic_dialogues.id = 0b90b017-4825-40fd-be09-a6a455de8239`
+- 39 cards (V2), `plan_json` populated (38 slots, 3 misconceptions)
+- `generator_model = 'claude-opus-4-7'`
+- `source_content_hash = '541595eb5620b871e4e0…'`
+
+**Mechanical eval: AVG 4.30/5 (PARTIAL by rubric).**
+- Strong (5/5): spine threading (16 cards), 3/3 misconception cycles complete, 39 cards, 16 distinct moves, **0 consecutive-move violations**, 7 tutor interjections, 5 student sounds, talk ratio **1.78:1** (right at V2 target ≤2:1).
+- Weaker: close-takeaways (1/5 — same eval rubric bug as prior runs; close clearly names all 3 takeaways but uses paraphrasing rather than verbatim misconception names), tiny-beats (3/5 — 1 tutor 42w + 4 peer cards 26-33w over caps).
+
+**Spine generated:** "Road trip to Naani's village; Meera saw a population board '4,06,253', her brother Aarav kept asking 'didi, how many people?'" — Indian-household lived setting, 3 misconceptions (digit-by-digit reading, Western 3-3-3 commas, face-vs-place value).
+
+**Open issue surfaced — talk-ratio compression on prod run.** Refine prompt's P6 (talk ratio ≤2:1, with notate-compression hint) is helping in aggregate (1.78:1, on target), but it didn't compress 4 peer-overlong cards (cards 3 / 22 / 35 / 38 at 26-33w over the 25w soft cap). Worth an even stricter peer-cap reminder if it persists across more runs.
+
+### 2026-04-27 evening — Visual generator: default-generate + `visual_required` (commit `356b147`)
+
+User feedback: *"encourage the visual generator to put visuals in more cards. so it could be — where it makes no sense, skip … otherwise generate a suitable visual. but wherever the dialogue generator has marked visuals_required, there it's absolutely necessary."* The 7-of-39 (~18%) coverage from the math run01 visual pass was clean but left many concept-anchoring cards without the diagram that would help them land.
+
+Two changes shift the default from "skip unless clearly worth it" to "generate unless clearly filler", with a hard guarantee on the cards the planner thinks need a visual most.
+
+1. **Plan schema gains `visual_required: boolean` per `card_plan` slot** (required field; planner sets explicitly).
+   - `baatcheet_lesson_plan_generation_system.txt` — schema updated, instructional section "VISUAL_REQUIRED — mark cards where a diagram is essential, not decorative" with explicit true/false guidance per move type. The Class-4 fractions exemplar in the same prompt extended with `visual_required` on every slot (~36% true) so the LLM has a worked reference for setting the field.
+   - **True for:** each misconception's articulate, every student-act, the first notate after a concept lands, any card whose intent references a specific number / chart / artifact, the close.
+   - **False for:** greetings, hook-as-words-only, fall (peer voicing misconception verbally), reframe (emotion), pure observation reports, activate transitions.
+
+2. **Visual pass system prompt rewritten** (`baatcheet_visual_pass_system.txt`):
+   - **HARD:** every card with `visual_required: true` MUST be visualized. No "couldn't think of a strong one" outs — the planner already decided.
+   - **DEFAULT:** generate for any card with concrete content (numbers, expressions, charts, comparisons, artifacts, observed scenes). Target shifted from 4-8 to **12-18** on a 30-40-card dialogue.
+   - **SKIP:** only when ALL of (purely conversational filler / no number-or-expression-or-artifact / would only decorate).
+   - Existing genres list moved up so the LLM doesn't agonise over which template — match a card to a genre, generate, move on.
+   - User-prompt instruction line reflects the new contract.
+   - Backward-compat: existing plans without the `visual_required` field still work — the visual pass falls back to default-generate logic.
+
+**Test on existing math G4 ch1 topic 1 dialogue** (plan was generated *before* this change, so no `visual_required` flags — tests the default-generate logic alone):
+
+| | Before | After |
+|---|---|---|
+| Visuals | 7 | **18** |
+| Coverage | 18% of cards | **46%** |
+| Cost | $0.58 | $0.88 |
+| Time | 120s | 270s |
+| $/visual | $0.083 | $0.049 |
+
+Distribution: cards 2/5/6/8/10/11/13/16/17/21/22/24/27/30/31/32/35/39 — spread across hook → all 3 misconception cycles → guided practice → independent check → close. The 7-SVG prior run is preserved as `dialogue.html.7svgs.bak`, `visualizations.json.7svgs.bak`, `dialogue_with_visuals.json.7svgs.bak` in the same run dir.
+
+**Note:** the prod-DB plan (`0b90b017-…`) lacks `visual_required` flags. To test the full new flow with `visual_required` honored as a hard contract, regenerate plan + dialogue + visual pass on the same guideline (~$2.50, ~15 min) — see §7 step A.
+
+## 7. Current state and resume guide
+
+This section is the single source of truth for "where are we / what's next." If you're picking up from a fresh session, read this first; the rest of the doc is the chronology that produced this state.
+
+### What's in production (Stage 5b)
+
+- **Service wiring (commit `484f562`):** `BaatcheetDialogueGeneratorService.generate_for_guideline()` does plan → dialogue → refine → upsert. Plan persists on `topic_dialogues.plan_json`. Stage collector snapshots plan + initial + refine_N. Refine prompt's R1 (validator defects) and R3 (naturalness failure modes A-H) kept verbatim per `feedback_prompt_rule_consolidation`; only R2 was replaced (V1's coverage check → PLAN ADHERENCE with 7 sub-rules P1-P7).
+- **JSON tolerance (commit `0fa0d88`):** `_parse_json_with_preamble_tolerance` walks each `{` and runs `JSONDecoder.raw_decode` to skip past curly-brace literals like `{student_name}` in LLM preambles. 6 unit tests in `TestJSONPreambleTolerance`.
+- **Card caps (commit `522f9c4`):** `MIN_TOTAL_CARDS=25, MAX_TOTAL_CARDS=42` (V2 plan target 30-40 + welcome + 1 slack). Don't bump further without thinking — runaway dialogues should still fail.
+- **Visual generator prompts (commit `356b147`):** plan slots have `visual_required: bool` (planner sets explicitly); visual pass defaults to generate (target 12-18 visuals on a 30-40-card dialogue) with a hard requirement on every `visual_required: true` slot. **Caveat:** these prompts run via the experiment harness (`baatcheet_v2_visualize.py`); production Stage 5c still uses the V1 path — see Phase 4.6 below.
+
+### Math G4 ch1 topic 1 — DB state of record
+
+- `topic_dialogues.id = 0b90b017-4825-40fd-be09-a6a455de8239`
+- `guideline_id = 23632b15-a6bf-45d5-990e-a04c89bf29ee`
+- 39 cards (V2), `plan_json` populated (38 slots, 3 misconceptions, spine = "road trip to Naani's village; Aarav asking 'didi, how many people?'")
+- `generator_model = 'claude-opus-4-7'`
+- `source_content_hash = '541595eb5620b871e4e0…'`
+- **Cards do NOT have visuals attached** (Stage 5c V1 didn't run on this V2 dialogue, and even if it had, it only enriches `card_type=visual` cards which the V2 plan didn't generate).
+- Audio synthesis hasn't run on this dialogue (separate pipeline; not blocking).
+
+**Confirm DB state from a fresh session:**
+```bash
+cd /Users/manishjain/repos/learnlikemagic
+/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python -c "
+import sys; sys.path.insert(0, '/Users/manishjain/repos/learnlikemagic/llm-backend')
+from database import get_db_manager
+from sqlalchemy import text
+db = get_db_manager().get_session()
+td = db.execute(text(\"\"\"
+  SELECT id, jsonb_array_length(cards_json) AS card_count, (plan_json IS NOT NULL) AS has_plan
+  FROM topic_dialogues WHERE guideline_id='23632b15-a6bf-45d5-990e-a04c89bf29ee'
+\"\"\")).first()
+print(td)
+"
+```
+Expected: `(0b90b017-..., 39, True)`.
+
+### Open issues / observations
+
+1. **Phase 4.6 — Stage 5c V2 visual-pass wiring not done.** This is the gate to **prod visuals on V2 dialogues = 0**. V1 `BaatcheetVisualEnrichmentService` only enriches `card_type=visual` cards which V2 plans don't generate. Touchpoints when picking this up:
+   - `llm-backend/book_ingestion_v2/services/baatcheet_visual_enrichment_service.py` — extend, don't replace. Run the visual selector via `baatcheet_visual_pass_system.txt` (selection + `visual_intent` only, drop the SVG generation). For each selected card inject `visual_intent` and call `tutor/services/pixi_code_generator.PixiCodeGenerator.generate()`. Persist `visual_explanation` on each enriched card via the existing pixi_code field on `topic_dialogues.cards_json`.
+   - `llm-backend/book_ingestion_v2/api/sync_routes.py` `_run_baatcheet_visual_enrichment` — the route that triggers Stage 5c.
+   - `llm-backend/scripts/baatcheet_v2_visualize.py` — the experiment-harness pattern for prompt-feeding (joins by `slot` / `card_idx`).
+   - Test: round-trip a V2 plan + dialogue through the enrichment service; assert PixiJS code is on every `visual_required: true` card.
+
+2. **Existing prod plan lacks `visual_required` flags.** The plan was generated before commit `356b147`. Re-running the visual pass on it tested only the default-generate logic (which produced 18 SVGs, up from 7). To test the full new flow with `visual_required` honored as a hard contract, regenerate plan + dialogue + visual pass on the same guideline — see step A below.
+
+3. **Eval rubric cosmetic bugs persist** (already noted on math run01 + water-cycle run01 + prod run):
+   - `student-act` undercount: `concretize` moves with physical-action verbs ("touch / wet / observe") aren't counted.
+   - `close-takeaways` substring matching is too strict for spine particulars and full misconception names. Card 39 of the prod run names all 3 takeaways but rubric scored 1/5 because it uses paraphrasing.
+   - Fix lives in **Phase 5** — token-based matching + LLM-judge dimensions.
+
+4. **Talk ratio ≤2:1 is consistently met** at high effort (math run01 1.70:1, prod 1.78:1) and *almost* met at lower-effort science (water cycle 2.45:1, ~25% over). Refine prompt's P6 is helping in aggregate but didn't compress 4 peer-overlong cards (cards 3 / 22 / 35 / 38 at 26-33w over the 25w cap) on the prod run. Watch — if it persists, P6 needs a stricter peer-cap reminder.
+
+5. **Refine prompts are V2-aligned** but lack a "schema only" reminder — no explicit instruction about the dialogue card schema's allowed `card_type` enum. If refine LLM ever invents a card_type value (e.g., `"question_card"`), the card-validator catches it at final validation. Worth adding to R1 if it ever fires in practice.
+
+### Recommended next steps in priority order
+
+**A. Regenerate math G4 ch1 topic 1 with the new prompt set** (~$2.50, ~15 min). Tests the full new flow including `visual_required` being set by the planner (existing prod plan was generated before that change):
+
+```bash
+cd /Users/manishjain/repos/learnlikemagic
+/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_run_stage5b.py \
+  23632b15-a6bf-45d5-990e-a04c89bf29ee --review-rounds 1
+# Then visual pass:
+/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_visualize.py \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_outputs/prod-23632b15/prod-stage5b-v2/ \
+  --effort high --subject Mathematics
+# Then render + eval:
+/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_render_html.py \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_outputs/prod-23632b15/prod-stage5b-v2/
+/Users/manishjain/repos/learnlikemagic/llm-backend/venv/bin/python \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_eval.py \
+  /Users/manishjain/repos/learnlikemagic/llm-backend/scripts/baatcheet_v2_outputs/prod-23632b15/prod-stage5b-v2/
+```
+Verify: count of `visual_required: true` slots in the new plan, count of visuals from the visual pass should be ≥ that count (every `visual_required: true` slot must get an SVG; default-generate adds more).
+
+**B. Phase 4.6 — Stage 5c V2 visual-pass wiring.** Gate to prod visuals on V2 dialogues. Touchpoints listed in Open Issue #1 above.
+
+**C. Audio synthesis for math G4 ch1 topic 1.** Trigger the audio synthesis stage on the persisted dialogue (`AudioGenerationService` — see `virtual_teacher_poc.md` memory for the Google Cloud TTS Chirp 3 HD Kore details). Existing-stage task — no new code needed.
+
+**Later:**
+- **Phase 5 — eval rubric hardening.** Promote `baatcheet_v2_eval.py` mechanical rubric into `llm-backend/services/baatcheet_eval_service.py`. Token-based matching for spine close + misconception names. Count `concretize` moves with physical-action verbs as student-acts. Add LLM-judge dimensions ("does the misconception come from peer's mouth?", "does the funnel question do the cognitive work?", "is the closing tied to designed misconceptions?").
+- **Phase 6 — autoresearch within new shape.** Hold until V2 is in production for ≥1 batch. Optimise spine variety, trap wording, voice texture density, peer-cap compression.
+- **Phase 7 — formalize misconception research.** Dedicated stage with web tool use producing per-topic misconception bank with real citations.
+- **Re-run at `max` effort once** to see if there's a meaningful prose-craft delta vs `high`. If not, default to `high` (5x cheaper).
+
+### Critical files
+
+**Code (committed; 5 commits ahead of `origin/main`, not pushed):**
+- `llm-backend/shared/models/entities.py` — `TopicDialogue.plan_json` JSONB column.
+- `llm-backend/db.py` — `_apply_topic_dialogues_table()` migration (idempotent ALTER TABLE).
+- `llm-backend/shared/repositories/dialogue_repository.py` — `upsert(plan_json=...)`.
+- `llm-backend/book_ingestion_v2/services/baatcheet_dialogue_generator_service.py` — V2 flow, `_validate_plan`, `_parse_json_with_preamble_tolerance`, card-cap 35→42.
+- `llm-backend/book_ingestion_v2/prompts/baatcheet_lesson_plan_generation_system.txt` + `.txt` — schema with `visual_required`, instructional section, exemplar.
+- `llm-backend/book_ingestion_v2/prompts/baatcheet_dialogue_generation_system.txt` + `.txt` — consumes `lesson_plan_json`, move-by-move craft guidance.
+- `llm-backend/book_ingestion_v2/prompts/baatcheet_dialogue_review_refine_system.txt` — R2 PLAN ADHERENCE (P1-P7), R1 + R3 verbatim from V1, top-of-prompt JSON-only emphasis.
+- `llm-backend/book_ingestion_v2/prompts/baatcheet_dialogue_review_refine.txt` — `lesson_plan_json` placeholder.
+- `llm-backend/book_ingestion_v2/prompts/baatcheet_visual_pass_system.txt` + `.txt` — default-generate, hard `visual_required` requirement, target 12-18.
+- `llm-backend/scripts/baatcheet_v2_run_stage5b.py` — driver for end-to-end Stage 5b runs against prod DB without HTTP plumbing.
+- `llm-backend/tests/unit/test_baatcheet.py` — +17 tests this session (11 in Phase 4: `TestLessonPlanValidator` ×6, `TestTopicDialoguePlanJsonRoundTrip` ×2, `TestDialogueRepositoryUpsertWithPlan` ×3; 6 in `TestJSONPreambleTolerance`). 47/47 Baatcheet tests pass.
+
+**Test outputs (gitignored — `llm-backend/scripts/baatcheet_v2_outputs/`):**
+- `5-6-digit-indian-numbers/run01-high/` — math run01 (Phase 3, prior session).
+- `water-cycle-class4/run01-high/` — water-cycle run01 (Phase 4.5).
+- `prod-23632b15/prod-stage5b-v2/` — math G4 ch1 topic 1 production run (Phase 4 + visual generator update). Has `plan.json`, `dialogue.json`, `dialogue_with_visuals.json` (18 SVGs), `dialogue.html`, `eval_scores.json`, plus the 7-SVG backups.
+
+**Scripts (all at `llm-backend/scripts/`):**
+- `baatcheet_v2_experiment.py` — standalone two-stage harness (no project imports, edit `TEST_TOPIC` at top).
+- `baatcheet_v2_run_stage5b.py` — end-to-end via prod service against prod DB. **Use for production validation.**
+- `baatcheet_v2_visualize.py` — visual pass on a run dir.
+- `baatcheet_v2_render_html.py` — HTML viewer.
+- `baatcheet_v2_eval.py` — mechanical rubric.
+
+### Commits this session
+
+5 commits, all on `main`, ahead of `origin/main`, not pushed:
+
+| Commit | Subject |
+|---|---|
+| `484f562` | feat: Baatcheet V2 — designed-lesson architecture + service wiring |
+| `1c6c77f` | docs: daily memory + Predict-Then-Learn / Knowledge-Component idea note |
+| `0fa0d88` | fix(baatcheet): tolerate JSON preamble in V2 LLM responses |
+| `522f9c4` | fix(baatcheet): bump V2 card-count validator constants (35 -> 42) |
+| `356b147` | feat(baatcheet): plan marks visual_required slots; visual pass defaults to generate |
+
+### Key decisions (for context)
+
+- **`feedback_prompt_rule_consolidation` honored** — V1 refine R1 (validator defects) and R3 (naturalness failure modes A-H) kept verbatim into V2. Only R2 was replaced because it was V1-shape-specific (coverage check on concepts variant A teaches).
+- **Card-cap bump 35 → 42, not unlimited.** V1 PRD §FR-11 was a deliberate hard cap; V2 has its own deliberate budget (30-40). Runaway dialogues should still fail at validation.
+- **Visual pass count 4-8 → 12-18, not unlimited.** A bad visual is still worse than no visual; the floor is "every concrete card", not "every card".
+- **Resume from partial collector** rather than re-paying $2.50 when the constants bug was fixed. Validates the fix without re-running LLM stages that already succeeded.
+- **`visual_required` lives in plan, not in dialogue cards.** Plan is the spec; dialogue realizes the spec. Visual pass joins on `slot` / `card_idx`. Avoids a new field on the dialogue card schema.
+- **Reused `baatcheet_dialogue_generator` LLM config for both plan + dialogue stages.** Didn't add a separate `baatcheet_lesson_plan_generator` config. Separability deferred until evidence of needing different effort settings.
+- **Two topics across two domains is sufficient evidence** for "V2 generalizes." Skipped a 3rd topic test.
