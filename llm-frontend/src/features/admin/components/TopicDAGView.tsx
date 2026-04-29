@@ -40,8 +40,11 @@ import {
 // ───────── Layout constants (BFS depth → grid) ─────────
 const NODE_WIDTH = 260;
 const NODE_HEIGHT = 110;
-const NODE_H_GAP = 60;
-const NODE_V_GAP = 130;
+// Wide horizontal gap so adjacent siblings don't kiss; wide vertical gap so
+// edges from a many-children parent (e.g. Explanations → 5 children) have
+// room to fan out without sharing a single horizontal trunk at the midpoint.
+const NODE_H_GAP = 110;
+const NODE_V_GAP = 200;
 
 interface LayoutPos {
   x: number;
@@ -590,7 +593,11 @@ const TopicDAGView: React.FC = () => {
           id: `${dep}->${s.id}`,
           source: dep,
           target: s.id,
-          type: 'smoothstep',
+          // Bezier (React Flow's `default`) so each edge draws its own smooth
+          // curve from source to target. `smoothstep` shared a horizontal
+          // trunk at the midpoint y for many-children parents (Explanations →
+          // 5 fan-outs), which read as overlapping/bunched.
+          type: 'default',
           animated: animate,
           style: { stroke: '#9CA3AF', strokeWidth: 1.5 },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#9CA3AF' },
