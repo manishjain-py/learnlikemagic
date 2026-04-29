@@ -23,8 +23,16 @@ from shared.utils.s3_client import S3Client
 # Hinglish/Hindi. Chirp 3 HD doesn't support <sub>/<say-as> SSML, so we
 # rewrite the token to a homophone-ish spelling the normalizer parses as a
 # regular word. Case-sensitive — leaves the acronym "US" alone.
+#
+# Replacement history (iterated against the live TTS):
+#   "uss"  → also parsed as initialism, voice spells "U S S" (USS / USSR-like)
+#   "uhs"  → current pick. Vowel + consonant, single-syllable phonetic spelling
+#            that Chirp parses as a regular word ≈ /ʌs/. Acceptable approximation
+#            of "us" without triggering acronym detection.
+# If "uhs" later regresses (Chirp updates), try "uhss" or move the rewrite to
+# a per-locale table.
 _TTS_PRONUNCIATION_FIXES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bus\b"), "uss"),
+    (re.compile(r"\bus\b"), "uhs"),
 ]
 
 
