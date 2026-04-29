@@ -180,10 +180,13 @@ class TestSingleGuidelineHeartbeat:
 
         fake_service = MagicMock()
 
-        def _fake_review_guideline(guideline, *, heartbeat_fn=None, stage_collector=None):
+        def _fake_review_guideline(
+            guideline, *, heartbeat_fn=None, stage_collector=None, force=False,
+        ):
             # Capture so we can assert on it below.
             captured_kwargs["heartbeat_fn"] = heartbeat_fn
             captured_kwargs["stage_collector"] = stage_collector
+            captured_kwargs["force"] = force
             # Simulate the per-card heartbeat firing once so we also verify
             # the closure passes current_item through.
             if heartbeat_fn is not None:

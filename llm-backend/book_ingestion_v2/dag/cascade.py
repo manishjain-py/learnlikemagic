@@ -119,6 +119,14 @@ def build_launcher_kwargs(
         kwargs["force"] = force
     elif stage_id == "audio_review":
         kwargs["language"] = None
+        kwargs["force"] = force
+    elif stage_id == "audio_synthesis":
+        kwargs["force"] = force
+    elif stage_id == "baatcheet_audio_review":
+        kwargs["language"] = None
+        kwargs["force"] = force
+    elif stage_id == "baatcheet_audio_synthesis":
+        kwargs["force"] = force
     return kwargs
 
 

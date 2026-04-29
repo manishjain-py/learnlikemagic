@@ -146,12 +146,19 @@ class AudioGenerationService:
         cards_json: list[dict],
         guideline_id: str,
         variant_key: str,
+        *,
+        force: bool = False,
     ) -> list[dict]:
         """Generate TTS audio for every line and check-in field in every card.
 
         Mutates each dict in-place, adding the corresponding URL field. Items
-        that already have a URL are skipped (idempotent). Items whose text is
-        empty are skipped. Returns the same cards_json list (mutated).
+        that already have a URL are skipped (idempotent) unless `force=True`,
+        in which case the existing URL is overwritten with a freshly
+        synthesized clip. S3 keys are deterministic per
+        (guideline, variant, card, line/field), so overwrites land at the
+        same URL — no orphan cleanup needed. Items whose text is empty are
+        always skipped regardless of force. Returns the same cards_json
+        list (mutated).
         """
         total = 0
         generated = 0
@@ -165,7 +172,7 @@ class AudioGenerationService:
             # ─── Explanation lines (positional key) ─────────────────────
             for line_idx, line in enumerate(card.get("lines") or []):
                 total += 1
-                if line.get("audio_url"):
+                if line.get("audio_url") and not force:
                     skipped += 1
                     continue
                 audio_text = (line.get("audio") or "").strip()
@@ -195,7 +202,7 @@ class AudioGenerationService:
                 continue
 
             for text_field, key_suffix, url_field in _check_in_fields_for(check_in):
-                if check_in.get(url_field):
+                if check_in.get(url_field) and not force:
                     # Count toward total only if it's a real candidate (has text)
                     text = (check_in.get(text_field) or "").strip()
                     if text:
@@ -220,9 +227,9 @@ class AudioGenerationService:
                     failed += 1
 
         logger.info(
-            f"Audio generation for {guideline_id}/{variant_key}: "
-            f"{generated} generated, {skipped} skipped, {failed} failed "
-            f"(total items={total})"
+            f"Audio generation for {guideline_id}/{variant_key} "
+            f"(force={force}): {generated} generated, {skipped} skipped, "
+            f"{failed} failed (total items={total})"
         )
         return cards_json
 
@@ -268,12 +275,17 @@ class AudioGenerationService:
         explanation,
         *,
         dry_run: bool = False,
+        force: bool = False,
     ) -> Optional[list[dict]]:
         """Generate audio for a TopicExplanation record.
 
         Args:
             explanation: TopicExplanation ORM object with cards_json
             dry_run: If True, count items but don't generate audio
+            force: If True, re-synthesize every line and check-in field
+                even when an `audio_url` is already populated. S3 keys are
+                deterministic so the new clip overwrites the old at the
+                same URL.
 
         Returns:
             Updated cards_json if generated, None if dry_run or nothing to do
@@ -291,7 +303,7 @@ class AudioGenerationService:
             )
             return None
 
-        if total > 0 and existing == total:
+        if total > 0 and existing == total and not force:
             logger.info(
                 f"Skip {explanation.guideline_id}/{explanation.variant_key}: "
                 f"all {total} items already have audio"
@@ -302,12 +314,13 @@ class AudioGenerationService:
             cards_json=cards,
             guideline_id=explanation.guideline_id,
             variant_key=explanation.variant_key,
+            force=force,
         )
 
     # ─── Baatcheet ────────────────────────────────────────────────────────
 
     def generate_for_topic_dialogue(
-        self, dialogue, *, dry_run: bool = False,
+        self, dialogue, *, dry_run: bool = False, force: bool = False,
     ) -> Optional[list[dict]]:
         """Generate audio for a TopicDialogue record.
 
@@ -321,6 +334,9 @@ class AudioGenerationService:
         - `card_id` is mandatory — dialogue regen rotates content, so
           positional keys would race. Cards without `card_id` are skipped
           with a warning.
+        - `force=True` overwrites lines that already have an `audio_url`.
+          S3 keys are deterministic per (guideline, dialogue, card_id,
+          line/field) so writes overwrite cleanly at the same URL.
         """
         cards = dialogue.cards_json
         if not cards:
@@ -348,7 +364,7 @@ class AudioGenerationService:
 
             for line_idx, line in enumerate(card.get("lines") or []):
                 total += 1
-                if line.get("audio_url"):
+                if line.get("audio_url") and not force:
                     skipped += 1
                     continue
                 text = (line.get("audio") or "").strip()
@@ -378,7 +394,7 @@ class AudioGenerationService:
                     language_code=TUTOR_VOICE[0], name=TUTOR_VOICE[1],
                 )
                 for text_field, key_suffix, url_field in _check_in_fields_for(check_in):
-                    if check_in.get(url_field):
+                    if check_in.get(url_field) and not force:
                         if (check_in.get(text_field) or "").strip():
                             total += 1
                             skipped += 1
@@ -404,7 +420,7 @@ class AudioGenerationService:
                         failed += 1
 
         logger.info(
-            f"Dialogue audio for {guideline_id}: "
+            f"Dialogue audio for {guideline_id} (force={force}): "
             f"{generated} generated, {skipped} skipped, {failed} failed "
             f"(total items={total})"
         )

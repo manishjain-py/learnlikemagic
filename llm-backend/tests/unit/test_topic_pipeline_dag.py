@@ -16,13 +16,17 @@ from book_ingestion_v2.dag.types import (
 )
 
 
-# Frozen image of the legacy `PIPELINE_LAYERS` flattened in declaration
-# order — kept here as the contract that Phase 1's DAG-driven super-button
-# preserves the previous run sequence exactly.
+# Frozen image of the topic pipeline order. The two Baatcheet audio stages
+# were promoted out of the manual admin button into the DAG (sibling tree
+# under `baatcheet_dialogue`), so the legacy run sequence is preserved
+# verbatim for the variant A path while baatcheet now has its own
+# review→synthesis subtree.
 _LEGACY_PIPELINE_ORDER: list[str] = [
     "explanations",
     "baatcheet_dialogue",
     "baatcheet_visuals",
+    "baatcheet_audio_review",
+    "baatcheet_audio_synthesis",
     "visuals",
     "check_ins",
     "practice_bank",

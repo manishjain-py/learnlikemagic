@@ -740,20 +740,6 @@ export async function generateBaatcheetVisuals(
   );
 }
 
-export async function reviewBaatcheetAudio(
-  bookId: string,
-  opts?: { chapterId?: string; guidelineId?: string },
-): Promise<FanOutJobResponse> {
-  const params = new URLSearchParams();
-  if (opts?.chapterId) params.set('chapter_id', opts.chapterId);
-  if (opts?.guidelineId) params.set('guideline_id', opts.guidelineId);
-  const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<FanOutJobResponse>(
-    `/admin/v2/books/${bookId}/review-baatcheet-audio${qs}`,
-    { method: 'POST' }
-  );
-}
-
 export interface VisualStageSnapshotV2 {
   guideline_id: string;
   topic_title: string;

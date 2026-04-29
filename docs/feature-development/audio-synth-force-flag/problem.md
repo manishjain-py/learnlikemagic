@@ -1,85 +1,124 @@
-# Audio Synthesis — Force Re-Synth Flag
+# Audio Pipeline — Force Re-Run + Symmetric Baatcheet Audio Stages
 
-## Problem
+## Problems
 
-Re-triggering the `audio_synthesis` stage from the admin DAG dashboard for an already-synthesized topic is a no-op. The stage iterates every line, sees `audio_url` is populated, marks the line "skipped", and finishes in a few seconds without writing any new MP3s.
+Two related issues, fixed together.
 
-This bites us whenever upstream conditions change but cards_json still carries the old `audio_url` values:
+### 1. Re-running audio stages was a no-op
 
+Re-triggering `audio_synthesis` from the admin DAG dashboard for an already-synthesized topic was effectively a no-op: the stage iterated every line, saw `audio_url` populated, marked the line "skipped", and finished without writing any new MP3s. The same predicate was preventing audio_review from being meaningful on re-run — only lines the LLM happened to revise got their `audio_url` cleared, so a re-run of audio_review followed by audio_synthesis left most clips frozen.
+
+Triggering needs:
 - **TTS voice swap** (e.g. moving Mr. Verma + Meera off `hi-IN-Chirp3-HD-*` onto `en-IN-Chirp3-HD-Orus`/`Leda`, commit `9682363`).
 - **Pre-synthesis text rewrite changes** (e.g. dropping the bad `us`→`uhs` hack).
-- **Audio_text edits** that weren't surfaced through the audio-review path (which clears URLs on revised lines).
+- **Audio_text edits** that bypassed the audio-review path.
 - Any future TTS-config change that should propagate to existing topics.
 
-Today the only way to force regeneration is a manual SQL `UPDATE` that nulls every `audio_url` / `audio_text_url` / `hint_audio_url` / `success_audio_url` / `reveal_audio_url` field in `topic_explanations.cards_json` and `topic_dialogues.cards_json` for a guideline, then re-run the stage. That's brittle, error-prone, and blocks non-engineers from fixing audio drift.
+### 2. The audio stages were asymmetric across explanations vs Baatcheet
 
-## Where the no-op happens
+Per-entity coverage before this change:
 
-```python
-# llm-backend/book_ingestion_v2/services/audio_generation_service.py:165-167  (explanations)
-for line_idx, line in enumerate(card.get("lines") or []):
-    total += 1
-    if line.get("audio_url"):
-        skipped += 1
-        continue
+|                  | explanation (variant A) | dialogue (Baatcheet) |
+|------------------|------------------------:|---------------------:|
+| `audio_review`   | ✅                      | ❌                   |
+| `audio_synthesis`| ✅                      | ✅ (soft join)       |
+
+Baatcheet had a separate `BaatcheetAudioReviewService` (and `launch_baatcheet_audio_review_job`, `_run_baatcheet_audio_review`), but it lived outside the DAG behind a manual admin button. Synthesis covered both entities in one runner. The asymmetry made re-run behavior confusing and made it impossible to surface dialogue audio status as a first-class DAG tile.
+
+## What changed
+
+### Architectural split
+
+The DAG now has **four audio stages** instead of two phase-paired stages with a soft join:
+
+```
+Explanations
+├── Visuals
+├── Check-ins
+├── Practice Bank
+├── Audio Review                (variant A only)
+│   └── Audio Synthesis         (variant A only)
+└── Baatcheet Dialogue
+    ├── Baatcheet Visuals
+    └── Baatcheet Audio Review  (NEW)
+        └── Baatcheet Audio Synth (NEW)
 ```
 
-```python
-# llm-backend/book_ingestion_v2/services/audio_generation_service.py:348-350  (baatcheet dialogue)
-total += 1
-if line.get("audio_url"):
-    skipped += 1
-    continue
-```
+Coverage is now fully symmetric:
 
-Same skip predicate inside `_check_in_fields_for(...)` for `audio_text_url` / `hint_audio_url` / `success_audio_url` / `reveal_audio_url` (lines ~195 and ~378).
+|                            | explanation | dialogue |
+|----------------------------|------------:|---------:|
+| `audio_review`             | ✅          | —        |
+| `audio_synthesis`          | ✅          | —        |
+| `baatcheet_audio_review`   | —           | ✅       |
+| `baatcheet_audio_synthesis`| —           | ✅       |
 
-## What needs to change
+The orphan manual admin button (`POST /review-baatcheet-audio`) is gone — `baatcheet_audio_review` is now a first-class DAG stage.
 
-1. **Service layer** — `AudioGenerationService.generate_for_cards` and `generate_for_topic_dialogue` accept `force: bool = False`. When `force=True`, the skip predicate is bypassed and the existing S3 object is overwritten (S3 keys are deterministic, so writes overwrite cleanly — no orphan cleanup needed).
+### Force end-to-end for all four audio stages
 
-2. **Job runner** — `_run_audio_generation` in `llm-backend/book_ingestion_v2/api/sync_routes.py` accepts and threads through a `force_str` param (mirrors the `force_str: str = "False"` pattern used by `_run_baatcheet_visual_enrichment`).
+The frontend (`TopicDAGView.tsx:645`) already passed `force: true` on every Run click, and the cascade endpoint already accepted it. The break was that `cascade.py:build_launcher_kwargs` and `topic_pipeline_orchestrator.py:_launcher_kwargs` did not add `force` for the audio stages. Now both kwargs builders include all four audio stages with `force` threading.
 
-3. **Launcher** — `launch_audio_synthesis_job` in `book_ingestion_v2/services/stage_launchers.py` accepts `force: bool = False` and passes `str(force)` into the background runner. Today the signature only takes `total_items`; mirror the launcher signatures of the visual-enrichment / dialogue-generation launchers (which already wire `force` through to the runner).
+Service-layer behavior on `force=True`:
 
-4. **Stage definition / cascade** — `Stage(launch=launch_audio_synthesis_job, ...)` in `stages/audio_synthesis.py` already passes a `force` kwarg through the cascade orchestrator (see `dag/cascade.py:91-119`), so the launcher just needs to accept it.
+- **`audio_synthesis` / `baatcheet_audio_synthesis`** — bypass the per-line `audio_url` skip predicate and the per-check-in-field URL skip; bypass the "all items already have audio" early return. S3 keys are deterministic, so writes overwrite cleanly at the same URL.
+- **`audio_review` / `baatcheet_audio_review`** — clear every `audio_url` on the variant up front (via `AudioTextReviewService._clear_audio_urls_in_place`) so the cascaded synthesis stage regenerates the full clip set, not just the lines this review pass happens to revise.
 
-5. **Dashboard UI** — the topic-pipeline DAG view renders a single "Run" button per stage. Add a secondary affordance ("Force re-synth", or a dropdown on the existing button) that POSTs the run with `force=true`. Confirm-dialog the destructive nature ("This will overwrite all existing MP3s for this topic — ~30-90s per line, ~5-10 min total"). The frontend lives in `llm-frontend/src/features/admin/components/TopicDAGView.tsx`.
+### Files touched
 
-6. **Audit/log surface** — `_run_audio_generation` already logs `{generated, skipped, failed}` per topic. With force=True, every line counts as `generated` (unless empty), so the existing log lines are sufficient — no new instrumentation needed.
+Backend services:
+- `services/audio_generation_service.py` — `force` on `generate_for_cards`, `generate_for_topic_explanation`, `generate_for_topic_dialogue`.
+- `services/audio_text_review_service.py` — `force` on `review_guideline`, `review_chapter`, `_review_variant`; new `_clear_audio_urls_in_place` helper.
+- `services/baatcheet_audio_review_service.py` — `force` on `review_guideline`, reuses `_clear_audio_urls_in_place` from the parent service.
 
-## What does NOT need to change
+Backend runners (`api/sync_routes.py`):
+- `_run_audio_generation` — accepts `force_str`, drops the dialogue path (now its own stage).
+- `_run_audio_text_review` — accepts `force_str`.
+- `_run_baatcheet_audio_review` — accepts `force_str`.
+- `_run_baatcheet_audio_generation` (NEW) — mirrors the dialogue branch that used to live in `_run_audio_generation`.
+- Removed `POST /review-baatcheet-audio` route.
 
-- **S3 layout** — keys are already deterministic per `(guideline_id, variant_key, card_idx, line_idx)` for explanations and `(guideline_id, dialogue, card_id, line_idx)` for baatcheet, so overwrites are clean.
-- **Frontend playback** — pre-rendered audio URLs are immutable strings; the new MP3 lives at the same URL, so cache busting is a non-issue beyond the browser blob cache (which is per-session and self-clears).
-- **Personalized realtime synth** — `tutor/api/tts.py` already re-synthesizes on every call; this work is irrelevant for that path.
+Backend launchers (`services/stage_launchers.py`):
+- `launch_audio_synthesis_job` — accepts `force`.
+- `launch_audio_review_job` — accepts `force`.
+- `launch_baatcheet_audio_review_job` — accepts `force` (was previously DAG-orphaned).
+- `launch_baatcheet_audio_synthesis_job` (NEW).
+
+Backend DAG wiring:
+- `dag/cascade.py:build_launcher_kwargs` — added all four audio-stage branches with force.
+- `services/topic_pipeline_orchestrator.py:_launcher_kwargs` — same.
+- `stages/audio_synthesis.py` — status check no longer counts dialogue clips.
+- `stages/baatcheet_audio_review.py` (NEW).
+- `stages/baatcheet_audio_synthesis.py` (NEW).
+- `dag/topic_pipeline_dag.py` — STAGES list extended.
+- `dag/launcher_map.py` — `JOB_TYPE_TO_STAGE_ID` extended for the two new stages.
+- `constants.py` — new `BAATCHEET_AUDIO_GENERATION` job type.
+- `services/chapter_job_service.py` — added new job type to `POST_SYNC_JOB_TYPES`.
+- `models/schemas.py` — extended `StageId` literal with the two new stage IDs.
+
+Frontend:
+- `adminApiV2.ts` — removed orphan `reviewBaatcheetAudio` API client.
+- `TopicDAGView.tsx` — no change. Layout is fully metadata-driven and auto-renders the new tiles.
+
+Tests:
+- Updated assertions that hardcoded "8 stages" to "10 stages".
+- Replaced `BAATCHEET_AUDIO_REVIEW`-as-unknown test with `REFRESHER_GENERATION`-as-unknown.
+- Updated cascade fixture's `job_type_by_stage` to include the two new stages.
+- Updated `_LEGACY_PIPELINE_ORDER` to reflect the new topo order.
+- Updated `test_audio_synthesis_minimal` → `test_audio_synthesis_passes_force`.
 
 ## Acceptance criteria
 
-- A "Force re-synth" run on a previously-synthesized topic produces N generated, 0 skipped (where N = total clips on the topic).
-- The same run without force is unchanged (still skips populated `audio_url` lines).
-- Pre-existing non-force callers (cascade triggers from upstream regen) keep working without modification.
-- Dashboard surfaces a clearly-labelled affordance and the existing tile state derivation is unaffected.
+- "Run" on `audio_synthesis` regenerates every variant A line/check-in MP3 (force=True propagated end-to-end).
+- "Run" on `baatcheet_audio_synthesis` regenerates every dialogue line/check-in MP3.
+- "Run" on `audio_review` clears all variant A `audio_url`s up front so the cascaded `audio_synthesis` regenerates the full set.
+- "Run" on `baatcheet_audio_review` does the same for dialogue.
+- Each entity's audio subtree is independent: regenerating dialogue audio does not invalidate explanation audio, and vice versa.
+- DAG dashboard renders all 10 stages in correct topological order with the right depends_on edges.
 
 ## Out of scope
 
-- Per-line force (only re-synth lines whose `audio_text` has changed) — would require text-hash bookkeeping; defer.
-- Cascade-driven force (e.g. an `audio_review` regen automatically forces audio_synthesis for the lines it revised) — `audio_review` already nulls URLs on revised lines today, so the existing non-force path handles that case cleanly. No need to overload force.
-- Backfill across the entire book / library — out of scope for this change; scripted separately if needed.
-
-## Suggested test plan
-
-1. Pick a topic with audio already populated (e.g. math grade 4 ch1 topic 1, guideline `23632b15-a6bf-45d5-990e-a04c89bf29ee`).
-2. Snapshot `audio_url` count before run; should match clip count.
-3. Click "Force re-synth"; wait for completion.
-4. Snapshot again — same count, but `updated_at` on `topic_explanations` / `topic_dialogues` should advance.
-5. Spot-check 2-3 of the new MP3s by playing them in browser → confirm new voice (en-IN-Orus / en-IN-Leda).
-6. Verify a non-force re-run (regular Run button) on the same topic finishes fast with all lines skipped.
-
-## Related context (latest at branch HEAD)
-
-- TTS voice swap to en-IN: commit `9682363`
-- Drop of `us`→`uhs` rewrite hack: same commit
-- Earlier `us`→`uss` (later `uhs`) rewrites: commits `e305557`, `684a8ab`
-- Per-stage status helpers + cascade plumbing: `book_ingestion_v2/dag/`
-- Reference launcher pattern for `force_str`: `_run_baatcheet_visual_enrichment` in `sync_routes.py:2594`.
+- Per-line force (only re-synth lines whose `audio_text` changed) — would require text-hash bookkeeping; defer.
+- A separate "Force re-synth" affordance distinct from "Run" — the existing button now does what users expect.
+- Backfill across the entire book / library — scripted separately if needed.
+- Renaming `audio_review`/`audio_synthesis` to `explanation_audio_review`/`explanation_audio_synthesis` — names are persisted in DB job records and JOB_TYPE_TO_STAGE_ID mappings; backwards-compat hold preserved.

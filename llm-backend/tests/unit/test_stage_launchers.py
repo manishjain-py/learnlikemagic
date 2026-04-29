@@ -20,8 +20,8 @@ LAUNCHER_CASES = [
     ("launch_visual_job", V2JobType.VISUAL_ENRICHMENT.value, {"force": False, "review_rounds": 1}),
     ("launch_check_in_job", V2JobType.CHECK_IN_ENRICHMENT.value, {"force": False, "review_rounds": 1}),
     ("launch_practice_bank_job", V2JobType.PRACTICE_BANK_GENERATION.value, {"force": False, "review_rounds": 1}),
-    ("launch_audio_review_job", V2JobType.AUDIO_TEXT_REVIEW.value, {"language": "en"}),
-    ("launch_audio_synthesis_job", V2JobType.AUDIO_GENERATION.value, {}),
+    ("launch_audio_review_job", V2JobType.AUDIO_TEXT_REVIEW.value, {"language": "en", "force": False}),
+    ("launch_audio_synthesis_job", V2JobType.AUDIO_GENERATION.value, {"force": False}),
 ]
 
 

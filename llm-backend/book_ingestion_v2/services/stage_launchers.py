@@ -145,9 +145,15 @@ def launch_audio_review_job(
     chapter_id: str,
     guideline_id: str,
     language: Optional[str] = None,
+    force: bool = False,
     total_items: int = 1,
 ) -> str:
-    """Acquire lock + launch audio text review. Returns job_id."""
+    """Acquire lock + launch audio text review. Returns job_id.
+
+    `force=True` clears every `audio_url` on the reviewed variant so the
+    downstream `audio_synthesis` run regenerates the full clip set, not
+    just the lines this review pass happens to revise.
+    """
     from book_ingestion_v2.api.sync_routes import _run_audio_text_review
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
 
@@ -160,7 +166,7 @@ def launch_audio_review_job(
     )
     run_in_background_v2(
         _run_audio_text_review, job_id, book_id,
-        chapter_id, guideline_id, language or "",
+        chapter_id, guideline_id, language or "", str(force),
     )
     return job_id
 
@@ -227,12 +233,15 @@ def launch_baatcheet_audio_review_job(
     chapter_id: str,
     guideline_id: str,
     language: Optional[str] = None,
+    force: bool = False,
     total_items: int = 1,
 ) -> str:
-    """Acquire lock + launch opt-in Baatcheet audio review. Returns job_id.
+    """Acquire lock + launch Baatcheet audio review. Returns job_id.
 
-    Not part of the default pipeline — invoked manually by the admin button
-    when an editor spots TTS defects on a topic's dialogue.
+    Sibling of `launch_audio_review_job` — handles the dialogue-text review
+    that variant A's `audio_review` doesn't cover. `force=True` clears
+    every dialogue `audio_url` up front so the cascaded
+    `baatcheet_audio_synthesis` regenerates the full clip set.
     """
     from book_ingestion_v2.api.sync_routes import _run_baatcheet_audio_review
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
@@ -246,7 +255,40 @@ def launch_baatcheet_audio_review_job(
     )
     run_in_background_v2(
         _run_baatcheet_audio_review, job_id, book_id,
-        chapter_id, guideline_id, language or "",
+        chapter_id, guideline_id, language or "", str(force),
+    )
+    return job_id
+
+
+def launch_baatcheet_audio_synthesis_job(
+    db: Session,
+    *,
+    book_id: str,
+    chapter_id: str,
+    guideline_id: str,
+    force: bool = False,
+    total_items: int = 1,
+) -> str:
+    """Acquire lock + launch Baatcheet dialogue TTS synthesis. Returns job_id.
+
+    Sibling of `launch_audio_synthesis_job` — handles dialogue MP3s that
+    variant A's `audio_synthesis` no longer covers. `force=True` overwrites
+    lines that already have an `audio_url` (S3 keys are deterministic, so
+    writes overwrite cleanly at the same URL).
+    """
+    from book_ingestion_v2.api.sync_routes import _run_baatcheet_audio_generation
+    from book_ingestion_v2.api.processing_routes import run_in_background_v2
+
+    job_id = ChapterJobService(db).acquire_lock(
+        book_id=book_id,
+        chapter_id=chapter_id,
+        guideline_id=guideline_id,
+        job_type=V2JobType.BAATCHEET_AUDIO_GENERATION.value,
+        total_items=total_items,
+    )
+    run_in_background_v2(
+        _run_baatcheet_audio_generation, job_id, book_id,
+        chapter_id, guideline_id, str(force),
     )
     return job_id
 
@@ -257,9 +299,14 @@ def launch_audio_synthesis_job(
     book_id: str,
     chapter_id: str,
     guideline_id: str,
+    force: bool = False,
     total_items: int = 1,
 ) -> str:
-    """Acquire lock + launch audio synthesis (TTS). Returns job_id."""
+    """Acquire lock + launch audio synthesis (TTS). Returns job_id.
+
+    `force=True` overwrites lines that already have an `audio_url` (S3
+    keys are deterministic so writes overwrite cleanly at the same URL).
+    """
     from book_ingestion_v2.api.sync_routes import _run_audio_generation
     from book_ingestion_v2.api.processing_routes import run_in_background_v2
 
@@ -272,7 +319,7 @@ def launch_audio_synthesis_job(
     )
     run_in_background_v2(
         _run_audio_generation, job_id, book_id,
-        chapter_id, guideline_id,
+        chapter_id, guideline_id, str(force),
     )
     return job_id
 

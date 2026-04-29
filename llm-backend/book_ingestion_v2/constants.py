@@ -38,6 +38,7 @@ class V2JobType(str, Enum):
     BAATCHEET_DIALOGUE_GENERATION = "v2_baatcheet_dialogue_generation"
     BAATCHEET_VISUAL_ENRICHMENT = "v2_baatcheet_visual_enrichment"
     BAATCHEET_AUDIO_REVIEW = "v2_baatcheet_audio_review"
+    BAATCHEET_AUDIO_GENERATION = "v2_baatcheet_audio_generation"
 
 
 class V2JobStatus(str, Enum):

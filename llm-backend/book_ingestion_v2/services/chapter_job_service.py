@@ -48,6 +48,7 @@ POST_SYNC_JOB_TYPES: frozenset[str] = frozenset(
         V2JobType.BAATCHEET_DIALOGUE_GENERATION.value,
         V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value,
         V2JobType.BAATCHEET_AUDIO_REVIEW.value,
+        V2JobType.BAATCHEET_AUDIO_GENERATION.value,
     }
 )
 

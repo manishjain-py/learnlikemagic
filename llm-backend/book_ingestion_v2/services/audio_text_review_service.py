@@ -104,8 +104,18 @@ class AudioTextReviewService:
         variant_keys: Optional[list[str]] = None,
         heartbeat_fn: Optional[Callable] = None,
         stage_collector: Optional[list] = None,
+        force: bool = False,
     ) -> dict:
-        """Review all variants (or a subset) for a single guideline."""
+        """Review all variants (or a subset) for a single guideline.
+
+        `force=True` re-reviews every card even if a prior pass already ran;
+        existing `audio_url` values on every line are cleared up front so a
+        downstream `audio_synthesis` run regenerates the full set instead of
+        only re-synthesizing the lines this pass happens to revise. Without
+        force the service still reviews every card (there is no per-card
+        skip predicate), but only the lines the LLM actually rewrites get
+        their `audio_url` cleared.
+        """
         explanations = self.repo.get_by_guideline_id(guideline.id)
         if variant_keys:
             explanations = [e for e in explanations if e.variant_key in variant_keys]
@@ -123,6 +133,7 @@ class AudioTextReviewService:
                     guideline,
                     heartbeat_fn=heartbeat_fn,
                     stage_collector=stage_collector,
+                    force=force,
                 )
                 result["cards_reviewed"] += per_variant["cards_reviewed"]
                 result["cards_revised"] += per_variant["cards_revised"]
@@ -142,8 +153,13 @@ class AudioTextReviewService:
         *,
         job_service=None,
         job_id: Optional[str] = None,
+        force: bool = False,
     ) -> dict:
-        """Review every approved guideline in a chapter (or book)."""
+        """Review every approved guideline in a chapter (or book).
+
+        `force` is forwarded to `review_guideline` — see that method's
+        docstring for semantics.
+        """
         query = self.db.query(TeachingGuideline).filter(
             TeachingGuideline.book_id == book_id,
             TeachingGuideline.review_status == "APPROVED",
@@ -187,6 +203,7 @@ class AudioTextReviewService:
                     guideline,
                     heartbeat_fn=_hb,
                     stage_collector=stage_collector,
+                    force=force,
                 )
                 total_cards_reviewed += per_guideline["cards_reviewed"]
                 total_cards_revised += per_guideline["cards_revised"]
@@ -228,11 +245,23 @@ class AudioTextReviewService:
         *,
         heartbeat_fn: Optional[Callable] = None,
         stage_collector: Optional[list] = None,
+        force: bool = False,
     ) -> dict:
         cards = explanation.cards_json or []
         cards_reviewed = 0
         cards_revised = 0
         any_change = False
+
+        if force:
+            # Force-review semantics: clear every audio_url on the variant so
+            # the downstream audio_synthesis stage re-renders the full set.
+            # Without this, `force` would be a no-op for any line the LLM
+            # leaves alone — unchanged audio text + populated audio_url +
+            # synthesis skip predicate = the user clicks "Re-run" and gets
+            # nothing changed.
+            for card in cards:
+                self._clear_audio_urls_in_place(card)
+            any_change = True
 
         for card in cards:
             if heartbeat_fn:
@@ -433,6 +462,21 @@ class AudioTextReviewService:
             ):
                 check_in.pop(url_field, None)
         return out
+
+    def _clear_audio_urls_in_place(self, card: dict) -> None:
+        """Null out every audio URL on `card` so the next synthesis run
+        regenerates the full clip set. Used by force-review."""
+        for line in (card.get("lines") or []):
+            if isinstance(line, dict) and "audio_url" in line:
+                line["audio_url"] = None
+        check_in = card.get("check_in")
+        if isinstance(check_in, dict):
+            for url_field in (
+                "audio_text_url", "hint_audio_url",
+                "success_audio_url", "reveal_audio_url",
+            ):
+                if url_field in check_in:
+                    check_in[url_field] = None
 
     def _collect_snapshot(
         self,
