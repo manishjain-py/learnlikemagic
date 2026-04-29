@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Variant 2 — Spotlight · Baatcheet avatar mockups</title>
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* ============ Variant 2 specific ============ */
+
+  .spotlight {
+    margin: 4px 0 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(244,244,239,0.04), rgba(0,0,0,0.18));
+    border: 1px solid rgba(244,244,239,0.10);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .spotlight::before {
+    /* faint stage-light vignette */
+    content: '';
+    position: absolute;
+    inset: -50% -10% auto auto;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle at center, rgba(244,199,108,0.10), transparent 60%);
+    pointer-events: none;
+  }
+
+  .spotlight-portrait {
+    width: 92px;
+    height: 92px;
+    border-radius: 18px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: rgba(0,0,0,0.2);
+    box-shadow:
+      inset 0 0 0 2px rgba(244,199,108,0.6),
+      0 0 0 3px rgba(244,199,108,0.18),
+      0 4px 14px rgba(0,0,0,0.4);
+    position: relative;
+  }
+  .spotlight-portrait svg { width: 100%; height: 100%; display: block; }
+  .spotlight-portrait::after {
+    /* subtle inner glow */
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.30));
+    pointer-events: none;
+  }
+
+  .spotlight-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .spotlight-meta .name {
+    font-family: var(--font-body);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--chalk-gold);
+    margin: 0 0 2px;
+    line-height: 1.2;
+  }
+  .spotlight-meta .name--peer { color: #ffb6dd; }
+  .spotlight-meta .role {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(244,244,239,0.55);
+    margin: 0 0 8px;
+  }
+
+  .speaking-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 6px;
+    background: rgba(244,199,108,0.16);
+    border: 1px solid rgba(244,199,108,0.40);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--chalk-gold);
+  }
+  .speaking-status .bars {
+    display: inline-flex;
+    align-items: center;
+    gap: 1.5px;
+    height: 12px;
+  }
+  .speaking-status .bars span {
+    width: 2px;
+    background: var(--chalk-gold);
+    border-radius: 1px;
+    animation: bar-bounce 0.9s ease-in-out infinite;
+  }
+  .speaking-status .bars span:nth-child(1) { height: 5px; animation-delay: 0s; }
+  .speaking-status .bars span:nth-child(2) { height: 9px; animation-delay: 0.15s; }
+  .speaking-status .bars span:nth-child(3) { height: 12px; animation-delay: 0.30s; }
+  .speaking-status .bars span:nth-child(4) { height: 7px; animation-delay: 0.45s; }
+  @keyframes bar-bounce {
+    0%, 100% { transform: scaleY(0.4); transform-origin: bottom; }
+    50%      { transform: scaleY(1.0); }
+  }
+
+  .star-row {
+    position: absolute;
+    top: 14px; right: 16px;
+    color: var(--chalk-white-faint);
+    font-size: 18px;
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-page-header">
+  <span class="variant-tag">Variant 2 of 6</span>
+  <h1>Spotlight — single big shoulder portrait of the active speaker</h1>
+  <p class="lede">
+    Only one character on screen at a time, but rendered large enough to read facial expression
+    and feel like a real presence. This is the closest approximation to "looking your tutor in
+    the eye" — at the cost of dropping the relational dynamic between the two.
+  </p>
+  <a class="back-link" href="index.html">← All variants</a>
+</div>
+
+<div class="frame-row">
+
+  <!-- =========================================================
+       FRAME A: Mr. Verma is speaking
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">A · Mr. Verma is speaking</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 8/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <!-- ===== Spotlight presenter strip ===== -->
+            <div class="spotlight" aria-label="Mr. Verma is speaking">
+              <div class="spotlight-portrait">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="v2tBg-a" cx="40%" cy="30%">
+                      <stop offset="0%" stop-color="#fff5dc"/>
+                      <stop offset="60%" stop-color="#e9c08a"/>
+                      <stop offset="100%" stop-color="#a86a3e"/>
+                    </radialGradient>
+                    <linearGradient id="v2tShirt-a" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#3b6a96"/>
+                      <stop offset="100%" stop-color="#264a6e"/>
+                    </linearGradient>
+                  </defs>
+                  <rect width="120" height="120" fill="url(#v2tBg-a)"/>
+                  <!-- back wall hint -->
+                  <rect x="0" y="78" width="120" height="42" fill="#2F4A3C" opacity="0.30"/>
+                  <!-- shirt + collar -->
+                  <path d="M-4 116 Q60 78 124 116 L124 124 L-4 124 Z" fill="url(#v2tShirt-a)"/>
+                  <path d="M40 86 L60 100 L80 86 L74 96 L60 105 L46 96 Z" fill="#1c3a58"/>
+                  <!-- tie knot -->
+                  <path d="M55 100 L65 100 L67 110 L53 110 Z" fill="#a83446"/>
+                  <line x1="60" y1="103" x2="60" y2="108" stroke="#7a2536" stroke-width="0.5"/>
+                  <!-- neck w shadow -->
+                  <ellipse cx="60" cy="84" rx="11" ry="9" fill="#b67e4a"/>
+                  <path d="M52 86 Q60 90 68 86" stroke="#7a4f2a" stroke-width="0.6" fill="none" opacity="0.5"/>
+                  <!-- head, slight 3/4 turn -->
+                  <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q90 78 76 92 Q68 96 60 96 Q52 96 44 92 Q30 78 30 56 Z" fill="#d6a06a"/>
+                  <!-- ear -->
+                  <ellipse cx="32" cy="60" rx="3" ry="6" fill="#c08956"/>
+                  <ellipse cx="88" cy="60" rx="3" ry="6" fill="#c08956"/>
+                  <!-- cheek shading -->
+                  <ellipse cx="74" cy="68" rx="14" ry="18" fill="#8e552e" opacity="0.18"/>
+                  <ellipse cx="46" cy="68" rx="10" ry="14" fill="#fde2c0" opacity="0.18"/>
+                  <!-- jaw shading -->
+                  <path d="M40 80 Q60 96 80 80 Q70 90 60 92 Q50 90 40 80 Z" fill="#9c6a3c" opacity="0.16"/>
+                  <!-- hair (salt and pepper, fuller on top) -->
+                  <path d="M30 50 Q30 18 60 18 Q90 18 90 50 Q86 36 78 28 Q70 22 60 22 Q50 22 42 28 Q34 36 30 50 Z" fill="#3a3833"/>
+                  <!-- temple grey patches -->
+                  <path d="M30 48 Q30 38 34 32 Q34 42 32 50 Z" fill="#a59f95"/>
+                  <path d="M90 48 Q90 38 86 32 Q86 42 88 50 Z" fill="#a59f95"/>
+                  <!-- hairline strands -->
+                  <path d="M52 26 Q56 22 60 22 Q64 22 68 26" stroke="#26241f" stroke-width="1" fill="none"/>
+                  <!-- eyebrows (slightly arched, kind) -->
+                  <path d="M40 50 Q47 46 54 50" stroke="#26241f" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                  <path d="M66 50 Q73 46 80 50" stroke="#26241f" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                  <!-- glasses (modern rounded, slim) -->
+                  <rect x="38" y="54" width="17" height="12" rx="5" fill="rgba(255,255,255,0.45)" stroke="#3c2a1e" stroke-width="1.6"/>
+                  <rect x="65" y="54" width="17" height="12" rx="5" fill="rgba(255,255,255,0.45)" stroke="#3c2a1e" stroke-width="1.6"/>
+                  <line x1="55" y1="60" x2="65" y2="60" stroke="#3c2a1e" stroke-width="1.6"/>
+                  <!-- eyes (warm, looking slightly toward right at student) -->
+                  <ellipse cx="48" cy="60" rx="2.5" ry="2" fill="white"/>
+                  <ellipse cx="74" cy="60" rx="2.5" ry="2" fill="white"/>
+                  <circle cx="49" cy="60.6" r="1.6" fill="#1a140d"/>
+                  <circle cx="75" cy="60.6" r="1.6" fill="#1a140d"/>
+                  <circle cx="49.5" cy="60.2" r="0.6" fill="white"/>
+                  <circle cx="75.5" cy="60.2" r="0.6" fill="white"/>
+                  <!-- crow's feet (laughter lines) -->
+                  <path d="M84 60 L88 58 M84 64 L88 64" stroke="#7a4f2a" stroke-width="0.5" opacity="0.5"/>
+                  <path d="M36 60 L32 58 M36 64 L32 64" stroke="#7a4f2a" stroke-width="0.5" opacity="0.5"/>
+                  <!-- nose -->
+                  <path d="M58 65 Q57 72 60 75 Q63 72 62 65" stroke="#9c6a3c" stroke-width="1.1" fill="none" opacity="0.8"/>
+                  <ellipse cx="58.5" cy="74" rx="0.8" ry="0.8" fill="#7a4f2a" opacity="0.4"/>
+                  <ellipse cx="61.5" cy="74" rx="0.8" ry="0.8" fill="#7a4f2a" opacity="0.4"/>
+                  <!-- mustache (trimmed, peppered grey) -->
+                  <path d="M48 78 Q54 75 60 78 Q66 75 72 78 Q68 81 60 80 Q52 81 48 78 Z" fill="#3a3833"/>
+                  <path d="M50 77 L52 75 M58 76 L60 74 M68 76 L70 75" stroke="#9a978f" stroke-width="0.6"/>
+                  <!-- mouth (open, mid-speech, showing slight teeth) -->
+                  <path d="M52 84 Q60 88 68 84 L68 86 Q60 89 52 86 Z" fill="#3a1e10"/>
+                  <path d="M54 85 Q60 86 66 85" stroke="#fff" stroke-width="0.8" opacity="0.65"/>
+                </svg>
+              </div>
+              <div class="spotlight-meta">
+                <p class="name">Mr. Verma</p>
+                <p class="role">Your tutor</p>
+                <span class="speaking-status">
+                  <span class="bars"><span></span><span></span><span></span><span></span></span>
+                  speaking
+                </span>
+              </div>
+            </div>
+
+            <!-- visual aid card -->
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Now picture this.<br />
+              You see <strong>47,352</strong> on a billboard.<br />
+              How would you read it out loud?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       FRAME B: Meera is speaking
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">B · Meera is speaking (next card)</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 9/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <div class="spotlight" aria-label="Meera is speaking">
+              <div class="spotlight-portrait">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="v2pBg-b" cx="40%" cy="30%">
+                      <stop offset="0%" stop-color="#fde7ee"/>
+                      <stop offset="60%" stop-color="#e89cb8"/>
+                      <stop offset="100%" stop-color="#a3537a"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="120" height="120" fill="url(#v2pBg-b)"/>
+                  <rect x="0" y="78" width="120" height="42" fill="#2F4A3C" opacity="0.25"/>
+
+                  <!-- white school uniform shirt -->
+                  <path d="M-4 116 Q60 80 124 116 L124 124 L-4 124 Z" fill="#fbf5e0"/>
+                  <!-- shirt button placket shadow -->
+                  <line x1="60" y1="106" x2="60" y2="120" stroke="#d4c89c" stroke-width="0.8" opacity="0.6"/>
+                  <!-- school collar (V with crisp tabs) -->
+                  <path d="M40 90 L60 102 L80 90 L74 99 L60 105 L46 99 Z" fill="#e8dcae"/>
+                  <path d="M44 92 L60 102 L48 100 Z" fill="#d4c89c" opacity="0.7"/>
+                  <path d="M76 92 L60 102 L72 100 Z" fill="#d4c89c" opacity="0.7"/>
+                  <!-- school red bow tie at neck -->
+                  <path d="M52 96 Q56 93 60 96 Q64 93 68 96 Q66 100 60 100 Q54 100 52 96 Z" fill="#c93f5a"/>
+                  <ellipse cx="60" cy="98" rx="2" ry="1.6" fill="#7a2536"/>
+                  <path d="M58 100 L62 100 L61 104 L59 104 Z" fill="#a82846"/>
+
+                  <!-- neck -->
+                  <ellipse cx="60" cy="86" rx="10" ry="8" fill="#c08e58"/>
+                  <path d="M52 86 Q60 90 68 86" stroke="#7a4f2a" stroke-width="0.6" fill="none" opacity="0.5"/>
+
+                  <!-- head -->
+                  <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q90 78 76 92 Q68 96 60 96 Q52 96 44 92 Q30 78 30 56 Z" fill="#dba877"/>
+
+                  <!-- skin shading -->
+                  <ellipse cx="74" cy="70" rx="11" ry="14" fill="#a8623e" opacity="0.16"/>
+                  <ellipse cx="44" cy="64" rx="8" ry="10" fill="#fde0c8" opacity="0.45"/>
+                  <ellipse cx="56" cy="36" rx="14" ry="4" fill="#fde0c8" opacity="0.35"/>
+                  <ellipse cx="44" cy="74" rx="6" ry="3" fill="#e88a9b" opacity="0.40"/>
+                  <ellipse cx="76" cy="74" rx="6" ry="3" fill="#e88a9b" opacity="0.40"/>
+
+                  <!-- HAIR CAP: middle-parted, exposes forehead, no bangs -->
+                  <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q88 50 80 42 Q70 36 60 38 Q50 36 40 42 Q32 50 30 56 Z" fill="#1a0e0e"/>
+                  <!-- hair shine on top -->
+                  <path d="M40 28 Q60 23 80 28" stroke="#3a1a1a" stroke-width="0.8" fill="none" opacity="0.6"/>
+                  <path d="M44 26 Q60 22 76 26" stroke="#5a2a2a" stroke-width="0.5" fill="none" opacity="0.4"/>
+                  <!-- middle parting -->
+                  <line x1="60" y1="22" x2="60" y2="38" stroke="#dba877" stroke-width="0.9" opacity="0.55"/>
+                  <!-- a couple of side flicks for natural feel -->
+                  <path d="M30 46 Q26 50 28 56" stroke="#1a0e0e" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M90 46 Q94 50 92 56" stroke="#1a0e0e" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+                  <!-- LEFT BRAID (in front of shoulder, tapered, slight S-curve) -->
+                  <path d="M30 54 Q26 60 28 70 Q28 80 30 90 Q32 95 35 95 Q38 95 38 90 Q40 80 38 70 Q40 60 36 54 Z" fill="#1a0e0e"/>
+                  <!-- braid weave texture (subtle horizontal arcs) -->
+                  <path d="M28 62 Q33 64 38 62 M28 70 Q33 72 38 70 M28 78 Q33 80 38 78 M30 86 Q33 87 36 86" stroke="#3a1f1f" stroke-width="0.6" fill="none"/>
+
+                  <!-- RIGHT BRAID -->
+                  <path d="M90 54 Q94 60 92 70 Q92 80 90 90 Q88 95 85 95 Q82 95 82 90 Q80 80 82 70 Q80 60 84 54 Z" fill="#1a0e0e"/>
+                  <path d="M82 62 Q87 64 92 62 M82 70 Q87 72 92 70 M82 78 Q87 80 92 78 M84 86 Q87 87 90 86" stroke="#3a1f1f" stroke-width="0.6" fill="none"/>
+
+                  <!-- LEFT RIBBON BOW at end of braid (two-loop bow shape) -->
+                  <g transform="translate(34 96)">
+                    <path d="M0 0 Q-5 -3 -4 0 Q-5 3 0 0 Z" fill="#c93f5a"/>
+                    <path d="M0 0 Q5 -3 4 0 Q5 3 0 0 Z" fill="#c93f5a"/>
+                    <ellipse cx="0" cy="0" rx="1.2" ry="1.2" fill="#7a2536"/>
+                    <path d="M-1 1 L-2 4 M1 1 L2 4" stroke="#c93f5a" stroke-width="0.8" stroke-linecap="round"/>
+                  </g>
+
+                  <!-- RIGHT RIBBON BOW -->
+                  <g transform="translate(86 96)">
+                    <path d="M0 0 Q-5 -3 -4 0 Q-5 3 0 0 Z" fill="#c93f5a"/>
+                    <path d="M0 0 Q5 -3 4 0 Q5 3 0 0 Z" fill="#c93f5a"/>
+                    <ellipse cx="0" cy="0" rx="1.2" ry="1.2" fill="#7a2536"/>
+                    <path d="M-1 1 L-2 4 M1 1 L2 4" stroke="#c93f5a" stroke-width="0.8" stroke-linecap="round"/>
+                  </g>
+
+                  <!-- eyebrows (curious arch) -->
+                  <path d="M42 50 Q48 47 54 49" stroke="#2a1410" stroke-width="2" stroke-linecap="round" fill="none"/>
+                  <path d="M66 49 Q72 47 78 50" stroke="#2a1410" stroke-width="2" stroke-linecap="round" fill="none"/>
+
+                  <!-- eyes (big, bright, expressive) -->
+                  <ellipse cx="48" cy="58" rx="4.5" ry="5" fill="white"/>
+                  <ellipse cx="72" cy="58" rx="4.5" ry="5" fill="white"/>
+                  <ellipse cx="48" cy="58" rx="3.5" ry="4" fill="#3a1f10"/>
+                  <ellipse cx="72" cy="58" rx="3.5" ry="4" fill="#3a1f10"/>
+                  <circle cx="48" cy="58" r="2" fill="#1a0a05"/>
+                  <circle cx="72" cy="58" r="2" fill="#1a0a05"/>
+                  <!-- highlights -->
+                  <circle cx="49.2" cy="56.5" r="1.3" fill="white"/>
+                  <circle cx="73.2" cy="56.5" r="1.3" fill="white"/>
+                  <circle cx="46.5" cy="59.5" r="0.5" fill="white" opacity="0.6"/>
+                  <circle cx="70.5" cy="59.5" r="0.5" fill="white" opacity="0.6"/>
+                  <!-- subtle eyelashes (top) -->
+                  <path d="M44 54 L43 53 M48 53 L48 51.6 M52 54 L53 53" stroke="#1a0a05" stroke-width="0.7" stroke-linecap="round"/>
+                  <path d="M68 54 L67 53 M72 53 L72 51.6 M76 54 L77 53" stroke="#1a0a05" stroke-width="0.7" stroke-linecap="round"/>
+
+                  <!-- nose -->
+                  <path d="M58 66 Q57 72 60 74 Q63 72 62 66" stroke="#9c6a3c" stroke-width="1" fill="none" opacity="0.7"/>
+                  <ellipse cx="58.5" cy="73.5" rx="0.6" ry="0.6" fill="#7a4f2a" opacity="0.4"/>
+                  <ellipse cx="61.5" cy="73.5" rx="0.6" ry="0.6" fill="#7a4f2a" opacity="0.4"/>
+
+                  <!-- mouth (slightly open, soft smile) -->
+                  <path d="M52 80 Q60 84 68 80 Q66 86 60 86 Q54 86 52 80 Z" fill="#7a3a2a"/>
+                  <path d="M54 81 Q60 83 66 81" stroke="#fff" stroke-width="0.7" opacity="0.7"/>
+                  <!-- chin highlight -->
+                  <ellipse cx="60" cy="92" rx="6" ry="2" fill="#fde0c8" opacity="0.30"/>
+                </svg>
+              </div>
+              <div class="spotlight-meta">
+                <p class="name name--peer">Meera</p>
+                <p class="role">Classmate</p>
+                <span class="speaking-status">
+                  <span class="bars"><span></span><span></span><span></span><span></span></span>
+                  speaking
+                </span>
+              </div>
+            </div>
+
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Hmm… is it<br />
+              <strong>forty-seven thousand three<br />hundred fifty-two</strong>?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <h2>Why this works (and what it costs)</h2>
+  <p>
+    Spotlight trades relationship for presence. Only one face on screen — but that face is large
+    enough (92px square portrait) that you can read warmth in the eyes, the mouth shape mid-speech,
+    even the laughter lines around Verma's eyes. It feels like a video call with your tutor, not a
+    chat with a name and bubble.
+  </p>
+
+  <h3>Key moves</h3>
+  <ul>
+    <li><strong>Square rounded portrait, not a circle.</strong> Circles crop too tight at this size — the rounded square shows shoulders, collar, and tie/uniform, which carry teacher/student signal.</li>
+    <li><strong>Crossfade on speaker change.</strong> When the next card flips, Verma's portrait fades out, Meera's fades in within the same frame. Position is rock-solid.</li>
+    <li><strong>Equalizer bars + "speaking" pill.</strong> Even with audio off, the bars animate to give a clear "they're talking" cue.</li>
+    <li><strong>"Your tutor" / "Classmate" role tag.</strong> Tiny but warm — frames the dynamic for first-time students who don't yet know who Meera is.</li>
+    <li><strong>Detailed art style (3/4 turn, soft shading).</strong> Bigger canvas = warrants more illustration detail, so the avatars feel like characters, not icons.</li>
+  </ul>
+
+  <div class="pros-cons">
+    <div class="col pros">
+      <h3>Pros</h3>
+      <ul>
+        <li>Maximum facial-expression read; warmest "real teacher" feel.</li>
+        <li>Position never shifts — visually stable across all cards.</li>
+        <li>Detailed art rewards the bigger canvas without inflating other elements.</li>
+        <li>Empty role-tag area can host hint copy ("waiting for your answer…") if needed.</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h3>Cons</h3>
+      <ul>
+        <li>Listener disappears — relational dynamic of a real classroom is lost.</li>
+        <li>Strip eats ~120px of vertical space; biggest commitment of the six.</li>
+        <li>Detailed art has to be high quality at this size, or it looks worse than tiny art at 44px.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

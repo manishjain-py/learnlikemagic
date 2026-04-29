@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Variant 4 — Polaroid Pinned · Baatcheet avatar mockups</title>
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* ============ Variant 4 specific ============ */
+
+  .polaroid-stage {
+    position: relative;
+    height: 152px;
+    margin: 6px 0 12px;
+  }
+
+  .polaroid {
+    position: absolute;
+    background: #faf6ec;
+    padding: 6px 6px 22px;
+    border-radius: 2px;
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.20),
+      0 8px 18px rgba(0,0,0,0.40);
+    transition: transform 320ms cubic-bezier(.4,.2,.2,1);
+  }
+  .polaroid::before {
+    /* faint paper grain */
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(0,0,0,0.04), transparent 60%),
+      radial-gradient(circle at 70% 80%, rgba(244,199,108,0.05), transparent 60%);
+    pointer-events: none;
+  }
+  .polaroid .photo {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 1px;
+    overflow: hidden;
+    background: #888;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+  }
+  .polaroid .photo svg { width: 100%; height: 100%; display: block; }
+  .polaroid .caption {
+    font-family: var(--font-hand);
+    font-size: 17px;
+    font-weight: 700;
+    color: #2a2a2a;
+    text-align: center;
+    margin-top: 4px;
+    line-height: 1;
+    letter-spacing: 0.01em;
+  }
+  .polaroid .caption .role {
+    display: block;
+    font-size: 10px;
+    color: #6a6a6a;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    margin-top: 1px;
+    font-family: var(--font-body);
+  }
+
+  /* Washi tape across the top of the polaroid */
+  .polaroid::after {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-3deg);
+    width: 56%;
+    height: 16px;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(244,199,108,0.7) 0 6px,
+      rgba(244,199,108,0.55) 6px 12px
+    );
+    border-radius: 1px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    opacity: 0.9;
+  }
+
+  /* primary polaroid (active speaker) */
+  .polaroid--primary {
+    width: 130px;
+    left: 50%;
+    top: 6px;
+    transform: translateX(-50%) rotate(-2deg);
+    z-index: 3;
+  }
+  .polaroid--primary.from-peer {
+    transform: translateX(-50%) rotate(2deg);
+  }
+
+  /* secondary polaroid (listener) — peeks from corner */
+  .polaroid--secondary {
+    width: 76px;
+    top: 22px;
+    right: 12px;
+    transform: rotate(8deg);
+    z-index: 2;
+    opacity: 0.78;
+    filter: saturate(0.6) brightness(0.85);
+  }
+  .polaroid--secondary.from-tutor {
+    right: auto;
+    left: 12px;
+    transform: rotate(-8deg);
+  }
+  .polaroid--secondary .caption {
+    font-size: 11px;
+  }
+  .polaroid--secondary::after {
+    height: 10px;
+    top: -5px;
+    width: 50%;
+  }
+  .polaroid--secondary .caption .role { display: none; }
+
+  /* a dotted "they're talking" bubble line connecting active polaroid to dialogue */
+  .speaking-glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px var(--chalk-gold), 0 0 18px rgba(244,199,108,0.5);
+    opacity: 0;
+    animation: paper-glow 2.4s ease-in-out infinite;
+  }
+  @keyframes paper-glow {
+    0%, 100% { opacity: 0.0; }
+    50%      { opacity: 0.6; }
+  }
+
+  .star-row {
+    position: absolute;
+    top: 14px; right: 16px;
+    color: var(--chalk-white-faint);
+    font-size: 18px;
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-page-header">
+  <span class="variant-tag">Variant 4 of 6</span>
+  <h1>Polaroid Pinned — photographs tacked to the chalkboard</h1>
+  <p class="lede">
+    The avatars stop being icons and become physical artifacts: paper polaroids with washi tape,
+    handwritten captions, slight tilts and shadows. The active speaker's photo glows softly; the
+    listener's smaller polaroid peeks from the corner. Most "real classroom" cue, hardest to make
+    look great at small sizes.
+  </p>
+  <a class="back-link" href="index.html">← All variants</a>
+</div>
+
+<div class="frame-row">
+
+  <!-- =========================================================
+       FRAME A: Mr. Verma is speaking
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">A · Mr. Verma is speaking</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 8/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <!-- ===== Polaroid stage ===== -->
+            <div class="polaroid-stage">
+
+              <!-- Mr. Verma — primary polaroid -->
+              <div class="polaroid polaroid--primary from-tutor" aria-label="Mr. Verma">
+                <span class="speaking-glow" aria-hidden="true"></span>
+                <div class="photo">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <defs>
+                      <radialGradient id="v4tBg-a" cx="35%" cy="20%" r="80%">
+                        <stop offset="0%" stop-color="#fff8e0"/>
+                        <stop offset="40%" stop-color="#e6b577"/>
+                        <stop offset="100%" stop-color="#7a4f2a"/>
+                      </radialGradient>
+                      <linearGradient id="v4tSkin-a" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#e9b97f"/>
+                        <stop offset="100%" stop-color="#a87044"/>
+                      </linearGradient>
+                      <linearGradient id="v4tShirt-a" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#3d6b95"/>
+                        <stop offset="100%" stop-color="#1a3a58"/>
+                      </linearGradient>
+                    </defs>
+                    <!-- background -->
+                    <rect width="120" height="120" fill="url(#v4tBg-a)"/>
+                    <!-- bokeh circles -->
+                    <circle cx="20" cy="20" r="14" fill="rgba(255,255,255,0.20)"/>
+                    <circle cx="100" cy="30" r="8" fill="rgba(255,255,255,0.14)"/>
+                    <circle cx="105" cy="60" r="5" fill="rgba(255,255,255,0.10)"/>
+                    <!-- shoulders / shirt -->
+                    <path d="M-2 116 Q60 76 122 116 L122 124 L-2 124 Z" fill="url(#v4tShirt-a)"/>
+                    <!-- collar -->
+                    <path d="M40 86 L60 102 L80 86 L72 96 L60 105 L48 96 Z" fill="#13283e"/>
+                    <!-- tie -->
+                    <path d="M55 102 L65 102 L67 116 L53 116 Z" fill="#a83446"/>
+                    <ellipse cx="60" cy="103" rx="6" ry="2" fill="#7a2536"/>
+                    <!-- neck -->
+                    <ellipse cx="60" cy="84" rx="11" ry="9" fill="#a8703f"/>
+                    <!-- jaw shadow -->
+                    <path d="M40 80 Q60 96 80 80" stroke="#7a4f2a" stroke-width="0.8" fill="none" opacity="0.4"/>
+                    <!-- head with gradient -->
+                    <ellipse cx="60" cy="56" rx="26" ry="30" fill="url(#v4tSkin-a)"/>
+                    <!-- right cheek shadow (light from left) -->
+                    <ellipse cx="76" cy="64" rx="14" ry="20" fill="#6a3e1a" opacity="0.30"/>
+                    <!-- nose bridge highlight -->
+                    <ellipse cx="58" cy="64" rx="2" ry="10" fill="#fde8c4" opacity="0.45"/>
+                    <!-- left cheek light -->
+                    <ellipse cx="44" cy="64" rx="8" ry="10" fill="#fce0b8" opacity="0.50"/>
+                    <!-- forehead light -->
+                    <ellipse cx="56" cy="38" rx="18" ry="6" fill="#fde8c4" opacity="0.40"/>
+                    <!-- hair (salt and pepper, with strand details) -->
+                    <path d="M30 50 Q30 20 60 20 Q90 20 90 50 Q86 32 78 26 Q68 20 60 20 Q52 20 42 26 Q34 32 30 50 Z" fill="#2a2620"/>
+                    <!-- hair shading -->
+                    <path d="M32 48 Q40 32 52 28" stroke="#1a1612" stroke-width="0.8" fill="none" opacity="0.6"/>
+                    <path d="M88 48 Q80 32 68 28" stroke="#1a1612" stroke-width="0.8" fill="none" opacity="0.6"/>
+                    <!-- silver streaks at temples -->
+                    <ellipse cx="34" cy="48" rx="3" ry="9" fill="#a59d92"/>
+                    <ellipse cx="86" cy="48" rx="3" ry="9" fill="#a59d92"/>
+                    <!-- highlight on hair -->
+                    <path d="M44 28 Q56 22 70 28" stroke="#605850" stroke-width="1" fill="none" opacity="0.5"/>
+                    <!-- eyebrows -->
+                    <path d="M40 50 Q47 45 54 50" stroke="#1a1612" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                    <path d="M66 50 Q73 45 80 50" stroke="#1a1612" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                    <!-- glasses (modern thin) -->
+                    <rect x="38" y="55" width="17" height="12" rx="5" fill="rgba(245,243,236,0.3)" stroke="#2a1a12" stroke-width="1.5"/>
+                    <rect x="65" y="55" width="17" height="12" rx="5" fill="rgba(245,243,236,0.3)" stroke="#2a1a12" stroke-width="1.5"/>
+                    <line x1="55" y1="61" x2="65" y2="61" stroke="#2a1a12" stroke-width="1.5"/>
+                    <!-- lens reflections -->
+                    <path d="M40 56 L52 56 L45 62 Z" fill="white" opacity="0.35"/>
+                    <path d="M67 56 L79 56 L72 62 Z" fill="white" opacity="0.35"/>
+                    <!-- eyes -->
+                    <ellipse cx="48" cy="61" rx="2.5" ry="2" fill="white"/>
+                    <ellipse cx="74" cy="61" rx="2.5" ry="2" fill="white"/>
+                    <circle cx="49" cy="62" r="1.6" fill="#1a140d"/>
+                    <circle cx="75" cy="62" r="1.6" fill="#1a140d"/>
+                    <circle cx="49.5" cy="61" r="0.6" fill="white"/>
+                    <circle cx="75.5" cy="61" r="0.6" fill="white"/>
+                    <!-- under-eye fold -->
+                    <path d="M44 65 Q48 67 52 65" stroke="#7a4f2a" stroke-width="0.5" fill="none" opacity="0.5"/>
+                    <path d="M70 65 Q74 67 78 65" stroke="#7a4f2a" stroke-width="0.5" fill="none" opacity="0.5"/>
+                    <!-- nose -->
+                    <path d="M58 66 Q56 73 60 76 Q64 73 62 66" stroke="#7a4f2a" stroke-width="1" fill="none" opacity="0.7"/>
+                    <ellipse cx="58" cy="74.5" rx="0.8" ry="0.8" fill="#5b3621" opacity="0.5"/>
+                    <ellipse cx="62" cy="74.5" rx="0.8" ry="0.8" fill="#5b3621" opacity="0.5"/>
+                    <!-- mustache -->
+                    <path d="M48 80 Q54 76 60 79 Q66 76 72 80 Q66 82 60 81 Q54 82 48 80 Z" fill="#2a2620"/>
+                    <path d="M50 79 L52 76 M58 78 L60 75 M68 78 L70 76" stroke="#a59d92" stroke-width="0.5"/>
+                    <!-- mouth (talking with slight smile) -->
+                    <path d="M52 86 Q60 90 68 86 L68 88 Q60 91 52 88 Z" fill="#3a1e10"/>
+                    <path d="M54 87 Q60 88 66 87" stroke="#fff" stroke-width="0.7" opacity="0.6"/>
+                    <!-- chin highlight -->
+                    <ellipse cx="60" cy="92" rx="6" ry="2" fill="#fce0b8" opacity="0.30"/>
+                  </svg>
+                </div>
+                <div class="caption">
+                  Mr. Verma
+                  <span class="role">tutor</span>
+                </div>
+              </div>
+
+              <!-- Meera — secondary polaroid (peeking from right corner) -->
+              <div class="polaroid polaroid--secondary from-peer" aria-label="Meera">
+                <div class="photo">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <defs>
+                      <radialGradient id="v4pBg-a" cx="35%" cy="20%" r="80%">
+                        <stop offset="0%" stop-color="#ffe8f0"/>
+                        <stop offset="40%" stop-color="#e8a0bc"/>
+                        <stop offset="100%" stop-color="#7a3a5a"/>
+                      </radialGradient>
+                    </defs>
+                    <rect width="120" height="120" fill="url(#v4pBg-a)"/>
+                    <path d="M-2 116 Q60 78 122 116 L122 124 L-2 124 Z" fill="#fbf5e0"/>
+                    <path d="M44 90 L60 102 L76 90 L70 98 L60 104 L50 98 Z" fill="#d4c89c"/>
+                    <path d="M55 96 L65 96 L62 104 L58 104 Z" fill="#c93f5a"/>
+                    <ellipse cx="60" cy="86" rx="10" ry="8" fill="#a8723e"/>
+                    <ellipse cx="60" cy="56" rx="25" ry="28" fill="#dba877"/>
+                    <ellipse cx="74" cy="62" rx="11" ry="14" fill="#7a3e1a" opacity="0.20"/>
+                    <ellipse cx="48" cy="62" rx="8" ry="10" fill="#fde0c8" opacity="0.45"/>
+                    <path d="M30 56 Q28 18 60 18 Q92 18 90 56 Q88 32 78 24 Q68 18 60 18 Q52 18 42 24 Q32 32 30 56 Z" fill="#1a0e0e"/>
+                    <path d="M28 56 Q22 76 24 96 L36 96 Q38 76 36 56 Z" fill="#1a0e0e"/>
+                    <path d="M92 56 Q98 76 96 96 L84 96 Q82 76 84 56 Z" fill="#1a0e0e"/>
+                    <ellipse cx="30" cy="96" rx="6" ry="2.5" fill="#c93f5a"/>
+                    <ellipse cx="90" cy="96" rx="6" ry="2.5" fill="#c93f5a"/>
+                    <circle cx="60" cy="42" r="1.8" fill="#c93f5a"/>
+                    <ellipse cx="48" cy="60" rx="3.5" ry="4" fill="white"/>
+                    <ellipse cx="72" cy="60" rx="3.5" ry="4" fill="white"/>
+                    <circle cx="48" cy="61" r="2.4" fill="#1a0a05"/>
+                    <circle cx="72" cy="61" r="2.4" fill="#1a0a05"/>
+                    <circle cx="49" cy="60" r="0.8" fill="white"/>
+                    <circle cx="73" cy="60" r="0.8" fill="white"/>
+                    <path d="M52 80 Q60 84 68 80" stroke="#5b2a1a" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                  </svg>
+                </div>
+                <div class="caption">Meera</div>
+              </div>
+            </div>
+
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Now picture this.<br />
+              You see <strong>47,352</strong> on a billboard.<br />
+              How would you read it out loud?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       FRAME B: Meera is speaking — polaroids swap places
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">B · Meera is speaking (next card)</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 9/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <div class="polaroid-stage">
+
+              <!-- Verma now in corner, listening -->
+              <div class="polaroid polaroid--secondary from-tutor" aria-label="Mr. Verma">
+                <div class="photo">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <defs>
+                      <radialGradient id="v4tBg-b" cx="35%" cy="20%" r="80%">
+                        <stop offset="0%" stop-color="#fff8e0"/>
+                        <stop offset="40%" stop-color="#e6b577"/>
+                        <stop offset="100%" stop-color="#7a4f2a"/>
+                      </radialGradient>
+                    </defs>
+                    <rect width="120" height="120" fill="url(#v4tBg-b)"/>
+                    <path d="M-2 116 Q60 76 122 116 L122 124 L-2 124 Z" fill="#1a3a58"/>
+                    <path d="M40 86 L60 102 L80 86 L72 96 L60 105 L48 96 Z" fill="#13283e"/>
+                    <path d="M55 102 L65 102 L67 116 L53 116 Z" fill="#a83446"/>
+                    <ellipse cx="60" cy="84" rx="11" ry="9" fill="#a8703f"/>
+                    <ellipse cx="60" cy="56" rx="26" ry="30" fill="#d6a06a"/>
+                    <ellipse cx="76" cy="64" rx="14" ry="20" fill="#6a3e1a" opacity="0.30"/>
+                    <ellipse cx="44" cy="64" rx="8" ry="10" fill="#fce0b8" opacity="0.50"/>
+                    <path d="M30 50 Q30 20 60 20 Q90 20 90 50 Q86 32 78 26 Q68 20 60 20 Q52 20 42 26 Q34 32 30 50 Z" fill="#2a2620"/>
+                    <ellipse cx="34" cy="48" rx="3" ry="9" fill="#a59d92"/>
+                    <ellipse cx="86" cy="48" rx="3" ry="9" fill="#a59d92"/>
+                    <path d="M40 50 Q47 45 54 50" stroke="#1a1612" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                    <path d="M66 50 Q73 45 80 50" stroke="#1a1612" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                    <rect x="38" y="55" width="17" height="12" rx="5" fill="rgba(245,243,236,0.3)" stroke="#2a1a12" stroke-width="1.5"/>
+                    <rect x="65" y="55" width="17" height="12" rx="5" fill="rgba(245,243,236,0.3)" stroke="#2a1a12" stroke-width="1.5"/>
+                    <line x1="55" y1="61" x2="65" y2="61" stroke="#2a1a12" stroke-width="1.5"/>
+                    <circle cx="49" cy="62" r="1.6" fill="#1a140d"/>
+                    <circle cx="75" cy="62" r="1.6" fill="#1a140d"/>
+                    <path d="M48 80 Q54 76 60 79 Q66 76 72 80 Q66 82 60 81 Q54 82 48 80 Z" fill="#2a2620"/>
+                    <path d="M52 86 Q60 88 68 86" stroke="#5b2a1a" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                  </svg>
+                </div>
+                <div class="caption">Mr. Verma</div>
+              </div>
+
+              <!-- Meera is now primary -->
+              <div class="polaroid polaroid--primary from-peer" aria-label="Meera">
+                <span class="speaking-glow" aria-hidden="true"></span>
+                <div class="photo">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <defs>
+                      <radialGradient id="v4pBg-b" cx="35%" cy="20%" r="80%">
+                        <stop offset="0%" stop-color="#ffe8f0"/>
+                        <stop offset="40%" stop-color="#e8a0bc"/>
+                        <stop offset="100%" stop-color="#7a3a5a"/>
+                      </radialGradient>
+                      <linearGradient id="v4pSkin-b" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#e9b97f"/>
+                        <stop offset="100%" stop-color="#a87044"/>
+                      </linearGradient>
+                    </defs>
+                    <rect width="120" height="120" fill="url(#v4pBg-b)"/>
+                    <circle cx="22" cy="22" r="14" fill="rgba(255,255,255,0.20)"/>
+                    <circle cx="100" cy="32" r="8" fill="rgba(255,255,255,0.14)"/>
+                    <circle cx="105" cy="58" r="5" fill="rgba(255,255,255,0.10)"/>
+
+                    <path d="M-2 116 Q60 78 122 116 L122 124 L-2 124 Z" fill="#fbf5e0"/>
+                    <path d="M44 90 L60 102 L76 90 L70 98 L60 104 L50 98 Z" fill="#d4c89c"/>
+                    <path d="M55 96 L65 96 L62 104 L58 104 Z" fill="#c93f5a"/>
+                    <ellipse cx="60" cy="86" rx="11" ry="9" fill="#a8703f"/>
+                    <!-- jaw shadow -->
+                    <path d="M40 80 Q60 96 80 80" stroke="#7a4f2a" stroke-width="0.8" fill="none" opacity="0.4"/>
+                    <!-- head with gradient -->
+                    <ellipse cx="60" cy="56" rx="26" ry="30" fill="url(#v4pSkin-b)"/>
+                    <ellipse cx="76" cy="64" rx="14" ry="20" fill="#6a3e1a" opacity="0.25"/>
+                    <ellipse cx="44" cy="64" rx="8" ry="10" fill="#fce0b8" opacity="0.50"/>
+                    <ellipse cx="56" cy="38" rx="18" ry="6" fill="#fde8c4" opacity="0.40"/>
+                    <!-- hair -->
+                    <path d="M30 56 Q28 18 60 18 Q92 18 90 56 Q88 32 78 24 Q68 18 60 18 Q52 18 42 24 Q32 32 30 56 Z" fill="#1a0e0e"/>
+                    <path d="M32 28 Q44 22 60 22 Q76 22 88 28" stroke="#3a1a1a" stroke-width="0.8" fill="none" opacity="0.7"/>
+                    <!-- braids -->
+                    <path d="M28 56 Q22 76 24 96 L36 96 Q38 76 36 56 Z" fill="#1a0e0e"/>
+                    <path d="M92 56 Q98 76 96 96 L84 96 Q82 76 84 56 Z" fill="#1a0e0e"/>
+                    <path d="M28 64 Q32 66 36 64 M28 72 Q32 74 36 72 M28 80 Q32 82 36 80 M28 88 Q32 90 36 88" stroke="#3a1f1f" stroke-width="0.6" fill="none"/>
+                    <path d="M84 64 Q88 66 92 64 M84 72 Q88 74 92 72 M84 80 Q88 82 92 80 M84 88 Q88 90 92 88" stroke="#3a1f1f" stroke-width="0.6" fill="none"/>
+                    <!-- ribbons -->
+                    <ellipse cx="30" cy="96" rx="6" ry="2.5" fill="#c93f5a"/>
+                    <ellipse cx="90" cy="96" rx="6" ry="2.5" fill="#c93f5a"/>
+                    <!-- bangs -->
+                    <path d="M38 38 Q60 22 82 38 Q72 32 60 32 Q48 32 38 38 Z" fill="#1a0e0e"/>
+                    <!-- bindi -->
+                    <circle cx="60" cy="42" r="2" fill="#c93f5a"/>
+                    <!-- eyebrows -->
+                    <path d="M42 50 Q48 47 54 49" stroke="#2a1410" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    <path d="M66 49 Q72 47 78 50" stroke="#2a1410" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    <!-- big eyes -->
+                    <ellipse cx="48" cy="58" rx="4.2" ry="4.6" fill="white"/>
+                    <ellipse cx="72" cy="58" rx="4.2" ry="4.6" fill="white"/>
+                    <ellipse cx="48" cy="58.4" rx="3.2" ry="3.6" fill="#3a1f10"/>
+                    <ellipse cx="72" cy="58.4" rx="3.2" ry="3.6" fill="#3a1f10"/>
+                    <circle cx="48" cy="58.5" r="2" fill="#1a0a05"/>
+                    <circle cx="72" cy="58.5" r="2" fill="#1a0a05"/>
+                    <circle cx="49.2" cy="56.8" r="1.2" fill="white"/>
+                    <circle cx="73.2" cy="56.8" r="1.2" fill="white"/>
+                    <circle cx="46.5" cy="60" r="0.5" fill="white" opacity="0.6"/>
+                    <circle cx="70.5" cy="60" r="0.5" fill="white" opacity="0.6"/>
+                    <!-- nose -->
+                    <path d="M58 66 Q57 73 60 75 Q63 73 62 66" stroke="#9c6a3c" stroke-width="1" fill="none" opacity="0.7"/>
+                    <ellipse cx="58.5" cy="73.5" rx="0.6" ry="0.6" fill="#7a4f2a" opacity="0.4"/>
+                    <ellipse cx="61.5" cy="73.5" rx="0.6" ry="0.6" fill="#7a4f2a" opacity="0.4"/>
+                    <!-- mouth (open, talking) -->
+                    <path d="M52 80 Q60 84 68 80 Q66 86 60 86 Q54 86 52 80 Z" fill="#7a3a2a"/>
+                    <path d="M54 81 Q60 83 66 81" stroke="#fff" stroke-width="0.7" opacity="0.7"/>
+                    <!-- chin highlight -->
+                    <ellipse cx="60" cy="92" rx="6" ry="2" fill="#fce0b8" opacity="0.30"/>
+                  </svg>
+                </div>
+                <div class="caption">
+                  Meera
+                  <span class="role">classmate</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Hmm… is it<br />
+              <strong>forty-seven thousand three<br />hundred fifty-two</strong>?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <h2>Why this works (and what it costs)</h2>
+  <p>
+    This treatment leans hardest into the chalkboard metaphor. Polaroid + washi tape + handwriting
+    cues a real teacher's classroom in a way no clean digital UI can — and avatars rendered with
+    bokeh, soft skin gradient, and lens reflections feel like photographs rather than icons.
+    Listener stays present as a small "pinned to the side" polaroid, so the relational dynamic
+    survives.
+  </p>
+
+  <h3>Key moves</h3>
+  <ul>
+    <li><strong>Polaroid frame.</strong> White paper border, washi tape, drop shadow, slight rotation. Reads as physical artifact.</li>
+    <li><strong>Handwritten name.</strong> Caveat font on the white border — reinforces "teacher wrote this on the photo."</li>
+    <li><strong>Listener as small corner polaroid.</strong> Smaller, more tilted, dimmed. Both characters always present, but the speaker dominates.</li>
+    <li><strong>Photographic SVG.</strong> Skin gradients, bokeh background, lens reflections on glasses, hair highlights. Trying to feel "real" rather than "designed."</li>
+    <li><strong>Glow on the speaker's polaroid.</strong> Subtle pulsing 2px gold border — like the photo is "lit" by the audio.</li>
+  </ul>
+
+  <div class="pros-cons">
+    <div class="col pros">
+      <h3>Pros</h3>
+      <ul>
+        <li>Strongest "real classroom" cue — physical objects beat digital pills.</li>
+        <li>Both characters present without taking too much space (secondary polaroid is 76px).</li>
+        <li>Handwritten captions add personality the chalk-gold pills lack.</li>
+        <li>Treatment is bespoke enough that it becomes brand language for Baatcheet.</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h3>Cons</h3>
+      <ul>
+        <li>Faking photographic SVG is risky — if it's not pulled off well it looks worse than honest illustration.</li>
+        <li>Lots of moving pieces (rotation, tape, shadows) = more rendering cost on low-end Android.</li>
+        <li>Polaroid metaphor may feel dated/twee to older students. Wins for grade 3-6, less for grade 7-8.</li>
+        <li>To do this for real, we'd want commissioned illustrations of the characters, not AI-style generic faces.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

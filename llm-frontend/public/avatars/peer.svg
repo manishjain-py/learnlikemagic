@@ -1,24 +1,69 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Meera">
   <defs>
-    <linearGradient id="peerBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#7A2F66" />
-      <stop offset="100%" stop-color="#3D173B" />
-    </linearGradient>
+    <radialGradient id="peerBg" cx="40%" cy="30%">
+      <stop offset="0%" stop-color="#fde7ee"/>
+      <stop offset="60%" stop-color="#e89cb8"/>
+      <stop offset="100%" stop-color="#a3537a"/>
+    </radialGradient>
   </defs>
-  <circle cx="60" cy="60" r="58" fill="url(#peerBg)" />
-  <!-- shoulders -->
-  <path d="M16 110 Q60 78 104 110 L104 120 L16 120 Z" fill="#C44E8E" />
-  <!-- head -->
-  <circle cx="60" cy="54" r="22" fill="#E0B07F" />
-  <!-- hair (two long braids) -->
-  <path d="M38 44 Q60 22 82 44 Q60 30 38 44 Z" fill="#1A0F0F" />
-  <path d="M38 50 Q34 70 36 88 L42 88 Q44 68 42 50 Z" fill="#1A0F0F" />
-  <path d="M82 50 Q86 70 84 88 L78 88 Q76 68 78 50 Z" fill="#1A0F0F" />
-  <!-- bindi dot -->
-  <circle cx="60" cy="40" r="1.5" fill="#D63A3A" />
-  <!-- eyes (closed crescents = friendly) -->
-  <path d="M50 56 Q53 60 56 56" stroke="#1F1F1F" stroke-width="2" fill="none" stroke-linecap="round" />
-  <path d="M64 56 Q67 60 70 56" stroke="#1F1F1F" stroke-width="2" fill="none" stroke-linecap="round" />
-  <!-- smile -->
-  <path d="M52 68 Q60 74 68 68" stroke="#7A4F2F" stroke-width="2" fill="none" stroke-linecap="round" />
+  <rect width="120" height="120" fill="url(#peerBg)"/>
+  <rect x="0" y="78" width="120" height="42" fill="#2F4A3C" opacity="0.25"/>
+  <path d="M-4 116 Q60 80 124 116 L124 124 L-4 124 Z" fill="#fbf5e0"/>
+  <line x1="60" y1="106" x2="60" y2="120" stroke="#d4c89c" stroke-width="0.8" opacity="0.6"/>
+  <path d="M40 90 L60 102 L80 90 L74 99 L60 105 L46 99 Z" fill="#e8dcae"/>
+  <path d="M44 92 L60 102 L48 100 Z" fill="#d4c89c" opacity="0.7"/>
+  <path d="M76 92 L60 102 L72 100 Z" fill="#d4c89c" opacity="0.7"/>
+  <path d="M52 96 Q56 93 60 96 Q64 93 68 96 Q66 100 60 100 Q54 100 52 96 Z" fill="#c93f5a"/>
+  <ellipse cx="60" cy="98" rx="2" ry="1.6" fill="#7a2536"/>
+  <path d="M58 100 L62 100 L61 104 L59 104 Z" fill="#a82846"/>
+  <ellipse cx="60" cy="86" rx="10" ry="8" fill="#c08e58"/>
+  <path d="M52 86 Q60 90 68 86" stroke="#7a4f2a" stroke-width="0.6" fill="none" opacity="0.5"/>
+  <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q90 78 76 92 Q68 96 60 96 Q52 96 44 92 Q30 78 30 56 Z" fill="#dba877"/>
+  <ellipse cx="74" cy="70" rx="11" ry="14" fill="#a8623e" opacity="0.16"/>
+  <ellipse cx="44" cy="64" rx="8" ry="10" fill="#fde0c8" opacity="0.45"/>
+  <ellipse cx="56" cy="36" rx="14" ry="4" fill="#fde0c8" opacity="0.35"/>
+  <ellipse cx="44" cy="74" rx="6" ry="3" fill="#e88a9b" opacity="0.40"/>
+  <ellipse cx="76" cy="74" rx="6" ry="3" fill="#e88a9b" opacity="0.40"/>
+  <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q88 50 80 42 Q70 36 60 38 Q50 36 40 42 Q32 50 30 56 Z" fill="#1a0e0e"/>
+  <path d="M40 28 Q60 23 80 28" stroke="#3a1a1a" stroke-width="0.8" fill="none" opacity="0.6"/>
+  <path d="M44 26 Q60 22 76 26" stroke="#5a2a2a" stroke-width="0.5" fill="none" opacity="0.4"/>
+  <line x1="60" y1="22" x2="60" y2="38" stroke="#dba877" stroke-width="0.9" opacity="0.55"/>
+  <path d="M30 46 Q26 50 28 56" stroke="#1a0e0e" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <path d="M90 46 Q94 50 92 56" stroke="#1a0e0e" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <path d="M30 54 Q26 60 28 70 Q28 80 30 90 Q32 95 35 95 Q38 95 38 90 Q40 80 38 70 Q40 60 36 54 Z" fill="#1a0e0e"/>
+  <path d="M28 62 Q33 64 38 62 M28 70 Q33 72 38 70 M28 78 Q33 80 38 78 M30 86 Q33 87 36 86" stroke="#3a1f1f" stroke-width="0.6" fill="none"/>
+  <path d="M90 54 Q94 60 92 70 Q92 80 90 90 Q88 95 85 95 Q82 95 82 90 Q80 80 82 70 Q80 60 84 54 Z" fill="#1a0e0e"/>
+  <path d="M82 62 Q87 64 92 62 M82 70 Q87 72 92 70 M82 78 Q87 80 92 78 M84 86 Q87 87 90 86" stroke="#3a1f1f" stroke-width="0.6" fill="none"/>
+  <g transform="translate(34 96)">
+    <path d="M0 0 Q-5 -3 -4 0 Q-5 3 0 0 Z" fill="#c93f5a"/>
+    <path d="M0 0 Q5 -3 4 0 Q5 3 0 0 Z" fill="#c93f5a"/>
+    <ellipse cx="0" cy="0" rx="1.2" ry="1.2" fill="#7a2536"/>
+    <path d="M-1 1 L-2 4 M1 1 L2 4" stroke="#c93f5a" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(86 96)">
+    <path d="M0 0 Q-5 -3 -4 0 Q-5 3 0 0 Z" fill="#c93f5a"/>
+    <path d="M0 0 Q5 -3 4 0 Q5 3 0 0 Z" fill="#c93f5a"/>
+    <ellipse cx="0" cy="0" rx="1.2" ry="1.2" fill="#7a2536"/>
+    <path d="M-1 1 L-2 4 M1 1 L2 4" stroke="#c93f5a" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+  <path d="M42 50 Q48 47 54 49" stroke="#2a1410" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <path d="M66 49 Q72 47 78 50" stroke="#2a1410" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <ellipse cx="48" cy="58" rx="4.5" ry="5" fill="white"/>
+  <ellipse cx="72" cy="58" rx="4.5" ry="5" fill="white"/>
+  <ellipse cx="48" cy="58" rx="3.5" ry="4" fill="#3a1f10"/>
+  <ellipse cx="72" cy="58" rx="3.5" ry="4" fill="#3a1f10"/>
+  <circle cx="48" cy="58" r="2" fill="#1a0a05"/>
+  <circle cx="72" cy="58" r="2" fill="#1a0a05"/>
+  <circle cx="49.2" cy="56.5" r="1.3" fill="white"/>
+  <circle cx="73.2" cy="56.5" r="1.3" fill="white"/>
+  <circle cx="46.5" cy="59.5" r="0.5" fill="white" opacity="0.6"/>
+  <circle cx="70.5" cy="59.5" r="0.5" fill="white" opacity="0.6"/>
+  <path d="M44 54 L43 53 M48 53 L48 51.6 M52 54 L53 53" stroke="#1a0a05" stroke-width="0.7" stroke-linecap="round"/>
+  <path d="M68 54 L67 53 M72 53 L72 51.6 M76 54 L77 53" stroke="#1a0a05" stroke-width="0.7" stroke-linecap="round"/>
+  <path d="M58 66 Q57 72 60 74 Q63 72 62 66" stroke="#9c6a3c" stroke-width="1" fill="none" opacity="0.7"/>
+  <ellipse cx="58.5" cy="73.5" rx="0.6" ry="0.6" fill="#7a4f2a" opacity="0.4"/>
+  <ellipse cx="61.5" cy="73.5" rx="0.6" ry="0.6" fill="#7a4f2a" opacity="0.4"/>
+  <path d="M52 80 Q60 84 68 80 Q66 86 60 86 Q54 86 52 80 Z" fill="#7a3a2a"/>
+  <path d="M54 81 Q60 83 66 81" stroke="#fff" stroke-width="0.7" opacity="0.7"/>
+  <ellipse cx="60" cy="92" rx="6" ry="2" fill="#fde0c8" opacity="0.30"/>
 </svg>

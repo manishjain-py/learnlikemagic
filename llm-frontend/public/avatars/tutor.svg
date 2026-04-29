@@ -1,21 +1,51 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Mr. Verma">
   <defs>
-    <linearGradient id="tutorBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#1F2A60" />
-      <stop offset="100%" stop-color="#0E1442" />
+    <radialGradient id="tutorBg" cx="40%" cy="30%">
+      <stop offset="0%" stop-color="#fff5dc"/>
+      <stop offset="60%" stop-color="#e9c08a"/>
+      <stop offset="100%" stop-color="#a86a3e"/>
+    </radialGradient>
+    <linearGradient id="tutorShirt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b6a96"/>
+      <stop offset="100%" stop-color="#264a6e"/>
     </linearGradient>
   </defs>
-  <circle cx="60" cy="60" r="58" fill="url(#tutorBg)" />
-  <!-- shoulders -->
-  <path d="M16 110 Q60 78 104 110 L104 120 L16 120 Z" fill="#3F4E96" />
-  <!-- head -->
-  <circle cx="60" cy="52" r="22" fill="#E9C39A" />
-  <!-- hair -->
-  <path d="M40 44 Q60 22 80 44 Q70 32 60 32 Q50 32 40 44 Z" fill="#262626" />
-  <!-- glasses -->
-  <circle cx="52" cy="55" r="6" fill="none" stroke="#1F2A60" stroke-width="2" />
-  <circle cx="68" cy="55" r="6" fill="none" stroke="#1F2A60" stroke-width="2" />
-  <line x1="58" y1="55" x2="62" y2="55" stroke="#1F2A60" stroke-width="2" />
-  <!-- mouth -->
-  <path d="M52 66 Q60 70 68 66" stroke="#7A4F2F" stroke-width="2" fill="none" stroke-linecap="round" />
+  <rect width="120" height="120" fill="url(#tutorBg)"/>
+  <rect x="0" y="78" width="120" height="42" fill="#2F4A3C" opacity="0.30"/>
+  <path d="M-4 116 Q60 78 124 116 L124 124 L-4 124 Z" fill="url(#tutorShirt)"/>
+  <path d="M40 86 L60 100 L80 86 L74 96 L60 105 L46 96 Z" fill="#1c3a58"/>
+  <path d="M55 100 L65 100 L67 110 L53 110 Z" fill="#a83446"/>
+  <line x1="60" y1="103" x2="60" y2="108" stroke="#7a2536" stroke-width="0.5"/>
+  <ellipse cx="60" cy="84" rx="11" ry="9" fill="#b67e4a"/>
+  <path d="M52 86 Q60 90 68 86" stroke="#7a4f2a" stroke-width="0.6" fill="none" opacity="0.5"/>
+  <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q90 78 76 92 Q68 96 60 96 Q52 96 44 92 Q30 78 30 56 Z" fill="#d6a06a"/>
+  <ellipse cx="32" cy="60" rx="3" ry="6" fill="#c08956"/>
+  <ellipse cx="88" cy="60" rx="3" ry="6" fill="#c08956"/>
+  <ellipse cx="74" cy="68" rx="14" ry="18" fill="#8e552e" opacity="0.18"/>
+  <ellipse cx="46" cy="68" rx="10" ry="14" fill="#fde2c0" opacity="0.18"/>
+  <path d="M40 80 Q60 96 80 80 Q70 90 60 92 Q50 90 40 80 Z" fill="#9c6a3c" opacity="0.16"/>
+  <path d="M30 50 Q30 18 60 18 Q90 18 90 50 Q86 36 78 28 Q70 22 60 22 Q50 22 42 28 Q34 36 30 50 Z" fill="#3a3833"/>
+  <path d="M30 48 Q30 38 34 32 Q34 42 32 50 Z" fill="#a59f95"/>
+  <path d="M90 48 Q90 38 86 32 Q86 42 88 50 Z" fill="#a59f95"/>
+  <path d="M52 26 Q56 22 60 22 Q64 22 68 26" stroke="#26241f" stroke-width="1" fill="none"/>
+  <path d="M40 50 Q47 46 54 50" stroke="#26241f" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+  <path d="M66 50 Q73 46 80 50" stroke="#26241f" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+  <rect x="38" y="54" width="17" height="12" rx="5" fill="rgba(255,255,255,0.45)" stroke="#3c2a1e" stroke-width="1.6"/>
+  <rect x="65" y="54" width="17" height="12" rx="5" fill="rgba(255,255,255,0.45)" stroke="#3c2a1e" stroke-width="1.6"/>
+  <line x1="55" y1="60" x2="65" y2="60" stroke="#3c2a1e" stroke-width="1.6"/>
+  <ellipse cx="48" cy="60" rx="2.5" ry="2" fill="white"/>
+  <ellipse cx="74" cy="60" rx="2.5" ry="2" fill="white"/>
+  <circle cx="49" cy="60.6" r="1.6" fill="#1a140d"/>
+  <circle cx="75" cy="60.6" r="1.6" fill="#1a140d"/>
+  <circle cx="49.5" cy="60.2" r="0.6" fill="white"/>
+  <circle cx="75.5" cy="60.2" r="0.6" fill="white"/>
+  <path d="M84 60 L88 58 M84 64 L88 64" stroke="#7a4f2a" stroke-width="0.5" opacity="0.5"/>
+  <path d="M36 60 L32 58 M36 64 L32 64" stroke="#7a4f2a" stroke-width="0.5" opacity="0.5"/>
+  <path d="M58 65 Q57 72 60 75 Q63 72 62 65" stroke="#9c6a3c" stroke-width="1.1" fill="none" opacity="0.8"/>
+  <ellipse cx="58.5" cy="74" rx="0.8" ry="0.8" fill="#7a4f2a" opacity="0.4"/>
+  <ellipse cx="61.5" cy="74" rx="0.8" ry="0.8" fill="#7a4f2a" opacity="0.4"/>
+  <path d="M48 78 Q54 75 60 78 Q66 75 72 78 Q68 81 60 80 Q52 81 48 78 Z" fill="#3a3833"/>
+  <path d="M50 77 L52 75 M58 76 L60 74 M68 76 L70 75" stroke="#9a978f" stroke-width="0.6"/>
+  <path d="M52 84 Q60 88 68 84 L68 86 Q60 89 52 86 Z" fill="#3a1e10"/>
+  <path d="M54 85 Q60 86 66 85" stroke="#fff" stroke-width="0.8" opacity="0.65"/>
 </svg>

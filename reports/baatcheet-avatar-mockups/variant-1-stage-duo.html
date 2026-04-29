@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Variant 1 — Stage Duo · Baatcheet avatar mockups</title>
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* ============ Variant 1 specific ============ */
+  .stage-duo {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 0 14px;
+    position: relative;
+  }
+  .stage-duo .duo-avatar {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: rgba(244,244,239,0.05);
+    box-shadow: inset 0 0 0 1.5px rgba(244,244,239,0.18), 0 2px 6px rgba(0,0,0,0.30);
+    transition: all 320ms cubic-bezier(.4,.2,.2,1);
+    flex-shrink: 0;
+  }
+  .stage-duo .duo-avatar svg { width: 100%; height: 100%; display: block; }
+  /* inactive: smaller, desaturated */
+  .stage-duo .duo-avatar.inactive {
+    width: 38px; height: 38px;
+    filter: saturate(0.35) brightness(0.75);
+    opacity: 0.65;
+  }
+  /* active: larger, gold ring, gentle glow */
+  .stage-duo .duo-avatar.active {
+    width: 60px; height: 60px;
+    box-shadow:
+      inset 0 0 0 2px var(--chalk-gold),
+      0 0 0 3px rgba(244,199,108,0.30),
+      0 4px 14px rgba(0,0,0,0.4);
+  }
+  .stage-duo .duo-avatar.active::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid var(--chalk-gold);
+    opacity: 0;
+    animation: stage-pulse 1.6s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes stage-pulse {
+    0%   { transform: scale(0.95); opacity: 0.0; }
+    20%  { opacity: 0.55; }
+    100% { transform: scale(1.18); opacity: 0; }
+  }
+  /* mirror Meera so she "faces" Verma when she's on the right */
+  .stage-duo .duo-avatar[data-flip="true"] svg { transform: scaleX(-1); }
+
+  .stage-duo .duo-name {
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--chalk-gold);
+    white-space: nowrap;
+    background: rgba(0,0,0,0.20);
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  }
+  .stage-duo .duo-avatar[data-speaker="peer"].active + .duo-name,
+  .stage-duo .duo-avatar.active[data-speaker="peer"] .duo-name { color: #ffb6dd; }
+  .stage-duo .duo-name--peer { color: #ffb6dd; }
+
+  /* an etched divider connecting the two for "they're in dialogue" feel */
+  .stage-duo .duo-link {
+    width: 14px;
+    height: 1px;
+    background: rgba(244,244,239,0.18);
+    margin-bottom: 22px;
+  }
+
+  /* small cue showing direction of conversation */
+  .talking-cue {
+    position: absolute;
+    top: -2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--chalk-gold);
+    box-shadow: 0 0 6px rgba(244,199,108,0.6);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #2F4A3C;
+    font-size: 9px;
+    font-weight: 800;
+  }
+  .duo-avatar.active .talking-cue {
+    animation: talking-cue-bob 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes talking-cue-bob {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-2px); }
+  }
+
+  .star-row {
+    position: absolute;
+    top: 14px; right: 16px;
+    color: var(--chalk-white-faint);
+    font-size: 18px;
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-page-header">
+  <span class="variant-tag">Variant 1 of 6</span>
+  <h1>Stage Duo — both characters always on stage</h1>
+  <p class="lede">
+    Both Mr. Verma and Meera live at the top of every card. The speaker is full-color, slightly larger,
+    with a soft gold pulse; the listener is dimmed and shrunk. The two face each other so the layout
+    itself reads as "a teacher and student in conversation," not a chat thread.
+  </p>
+  <a class="back-link" href="index.html">← All variants</a>
+</div>
+
+<div class="frame-row">
+
+  <!-- =========================================================
+       FRAME A: Mr. Verma is speaking
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">A · Mr. Verma is speaking</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 8/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <!-- ===== Stage Duo avatar row ===== -->
+            <div class="stage-duo" aria-label="Mr. Verma is speaking, Meera is listening">
+
+              <!-- Verma (active, on left, faces right) -->
+              <div class="duo-avatar active" data-speaker="tutor" aria-label="Mr. Verma">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="v1tBg-a" cx="35%" cy="30%">
+                      <stop offset="0%" stop-color="#fbecca"/>
+                      <stop offset="100%" stop-color="#d9a45e"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="120" height="120" fill="url(#v1tBg-a)"/>
+                  <!-- shoulders / shirt -->
+                  <path d="M0 110 Q60 78 120 110 L120 120 L0 120 Z" fill="#3a6796"/>
+                  <!-- collar -->
+                  <path d="M44 88 L60 102 L76 88 L72 96 L60 106 L48 96 Z" fill="#2b4f74"/>
+                  <!-- tie -->
+                  <path d="M57 102 L63 102 L65 118 L55 118 Z" fill="#a83446"/>
+                  <!-- neck -->
+                  <ellipse cx="60" cy="86" rx="11" ry="9" fill="#c08956"/>
+                  <!-- head -->
+                  <ellipse cx="60" cy="56" rx="26" ry="30" fill="#d6a06a"/>
+                  <!-- shading on cheek (since facing right) -->
+                  <ellipse cx="78" cy="64" rx="10" ry="14" fill="#a86f3e" opacity="0.18"/>
+                  <!-- hair (dark with grey at temples) -->
+                  <path d="M34 52 Q34 22 60 22 Q86 22 86 52 Q84 36 78 28 Q70 22 60 22 Q50 22 42 28 Q36 36 34 52 Z" fill="#3a3833"/>
+                  <ellipse cx="36" cy="52" rx="3.5" ry="7" fill="#9a978f"/>
+                  <ellipse cx="84" cy="52" rx="3.5" ry="7" fill="#9a978f"/>
+                  <!-- eyebrows -->
+                  <path d="M44 51 Q49 48 54 51" stroke="#2c2620" stroke-width="2" stroke-linecap="round" fill="none"/>
+                  <path d="M66 51 Q71 48 76 51" stroke="#2c2620" stroke-width="2" stroke-linecap="round" fill="none"/>
+                  <!-- glasses (rounded rect, warm tortoise) -->
+                  <rect x="40" y="55" width="15" height="11" rx="4" fill="rgba(255,255,255,0.55)" stroke="#46342a" stroke-width="1.6"/>
+                  <rect x="65" y="55" width="15" height="11" rx="4" fill="rgba(255,255,255,0.55)" stroke="#46342a" stroke-width="1.6"/>
+                  <line x1="55" y1="60" x2="65" y2="60" stroke="#46342a" stroke-width="1.6"/>
+                  <!-- eyes -->
+                  <circle cx="47" cy="61" r="1.8" fill="#1a140d"/>
+                  <circle cx="72" cy="61" r="1.8" fill="#1a140d"/>
+                  <!-- nose -->
+                  <path d="M58 65 Q57 72 60 74 Q63 72 62 65" stroke="#9a6539" stroke-width="1" fill="none" opacity="0.7"/>
+                  <!-- mustache -->
+                  <path d="M48 78 Q55 75 60 78 Q65 75 72 78 Q66 81 60 80 Q54 81 48 78 Z" fill="#46342a"/>
+                  <!-- mouth (open as if talking) -->
+                  <ellipse cx="60" cy="84" rx="4" ry="2.2" fill="#5b2a1a"/>
+                  <path d="M56 84 Q60 87 64 84" stroke="#3a1a0e" stroke-width="0.8" fill="none"/>
+                </svg>
+                <span class="talking-cue">▶</span>
+              </div>
+
+              <span class="duo-link"></span>
+
+              <!-- Meera (inactive, on right, faces left via mirror) -->
+              <div class="duo-avatar inactive" data-speaker="peer" data-flip="true" aria-label="Meera (listening)">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="v1pBg-a" cx="35%" cy="30%">
+                      <stop offset="0%" stop-color="#fbe1e8"/>
+                      <stop offset="100%" stop-color="#d77ba1"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="120" height="120" fill="url(#v1pBg-a)"/>
+                  <!-- shoulders / school uniform shirt (light cream) -->
+                  <path d="M0 110 Q60 80 120 110 L120 120 L0 120 Z" fill="#f3e7c8"/>
+                  <!-- collar (V) -->
+                  <path d="M48 90 L60 102 L72 90 L66 98 L60 105 L54 98 Z" fill="#d4c89c"/>
+                  <!-- ribbon at collar -->
+                  <path d="M55 96 L65 96 L62 102 L58 102 Z" fill="#c93f5a"/>
+                  <!-- neck -->
+                  <ellipse cx="60" cy="88" rx="10" ry="8" fill="#c89968"/>
+                  <!-- head -->
+                  <ellipse cx="60" cy="58" rx="25" ry="29" fill="#dba877"/>
+                  <!-- hair top -->
+                  <path d="M34 56 Q32 26 60 22 Q88 26 86 56 Q84 38 76 30 Q66 24 60 24 Q54 24 44 30 Q36 38 34 56 Z" fill="#1a1010"/>
+                  <!-- braids hanging down -->
+                  <path d="M34 50 Q28 70 30 92 L40 92 Q42 70 40 50 Z" fill="#1a1010"/>
+                  <path d="M86 50 Q92 70 90 92 L80 92 Q78 70 80 50 Z" fill="#1a1010"/>
+                  <!-- ribbons on braids -->
+                  <ellipse cx="35" cy="92" rx="6" ry="2.5" fill="#c93f5a"/>
+                  <ellipse cx="85" cy="92" rx="6" ry="2.5" fill="#c93f5a"/>
+                  <!-- bindi -->
+                  <circle cx="60" cy="44" r="1.8" fill="#c93f5a"/>
+                  <!-- eyebrows -->
+                  <path d="M44 53 Q49 51 54 53" stroke="#2a1a14" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                  <path d="M66 53 Q71 51 76 53" stroke="#2a1a14" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                  <!-- big bright eyes -->
+                  <ellipse cx="49" cy="60" rx="3" ry="3.5" fill="white"/>
+                  <ellipse cx="71" cy="60" rx="3" ry="3.5" fill="white"/>
+                  <circle cx="49" cy="61" r="2.2" fill="#1a1010"/>
+                  <circle cx="71" cy="61" r="2.2" fill="#1a1010"/>
+                  <circle cx="50" cy="60" r="0.8" fill="white"/>
+                  <circle cx="72" cy="60" r="0.8" fill="white"/>
+                  <!-- nose hint -->
+                  <path d="M58 67 Q57 71 60 73 Q63 71 62 67" stroke="#a87044" stroke-width="0.9" fill="none" opacity="0.5"/>
+                  <!-- soft smile -->
+                  <path d="M52 79 Q60 83 68 79" stroke="#7a4226" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+            </div>
+            <div style="text-align:center; margin: -2px 0 6px;">
+              <span class="speaker-name">Mr. Verma</span>
+            </div>
+
+            <!-- ===== visual aid card ===== -->
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <!-- billboard panel -->
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <!-- posts -->
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <!-- ground -->
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <!-- dashed road line -->
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <!-- ===== dialogue text ===== -->
+            <p class="dialogue">
+              Now picture this.<br />
+              You see <strong>47,352</strong> on a billboard.<br />
+              How would you read it out loud?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       FRAME B: Meera is speaking
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">B · Meera is speaking (next card)</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 9/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <div class="stage-duo" aria-label="Meera is speaking, Mr. Verma is listening">
+
+              <!-- Verma now inactive on left, still faces right toward Meera -->
+              <div class="duo-avatar inactive" data-speaker="tutor" aria-label="Mr. Verma (listening)">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="v1tBg-b" cx="35%" cy="30%">
+                      <stop offset="0%" stop-color="#fbecca"/>
+                      <stop offset="100%" stop-color="#d9a45e"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="120" height="120" fill="url(#v1tBg-b)"/>
+                  <path d="M0 110 Q60 78 120 110 L120 120 L0 120 Z" fill="#3a6796"/>
+                  <path d="M44 88 L60 102 L76 88 L72 96 L60 106 L48 96 Z" fill="#2b4f74"/>
+                  <path d="M57 102 L63 102 L65 118 L55 118 Z" fill="#a83446"/>
+                  <ellipse cx="60" cy="86" rx="11" ry="9" fill="#c08956"/>
+                  <ellipse cx="60" cy="56" rx="26" ry="30" fill="#d6a06a"/>
+                  <ellipse cx="78" cy="64" rx="10" ry="14" fill="#a86f3e" opacity="0.18"/>
+                  <path d="M34 52 Q34 22 60 22 Q86 22 86 52 Q84 36 78 28 Q70 22 60 22 Q50 22 42 28 Q36 36 34 52 Z" fill="#3a3833"/>
+                  <ellipse cx="36" cy="52" rx="3.5" ry="7" fill="#9a978f"/>
+                  <ellipse cx="84" cy="52" rx="3.5" ry="7" fill="#9a978f"/>
+                  <path d="M44 51 Q49 48 54 51" stroke="#2c2620" stroke-width="2" stroke-linecap="round" fill="none"/>
+                  <path d="M66 51 Q71 48 76 51" stroke="#2c2620" stroke-width="2" stroke-linecap="round" fill="none"/>
+                  <rect x="40" y="55" width="15" height="11" rx="4" fill="rgba(255,255,255,0.55)" stroke="#46342a" stroke-width="1.6"/>
+                  <rect x="65" y="55" width="15" height="11" rx="4" fill="rgba(255,255,255,0.55)" stroke="#46342a" stroke-width="1.6"/>
+                  <line x1="55" y1="60" x2="65" y2="60" stroke="#46342a" stroke-width="1.6"/>
+                  <circle cx="47" cy="61" r="1.8" fill="#1a140d"/>
+                  <circle cx="72" cy="61" r="1.8" fill="#1a140d"/>
+                  <path d="M48 78 Q55 75 60 78 Q65 75 72 78 Q66 81 60 80 Q54 81 48 78 Z" fill="#46342a"/>
+                  <!-- closed/listening mouth -->
+                  <path d="M52 84 Q60 86 68 84" stroke="#5b2a1a" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+
+              <span class="duo-link"></span>
+
+              <!-- Meera now active on right, still faces left -->
+              <div class="duo-avatar active" data-speaker="peer" data-flip="true" aria-label="Meera">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="v1pBg-b" cx="35%" cy="30%">
+                      <stop offset="0%" stop-color="#fbe1e8"/>
+                      <stop offset="100%" stop-color="#d77ba1"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="120" height="120" fill="url(#v1pBg-b)"/>
+                  <path d="M0 110 Q60 80 120 110 L120 120 L0 120 Z" fill="#f3e7c8"/>
+                  <path d="M48 90 L60 102 L72 90 L66 98 L60 105 L54 98 Z" fill="#d4c89c"/>
+                  <path d="M55 96 L65 96 L62 102 L58 102 Z" fill="#c93f5a"/>
+                  <ellipse cx="60" cy="88" rx="10" ry="8" fill="#c89968"/>
+                  <ellipse cx="60" cy="58" rx="25" ry="29" fill="#dba877"/>
+                  <path d="M34 56 Q32 26 60 22 Q88 26 86 56 Q84 38 76 30 Q66 24 60 24 Q54 24 44 30 Q36 38 34 56 Z" fill="#1a1010"/>
+                  <path d="M34 50 Q28 70 30 92 L40 92 Q42 70 40 50 Z" fill="#1a1010"/>
+                  <path d="M86 50 Q92 70 90 92 L80 92 Q78 70 80 50 Z" fill="#1a1010"/>
+                  <ellipse cx="35" cy="92" rx="6" ry="2.5" fill="#c93f5a"/>
+                  <ellipse cx="85" cy="92" rx="6" ry="2.5" fill="#c93f5a"/>
+                  <circle cx="60" cy="44" r="1.8" fill="#c93f5a"/>
+                  <path d="M44 53 Q49 51 54 53" stroke="#2a1a14" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                  <path d="M66 53 Q71 51 76 53" stroke="#2a1a14" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                  <ellipse cx="49" cy="60" rx="3" ry="3.5" fill="white"/>
+                  <ellipse cx="71" cy="60" rx="3" ry="3.5" fill="white"/>
+                  <circle cx="49" cy="61" r="2.2" fill="#1a1010"/>
+                  <circle cx="71" cy="61" r="2.2" fill="#1a1010"/>
+                  <circle cx="50" cy="60" r="0.8" fill="white"/>
+                  <circle cx="72" cy="60" r="0.8" fill="white"/>
+                  <!-- talking mouth -->
+                  <ellipse cx="60" cy="80" rx="4" ry="2" fill="#5b2a1a"/>
+                </svg>
+                <span class="talking-cue">▶</span>
+              </div>
+            </div>
+            <div style="text-align:center; margin: -2px 0 6px;">
+              <span class="speaker-name speaker-name--peer">Meera</span>
+            </div>
+
+            <!-- visual aid card stays the same so context is preserved -->
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Hmm… is it<br />
+              <strong>forty-seven thousand three<br />hundred fifty-two</strong>?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ Design rationale ============ -->
+<div class="notes">
+  <h2>Why this works (and what it costs)</h2>
+  <p>
+    The current chip is a single 44px circle that hides the listener. Cognitively, students see
+    "one face talking" instead of "two people in conversation." Stage Duo restores the relationship
+    by always rendering both — and uses size, color saturation, and a soft pulse to make the
+    speaker unmistakable without visual noise.
+  </p>
+
+  <h3>Key moves</h3>
+  <ul>
+    <li><strong>Both avatars persistent.</strong> Verma always on the left, Meera always on the right — positions never swap, so the eye always knows where to look.</li>
+    <li><strong>Active is bigger + saturated.</strong> 60px gold-ringed for active, 38px desaturated/dimmed for listener. Color and size carry the same message redundantly.</li>
+    <li><strong>They face each other.</strong> Meera is mirrored so her gaze runs toward Verma. Two profiles in conversation feels alive; two front-facing portraits feels like a yearbook.</li>
+    <li><strong>Single name label, gold pulse.</strong> Only the active speaker's name appears below the row, anchored to keep the header height stable.</li>
+    <li><strong>Tiny "▶" cue on the speaker.</strong> Reinforces talking state for the audio-off case where there's no pulse animation distinction.</li>
+  </ul>
+
+  <div class="pros-cons">
+    <div class="col pros">
+      <h3>Pros</h3>
+      <ul>
+        <li>Strongest "real conversation" feel of any variant — eyes track between two characters.</li>
+        <li>Stable header height; only saturation + scale animate.</li>
+        <li>Avatar style (chunky illustrated, Indian-coded features) reads warmly even at 38px.</li>
+        <li>Works for accessibility — color, size, and label all communicate "active speaker."</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h3>Cons</h3>
+      <ul>
+        <li>Eats ~80px of vertical real estate vs. 44px for a single chip.</li>
+        <li>Two avatars on screen drag attention slightly away from the visual aid card.</li>
+        <li>Scaling animation may feel busy after dozens of cards — could mute to opacity-only on a setting.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

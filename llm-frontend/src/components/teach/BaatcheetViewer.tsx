@@ -90,8 +90,10 @@ function materializeText(text: string, p: Personalization): string {
 }
 
 function cardTypeBadge(cardType: DialogueCard['card_type']): string | null {
+  // Dialogue intentionally has no badge — the spotlight strip already names
+  // the speaker, so a "DIALOGUE" tag is redundant. Visual / check-in / summary
+  // keep their badges because those signal a shift in interaction shape.
   switch (cardType) {
-    case 'dialogue': return 'DIALOGUE';
     case 'visual': return 'VISUAL';
     case 'check_in': return 'CHECK-IN';
     case 'summary': return 'SUMMARY';
@@ -514,13 +516,11 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
                       <span className="explanation-card-type">{cardBadge}</span>
                     )}
                     {card.speaker && speakerName && (
-                      <div className="baatcheet-speaker-chip" data-speaker={card.speaker}>
-                        <SpeakerAvatar
-                          speaker={card.speaker}
-                          speaking={isActive && speaking}
-                        />
-                        <span className="baatcheet-speaker-chip__name">{speakerName}</span>
-                      </div>
+                      <SpeakerAvatar
+                        speaker={card.speaker}
+                        speakerName={speakerName}
+                        speaking={isActive && speaking}
+                      />
                     )}
                   </div>
                 )}

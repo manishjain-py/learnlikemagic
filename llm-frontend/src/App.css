@@ -8631,15 +8631,15 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   padding: var(--sp-6);
 }
 
-/* Header row: card-type badge on the left, speaker chip on the right */
+/* Header column: card-type badge above (when present), spotlight strip below.
+   Dialogue cards have no badge — the spotlight names the speaker. */
 .baatcheet-card-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
   max-width: 600px;
-  margin: 0 auto;
+  margin: 0 auto var(--sp-3);
   width: 100%;
 }
 
@@ -8655,21 +8655,6 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   content: '•';
   color: var(--chalk-gold);
   margin-right: 6px;
-}
-
-/* Speaker chip — small inline avatar + name */
-.baatcheet-speaker-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-.baatcheet-speaker-chip__name {
-  font-family: var(--font-body);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--chalk-gold);
-  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
 /* Body — prose flows directly on the board, no bubble */
@@ -8731,65 +8716,159 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 
 
-/* ── Speaker avatar — small inline chip variant ────────────────────────── */
-/* Used only in BaatcheetViewer; sits inline with the speaker name in the
-   .baatcheet-card-head row. */
+/* ── Speaker spotlight — large presenter strip in BaatcheetViewer ──────── */
+/* Replaces the old 44px chip. Spec: variant-2-spotlight.html mockup.
+   Idle: subtle white inset ring, drop shadow only.
+   Speaking: gold inset ring + gold halo + glow pulse + animated equalizer. */
 
-.speaker-avatar {
+.speaker-spotlight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(244, 244, 239, 0.04), rgba(0, 0, 0, 0.18));
+  border: 1px solid rgba(244, 244, 239, 0.10);
   position: relative;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(244, 244, 239, 0.06);
-  box-shadow:
-    inset 0 0 0 1.5px rgba(244, 244, 239, 0.25),
-    0 2px 6px rgba(0, 0, 0, 0.3);
-  flex-shrink: 0;
-  /* No overflow:hidden — the pulse ring sits at inset:-4px and animates to
-     scale(1.16); clipping it here would hide the speaking indicator. */
-  animation: speaker-avatar-fade-in 320ms ease-out;
+  overflow: hidden;
+  animation: speaker-spotlight-fade-in 220ms ease-out;
 }
-.speaker-avatar img {
+.speaker-spotlight::before {
+  content: '';
+  position: absolute;
+  inset: -50% -10% auto auto;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle at center, rgba(244, 199, 108, 0.10), transparent 60%);
+  pointer-events: none;
+}
+
+.speaker-spotlight__portrait {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 18px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(244, 244, 239, 0.18),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: box-shadow 220ms ease-out;
+}
+.speaker-spotlight__portrait img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
-  border-radius: 50%;
+  object-fit: cover;
   user-select: none;
   pointer-events: none;
 }
-
-.speaker-avatar--speaking {
-  box-shadow:
-    inset 0 0 0 2px var(--chalk-gold),
-    0 0 0 3px rgba(244, 199, 108, 0.35),
-    0 2px 8px rgba(0, 0, 0, 0.35);
-}
-
-.speaker-avatar__pulse {
+.speaker-spotlight__portrait::after {
+  content: '';
   position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid var(--chalk-gold);
-  opacity: 0.55;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, 0.30));
   pointer-events: none;
-  animation: speaker-avatar-pulse 1.6s ease-out infinite;
 }
 
-@keyframes speaker-avatar-fade-in {
-  from { opacity: 0; transform: scale(0.94); }
-  to   { opacity: 1; transform: scale(1); }
+.speaker-spotlight--speaking .speaker-spotlight__portrait {
+  animation: speaker-spotlight-glow 1.8s ease-in-out infinite;
 }
 
-@keyframes speaker-avatar-pulse {
-  0%   { transform: scale(1);    opacity: 0.55; }
-  70%  { transform: scale(1.16); opacity: 0;    }
-  100% { transform: scale(1.16); opacity: 0;    }
+.speaker-spotlight__meta {
+  flex: 1;
+  min-width: 0;
+}
+.speaker-spotlight__name {
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--chalk-gold);
+  margin: 0 0 2px;
+  line-height: 1.2;
+  text-shadow: 0 0 1px rgba(244, 199, 108, 0.4), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+.speaker-spotlight__name--peer {
+  color: #ffb6dd;
+  text-shadow: 0 0 1px rgba(255, 182, 221, 0.4), 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+.speaker-spotlight__role {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(244, 244, 239, 0.55);
+  margin: 0 0 8px;
+}
+
+.speaker-spotlight__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  background: rgba(244, 199, 108, 0.16);
+  border: 1px solid rgba(244, 199, 108, 0.40);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--chalk-gold);
+  font-family: var(--font-body);
+}
+.speaker-spotlight__bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5px;
+  height: 12px;
+}
+.speaker-spotlight__bars span {
+  width: 2px;
+  background: var(--chalk-gold);
+  border-radius: 1px;
+  animation: speaker-spotlight-bar 0.9s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.speaker-spotlight__bars span:nth-child(1) { height: 5px;  animation-delay: 0s;    }
+.speaker-spotlight__bars span:nth-child(2) { height: 9px;  animation-delay: 0.15s; }
+.speaker-spotlight__bars span:nth-child(3) { height: 12px; animation-delay: 0.30s; }
+.speaker-spotlight__bars span:nth-child(4) { height: 7px;  animation-delay: 0.45s; }
+
+@keyframes speaker-spotlight-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes speaker-spotlight-bar {
+  0%, 100% { transform: scaleY(0.4); }
+  50%      { transform: scaleY(1.0); }
+}
+@keyframes speaker-spotlight-glow {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 2px rgba(244, 199, 108, 0.55),
+      0 0 0 3px rgba(244, 199, 108, 0.20),
+      0 4px 14px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 2px rgba(244, 199, 108, 0.75),
+      0 0 0 4px rgba(244, 199, 108, 0.32),
+      0 4px 14px rgba(0, 0, 0, 0.4);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .speaker-avatar { animation: none; }
-  .speaker-avatar__pulse { animation: none; opacity: 0.4; }
+  .speaker-spotlight { animation: none; }
+  .speaker-spotlight--speaking .speaker-spotlight__portrait {
+    animation: none;
+    box-shadow:
+      inset 0 0 0 2px rgba(244, 199, 108, 0.55),
+      0 0 0 3px rgba(244, 199, 108, 0.20),
+      0 4px 14px rgba(0, 0, 0, 0.4);
+  }
+  .speaker-spotlight__bars span { animation: none; transform: scaleY(0.7); }
 }
 
 
@@ -8809,8 +8888,16 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   .baatcheet-viewer__line-text {
     font-size: var(--fs-md);
   }
-  .speaker-avatar {
-    width: 40px;
-    height: 40px;
+  .speaker-spotlight {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .speaker-spotlight__portrait {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+  }
+  .speaker-spotlight__name {
+    font-size: 16px;
   }
 }

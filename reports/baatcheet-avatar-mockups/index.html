@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Baatcheet avatar mockups — index</title>
+<link rel="stylesheet" href="shared.css" />
+<style>
+  body { padding-top: 48px; }
+
+  .hero {
+    max-width: 880px;
+    margin: 0 auto 36px;
+    padding: 0 8px;
+    text-align: center;
+  }
+  .hero h1 {
+    font-family: var(--font-body);
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+  }
+  .hero h1 .accent { color: var(--chalk-gold); }
+  .hero p {
+    font-family: var(--font-reading);
+    font-size: 15px;
+    line-height: 1.65;
+    color: rgba(244,244,239,0.72);
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .brief {
+    max-width: 880px;
+    margin: 0 auto 40px;
+    padding: 18px 22px;
+    background: rgba(244,199,108,0.06);
+    border: 1px solid rgba(244,199,108,0.20);
+    border-radius: 14px;
+  }
+  .brief h2 {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--chalk-gold);
+    margin: 0 0 8px;
+  }
+  .brief p {
+    font-family: var(--font-reading);
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(244,244,239,0.85);
+    margin: 0 0 6px;
+  }
+  .brief p:last-child { margin-bottom: 0; }
+
+  /* matrix */
+  .matrix {
+    max-width: 1080px;
+    margin: 0 auto 44px;
+    overflow-x: auto;
+  }
+  .matrix table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-body);
+    font-size: 13px;
+  }
+  .matrix th, .matrix td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(244,244,239,0.10);
+  }
+  .matrix th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(244,244,239,0.55);
+    font-weight: 700;
+    border-bottom: 1px solid rgba(244,244,239,0.20);
+    background: rgba(0,0,0,0.18);
+  }
+  .matrix td.variant-cell {
+    font-weight: 700;
+    color: var(--chalk-gold);
+    white-space: nowrap;
+  }
+  .matrix td .num {
+    display: inline-block;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(244,199,108,0.18);
+    color: var(--chalk-gold);
+    text-align: center;
+    line-height: 22px;
+    font-size: 11px;
+    margin-right: 8px;
+  }
+  .badge-cost {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .badge-cost.low { background: rgba(139, 224, 160, 0.18); color: #8be0a0; }
+  .badge-cost.med { background: rgba(244, 199, 108, 0.18); color: #f4c76c; }
+  .badge-cost.high { background: rgba(241, 168, 168, 0.18); color: #f1a8a8; }
+
+  /* preview grid */
+  .preview-grid {
+    max-width: 1180px;
+    margin: 0 auto 48px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 22px;
+    padding: 0 8px;
+  }
+  .preview-card {
+    background: rgba(244,244,239,0.04);
+    border: 1px solid rgba(244,244,239,0.10);
+    border-radius: 16px;
+    padding: 20px 20px 18px;
+    transition: transform 250ms, border-color 250ms, background 250ms;
+  }
+  .preview-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(244,199,108,0.35);
+    background: rgba(244,244,239,0.06);
+  }
+  .preview-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .preview-num {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(244,244,239,0.45);
+    letter-spacing: 0.08em;
+  }
+  .preview-title {
+    font-family: var(--font-body);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--chalk-white);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .preview-tagline {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--chalk-gold);
+    margin: 0 0 14px;
+  }
+  .preview-desc {
+    font-family: var(--font-reading);
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(244,244,239,0.72);
+    margin: 0 0 16px;
+  }
+  .preview-avatars {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 8px 0 14px;
+    height: 84px;
+    padding: 6px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(244,244,239,0.04), transparent 70%),
+      linear-gradient(180deg, var(--board-green), var(--board-green-deep));
+    border-radius: 10px;
+    border: 1px solid rgba(244,244,239,0.08);
+  }
+  .preview-avatars .a {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1.5px rgba(244,244,239,0.20), 0 1px 4px rgba(0,0,0,0.30);
+  }
+  .preview-avatars .a svg { width: 100%; height: 100%; }
+  .preview-avatars .a.square { border-radius: 12px; }
+  .preview-avatars .a.polaroid {
+    border-radius: 1px;
+    background: #faf6ec;
+    padding: 3px 3px 12px;
+    width: 60px; height: 70px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    transform: rotate(-3deg);
+  }
+  .preview-avatars .a.polaroid svg { border-radius: 1px; }
+  .preview-avatars .a.scene {
+    width: 100%; height: 70px;
+    border-radius: 8px;
+  }
+
+  .preview-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    color: var(--chalk-gold);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(244,199,108,0.12);
+    border: 1px solid rgba(244,199,108,0.30);
+    transition: background 200ms, transform 200ms;
+  }
+  .preview-link:hover {
+    background: rgba(244,199,108,0.22);
+    transform: translateX(2px);
+  }
+  .preview-link::after { content: '→'; }
+
+  /* footer */
+  .how-to-choose {
+    max-width: 880px;
+    margin: 32px auto 0;
+    padding: 22px 26px;
+    background: rgba(0,0,0,0.20);
+    border: 1px solid rgba(244,244,239,0.10);
+    border-radius: 14px;
+  }
+  .how-to-choose h2 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 14px;
+    color: var(--chalk-white);
+  }
+  .how-to-choose ul {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+  .how-to-choose li {
+    font-family: var(--font-reading);
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(244,244,239,0.78);
+    padding-left: 22px;
+    position: relative;
+  }
+  .how-to-choose li::before {
+    content: '◆';
+    position: absolute;
+    left: 0;
+    color: var(--chalk-gold);
+    font-size: 10px;
+    top: 4px;
+  }
+  .how-to-choose strong { color: var(--chalk-gold); }
+
+  .baseline-callout {
+    max-width: 880px;
+    margin: 28px auto 0;
+    padding: 18px 22px;
+    background: rgba(244,244,239,0.04);
+    border-left: 3px solid var(--chalk-gold);
+    border-radius: 6px;
+  }
+  .baseline-callout h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--chalk-gold);
+    margin: 0 0 6px;
+  }
+  .baseline-callout p {
+    font-family: var(--font-reading);
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(244,244,239,0.72);
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Mr. Verma & Meera <span class="accent">— how should they look?</span></h1>
+  <p>
+    Six different treatments for the dialogue avatars in Baatcheet, paired with the layouts they
+    enable. Each is rendered on a real iPhone-sized phone frame using the same dialogue moment so
+    you can compare apples to apples. Open any variant for two side-by-side states (Mr. Verma
+    speaking → Meera speaking) plus pros/cons.
+  </p>
+</div>
+
+<div class="brief">
+  <h2>The brief, in one paragraph</h2>
+  <p>
+    Today's avatars are 44px chalk-on-circle SVGs. They identify the speaker but feel like
+    placeholders, not people. Goal: make Verma and Meera read as a real teacher and a real
+    student — within tight phone real estate, on top of the chalkboard aesthetic, without
+    crowding out the visual aid that does most of the pedagogical work.
+  </p>
+</div>
+
+<!-- ============ Comparison matrix ============ -->
+<div class="matrix">
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 24%;">Variant</th>
+        <th style="width: 18%;">Avatar style</th>
+        <th style="width: 18%;">Layout strategy</th>
+        <th style="width: 14%;">Vertical cost</th>
+        <th style="width: 12%;">Build effort</th>
+        <th>Best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="variant-cell"><span class="num">1</span> Stage Duo</td>
+        <td>Chunky illustrated</td>
+        <td>Both visible, active highlighted</td>
+        <td>~80px</td>
+        <td><span class="badge-cost low">low</span></td>
+        <td>Restoring relational dynamic at minimal cost</td>
+      </tr>
+      <tr>
+        <td class="variant-cell"><span class="num">2</span> Spotlight</td>
+        <td>Semi-realistic 3/4 portrait</td>
+        <td>Active only, big presenter strip</td>
+        <td>~120px</td>
+        <td><span class="badge-cost med">med</span></td>
+        <td>Maximum facial-expression read; "video call" feel</td>
+      </tr>
+      <tr>
+        <td class="variant-cell"><span class="num">3</span> Chat Bubbles</td>
+        <td>Minimal flat (32-36px)</td>
+        <td>WhatsApp metaphor, side-aligned</td>
+        <td>~0 (inline)</td>
+        <td><span class="badge-cost low">low</span></td>
+        <td>Familiarity, space efficiency, casual tone</td>
+      </tr>
+      <tr>
+        <td class="variant-cell"><span class="num">4</span> Polaroid Pinned</td>
+        <td>Photographic SVG (with bokeh, shading)</td>
+        <td>Both as polaroids, active prominent</td>
+        <td>~150px</td>
+        <td><span class="badge-cost high">high</span></td>
+        <td>Strongest "real classroom" cue; brand differentiation</td>
+      </tr>
+      <tr>
+        <td class="variant-cell"><span class="num">5</span> Classroom Scene</td>
+        <td>Storybook illustrated</td>
+        <td>Both inside an illustrated set</td>
+        <td>~150px</td>
+        <td><span class="badge-cost high">high</span></td>
+        <td>Narrative immersion; body-language signaling</td>
+      </tr>
+      <tr>
+        <td class="variant-cell"><span class="num">6</span> Chalk Portraits</td>
+        <td>Hand-drawn chalk line art</td>
+        <td>Drawn on the board, listener half-erased</td>
+        <td>~110px</td>
+        <td><span class="badge-cost low">low</span></td>
+        <td>Theme-native cohesion; cheapest to iterate</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="baseline-callout">
+  <h3>Today's baseline (for comparison)</h3>
+  <p>
+    Single 44px circle, chalk-gold ring when the speaker's audio plays. Chip in the top-left of
+    each card with the speaker's name beside it. The listener is invisible.
+  </p>
+</div>
+
+<!-- ============ Preview grid ============ -->
+<div class="preview-grid">
+
+  <!-- ===== V1 ===== -->
+  <a href="variant-1-stage-duo.html" class="preview-card" style="text-decoration: none; color: inherit; display: block;">
+    <div class="preview-head">
+      <span class="preview-num">VARIANT 01</span>
+    </div>
+    <p class="preview-tagline">CHUNKY ILLUSTRATED · BOTH ON STAGE</p>
+    <h3 class="preview-title">Stage Duo</h3>
+    <p class="preview-desc">
+      Both avatars persistent at the top. Active is bigger + saturated + gold-ringed; listener
+      is smaller + dimmed. They face each other so the layout reads as a conversation.
+    </p>
+    <div class="preview-avatars">
+      <span class="a" style="width: 64px; height: 64px;">
+        <svg viewBox="0 0 120 120">
+          <radialGradient id="ix1tBg" cx="35%" cy="30%"><stop offset="0%" stop-color="#fbecca"/><stop offset="100%" stop-color="#d9a45e"/></radialGradient>
+          <rect width="120" height="120" fill="url(#ix1tBg)"/>
+          <path d="M0 110 Q60 78 120 110 L120 120 L0 120 Z" fill="#3a6796"/>
+          <path d="M44 88 L60 102 L76 88 L72 96 L60 106 L48 96 Z" fill="#2b4f74"/>
+          <path d="M57 102 L63 102 L65 118 L55 118 Z" fill="#a83446"/>
+          <ellipse cx="60" cy="56" rx="26" ry="30" fill="#d6a06a"/>
+          <path d="M34 52 Q34 22 60 22 Q86 22 86 52 Q84 36 78 28 Q70 22 60 22 Q50 22 42 28 Q36 36 34 52 Z" fill="#3a3833"/>
+          <ellipse cx="36" cy="52" rx="3.5" ry="7" fill="#9a978f"/>
+          <ellipse cx="84" cy="52" rx="3.5" ry="7" fill="#9a978f"/>
+          <rect x="40" y="55" width="15" height="11" rx="4" fill="rgba(255,255,255,0.55)" stroke="#46342a" stroke-width="1.6"/>
+          <rect x="65" y="55" width="15" height="11" rx="4" fill="rgba(255,255,255,0.55)" stroke="#46342a" stroke-width="1.6"/>
+          <line x1="55" y1="60" x2="65" y2="60" stroke="#46342a" stroke-width="1.6"/>
+          <circle cx="47" cy="61" r="1.8" fill="#1a140d"/>
+          <circle cx="72" cy="61" r="1.8" fill="#1a140d"/>
+          <path d="M48 78 Q55 75 60 78 Q65 75 72 78 Q66 81 60 80 Q54 81 48 78 Z" fill="#46342a"/>
+          <ellipse cx="60" cy="84" rx="4" ry="2.2" fill="#5b2a1a"/>
+        </svg>
+      </span>
+      <span class="a" style="width: 44px; height: 44px; opacity: 0.55; filter: saturate(0.4);">
+        <svg viewBox="0 0 120 120">
+          <radialGradient id="ix1pBg" cx="35%" cy="30%"><stop offset="0%" stop-color="#fbe1e8"/><stop offset="100%" stop-color="#d77ba1"/></radialGradient>
+          <rect width="120" height="120" fill="url(#ix1pBg)"/>
+          <path d="M0 110 Q60 80 120 110 L120 120 L0 120 Z" fill="#f3e7c8"/>
+          <path d="M48 90 L60 102 L72 90 L66 98 L60 105 L54 98 Z" fill="#d4c89c"/>
+          <path d="M55 96 L65 96 L62 102 L58 102 Z" fill="#c93f5a"/>
+          <ellipse cx="60" cy="58" rx="25" ry="29" fill="#dba877"/>
+          <path d="M34 56 Q32 26 60 22 Q88 26 86 56 Q84 38 76 30 Q66 24 60 24 Q54 24 44 30 Q36 38 34 56 Z" fill="#1a1010"/>
+          <path d="M34 50 Q28 70 30 92 L40 92 Q42 70 40 50 Z" fill="#1a1010"/>
+          <path d="M86 50 Q92 70 90 92 L80 92 Q78 70 80 50 Z" fill="#1a1010"/>
+          <circle cx="60" cy="44" r="1.8" fill="#c93f5a"/>
+          <ellipse cx="49" cy="60" rx="3" ry="3.5" fill="white"/>
+          <ellipse cx="71" cy="60" rx="3" ry="3.5" fill="white"/>
+          <circle cx="49" cy="61" r="2.2" fill="#1a1010"/>
+          <circle cx="71" cy="61" r="2.2" fill="#1a1010"/>
+          <path d="M52 79 Q60 83 68 79" stroke="#7a4226" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+        </svg>
+      </span>
+    </div>
+    <span class="preview-link">Open full mockup</span>
+  </a>
+
+  <!-- ===== V2 ===== -->
+  <a href="variant-2-spotlight.html" class="preview-card" style="text-decoration: none; color: inherit; display: block;">
+    <div class="preview-head">
+      <span class="preview-num">VARIANT 02</span>
+    </div>
+    <p class="preview-tagline">SEMI-REALISTIC · BIG SHOULDER PORTRAIT</p>
+    <h3 class="preview-title">Spotlight</h3>
+    <p class="preview-desc">
+      Only the active speaker shows, but rendered at 92px square with detailed shading and
+      laughter lines. Like a video-call thumbnail of your tutor.
+    </p>
+    <div class="preview-avatars">
+      <span class="a square" style="width: 76px; height: 76px;">
+        <svg viewBox="0 0 120 120">
+          <radialGradient id="ix2tBg" cx="40%" cy="30%"><stop offset="0%" stop-color="#fff5dc"/><stop offset="60%" stop-color="#e9c08a"/><stop offset="100%" stop-color="#a86a3e"/></radialGradient>
+          <rect width="120" height="120" fill="url(#ix2tBg)"/>
+          <rect x="0" y="78" width="120" height="42" fill="#2F4A3C" opacity="0.30"/>
+          <path d="M-4 116 Q60 78 124 116 L124 124 L-4 124 Z" fill="#264a6e"/>
+          <path d="M40 86 L60 100 L80 86 L74 96 L60 105 L46 96 Z" fill="#1c3a58"/>
+          <path d="M55 100 L65 100 L67 110 L53 110 Z" fill="#a83446"/>
+          <ellipse cx="60" cy="84" rx="11" ry="9" fill="#b67e4a"/>
+          <path d="M30 56 Q30 22 60 22 Q90 22 90 56 Q90 78 76 92 Q68 96 60 96 Q52 96 44 92 Q30 78 30 56 Z" fill="#d6a06a"/>
+          <ellipse cx="74" cy="68" rx="14" ry="18" fill="#8e552e" opacity="0.18"/>
+          <path d="M30 50 Q30 18 60 18 Q90 18 90 50 Q86 36 78 28 Q70 22 60 22 Q50 22 42 28 Q34 36 30 50 Z" fill="#3a3833"/>
+          <path d="M30 48 Q30 38 34 32 Q34 42 32 50 Z" fill="#a59f95"/>
+          <path d="M90 48 Q90 38 86 32 Q86 42 88 50 Z" fill="#a59f95"/>
+          <path d="M40 50 Q47 46 54 50" stroke="#26241f" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+          <path d="M66 50 Q73 46 80 50" stroke="#26241f" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+          <rect x="38" y="54" width="17" height="12" rx="5" fill="rgba(255,255,255,0.45)" stroke="#3c2a1e" stroke-width="1.6"/>
+          <rect x="65" y="54" width="17" height="12" rx="5" fill="rgba(255,255,255,0.45)" stroke="#3c2a1e" stroke-width="1.6"/>
+          <line x1="55" y1="60" x2="65" y2="60" stroke="#3c2a1e" stroke-width="1.6"/>
+          <circle cx="49" cy="60.6" r="1.6" fill="#1a140d"/>
+          <circle cx="75" cy="60.6" r="1.6" fill="#1a140d"/>
+          <path d="M48 78 Q54 75 60 78 Q66 75 72 78 Q68 81 60 80 Q52 81 48 78 Z" fill="#3a3833"/>
+          <path d="M52 84 Q60 88 68 84 L68 86 Q60 89 52 86 Z" fill="#3a1e10"/>
+        </svg>
+      </span>
+    </div>
+    <span class="preview-link">Open full mockup</span>
+  </a>
+
+  <!-- ===== V3 ===== -->
+  <a href="variant-3-chat-bubbles.html" class="preview-card" style="text-decoration: none; color: inherit; display: block;">
+    <div class="preview-head">
+      <span class="preview-num">VARIANT 03</span>
+    </div>
+    <p class="preview-tagline">MINIMAL FLAT · WHATSAPP METAPHOR</p>
+    <h3 class="preview-title">Chat Bubbles</h3>
+    <p class="preview-desc">
+      Verma left, Meera right — same pattern every kid uses on WhatsApp. Tiny avatars in
+      bubble corners, side + color borders carry the speaker signal redundantly.
+    </p>
+    <div class="preview-avatars">
+      <span class="a" style="width: 44px; height: 44px;">
+        <svg viewBox="0 0 64 64">
+          <rect width="64" height="64" fill="#5b86c2"/>
+          <path d="M0 60 Q32 44 64 60 L64 64 L0 64 Z" fill="#264a6e"/>
+          <path d="M22 50 L32 58 L42 50 L40 56 L32 60 L24 56 Z" fill="#1c3a58"/>
+          <circle cx="32" cy="30" r="14" fill="#d6a06a"/>
+          <path d="M18 26 Q18 12 32 12 Q46 12 46 26 Q44 18 38 16 Q32 14 26 16 Q20 18 18 26 Z" fill="#2c2620"/>
+          <circle cx="26" cy="32" r="4" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1.4"/>
+          <circle cx="38" cy="32" r="4" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1.4"/>
+          <line x1="30" y1="32" x2="34" y2="32" stroke="#2c2620" stroke-width="1.4"/>
+          <circle cx="26" cy="32" r="1.2" fill="#1a140d"/>
+          <circle cx="38" cy="32" r="1.2" fill="#1a140d"/>
+          <path d="M25 41 Q32 38 39 41 Q35 43 32 42 Q29 43 25 41 Z" fill="#2c2620"/>
+        </svg>
+      </span>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+        <div style="background: rgba(244,199,108,0.18); border: 1px solid rgba(244,199,108,0.30); border-radius: 14px 14px 14px 4px; padding: 6px 10px; font-size: 11px; color: var(--chalk-white); font-family: var(--font-reading);">Now picture this…</div>
+        <div style="background: rgba(255,182,221,0.12); border: 1px solid rgba(255,182,221,0.25); border-radius: 14px 14px 4px 14px; padding: 6px 10px; font-size: 11px; color: var(--chalk-white); font-family: var(--font-reading); align-self: flex-end;">Hmm…</div>
+      </div>
+      <span class="a" style="width: 36px; height: 36px;">
+        <svg viewBox="0 0 64 64">
+          <rect width="64" height="64" fill="#cf6f9d"/>
+          <path d="M0 60 Q32 44 64 60 L64 64 L0 64 Z" fill="#fbf5e0"/>
+          <path d="M22 50 L32 58 L42 50 L40 56 L32 60 L24 56 Z" fill="#d4c89c"/>
+          <circle cx="32" cy="30" r="14" fill="#dba877"/>
+          <path d="M18 28 Q18 12 32 12 Q46 12 46 28 Q44 20 38 16 Q32 14 26 16 Q20 20 18 28 Z" fill="#1a0e0e"/>
+          <path d="M16 30 Q12 44 14 56 L20 56 Q22 42 20 30 Z" fill="#1a0e0e"/>
+          <path d="M48 30 Q52 44 50 56 L44 56 Q42 42 44 30 Z" fill="#1a0e0e"/>
+          <circle cx="32" cy="22" r="1.2" fill="#c93f5a"/>
+          <ellipse cx="27" cy="32" rx="2.2" ry="2.5" fill="white"/>
+          <ellipse cx="37" cy="32" rx="2.2" ry="2.5" fill="white"/>
+          <circle cx="27" cy="32.5" r="1.6" fill="#1a0a05"/>
+          <circle cx="37" cy="32.5" r="1.6" fill="#1a0a05"/>
+        </svg>
+      </span>
+    </div>
+    <span class="preview-link">Open full mockup</span>
+  </a>
+
+  <!-- ===== V4 ===== -->
+  <a href="variant-4-polaroid.html" class="preview-card" style="text-decoration: none; color: inherit; display: block;">
+    <div class="preview-head">
+      <span class="preview-num">VARIANT 04</span>
+    </div>
+    <p class="preview-tagline">PHOTOGRAPHIC SVG · TACKED-ON POLAROIDS</p>
+    <h3 class="preview-title">Polaroid Pinned</h3>
+    <p class="preview-desc">
+      Avatars become physical objects: paper polaroids with washi tape, drop shadows,
+      handwritten captions. Listener sticks in the corner; speaker glows softly.
+    </p>
+    <div class="preview-avatars" style="height: 100px;">
+      <span class="a polaroid" style="transform: rotate(-3deg);">
+        <svg viewBox="0 0 60 60" style="width: 100%; height: 80%;">
+          <radialGradient id="ix4tBg" cx="35%" cy="20%" r="80%"><stop offset="0%" stop-color="#fff8e0"/><stop offset="40%" stop-color="#e6b577"/><stop offset="100%" stop-color="#7a4f2a"/></radialGradient>
+          <rect width="60" height="60" fill="url(#ix4tBg)"/>
+          <path d="M0 56 Q30 38 60 56 L60 60 L0 60 Z" fill="#264a6e"/>
+          <ellipse cx="30" cy="28" rx="13" ry="15" fill="#d6a06a"/>
+          <path d="M16 24 Q16 8 30 8 Q44 8 44 24 Q42 14 36 12 Q30 8 24 12 Q18 14 16 24 Z" fill="#2a2620"/>
+          <ellipse cx="17" cy="24" rx="1.5" ry="4" fill="#a59d92"/>
+          <ellipse cx="43" cy="24" rx="1.5" ry="4" fill="#a59d92"/>
+          <rect x="20" y="28" width="8" height="6" rx="2" fill="rgba(255,255,255,0.4)" stroke="#2a1a12" stroke-width="0.8"/>
+          <rect x="32" y="28" width="8" height="6" rx="2" fill="rgba(255,255,255,0.4)" stroke="#2a1a12" stroke-width="0.8"/>
+          <line x1="28" y1="31" x2="32" y2="31" stroke="#2a1a12" stroke-width="0.8"/>
+          <circle cx="24" cy="31" r="0.8" fill="#1a140d"/>
+          <circle cx="36" cy="31" r="0.8" fill="#1a140d"/>
+          <path d="M24 39 Q27 37 30 38 Q33 37 36 39" fill="#2a2620"/>
+          <ellipse cx="30" cy="42" rx="2" ry="0.8" fill="#3a1e10"/>
+        </svg>
+        <div style="font-family: Caveat, cursive; font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: center; margin-top: 2px;">Mr. Verma</div>
+      </span>
+      <span class="a polaroid" style="transform: rotate(5deg) scale(0.85); opacity: 0.7;">
+        <svg viewBox="0 0 60 60" style="width: 100%; height: 80%;">
+          <radialGradient id="ix4pBg" cx="35%" cy="20%" r="80%"><stop offset="0%" stop-color="#ffe8f0"/><stop offset="40%" stop-color="#e8a0bc"/><stop offset="100%" stop-color="#7a3a5a"/></radialGradient>
+          <rect width="60" height="60" fill="url(#ix4pBg)"/>
+          <path d="M0 56 Q30 40 60 56 L60 60 L0 60 Z" fill="#fbf5e0"/>
+          <ellipse cx="30" cy="28" rx="13" ry="15" fill="#dba877"/>
+          <path d="M14 28 Q14 10 30 10 Q46 10 46 28 Q44 18 38 14 Q30 10 24 14 Q16 18 14 28 Z" fill="#1a0e0e"/>
+          <path d="M14 28 Q10 42 12 50 L18 50 Q20 40 18 28 Z" fill="#1a0e0e"/>
+          <path d="M46 28 Q50 42 48 50 L42 50 Q40 40 42 28 Z" fill="#1a0e0e"/>
+          <circle cx="30" cy="20" r="0.9" fill="#c93f5a"/>
+          <ellipse cx="25" cy="30" rx="2" ry="2.4" fill="white"/>
+          <ellipse cx="35" cy="30" rx="2" ry="2.4" fill="white"/>
+          <circle cx="25" cy="30.4" r="1.4" fill="#1a0a05"/>
+          <circle cx="35" cy="30.4" r="1.4" fill="#1a0a05"/>
+          <path d="M26 40 Q30 42 34 40" stroke="#5b2a1a" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div style="font-family: Caveat, cursive; font-size: 9px; font-weight: 700; color: #2a2a2a; text-align: center; margin-top: 2px;">Meera</div>
+      </span>
+    </div>
+    <span class="preview-link">Open full mockup</span>
+  </a>
+
+  <!-- ===== V5 ===== -->
+  <a href="variant-5-classroom-scene.html" class="preview-card" style="text-decoration: none; color: inherit; display: block;">
+    <div class="preview-head">
+      <span class="preview-num">VARIANT 05</span>
+    </div>
+    <p class="preview-tagline">STORYBOOK ILLUSTRATED · MINI SCENE</p>
+    <h3 class="preview-title">Classroom Scene</h3>
+    <p class="preview-desc">
+      A tiny illustrated classroom: Verma at the chalkboard, Meera at her desk. Body language
+      and a soft gold spotlight signal who's talking — most narratively immersive option.
+    </p>
+    <div class="preview-avatars" style="padding: 0;">
+      <span class="a scene">
+        <svg viewBox="0 0 320 160" style="width: 100%; height: 100%; display: block;">
+          <linearGradient id="ix5wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f5d8a8"/><stop offset="100%" stop-color="#d8a060"/></linearGradient>
+          <rect width="320" height="120" fill="url(#ix5wall)"/>
+          <rect y="120" width="320" height="40" fill="#7a533a"/>
+          <rect x="16" y="20" width="120" height="64" rx="4" fill="#2a4a3a" stroke="#7a533a" stroke-width="3"/>
+          <text x="76" y="48" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="14" fill="rgba(244,244,239,0.6)">47,352</text>
+          <rect x="240" y="22" width="64" height="50" rx="3" fill="#9bd0e8" stroke="#5b3621" stroke-width="3"/>
+          <line x1="272" y1="22" x2="272" y2="72" stroke="#5b3621" stroke-width="2"/>
+          <line x1="240" y1="46" x2="304" y2="46" stroke="#5b3621" stroke-width="2"/>
+          <!-- mini figures -->
+          <rect x="92" y="118" width="6" height="28" fill="#26334a"/>
+          <rect x="100" y="118" width="6" height="28" fill="#26334a"/>
+          <path d="M82 92 Q98 86 116 92 L116 122 L82 122 Z" fill="#3d6b95"/>
+          <circle cx="99" cy="76" r="11" fill="#d6a06a"/>
+          <path d="M88 70 Q88 60 99 60 Q110 60 110 70 Q108 64 102 62 Q99 60 96 62 Q90 64 88 70 Z" fill="#2c2620"/>
+          <!-- desk -->
+          <path d="M196 138 L284 138 L296 158 L184 158 Z" fill="#a8723e"/>
+          <rect x="208" y="130" width="36" height="10" fill="#5b86c2" stroke="#264a6e" stroke-width="1"/>
+          <!-- meera -->
+          <path d="M218 116 Q240 110 262 116 L262 138 L218 138 Z" fill="#fbf5e0"/>
+          <circle cx="240" cy="98" r="11" fill="#dba877"/>
+          <path d="M229 96 Q229 84 240 84 Q251 84 251 96 Q249 90 244 88 Q240 86 236 88 Q231 90 229 96 Z" fill="#1a0e0e"/>
+          <path d="M228 94 Q224 110 226 124 L232 124 Q234 110 232 94 Z" fill="#1a0e0e"/>
+          <path d="M252 94 Q256 110 254 124 L248 124 Q246 110 248 94 Z" fill="#1a0e0e"/>
+        </svg>
+      </span>
+    </div>
+    <span class="preview-link">Open full mockup</span>
+  </a>
+
+  <!-- ===== V6 ===== -->
+  <a href="variant-6-chalk-portraits.html" class="preview-card" style="text-decoration: none; color: inherit; display: block;">
+    <div class="preview-head">
+      <span class="preview-num">VARIANT 06</span>
+    </div>
+    <p class="preview-tagline">CHALK LINE-ART · DRAWN ON THE BOARD</p>
+    <h3 class="preview-title">Chalk Portraits</h3>
+    <p class="preview-desc">
+      Avatars become chalk drawings on the same chalkboard the kids are looking at. White
+      line-art, handwritten names. Listener fades like a half-erased sketch.
+    </p>
+    <div class="preview-avatars">
+      <span style="width: 60px; height: 60px;">
+        <svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+          <g fill="none" stroke="#F4F4EF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 96 Q50 75 90 96"/>
+            <path d="M40 78 L50 90 L60 78"/>
+            <path d="M47 90 L53 90 L54 96 L46 96 Z"/>
+            <ellipse cx="50" cy="48" rx="22" ry="26"/>
+            <path d="M28 42 Q28 22 50 22 Q72 22 72 42 Q70 30 64 26 Q56 22 50 22 Q44 22 36 26 Q30 30 28 42 Z"/>
+            <ellipse cx="40" cy="52" rx="6" ry="4.5"/>
+            <ellipse cx="60" cy="52" rx="6" ry="4.5"/>
+            <line x1="46" y1="52" x2="54" y2="52"/>
+            <circle cx="40" cy="52" r="0.9" fill="#F4F4EF" stroke="none"/>
+            <circle cx="60" cy="52" r="0.9" fill="#F4F4EF" stroke="none"/>
+            <path d="M40 70 Q45 67 50 69 Q55 67 60 70 Q55 72 50 71 Q45 72 40 70 Z"/>
+            <ellipse cx="50" cy="76" rx="3" ry="1.6"/>
+          </g>
+        </svg>
+      </span>
+      <span style="width: 50px; height: 50px; opacity: 0.45;">
+        <svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+          <g fill="none" stroke="#F4F4EF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 96 Q50 76 88 96" stroke-dasharray="2 2"/>
+            <path d="M40 80 L50 92 L60 80" opacity="0.7"/>
+            <path d="M46 88 L54 88 L52 94 L48 94 Z"/>
+            <ellipse cx="50" cy="50" rx="22" ry="26"/>
+            <path d="M28 48 Q26 22 50 22 Q74 22 72 48 Q70 28 62 24 Q54 22 50 22 Q46 22 38 24 Q30 28 28 48 Z"/>
+            <path d="M28 48 Q22 70 24 90 L32 90 Q34 70 32 48"/>
+            <path d="M72 48 Q78 70 76 90 L68 90 Q66 70 68 48"/>
+            <circle cx="50" cy="38" r="1" fill="#F4F4EF" stroke="none"/>
+            <ellipse cx="42" cy="54" rx="3" ry="3.2"/>
+            <ellipse cx="58" cy="54" rx="3" ry="3.2"/>
+            <circle cx="42" cy="54" r="1.4" fill="#F4F4EF" stroke="none"/>
+            <circle cx="58" cy="54" r="1.4" fill="#F4F4EF" stroke="none"/>
+            <path d="M44 74 Q50 76 56 74"/>
+          </g>
+        </svg>
+      </span>
+    </div>
+    <span class="preview-link">Open full mockup</span>
+  </a>
+
+</div>
+
+<!-- ============ How to choose ============ -->
+<div class="how-to-choose">
+  <h2>How to choose between them</h2>
+  <ul>
+    <li><strong>Want both characters always present?</strong> V1 (Stage Duo), V4 (Polaroid), V5 (Classroom Scene), and V6 (Chalk) all keep the listener in frame. V2 and V3 only show the active speaker (V3 fades the prior turn for context).</li>
+    <li><strong>Tightest on vertical space?</strong> V3 (Chat Bubbles) is by far most efficient — avatar lives inline. V1 is moderate. V4 and V5 are heaviest.</li>
+    <li><strong>Want it to feel most "real teacher"?</strong> V2 (Spotlight) has the strongest face read; V4 (Polaroid) has the strongest "physical artifact" cue.</li>
+    <li><strong>Want it to feel most kid-friendly / most familiar?</strong> V3 (Chat Bubbles) leverages WhatsApp; V5 (Classroom Scene) leverages storybook illustration.</li>
+    <li><strong>Want it to feel most theme-cohesive?</strong> V6 (Chalk Portraits) is born of the chalkboard — feels native, not bolted on.</li>
+    <li><strong>Worried about build effort?</strong> V1, V3, and V6 are the cheapest — line art or simple flat shapes. V2 needs a careful illustration. V4 and V5 need bespoke art that holds up at small sizes.</li>
+    <li><strong>Worth combining?</strong> V1 + V6 chalk-style is feasible — keep the duo layout but swap to chalk portraits. V2 + V5 — spotlight inside a scene background — also possible.</li>
+  </ul>
+</div>
+
+<div class="brief" style="margin-top: 32px;">
+  <h2>Notes on the SVG art in these mockups</h2>
+  <p>
+    Every avatar in these files is hand-coded SVG, drawn to demo each style. They're <em>not</em>
+    final art — if we ship one of these directions, we'd commission an illustrator (or generate +
+    iterate with Midjourney / Stable Diffusion) to lock the character design. The SVG here is
+    enough to show the <em>style direction</em>, not the final faces.
+  </p>
+  <p style="margin-top: 8px;">
+    Same goes for the dialogue and visuals — every variant uses the same dialogue moment ("…how
+    would you read 47,352 out loud?" → "forty-seven thousand three hundred fifty-two") so you're
+    comparing avatar treatment, not content.
+  </p>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Variant 3 — Chat Bubbles · Baatcheet avatar mockups</title>
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* ============ Variant 3 specific ============ */
+
+  .chat-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 4px 0 0;
+  }
+  .chat-row.from-tutor { justify-content: flex-start; }
+  .chat-row.from-peer  { justify-content: flex-end; flex-direction: row-reverse; }
+
+  .chat-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: rgba(244,244,239,0.06);
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1.5px rgba(244,244,239,0.20), 0 1px 3px rgba(0,0,0,0.30);
+  }
+  .chat-avatar svg { width: 100%; height: 100%; display: block; }
+
+  .chat-cluster {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 78%;
+    min-width: 0;
+  }
+
+  .chat-name {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--chalk-gold);
+    margin: 0 0 2px;
+    padding: 0 2px;
+  }
+  .from-peer .chat-name { color: #ffb6dd; text-align: right; }
+
+  .chat-bubble {
+    background: rgba(244,244,239,0.08);
+    border: 1px solid rgba(244,244,239,0.10);
+    padding: 12px 14px;
+    border-radius: 18px;
+    color: var(--chalk-white);
+    font-family: var(--font-reading);
+    font-size: 15px;
+    line-height: 1.55;
+    backdrop-filter: blur(2px);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  }
+  .from-tutor .chat-bubble {
+    border-bottom-left-radius: 6px;
+    background: rgba(244,199,108,0.10);
+    border-color: rgba(244,199,108,0.22);
+  }
+  .from-peer .chat-bubble {
+    border-bottom-right-radius: 6px;
+    background: rgba(255,182,221,0.09);
+    border-color: rgba(255,182,221,0.20);
+  }
+
+  .chat-bubble strong {
+    color: var(--chalk-gold);
+    font-weight: 600;
+  }
+
+  .chat-bubble.bubble-image {
+    padding: 8px;
+    overflow: hidden;
+  }
+  .chat-bubble.bubble-image .visual-card {
+    margin: 0;
+    border-radius: 12px;
+    aspect-ratio: 5 / 3.6;
+  }
+
+  .chat-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 4px;
+    font-family: var(--font-body);
+    font-size: 10px;
+    color: rgba(244,244,239,0.45);
+    letter-spacing: 0.04em;
+  }
+  .from-peer .chat-meta { justify-content: flex-end; }
+  .chat-meta .ticks { color: var(--chalk-gold); font-size: 11px; }
+
+  /* "typing" indicator on the speaker */
+  .chat-typing {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 12px;
+    background: rgba(244,199,108,0.12);
+    border-radius: 16px;
+    border: 1px solid rgba(244,199,108,0.25);
+    margin-top: 4px;
+  }
+  .chat-typing span {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--chalk-gold);
+    animation: typing-bob 1.4s infinite ease-in-out;
+  }
+  .chat-typing span:nth-child(2) { animation-delay: 0.2s; }
+  .chat-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing-bob {
+    0%, 60%, 100% { transform: translateY(0);   opacity: 0.5; }
+    30%           { transform: translateY(-4px); opacity: 1.0; }
+  }
+
+  /* ===== minimal flat avatars (defined as inline SVGs in body) ===== */
+
+  .star-row {
+    position: absolute;
+    top: 14px; right: 16px;
+    color: var(--chalk-white-faint);
+    font-size: 18px;
+  }
+
+  /* condense replay since visual card is inside bubble */
+  .card-body { gap: 4px; }
+</style>
+</head>
+<body>
+
+<div class="mockup-page-header">
+  <span class="variant-tag">Variant 3 of 6</span>
+  <h1>Chat Bubbles — the WhatsApp metaphor</h1>
+  <p class="lede">
+    Every Indian kid lives in WhatsApp. This treatment leans into a metaphor they already know
+    cold: Verma's lines come from the left, Meera's from the right, the visual aid is an "image
+    message," and the avatar pins down who said what. Reads instantly because the layout is
+    pre-learned.
+  </p>
+  <a class="back-link" href="index.html">← All variants</a>
+</div>
+
+<div class="frame-row">
+
+  <!-- =========================================================
+       FRAME A: Mr. Verma message
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">A · Mr. Verma's message</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 8/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <!-- Mr. Verma's message: avatar bottom-left, two bubbles stacked -->
+            <p class="chat-name" style="padding-left: 46px;">Mr. Verma</p>
+            <div class="chat-row from-tutor">
+              <div class="chat-avatar" aria-label="Mr. Verma">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <!-- bg -->
+                  <rect width="64" height="64" fill="#5b86c2"/>
+                  <!-- shoulders -->
+                  <path d="M0 60 Q32 44 64 60 L64 64 L0 64 Z" fill="#264a6e"/>
+                  <!-- collar V -->
+                  <path d="M22 50 L32 58 L42 50 L40 56 L32 60 L24 56 Z" fill="#1c3a58"/>
+                  <!-- head -->
+                  <circle cx="32" cy="30" r="14" fill="#d6a06a"/>
+                  <!-- hair (chunky) -->
+                  <path d="M18 26 Q18 12 32 12 Q46 12 46 26 Q44 18 38 16 Q32 14 32 14 Q26 14 26 16 Q20 18 18 26 Z" fill="#2c2620"/>
+                  <!-- glasses (simple round) -->
+                  <circle cx="26" cy="32" r="4" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1.4"/>
+                  <circle cx="38" cy="32" r="4" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1.4"/>
+                  <line x1="30" y1="32" x2="34" y2="32" stroke="#2c2620" stroke-width="1.4"/>
+                  <!-- eyes inside -->
+                  <circle cx="26" cy="32" r="1.2" fill="#1a140d"/>
+                  <circle cx="38" cy="32" r="1.2" fill="#1a140d"/>
+                  <!-- mustache -->
+                  <path d="M25 41 Q32 38 39 41 Q35 43 32 42 Q29 43 25 41 Z" fill="#2c2620"/>
+                  <!-- smile -->
+                  <path d="M28 45 Q32 47 36 45" stroke="#5b2a1a" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <div class="chat-cluster">
+                <!-- image bubble: visual card -->
+                <div class="chat-bubble bubble-image">
+                  <div class="visual-card" style="aspect-ratio: 5/3.6;">
+                    <span class="sun"></span>
+                    <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                      <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                      <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                      <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                      <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                      <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                      <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                      <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                      <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                      <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                      <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                      <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+                    </svg>
+                  </div>
+                </div>
+                <!-- text bubble -->
+                <div class="chat-bubble">
+                  Now picture this. You see <strong>47,352</strong> on a billboard. How would you read it out loud?
+                </div>
+              </div>
+            </div>
+            <div class="chat-meta" style="padding-left: 50px;">
+              <span>10:58 AM</span>
+              <span class="ticks">✓✓</span>
+              <span>·</span>
+              <button class="replay-btn" style="padding: 2px 8px; font-size: 10px; margin: 0;">↻ replay</button>
+            </div>
+
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       FRAME B: Meera message
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">B · Meera's reply (next card)</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 9/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <!-- earlier (faded) Verma message kept as context so the chat metaphor reads -->
+            <div class="chat-row from-tutor" style="opacity: 0.45;">
+              <div class="chat-avatar">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <rect width="64" height="64" fill="#5b86c2"/>
+                  <path d="M0 60 Q32 44 64 60 L64 64 L0 64 Z" fill="#264a6e"/>
+                  <circle cx="32" cy="30" r="14" fill="#d6a06a"/>
+                  <path d="M18 26 Q18 12 32 12 Q46 12 46 26 Q44 18 38 16 Q32 14 26 16 Q20 18 18 26 Z" fill="#2c2620"/>
+                  <circle cx="26" cy="32" r="4" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1.4"/>
+                  <circle cx="38" cy="32" r="4" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1.4"/>
+                  <line x1="30" y1="32" x2="34" y2="32" stroke="#2c2620" stroke-width="1.4"/>
+                  <circle cx="26" cy="32" r="1.2" fill="#1a140d"/>
+                  <circle cx="38" cy="32" r="1.2" fill="#1a140d"/>
+                  <path d="M25 41 Q32 38 39 41 Q35 43 32 42 Q29 43 25 41 Z" fill="#2c2620"/>
+                  <path d="M28 45 Q32 47 36 45" stroke="#5b2a1a" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <div class="chat-cluster">
+                <div class="chat-bubble" style="font-size: 12px; padding: 8px 12px;">
+                  …How would you read it out loud?
+                </div>
+              </div>
+            </div>
+
+            <!-- Meera's reply -->
+            <p class="chat-name" style="padding-right: 46px;">Meera</p>
+            <div class="chat-row from-peer">
+              <div class="chat-avatar" aria-label="Meera">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <rect width="64" height="64" fill="#cf6f9d"/>
+                  <path d="M0 60 Q32 44 64 60 L64 64 L0 64 Z" fill="#fbf5e0"/>
+                  <!-- collar V -->
+                  <path d="M22 50 L32 58 L42 50 L40 56 L32 60 L24 56 Z" fill="#d4c89c"/>
+                  <!-- ribbon -->
+                  <path d="M28 56 L36 56 L34 60 L30 60 Z" fill="#c93f5a"/>
+                  <!-- head -->
+                  <circle cx="32" cy="30" r="14" fill="#dba877"/>
+                  <!-- hair top -->
+                  <path d="M18 28 Q18 12 32 12 Q46 12 46 28 Q44 20 38 16 Q32 14 26 16 Q20 20 18 28 Z" fill="#1a0e0e"/>
+                  <!-- braids -->
+                  <path d="M16 30 Q12 44 14 56 L20 56 Q22 42 20 30 Z" fill="#1a0e0e"/>
+                  <path d="M48 30 Q52 44 50 56 L44 56 Q42 42 44 30 Z" fill="#1a0e0e"/>
+                  <!-- ribbons -->
+                  <ellipse cx="17" cy="56" rx="3" ry="1.5" fill="#c93f5a"/>
+                  <ellipse cx="47" cy="56" rx="3" ry="1.5" fill="#c93f5a"/>
+                  <!-- bindi -->
+                  <circle cx="32" cy="22" r="1.2" fill="#c93f5a"/>
+                  <!-- big eyes -->
+                  <ellipse cx="27" cy="32" rx="2.2" ry="2.5" fill="white"/>
+                  <ellipse cx="37" cy="32" rx="2.2" ry="2.5" fill="white"/>
+                  <circle cx="27" cy="32.5" r="1.6" fill="#1a0a05"/>
+                  <circle cx="37" cy="32.5" r="1.6" fill="#1a0a05"/>
+                  <circle cx="27.5" cy="31.6" r="0.6" fill="white"/>
+                  <circle cx="37.5" cy="31.6" r="0.6" fill="white"/>
+                  <!-- smile -->
+                  <path d="M27 41 Q32 44 37 41" stroke="#5b2a1a" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <div class="chat-cluster">
+                <div class="chat-bubble">
+                  Hmm… is it <strong>forty-seven thousand three hundred fifty-two</strong>?
+                </div>
+              </div>
+            </div>
+            <div class="chat-meta" style="padding-right: 50px;">
+              <button class="replay-btn" style="padding: 2px 8px; font-size: 10px; margin: 0;">↻ replay</button>
+              <span>·</span>
+              <span>10:58 AM</span>
+              <span class="ticks">✓✓</span>
+            </div>
+
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <h2>Why this works (and what it costs)</h2>
+  <p>
+    A WhatsApp/iMessage layout is the most pre-learned UI metaphor in this audience's life.
+    Verma left, Meera right, image bubble + text bubble, a faint "previous turn" peeking from
+    above — the kid reads the layout in zero milliseconds. The colored borders (gold for tutor,
+    pink for peer) double-encode who's talking without needing big avatars.
+  </p>
+
+  <h3>Key moves</h3>
+  <ul>
+    <li><strong>Side encodes speaker.</strong> Verma always anchored left, Meera always right. The visual aid bubble's tail points to whoever shared it.</li>
+    <li><strong>Visual card lives inside an "image message" bubble.</strong> Same content, but framed as something Verma sent.</li>
+    <li><strong>Faded prior turn peeks.</strong> On Meera's reply card, the last line of Verma's message stays at 45% opacity — preserves conversation thread without scrolling.</li>
+    <li><strong>Tiny avatars (36px) are enough.</strong> The metaphor does the heavy lifting; the avatar just confirms who.</li>
+    <li><strong>Avatar style: minimal flat.</strong> Designed to read at 28px in bubble corners. No tiny details that disappear at small sizes.</li>
+  </ul>
+
+  <div class="pros-cons">
+    <div class="col pros">
+      <h3>Pros</h3>
+      <ul>
+        <li>Zero learning curve — kids understand it instantly.</li>
+        <li>Most efficient with vertical space (avatar is inline, not a separate row).</li>
+        <li>Side-alignment + color border = redundant signal even if avatars get tiny.</li>
+        <li>"Replay" tucks naturally into the message metadata strip.</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h3>Cons</h3>
+      <ul>
+        <li>Could feel too casual / too messaging-app for a tutoring context. May undercut "real teacher" gravitas.</li>
+        <li>Visual card inside a bubble feels nested and slightly busy vs. it owning its own card.</li>
+        <li>Right-aligned cards may feel less stable than centered on a small phone — eye keeps shifting.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,32 +1,59 @@
 /**
- * SpeakerAvatar — single-character display with cross-fade + speaking pulse.
+ * SpeakerAvatar — spotlight presenter strip for the active dialogue speaker.
  *
- * Avatar swap is keyed on `speaker` so React unmounts and remounts the
- * <img>, which re-runs the CSS opacity transition (PRD §FR-36 cross-fade).
- * `speaking` adds a glow ring while audio is playing (PRD §FR-38 placeholder
- * indicator until proper avatars ship in V2).
+ * Renders a 92px portrait + name + role tag + animated speaking pill. Replaces
+ * the earlier 44px chip; spec lives in
+ * reports/baatcheet-avatar-mockups/variant-2-spotlight.html.
+ *
+ * Cross-fade on speaker change is still driven by `key={speaker}`: when the
+ * card flips between tutor and peer, React remounts this component and the
+ * CSS fade-in transition replays. The speaking pill is gated on the boolean
+ * `speaking` prop, which BaatcheetViewer toggles around audio playback — so
+ * it stays hidden when audio is muted (no playback → never speaking).
  */
 import React from 'react';
 
 interface Props {
   speaker: 'tutor' | 'peer' | null;
+  speakerName: string;
   speaking: boolean;
 }
 
-export default function SpeakerAvatar({ speaker, speaking }: Props) {
+const ROLE_TAG: Record<'tutor' | 'peer', string> = {
+  tutor: 'Your tutor',
+  peer: 'Classmate',
+};
+
+export default function SpeakerAvatar({ speaker, speakerName, speaking }: Props) {
   if (!speaker) return null;
   const src = speaker === 'tutor' ? '/avatars/tutor.svg' : '/avatars/peer.svg';
-  const alt = speaker === 'tutor' ? 'Mr. Verma' : 'Meera';
+  const role = ROLE_TAG[speaker];
+  const nameClass =
+    speaker === 'peer'
+      ? 'speaker-spotlight__name speaker-spotlight__name--peer'
+      : 'speaker-spotlight__name';
   return (
     <div
-      className={`speaker-avatar ${speaking ? 'speaker-avatar--speaking' : ''}`}
+      className={`speaker-spotlight ${speaking ? 'speaker-spotlight--speaking' : ''}`}
       data-speaker={speaker}
-      // key forces React to remount the img on speaker change so the CSS
-      // transition replays (cross-fade between turns).
       key={speaker}
+      aria-label={`${speakerName} ${speaking ? 'is speaking' : ''}`.trim()}
     >
-      <img src={src} alt={alt} draggable={false} />
-      {speaking && <span className="speaker-avatar__pulse" aria-hidden="true" />}
+      <div className="speaker-spotlight__portrait">
+        <img src={src} alt={speakerName} draggable={false} />
+      </div>
+      <div className="speaker-spotlight__meta">
+        <p className={nameClass}>{speakerName}</p>
+        <p className="speaker-spotlight__role">{role}</p>
+        {speaking && (
+          <span className="speaker-spotlight__pill" aria-hidden="true">
+            <span className="speaker-spotlight__bars">
+              <span /><span /><span /><span />
+            </span>
+            speaking
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Variant 5 — Classroom Scene · Baatcheet avatar mockups</title>
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* ============ Variant 5 specific ============ */
+
+  .scene {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 8;
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 6px 0 14px;
+    box-shadow:
+      inset 0 0 0 1px rgba(244,244,239,0.10),
+      0 4px 14px rgba(0,0,0,0.32);
+  }
+  .scene svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .scene-caption {
+    position: absolute;
+    bottom: 6px;
+    left: 8px;
+    font-family: var(--font-hand);
+    font-size: 14px;
+    color: rgba(244,244,239,0.55);
+    letter-spacing: 0.02em;
+  }
+
+  .scene-name-tag {
+    position: absolute;
+    top: 8px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.45);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .scene-name-tag--tutor { left: 8px; color: var(--chalk-gold); }
+  .scene-name-tag--peer { right: 8px; color: #ffb6dd; }
+
+  .star-row {
+    position: absolute;
+    top: 14px; right: 16px;
+    color: var(--chalk-white-faint);
+    font-size: 18px;
+  }
+
+  /* speaker spotlight (radial gold glow on active in the scene) */
+  .scene-spotlight {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(244,199,108,0.45) 0%, transparent 65%);
+    pointer-events: none;
+    mix-blend-mode: screen;
+    animation: scene-spot-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes scene-spot-pulse {
+    0%, 100% { opacity: 0.5; transform: scale(0.95); }
+    50%      { opacity: 0.85; transform: scale(1.05); }
+  }
+  .scene-spotlight--tutor { left: 16%; top: 14%; }
+  .scene-spotlight--peer  { right: 8%;  top: 22%; }
+</style>
+</head>
+<body>
+
+<div class="mockup-page-header">
+  <span class="variant-tag">Variant 5 of 6</span>
+  <h1>Classroom Scene — a mini illustrated set where they teach and learn</h1>
+  <p class="lede">
+    Both characters live inside a tiny storybook scene: Verma at the chalkboard, Meera at her
+    desk. A speech-bubble cue and a soft gold spotlight signal who's talking. Most immersive
+    option — the avatars are no longer "icons of speakers," they're characters in a place.
+  </p>
+  <a class="back-link" href="index.html">← All variants</a>
+</div>
+
+<div class="frame-row">
+
+  <!-- =========================================================
+       FRAME A: Mr. Verma is speaking
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">A · Mr. Verma is speaking</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 8/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <!-- ===== Classroom scene ===== -->
+            <div class="scene" aria-label="Classroom scene with Mr. Verma at chalkboard and Meera at desk">
+              <svg viewBox="0 0 320 160" aria-hidden="true">
+                <defs>
+                  <linearGradient id="v5wallA" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#f5d8a8"/>
+                    <stop offset="100%" stop-color="#d8a060"/>
+                  </linearGradient>
+                  <linearGradient id="v5floorA" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#a87044"/>
+                    <stop offset="100%" stop-color="#5b3621"/>
+                  </linearGradient>
+                </defs>
+                <!-- back wall -->
+                <rect width="320" height="120" fill="url(#v5wallA)"/>
+                <!-- wall top trim -->
+                <rect width="320" height="6" fill="#5b3621"/>
+                <!-- floor -->
+                <rect y="120" width="320" height="40" fill="url(#v5floorA)"/>
+                <!-- floor seam -->
+                <line x1="0" y1="120" x2="320" y2="120" stroke="#3a2113" stroke-width="1"/>
+
+                <!-- chalkboard on wall -->
+                <rect x="16" y="20" width="120" height="64" rx="4" fill="#2a4a3a"/>
+                <rect x="16" y="20" width="120" height="64" rx="4" fill="none" stroke="#7a533a" stroke-width="3"/>
+                <!-- chalkboard scribbles -->
+                <text x="76" y="48" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="14" fill="rgba(244,244,239,0.6)">47,352</text>
+                <line x1="32" y1="62" x2="120" y2="62" stroke="rgba(244,244,239,0.4)" stroke-width="1"/>
+                <line x1="32" y1="68" x2="80" y2="68" stroke="rgba(244,244,239,0.3)" stroke-width="1"/>
+                <line x1="32" y1="74" x2="100" y2="74" stroke="rgba(244,244,239,0.3)" stroke-width="1"/>
+
+                <!-- window suggestion right -->
+                <rect x="240" y="22" width="64" height="50" rx="3" fill="#9bd0e8" stroke="#5b3621" stroke-width="3"/>
+                <line x1="272" y1="22" x2="272" y2="72" stroke="#5b3621" stroke-width="2"/>
+                <line x1="240" y1="46" x2="304" y2="46" stroke="#5b3621" stroke-width="2"/>
+                <!-- distant hill in window -->
+                <path d="M242 60 Q260 50 280 60 Q294 56 302 62 L302 70 L242 70 Z" fill="#7ab38a"/>
+
+                <!-- decoration: small "LIKE MAGIC" sticker on wall -->
+                <rect x="160" y="30" width="60" height="14" rx="2" fill="rgba(255,255,255,0.7)"/>
+                <text x="190" y="40" text-anchor="middle" font-family="Caveat, cursive" font-weight="700" font-size="11" fill="#5b3621">like magic ✦</text>
+
+                <!-- Mr. Verma standing left of chalkboard, slightly facing the student (right) -->
+                <!-- shadow under feet -->
+                <ellipse cx="98" cy="148" rx="22" ry="3" fill="#3a2113" opacity="0.5"/>
+                <!-- legs (dark slacks) -->
+                <rect x="92" y="118" width="6" height="28" fill="#26334a"/>
+                <rect x="100" y="118" width="6" height="28" fill="#26334a"/>
+                <!-- shoes -->
+                <ellipse cx="95" cy="148" rx="5" ry="2" fill="#1a1a1a"/>
+                <ellipse cx="103" cy="148" rx="5" ry="2" fill="#1a1a1a"/>
+                <!-- torso (blue collared shirt) -->
+                <path d="M82 92 Q98 86 116 92 L116 122 L82 122 Z" fill="#3d6b95"/>
+                <path d="M82 92 Q98 90 116 92 L116 96 L82 96 Z" fill="#2a4f74"/>
+                <!-- collar V -->
+                <path d="M93 92 L99 102 L105 92 L102 100 L99 105 L96 100 Z" fill="#1c3a58"/>
+                <!-- tie -->
+                <path d="M97 102 L101 102 L102 122 L96 122 Z" fill="#a83446"/>
+                <!-- arm holding chalk pointing right toward chalkboard -->
+                <path d="M82 96 Q72 102 64 90" stroke="#3d6b95" stroke-width="6" stroke-linecap="round" fill="none"/>
+                <ellipse cx="62" cy="88" rx="3.5" ry="3" fill="#d6a06a"/>
+                <!-- chalk piece -->
+                <rect x="58" y="82" width="6" height="3" fill="#fff" rx="0.5"/>
+                <!-- arm right relaxed -->
+                <path d="M116 96 Q124 110 122 122" stroke="#3d6b95" stroke-width="6" stroke-linecap="round" fill="none"/>
+                <circle cx="122" cy="124" r="3.5" fill="#d6a06a"/>
+                <!-- neck -->
+                <rect x="95" y="84" width="8" height="8" fill="#b88555"/>
+                <!-- head -->
+                <circle cx="99" cy="76" r="11" fill="#d6a06a"/>
+                <!-- right cheek shading -->
+                <path d="M105 75 Q108 80 105 86 Q103 80 105 75 Z" fill="#9c6a3c" opacity="0.3"/>
+                <!-- hair -->
+                <path d="M88 70 Q88 60 99 60 Q110 60 110 70 Q108 64 102 62 Q99 60 96 62 Q90 64 88 70 Z" fill="#2c2620"/>
+                <!-- temple grey -->
+                <ellipse cx="89" cy="70" rx="1.2" ry="3.5" fill="#a59d92"/>
+                <ellipse cx="109" cy="70" rx="1.2" ry="3.5" fill="#a59d92"/>
+                <!-- glasses (small) -->
+                <circle cx="95" cy="76" r="2.5" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1"/>
+                <circle cx="103" cy="76" r="2.5" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1"/>
+                <line x1="97.5" y1="76" x2="100.5" y2="76" stroke="#2c2620" stroke-width="1"/>
+                <!-- eyes -->
+                <circle cx="95" cy="76" r="0.8" fill="#1a140d"/>
+                <circle cx="103" cy="76" r="0.8" fill="#1a140d"/>
+                <!-- mustache -->
+                <path d="M93 81 Q99 79 105 81 Q102 83 99 82.5 Q96 83 93 81 Z" fill="#2c2620"/>
+                <!-- mouth (open, talking) -->
+                <ellipse cx="99" cy="84" rx="2" ry="1.2" fill="#3a1e10"/>
+
+                <!-- speech bubble next to Verma -->
+                <g transform="translate(124 50)">
+                  <ellipse cx="20" cy="14" rx="20" ry="13" fill="white" stroke="#5b3621" stroke-width="1.4"/>
+                  <path d="M5 22 Q-2 30 0 32 Q8 28 10 23 Z" fill="white" stroke="#5b3621" stroke-width="1.4"/>
+                  <circle cx="14" cy="14" r="1.6" fill="#5b3621"/>
+                  <circle cx="20" cy="14" r="1.6" fill="#5b3621"/>
+                  <circle cx="26" cy="14" r="1.6" fill="#5b3621"/>
+                </g>
+
+                <!-- Meera at desk on right, looking up at teacher -->
+                <!-- desk shadow -->
+                <ellipse cx="240" cy="148" rx="40" ry="3" fill="#3a2113" opacity="0.4"/>
+                <!-- desk (perspective trapezoid) -->
+                <path d="M196 138 L284 138 L296 158 L184 158 Z" fill="#a8723e"/>
+                <path d="M196 138 L284 138 L284 142 L196 142 Z" fill="#7a533a"/>
+                <!-- book on desk -->
+                <rect x="208" y="130" width="36" height="10" fill="#5b86c2" stroke="#264a6e" stroke-width="1"/>
+                <rect x="208" y="128" width="36" height="3" fill="#264a6e"/>
+                <!-- notebook -->
+                <rect x="252" y="130" width="22" height="10" fill="#fbf5e0" stroke="#5b3621" stroke-width="1"/>
+                <line x1="254" y1="134" x2="272" y2="134" stroke="#a8a8a8" stroke-width="0.5"/>
+                <line x1="254" y1="137" x2="272" y2="137" stroke="#a8a8a8" stroke-width="0.5"/>
+
+                <!-- Meera body (chest visible above desk) -->
+                <!-- arms on desk -->
+                <path d="M218 130 Q230 120 240 110" stroke="#dba877" stroke-width="5" stroke-linecap="round" fill="none"/>
+                <path d="M260 130 Q252 120 246 110" stroke="#dba877" stroke-width="5" stroke-linecap="round" fill="none"/>
+                <!-- torso (white school shirt) -->
+                <path d="M218 116 Q240 110 262 116 L262 138 L218 138 Z" fill="#fbf5e0"/>
+                <!-- collar with red ribbon -->
+                <path d="M232 116 L240 124 L248 116 L245 122 L240 126 L235 122 Z" fill="#d4c89c"/>
+                <path d="M236 122 L244 122 L242 128 L238 128 Z" fill="#c93f5a"/>
+                <!-- neck -->
+                <rect x="237" y="106" width="6" height="6" fill="#c08956"/>
+                <!-- head (slightly tilted up) -->
+                <circle cx="240" cy="98" r="11" fill="#dba877"/>
+                <!-- hair top -->
+                <path d="M229 96 Q229 84 240 84 Q251 84 251 96 Q249 90 244 88 Q240 86 236 88 Q231 90 229 96 Z" fill="#1a0e0e"/>
+                <!-- braids hanging at sides -->
+                <path d="M228 94 Q224 110 226 124 L232 124 Q234 110 232 94 Z" fill="#1a0e0e"/>
+                <path d="M252 94 Q256 110 254 124 L248 124 Q246 110 248 94 Z" fill="#1a0e0e"/>
+                <!-- ribbons on braid ends -->
+                <ellipse cx="229" cy="124" rx="3" ry="1.2" fill="#c93f5a"/>
+                <ellipse cx="251" cy="124" rx="3" ry="1.2" fill="#c93f5a"/>
+                <!-- bindi -->
+                <circle cx="240" cy="91" r="0.8" fill="#c93f5a"/>
+                <!-- eyes (looking up at teacher = up-left) -->
+                <ellipse cx="237" cy="98" rx="1.4" ry="1.6" fill="white"/>
+                <ellipse cx="243" cy="98" rx="1.4" ry="1.6" fill="white"/>
+                <circle cx="236.4" cy="97.6" r="0.9" fill="#1a0a05"/>
+                <circle cx="242.4" cy="97.6" r="0.9" fill="#1a0a05"/>
+                <!-- mouth (small closed listening) -->
+                <path d="M237 102 Q240 103 243 102" stroke="#5b2a1a" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+              </svg>
+
+              <!-- gold spotlight on active speaker -->
+              <span class="scene-spotlight scene-spotlight--tutor" aria-hidden="true"></span>
+
+              <span class="scene-name-tag scene-name-tag--tutor">Mr. Verma</span>
+              <span class="scene-name-tag scene-name-tag--peer" style="opacity: 0.55;">Meera</span>
+            </div>
+
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Now picture this.<br />
+              You see <strong>47,352</strong> on a billboard.<br />
+              How would you read it out loud?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       FRAME B: Meera is speaking — same scene, spotlight + bubble swap
+       ========================================================= -->
+  <div class="frame">
+    <p class="frame-caption">B · Meera is speaking (next card)</p>
+    <div class="phone">
+      <div class="phone-screen">
+
+        <div class="browser-chrome">
+          <div class="status-bar">
+            <span>10:58</span>
+            <span class="status-bar-icons">●●● 􀊸 􀛨</span>
+          </div>
+          <div class="url-bar">
+            <span class="lock">􀎡</span>
+            <span class="domain">…nlikemagic.com</span>
+            <span class="ellipsis">+ ⋮</span>
+          </div>
+        </div>
+
+        <div class="app-area">
+
+          <div class="topic-bar">
+            <span class="home-icon">⌂</span>
+            <span class="topic-name">Rounding Large N…</span>
+            <button class="feedback-pill">Feedback</button>
+            <span class="audio-pill">🔊 9/39</span>
+            <span class="dev-pill">Dev</span>
+          </div>
+
+          <div class="card-body">
+
+            <div class="scene" aria-label="Classroom scene with Meera answering">
+              <svg viewBox="0 0 320 160" aria-hidden="true">
+                <defs>
+                  <linearGradient id="v5wallB" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#f5d8a8"/>
+                    <stop offset="100%" stop-color="#d8a060"/>
+                  </linearGradient>
+                  <linearGradient id="v5floorB" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#a87044"/>
+                    <stop offset="100%" stop-color="#5b3621"/>
+                  </linearGradient>
+                </defs>
+                <rect width="320" height="120" fill="url(#v5wallB)"/>
+                <rect width="320" height="6" fill="#5b3621"/>
+                <rect y="120" width="320" height="40" fill="url(#v5floorB)"/>
+                <line x1="0" y1="120" x2="320" y2="120" stroke="#3a2113" stroke-width="1"/>
+
+                <rect x="16" y="20" width="120" height="64" rx="4" fill="#2a4a3a"/>
+                <rect x="16" y="20" width="120" height="64" rx="4" fill="none" stroke="#7a533a" stroke-width="3"/>
+                <text x="76" y="48" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="14" fill="rgba(244,244,239,0.6)">47,352</text>
+                <line x1="32" y1="62" x2="120" y2="62" stroke="rgba(244,244,239,0.4)" stroke-width="1"/>
+                <line x1="32" y1="68" x2="80" y2="68" stroke="rgba(244,244,239,0.3)" stroke-width="1"/>
+                <line x1="32" y1="74" x2="100" y2="74" stroke="rgba(244,244,239,0.3)" stroke-width="1"/>
+
+                <rect x="240" y="22" width="64" height="50" rx="3" fill="#9bd0e8" stroke="#5b3621" stroke-width="3"/>
+                <line x1="272" y1="22" x2="272" y2="72" stroke="#5b3621" stroke-width="2"/>
+                <line x1="240" y1="46" x2="304" y2="46" stroke="#5b3621" stroke-width="2"/>
+                <path d="M242 60 Q260 50 280 60 Q294 56 302 62 L302 70 L242 70 Z" fill="#7ab38a"/>
+
+                <rect x="160" y="30" width="60" height="14" rx="2" fill="rgba(255,255,255,0.7)"/>
+                <text x="190" y="40" text-anchor="middle" font-family="Caveat, cursive" font-weight="700" font-size="11" fill="#5b3621">like magic ✦</text>
+
+                <!-- Verma (now listening, neutral pose) -->
+                <ellipse cx="98" cy="148" rx="22" ry="3" fill="#3a2113" opacity="0.5"/>
+                <rect x="92" y="118" width="6" height="28" fill="#26334a"/>
+                <rect x="100" y="118" width="6" height="28" fill="#26334a"/>
+                <ellipse cx="95" cy="148" rx="5" ry="2" fill="#1a1a1a"/>
+                <ellipse cx="103" cy="148" rx="5" ry="2" fill="#1a1a1a"/>
+                <path d="M82 92 Q98 86 116 92 L116 122 L82 122 Z" fill="#3d6b95"/>
+                <path d="M82 92 Q98 90 116 92 L116 96 L82 96 Z" fill="#2a4f74"/>
+                <path d="M93 92 L99 102 L105 92 L102 100 L99 105 L96 100 Z" fill="#1c3a58"/>
+                <path d="M97 102 L101 102 L102 122 L96 122 Z" fill="#a83446"/>
+                <!-- arms relaxed (both at sides) -->
+                <path d="M82 96 Q74 110 78 122" stroke="#3d6b95" stroke-width="6" stroke-linecap="round" fill="none"/>
+                <circle cx="78" cy="124" r="3.5" fill="#d6a06a"/>
+                <path d="M116 96 Q124 110 122 122" stroke="#3d6b95" stroke-width="6" stroke-linecap="round" fill="none"/>
+                <circle cx="122" cy="124" r="3.5" fill="#d6a06a"/>
+                <rect x="95" y="84" width="8" height="8" fill="#b88555"/>
+                <circle cx="99" cy="76" r="11" fill="#d6a06a"/>
+                <path d="M104 75 Q108 80 105 86 Q103 80 104 75 Z" fill="#9c6a3c" opacity="0.3"/>
+                <path d="M88 70 Q88 60 99 60 Q110 60 110 70 Q108 64 102 62 Q99 60 96 62 Q90 64 88 70 Z" fill="#2c2620"/>
+                <ellipse cx="89" cy="70" rx="1.2" ry="3.5" fill="#a59d92"/>
+                <ellipse cx="109" cy="70" rx="1.2" ry="3.5" fill="#a59d92"/>
+                <circle cx="95" cy="76" r="2.5" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1"/>
+                <circle cx="103" cy="76" r="2.5" fill="rgba(255,255,255,0.45)" stroke="#2c2620" stroke-width="1"/>
+                <line x1="97.5" y1="76" x2="100.5" y2="76" stroke="#2c2620" stroke-width="1"/>
+                <circle cx="95" cy="76" r="0.8" fill="#1a140d"/>
+                <circle cx="103" cy="76" r="0.8" fill="#1a140d"/>
+                <path d="M93 81 Q99 79 105 81 Q102 83 99 82.5 Q96 83 93 81 Z" fill="#2c2620"/>
+                <!-- mouth (closed listening) -->
+                <path d="M95 84 Q99 85 103 84" stroke="#5b2a1a" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+
+                <!-- Meera at desk, raising hand to answer -->
+                <ellipse cx="240" cy="148" rx="40" ry="3" fill="#3a2113" opacity="0.4"/>
+                <path d="M196 138 L284 138 L296 158 L184 158 Z" fill="#a8723e"/>
+                <path d="M196 138 L284 138 L284 142 L196 142 Z" fill="#7a533a"/>
+                <rect x="208" y="130" width="36" height="10" fill="#5b86c2" stroke="#264a6e" stroke-width="1"/>
+                <rect x="208" y="128" width="36" height="3" fill="#264a6e"/>
+                <rect x="252" y="130" width="22" height="10" fill="#fbf5e0" stroke="#5b3621" stroke-width="1"/>
+                <line x1="254" y1="134" x2="272" y2="134" stroke="#a8a8a8" stroke-width="0.5"/>
+                <line x1="254" y1="137" x2="272" y2="137" stroke="#a8a8a8" stroke-width="0.5"/>
+
+                <!-- left arm raised up (hand answer pose) -->
+                <path d="M222 116 Q220 96 218 80" stroke="#dba877" stroke-width="5" stroke-linecap="round" fill="none"/>
+                <circle cx="218" cy="78" r="4" fill="#dba877"/>
+                <!-- finger pointing -->
+                <rect x="217" y="73" width="2" height="6" rx="1" fill="#dba877"/>
+                <!-- right arm on desk -->
+                <path d="M260 130 Q252 120 246 110" stroke="#dba877" stroke-width="5" stroke-linecap="round" fill="none"/>
+                <!-- torso -->
+                <path d="M218 116 Q240 110 262 116 L262 138 L218 138 Z" fill="#fbf5e0"/>
+                <path d="M232 116 L240 124 L248 116 L245 122 L240 126 L235 122 Z" fill="#d4c89c"/>
+                <path d="M236 122 L244 122 L242 128 L238 128 Z" fill="#c93f5a"/>
+                <rect x="237" y="106" width="6" height="6" fill="#c08956"/>
+                <circle cx="240" cy="98" r="11" fill="#dba877"/>
+                <path d="M229 96 Q229 84 240 84 Q251 84 251 96 Q249 90 244 88 Q240 86 236 88 Q231 90 229 96 Z" fill="#1a0e0e"/>
+                <path d="M228 94 Q224 110 226 124 L232 124 Q234 110 232 94 Z" fill="#1a0e0e"/>
+                <path d="M252 94 Q256 110 254 124 L248 124 Q246 110 248 94 Z" fill="#1a0e0e"/>
+                <ellipse cx="229" cy="124" rx="3" ry="1.2" fill="#c93f5a"/>
+                <ellipse cx="251" cy="124" rx="3" ry="1.2" fill="#c93f5a"/>
+                <circle cx="240" cy="91" r="0.8" fill="#c93f5a"/>
+                <!-- big bright eyes (open, eager) -->
+                <ellipse cx="237" cy="98" rx="1.6" ry="1.8" fill="white"/>
+                <ellipse cx="243" cy="98" rx="1.6" ry="1.8" fill="white"/>
+                <circle cx="237" cy="98" r="1.0" fill="#1a0a05"/>
+                <circle cx="243" cy="98" r="1.0" fill="#1a0a05"/>
+                <circle cx="237.3" cy="97.5" r="0.4" fill="white"/>
+                <circle cx="243.3" cy="97.5" r="0.4" fill="white"/>
+                <!-- mouth (open answering) -->
+                <ellipse cx="240" cy="103" rx="1.6" ry="1" fill="#5b2a1a"/>
+
+                <!-- speech bubble next to Meera -->
+                <g transform="translate(258 56)">
+                  <ellipse cx="20" cy="14" rx="20" ry="13" fill="white" stroke="#5b3621" stroke-width="1.4"/>
+                  <path d="M35 22 Q42 30 40 32 Q32 28 30 23 Z" fill="white" stroke="#5b3621" stroke-width="1.4"/>
+                  <circle cx="14" cy="14" r="1.6" fill="#5b3621"/>
+                  <circle cx="20" cy="14" r="1.6" fill="#5b3621"/>
+                  <circle cx="26" cy="14" r="1.6" fill="#5b3621"/>
+                </g>
+              </svg>
+
+              <span class="scene-spotlight scene-spotlight--peer" aria-hidden="true"></span>
+
+              <span class="scene-name-tag scene-name-tag--tutor" style="opacity: 0.55;">Mr. Verma</span>
+              <span class="scene-name-tag scene-name-tag--peer">Meera</span>
+            </div>
+
+            <div class="visual-card">
+              <span class="sun"></span>
+              <svg class="billboard-svg" viewBox="0 0 320 220" aria-hidden="true">
+                <rect x="36" y="34" width="248" height="106" rx="6" fill="#fff" stroke="#cbb88c" stroke-width="2"/>
+                <text x="160" y="106" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="48" fill="#1a1a1a">47,352</text>
+                <rect x="86"  y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="228" y="140" width="6" height="36" fill="#7a533a"/>
+                <rect x="0" y="174" width="320" height="20" fill="#8ec48a"/>
+                <rect x="0" y="190" width="320" height="14" fill="#5b3621"/>
+                <line x1="20" y1="198" x2="60" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="80" y1="198" x2="120" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="140" y1="198" x2="180" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="200" y1="198" x2="240" y2="198" stroke="#fff" stroke-width="2"/>
+                <line x1="260" y1="198" x2="300" y2="198" stroke="#fff" stroke-width="2"/>
+              </svg>
+            </div>
+            <button class="replay-btn">↻ REPLAY</button>
+
+            <p class="dialogue">
+              Hmm… is it<br />
+              <strong>forty-seven thousand three<br />hundred fifty-two</strong>?
+            </p>
+          </div>
+
+          <div class="bottom-area">
+            <div class="nav-row">
+              <button class="nav-btn back">BACK</button>
+              <button class="nav-btn restart">RESTART</button>
+              <button class="nav-btn next">NEXT</button>
+            </div>
+            <div class="nav-strip">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="active"></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <span class="star-row">☆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <h2>Why this works (and what it costs)</h2>
+  <p>
+    Avatars stop being labels and become actors in a place. The classroom scene gives the
+    dialogue a setting — chalkboard with the topic written on it, a window with a hill, Meera
+    at her desk. Body language carries the active speaker (Verma points, Meera raises her
+    hand) so even with the gold spotlight off, you'd still know who's talking.
+  </p>
+
+  <h3>Key moves</h3>
+  <ul>
+    <li><strong>Both characters in the same illustrated set.</strong> Same composition every card — only pose, mouth, and spotlight change.</li>
+    <li><strong>Body language signals turn.</strong> Verma points to the chalkboard when he speaks; Meera raises her hand when she answers.</li>
+    <li><strong>Speech bubble cue.</strong> Tiny "..." bubble next to the active speaker. Reads even at small size.</li>
+    <li><strong>Gold spotlight.</strong> Soft radial glow on the active character, pulsing while audio plays.</li>
+    <li><strong>Backdrop carries motif.</strong> A small "like magic ✦" sticker on the wall ties the scene to the brand without shouting.</li>
+  </ul>
+
+  <div class="pros-cons">
+    <div class="col pros">
+      <h3>Pros</h3>
+      <ul>
+        <li>Most narratively immersive — feels like watching a play, not reading a UI.</li>
+        <li>Body language is a richer signal than rings or pulses.</li>
+        <li>Lots of room for delight: chalkboard scribbles change per topic, classroom decorations swap seasonally.</li>
+        <li>Strong differentiation from any other tutoring product.</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h3>Cons</h3>
+      <ul>
+        <li>Most expensive to build — bespoke illustration + per-card pose variants.</li>
+        <li>Eats ~150px of vertical space; visual aid card has to share airtime.</li>
+        <li>At small character sizes (~24px figures) facial expression doesn't read.</li>
+        <li>Hard to evolve consistently if multiple dialogues need different scenes (kitchen, market, etc.).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
