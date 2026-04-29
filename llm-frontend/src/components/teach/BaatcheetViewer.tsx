@@ -535,7 +535,13 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
                       />
                     )}
                   </div>
-                ) : card.card_type === 'visual' ? (
+                ) : (visualPixiCode || card.card_type === 'visual') ? (
+                  // V2 enrichment writes visual_explanation onto whatever card
+                  // the selector picks (often card_type='dialogue'), without
+                  // changing card_type. Trigger this branch on pixi presence
+                  // too so those visuals actually render. The legacy
+                  // card_type==='visual' check stays for V1 dialogues whose
+                  // visual cards may carry only `visual_intent` (no pixi yet).
                   <div className="baatcheet-viewer__body baatcheet-viewer__visual">
                     {card.title && <h3 className="baatcheet-viewer__title">{card.title}</h3>}
                     {visualReady && visualPixiCode && visualExplanation ? (
