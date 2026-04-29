@@ -10,7 +10,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 ┌─────────────────────────────────────────────────────────────────┐
 │  Frontend (React + TypeScript + Vite)                           │
 │  S3 + CloudFront                                                │
-│  Routes: /learn/*, /learn/.../teach/:id, /learn/.../clarify/:id,│
+│  Routes: /learn/*, /learn/.../teach (sub-mode picker),          │
+│          /learn/.../teach/:id, /learn/.../clarify/:id,          │
 │          /practice/:guidelineId, /practice/attempts/:id/{run,   │
 │          results}, /login/*, /profile, /report-card,            │
 │          /report-issue, /history, /admin/*                      │
@@ -35,9 +36,9 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │          feature_flags, session_feedback, kid_enrichment_profiles,│
 │          kid_personalities, book_chapters, chapter_pages,        │
 │          chapter_processing_jobs, chapter_chunks, chapter_topics,│
-│          topic_explanations, issues, practice_questions,         │
-│          practice_attempts, topic_stage_runs,                    │
-│          topic_content_hashes                                    │
+│          topic_explanations, topic_dialogues, student_topic_cards,│
+│          issues, practice_questions, practice_attempts,          │
+│          topic_stage_runs, topic_content_hashes                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -96,22 +97,30 @@ llm-backend/
 │   ├── utils/            # schema_utils, state_utils, prompt_utils
 │   └── exceptions.py     # Custom exception hierarchy for tutor module
 ├── book_ingestion_v2/    # Book upload, TOC extraction, chapter processing, topic sync (V2 pipeline)
-│   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes, dag_routes
+│   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes,
+│   │                     #   visual_preview_routes, dag_routes
 │   ├── dag/              # Topic-pipeline DAG: topic_pipeline_dag.py (single source of truth for stages),
-│   │                     #   cascade.py (auto-cascade orchestrator), cross_dag_warnings.py (chapter-resync banner)
-│   ├── stages/           # One module per pipeline stage (Stage objects imported by dag/topic_pipeline_dag.py)
+│   │                     #   cascade.py (auto-cascade orchestrator), cross_dag_warnings.py (chapter-resync banner),
+│   │                     #   launcher_map.py, status_helpers.py, types.py
+│   ├── stages/           # One module per pipeline stage (Stage objects imported by dag/topic_pipeline_dag.py):
+│   │                     #   explanations, visuals, check_ins, practice_bank, audio_synthesis, audio_review,
+│   │                     #   baatcheet_dialogue, baatcheet_visuals
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
 │   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
 │   │                     #   explanation_generator_service, animation_enrichment_service,
 │   │                     #   check_in_enrichment_service, refresher_topic_generator_service,
 │   │                     #   practice_bank_generator_service, topic_pipeline_orchestrator,
-│   │                     #   topic_pipeline_status_service, baatcheet_visual_enrichment_service
+│   │                     #   topic_pipeline_status_service, baatcheet_visual_enrichment_service,
+│   │                     #   baatcheet_dialogue_generator_service, baatcheet_audio_review_service,
+│   │                     #   audio_generation_service, audio_text_review_service, stage_gating,
+│   │                     #   stage_launchers, visual_preview_store, visual_render_harness
 │   ├── repositories/     # chapter_repository, chapter_page_repository, chunk_repository,
 │   │                     #   processing_job_repository, topic_repository, topic_stage_run_repository
 │   ├── models/           # schemas, database, processing_models
 │   ├── utils/            # chunk_builder
 │   ├── constants.py      # Pipeline config, status enums, job types
+│   ├── exceptions.py     # Pipeline exception hierarchy
 │   └── prompts/
 ├── study_plans/          # Study plan generation (services-only; imported by tutor)
 │   └── services/         # generator_service, reviewer_service
@@ -141,10 +150,12 @@ llm-backend/
 ├── shared/               # Cross-module utilities
 │   ├── api/              # Health checks, LLM config admin, feature flag admin, issue reporting endpoints
 │   ├── services/         # LLM service, Anthropic adapter, Claude Code adapter, LLM config service, feature flag service, issue service, OCR service
-│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag, explanation, issue repos
-│   ├── models/           # Domain models, ORM entities, Pydantic schemas
-│   ├── prompts/          # Shared prompt loader
-│   └── utils/            # Constants, exceptions, formatting helpers, S3 client
+│   ├── repositories/     # Session, event, guideline, book, LLM config, feature flag, explanation, issue,
+│   │                     #   dialogue (Baatcheet topic_dialogues), student_topic_cards,
+│   │                     #   practice_attempt, practice_question repos
+│   ├── models/           # Domain models, ORM entities (entities.py), Pydantic schemas
+│   ├── prompts/          # Shared prompt loader (loader.py, ocr_default.txt, templates/)
+│   └── utils/            # Constants, exceptions, formatting helpers, S3 client, dialogue_hash
 ├── api/                  # Root-level API (docs, test scenarios, pixi PoC)
 ├── scripts/              # Utility scripts
 ├── tests/
@@ -195,6 +206,7 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 | v2 page routes | `/admin/v2/books/{id}/chapters/{id}/pages` | Chapter page management (V2) |
 | v2 processing routes | `/admin/v2/books/{id}/chapters/{id}` | Chapter processing, topic extraction, jobs (V2) |
 | v2 sync routes | `/admin/v2/books/{id}` | Sync processed topics to curriculum + results (V2) |
+| v2 visual preview routes | `/admin/v2/visual-preview` | Server-side store for Pixi visual preview entries (admin Visual Render Preview page; ~2-min TTL) |
 | v2 dag routes | `/admin/v2` | Topic-pipeline DAG: definition, per-topic state, cascade rerun/run-all/cancel, cross-DAG warnings (banner fires when upstream chapter is re-synced) |
 | issues | `/issues` | Issue reporting (create, list, update status, screenshot upload/retrieval) |
 
@@ -216,6 +228,7 @@ llm-frontend/src/
 │   ├── ChapterSelect.tsx     # Chapter picker (/learn/:subject)
 │   ├── TopicSelect.tsx       # Topic picker (/learn/:subject/:chapter)
 │   ├── ModeSelectPage.tsx    # Mode picker (/learn/:subject/:chapter/:topic)
+│   ├── TeachMeSubChooser.tsx # Teach Me sub-mode picker — Baatcheet vs Explain (/learn/.../teach)
 │   ├── ChatSession.tsx       # Chat UI (/learn/.../teach|clarify/:sessionId)
 │   ├── PracticeLandingPage.tsx # Practice landing (/practice/:guidelineId)
 │   ├── PracticeRunnerPage.tsx  # Practice runner (/practice/attempts/:id/run)
@@ -234,9 +247,12 @@ llm-frontend/src/
 │   ├── AuthenticatedLayout.tsx # Layout above AppShell + chat-session groups; mounts PracticeBanner
 │   ├── ProtectedRoute.tsx, OnboardingGuard.tsx
 │   ├── ModeSelection.tsx     # Learning mode picker (teach/clarify/practice, resume)
+│   ├── ConfirmDialog.tsx     # Reusable confirm modal
 │   ├── practice/             # Practice v2 UI: QuestionRenderer, FreeFormQuestion,
 │   │                         #   PracticeBanner, capture/*.tsx (11 controlled question components)
 │   ├── shared/               # OptionButton, PairColumn, BucketZone, SequenceList, seededShuffle
+│   ├── baatcheet/            # SpeakerAvatar (Mr. Verma + Meera dialogue avatars)
+│   ├── teach/                # BaatcheetViewer — renders a Baatcheet (Mr. Verma + Meera) dialogue deck
 │   ├── TypewriterMarkdown.tsx   # Markdown renderer with typewriter animation for tutor messages
 │   ├── VisualExplanation.tsx    # Renders LLM-generated Pixi.js visuals in sandboxed iframe
 │   ├── InteractiveQuestion.tsx  # Rich question formats: fill-in-the-blank, MCQ, matching, etc.
@@ -247,6 +263,11 @@ llm-frontend/src/
 │   ├── FillBlankActivity.tsx    # Fill-in-the-blank check-in
 │   ├── SortBucketsActivity.tsx  # Sort-into-buckets check-in
 │   ├── SequenceActivity.tsx     # Ordering/sequence check-in
+│   ├── SpotTheErrorActivity.tsx # Spot-the-error check-in
+│   ├── OddOneOutActivity.tsx    # Odd-one-out check-in
+│   ├── PredictRevealActivity.tsx # Predict-then-reveal check-in
+│   ├── SwipeClassifyActivity.tsx # Swipe-to-classify check-in
+│   ├── TapToEliminateActivity.tsx # Tap-to-eliminate check-in
 │   └── enrichment/           # Enrichment form components
 │       ├── SectionCard.tsx
 │       ├── ChipSelector.tsx
@@ -257,7 +278,9 @@ llm-frontend/src/
 │   │   │   ├── adminApi.ts          # Admin API client (evaluation, docs, LLM config, feature flags, test scenarios)
 │   │   │   └── adminApiV2.ts        # Book ingestion V2 API client
 │   │   ├── components/
-│   │   │   └── AdminLayout.tsx      # Shared admin layout with persistent top nav bar
+│   │   │   ├── AdminLayout.tsx      # Shared admin layout with persistent top nav bar
+│   │   │   ├── QualitySelector.tsx  # Fast / Balanced / Thorough quality selector popover
+│   │   │   └── TopicDAGView.tsx     # React Flow per-topic DAG dashboard (8 stages, click to rerun)
 │   │   ├── pages/
 │   │   │   ├── AdminHome.tsx        # Admin dashboard landing page with cards linking to all admin sections
 │   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
@@ -267,6 +290,8 @@ llm-frontend/src/
 │   │   │   ├── GuidelinesAdmin.tsx   # Per-chapter guideline editor (approve/reject/sync)
 │   │   │   ├── ExplanationAdmin.tsx  # Per-chapter explanation card generator + viewer
 │   │   │   ├── VisualsAdmin.tsx      # Per-chapter Pixi visual generator + coverage tracker
+│   │   │   ├── PracticeBankAdmin.tsx # Per-chapter practice question bank viewer + regenerate
+│   │   │   ├── VisualRenderPreview.tsx # Admin-only Pixi single-visual preview (id-keyed; for screenshot tests)
 │   │   │   ├── OCRAdmin.tsx          # Per-chapter OCR page viewer + retry/rerun
 │   │   │   ├── EvaluationDashboard.tsx
 │   │   │   ├── DocsViewer.tsx        # In-app documentation browser
@@ -306,7 +331,8 @@ llm-frontend/src/
 | `/learn/:subject` | AppShell > ChapterSelect | Protected + Onboarding | Chapter picker |
 | `/learn/:subject/:chapter` | AppShell > TopicSelect | Protected + Onboarding | Topic picker |
 | `/learn/:subject/:chapter/:topic` | AppShell > ModeSelectPage | Protected + Onboarding | Mode picker (teach/clarify/practice, resume) |
-| `/learn/:subject/:chapter/:topic/teach/:sessionId` | ChatSession | Protected + Onboarding | Teach Me chat session |
+| `/learn/:subject/:chapter/:topic/teach` | AppShell > TeachMeSubChooser | Protected + Onboarding | Teach Me sub-mode picker (Baatcheet vs Explain) |
+| `/learn/:subject/:chapter/:topic/teach/:sessionId` | ChatSession | Protected + Onboarding | Teach Me chat session (Baatcheet or Explain depending on session.teach_me_mode) |
 | `/learn/:subject/:chapter/:topic/clarify/:sessionId` | ChatSession | Protected + Onboarding | Clarify Doubts chat session |
 | `/practice/:guidelineId` | AppShell > PracticeLandingPage | Protected + Onboarding | Practice landing (Start / Resume / history) |
 | `/practice/attempts/:attemptId/run` | AppShell > PracticeRunnerPage | Protected + Onboarding | Practice drill runner |
@@ -329,6 +355,8 @@ llm-frontend/src/
 | `/admin/books-v2/:bookId/visuals/:chapterId` | AdminLayout > VisualsAdmin | Unprotected | Per-chapter Pixi visuals |
 | `/admin/books-v2/:bookId/ocr/:chapterId` | AdminLayout > OCRAdmin | Unprotected | Per-chapter OCR page viewer |
 | `/admin/books-v2/:bookId/practice-banks/:chapterId` | AdminLayout > PracticeBankAdmin | Unprotected | Per-chapter practice question bank viewer |
+| `/admin/books-v2/:bookId/pipeline/:chapterId/:topicKey` | AdminLayout > TopicDAGView | Unprotected | Per-topic 8-stage React Flow DAG dashboard |
+| `/admin/visual-render-preview/:id` | AdminLayout > VisualRenderPreview | Unprotected | Admin-only Pixi single-visual sandbox preview |
 | `/admin/evaluation` | AdminLayout > EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | AdminLayout > DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
@@ -384,10 +412,10 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 
 | Provider | Config Value | Available Models | Usage |
 |----------|-------------|------------------|-------|
-| OpenAI | `openai` | gpt-5.4, gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
+| OpenAI | `openai` | gpt-5.4, gpt-5.4-nano, gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
 | Anthropic | `anthropic` | claude-opus-4-6, claude-haiku-4-5-20251001 | Tutor, evaluation |
 | Google | `google` | gemini-3-pro-preview | Alternative provider |
-| Claude Code | `claude_code` | claude-code | Local/admin workflows via CLI subprocess (book ingestion, etc.) |
+| Claude Code | `claude_code` | claude-code (admin UI label); CLI invokes `claude-opus-4-7` | Local/admin workflows via CLI subprocess (Baatcheet dialogue, check-in enrichment, practice bank, etc.) |
 
 ### LLM Configuration (DB-Backed)
 
@@ -396,7 +424,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **Admin UI**: `/admin/llm-config` page lets admins change provider + model per component
 - **API**: `GET /api/admin/llm-config` lists all configs; `PUT /api/admin/llm-config/{component_key}` updates one
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
-- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`
+- **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`, `baatcheet_dialogue_generator`
 - **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
 
 ### Key Provider Files
@@ -415,10 +443,10 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 ### Provider Features
 
 - **Structured output**: OpenAI uses `json_schema` (strict mode); Anthropic uses thinking + tool_use
-- **Reasoning levels**: none, low, medium, high, xhigh (mapped to thinking budgets for Claude: 0, 5K, 10K, 20K, 40K tokens)
+- **Reasoning levels**: low, medium, high, xhigh, max (per-component, stored in `llm_config.reasoning_effort`; mapped to thinking budgets for Claude). Caller-side default `"none"` falls back to the per-component `llm_config` setting.
 - **Retry**: 3 attempts with exponential backoff for rate limits and timeouts
 - **Schema conversion**: `make_schema_strict()` converts Pydantic models to OpenAI strict schema format
-- **OpenAI API selection**: gpt-5.4/gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
+- **OpenAI API selection**: gpt-5.4/gpt-5.4-nano/gpt-5.3-codex/gpt-5.2/gpt-5.1 use the Responses API; gpt-4o/gpt-4o-mini use Chat Completions
 - **Streaming**: `call_stream()` yields text chunks via OpenAI Responses API or Chat Completions streaming; Anthropic streams via adapter; Gemini falls back to non-streaming
 - **Fast model**: `call_fast()` uses the `fast_model` DB config entry (defaults to gpt-4o-mini) via Chat Completions for lightweight tasks (translation, safety checks) regardless of main provider setting
 - **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls

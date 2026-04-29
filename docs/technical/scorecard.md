@@ -17,7 +17,7 @@ The report card is **deterministic only** — it shows coverage completion perce
 
 All endpoints are in `tutor/api/sessions.py`. The first two delegate to `ReportCardService`; the resumable endpoint queries `SessionModel` directly for paused teach_me sessions and validates state via `SessionState.model_validate_json`; the guideline sessions endpoint delegates to `SessionRepository.list_by_guideline()`.
 
-Practice-attempt endpoints (`POST /practice/start`, `GET /practice/attempts/*`, etc.) are documented in `docs/technical/practice-mode.md`. The report card reads practice attempt data through `PracticeAttemptRepository`, not via HTTP.
+Practice-attempt endpoints (`POST /practice/start`, `GET /practice/attempts/*`, etc.) are documented in `docs/technical/practice-mode.md`. The report card reads practice attempt data via a direct `db.query(PracticeAttempt)` inside `ReportCardService._load_user_practice_attempts` (not through `PracticeAttemptRepository`), so it can apply the `(guideline_id ASC, graded_at DESC)` sort needed for head-of-group latest-attempt selection.
 
 ---
 
@@ -37,9 +37,9 @@ Practice-attempt endpoints (`POST /practice/start`, `GET /practice/attempts/*`, 
 | Method | Purpose |
 |--------|---------|
 | `_load_user_sessions(user_id)` | Query sessions for user (columns: `id`, `state_json`, `subject`, `mastery`, `created_at`), ordered `created_at ASC`, `id ASC` |
-| `_load_user_practice_attempts(user_id)` | Query `practice_attempts` for `status='graded'`, ordered `guideline_id ASC`, `graded_at DESC` — so `attempts[0]` per group is latest |
+| `_load_user_practice_attempts(user_id)` | Query `practice_attempts` for `status='graded'` with non-null `graded_at` and `total_score`, ordered `guideline_id ASC`, `graded_at DESC` — so `attempts[0]` per group is latest |
 | `_build_guideline_lookup(sessions, practice_attempts)` | Batch-query `teaching_guidelines` from BOTH source lists to build `guideline_id → {subject, chapter, topic, keys}` map. Practice-only topics resolve hierarchy via this extension. |
-| `_group_sessions(sessions, guideline_lookup)` | Group Teach Me + Clarify sessions into subject/chapter/topic hierarchy; accumulate coverage from teach_me sessions |
+| `_group_sessions(sessions, guideline_lookup)` | Group Teach Me + Clarify sessions into subject/chapter/topic hierarchy; accumulate coverage from teach_me sessions only |
 | `_merge_practice_attempts_into_grouped(grouped, guideline_lookup, practice_attempts)` | Group graded attempts by guideline_id in Python, take head-of-group as latest, count the group, augment or CREATE the topic row if practice-only |
 | `_build_report(grouped)` | Build flat report structure with coverage + practice chip per topic |
 | `_empty_report_card()` | Return zero-valued report card for users with no sessions AND no practice attempts |
@@ -126,8 +126,8 @@ Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.t
 
 **Frontend badge mapping** — Both components define a local `ProgressStatus` type (`completed | in_progress | not_started`) derived from backend coverage values:
 
-- `TopicSelect.tsx`: `coverage >= 80` = completed, `coverage > 0` = in_progress, else not_started. Shows "X% covered" text when coverage > 0.
-- `ChapterSelect.tsx`: averages coverage across all `guideline_ids` in the chapter. `avg >= 80` = completed, `avg > 0` = in_progress, else not_started.
+- `TopicSelect.tsx`: `coverage >= 80` = completed, `coverage > 0` = in_progress, else not_started. Shows "X% covered" text when coverage > 0. The `get-ready` refresher topic is rendered separately as a "Get Ready" CTA in the chapter landing block, not in the regular topic list.
+- `ChapterSelect.tsx`: averages coverage across all `guideline_ids` in the chapter, **excluding `refresher_guideline_id`** so the Get Ready warm-up doesn't drag the chapter status down. `avg >= 80` = completed, `avg > 0` = in_progress, else not_started.
 
 Completed items show a checkmark; in_progress and not_started show the sequence number with different styling.
 
@@ -186,7 +186,9 @@ Completed items show a checkmark; in_progress and not_started show the sequence 
 ```python
 {
     "session_id": str,
-    "coverage": float,           # 0-100%
+    "mode": str,                       # always "teach_me"
+    "teach_me_mode": str | None,       # "explain" | "baatcheet" | None
+    "coverage": float,                 # 0-100%
     "current_step": int,
     "total_steps": int,
     "concepts_covered": [str]
@@ -201,6 +203,7 @@ Completed items show a checkmark; in_progress and not_started show the sequence 
         {
             "session_id": str,
             "mode": str,                      # "teach_me" | "clarify_doubts"
+            "teach_me_mode": str | None,      # "explain" | "baatcheet" (teach_me only)
             "created_at": str | None,         # ISO datetime
             "is_complete": bool,
             "coverage": float | None          # 0-100% (teach_me only)
@@ -219,8 +222,8 @@ The `/sessions/guideline/{guideline_id}` endpoint powers the mode selection scre
 
 | Field | Logic |
 |-------|-------|
-| `is_complete` | teach_me: `current_step > total_steps`; clarify_doubts: `clarify_complete` |
-| `coverage` | teach_me only: `|concepts_covered_set & plan_concepts| / |plan_concepts| * 100` (plan_concepts from `study_plan.steps[].concept`) |
+| `is_complete` | Delegates to `SessionState.is_complete` property (single source of truth): clarify_doubts → `clarify_complete`; teach_me Explain → `card_phase.completed`; teach_me Baatcheet → `dialogue_phase.completed`; refresher → `card_phase.completed`; legacy v1 fallback → `current_step > total_steps` |
+| `coverage` | teach_me only: `|concepts_covered_set & plan_concepts| / |plan_concepts| * 100`. `plan_concepts` is the **canonical concept list** — pulled from the most recent teach_me session's `mastery_estimates` keys via `_get_canonical_concepts(guideline_id)` (returns `[]` for practice-only users) |
 
 The frontend (`ModeSelection.tsx`) uses this to detect incomplete teach_me sessions with progress (`coverage > 0`) and show "Continue Lesson".
 
@@ -265,9 +268,12 @@ On the topic mode selection screen, `ModeSelection` calls `getGuidelineSessions(
 
 ### Practice Again Flow
 
-1. User taps "Practice Again" on a topic
-2. Frontend calls `createSession()` with `guideline_id`
-3. Navigates to `/session/{session_id}` with `location.state = {firstTurn, mode, subject}`
+The "Practice Again" button on the report card is a misnomer — it starts a fresh **Teach Me** session, not a practice attempt. Practice attempts are launched from the mode-selection screen via the "Let's Practice" tile.
+
+1. User taps "Practice Again" on a topic row in the subject detail view
+2. Frontend calls `createSession()` with the topic's `guideline_id` (no explicit mode → defaults to `teach_me`)
+3. Navigates to `/session/{session_id}` with `location.state = {firstTurn, mode: 'teach_me', subject}`
+4. Button is hidden when `topic.guideline_id` is null (orphan rows from session_only fallback hierarchy)
 
 ### Routing
 
@@ -305,8 +311,8 @@ The report card is accessible from:
 | `tutor/services/report_card_service.py` | Aggregation logic: coverage computation, practice score merge, hierarchy grouping |
 | `tutor/api/sessions.py` | `/report-card`, `/topic-progress`, `/resumable`, `/guideline/{id}` endpoints |
 | `shared/models/schemas.py` | Response schemas (`ReportCardResponse`, `ReportCardSubject`, `ReportCardChapter`, `ReportCardTopic`, `TopicProgressResponse`, `TopicProgressEntry`, `ResumableSessionResponse`, `GuidelineSessionsResponse`, `GuidelineSessionEntry`) |
-| `shared/repositories/session_repository.py` | `list_by_guideline()` — computes per-session completion and coverage from `state_json` |
-| `shared/repositories/practice_attempt_repository.py` | `list_graded_for_user()` — drives `_load_user_practice_attempts` |
+| `shared/repositories/session_repository.py` | `list_by_guideline()` — computes per-session completion and coverage from `state_json`, including `teach_me_mode` |
+| `shared/models/entities.py` | `PracticeAttempt` model (queried directly by `ReportCardService._load_user_practice_attempts`) |
 | `llm-frontend/src/pages/ReportCardPage.tsx` | Report card UI (overview + subject detail) |
 | `llm-frontend/src/components/ModeSelection.tsx` | Mode selection with resume detection and practice-availability tile |
 | `llm-frontend/src/pages/ModeSelectPage.tsx` | Hosts `ModeSelection`, fetches practice availability, handles autostart query |

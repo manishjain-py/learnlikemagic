@@ -72,7 +72,7 @@ cp terraform.tfvars.example terraform.tfvars
 #   domain_names ([]), acm_certificate_arn ("")
 ```
 
-`terraform.tfvars.example` ships with a starter set (excluding `gemini_api_key`); add it (and any optional vars) manually. `gemini_api_key` is required by `variables.tf` and must be set.
+`terraform.tfvars.example` ships with a starter set (excluding `gemini_api_key`); add it (and any optional vars) manually. `gemini_api_key` is required by `variables.tf` (no default) and must be set. The `GOOGLE_CLOUD_TTS_API_KEY` runtime env var on App Runner reuses the Gemini secret ARN.
 
 ### 2. Deploy Infrastructure
 
@@ -283,10 +283,17 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 
 | File | Purpose |
 |------|---------|
-| `infra/terraform/main.tf` | Root Terraform module |
+| `infra/terraform/main.tf` | Root Terraform module — wires sub-modules |
 | `infra/terraform/variables.tf` | All input variables |
-| `infra/terraform/outputs.tf` | Outputs including GitHub secrets map |
+| `infra/terraform/outputs.tf` | Outputs including `github_secrets` map + `deployment_summary` |
 | `infra/terraform/Makefile` | Terraform automation targets |
+| `infra/terraform/terraform.tfvars.example` | Starter tfvars (gemini_api_key must be added manually) |
+| `infra/terraform/modules/secrets/main.tf` | Secrets Manager: openai, gemini, db_password (always); anthropic (conditional) |
+| `infra/terraform/modules/database/main.tf` | RDS PostgreSQL 15 + subnet + parameter + security group |
+| `infra/terraform/modules/ecr/main.tf` | ECR repo + lifecycle policy (keep last 10) |
+| `infra/terraform/modules/app-runner/main.tf` | App Runner service, IAM roles, autoscaling, runtime env + secrets, health check |
+| `infra/terraform/modules/frontend/main.tf` | S3 + CloudFront + cache policy + SPA routing function |
+| `infra/terraform/modules/github-oidc/main.tf` | OIDC provider + IAM role for GitHub Actions |
 | `llm-backend/Makefile` | Backend build/deploy automation |
 | `llm-backend/Dockerfile` | Backend container definition (python:3.11-slim) |
 | `llm-backend/entrypoint.sh` | Container startup script (env var checks + uvicorn) |
@@ -295,6 +302,7 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 | `.github/workflows/manual-deploy.yml` | Manual deployment workflow |
 | `.github/workflows/daily-coverage.yml` | Daily test coverage report + email |
 | `llm-backend/scripts/send_coverage_report.py` | SMTP email sender for coverage reports |
-| `llm-frontend/Dockerfile` | Frontend container definition (node:18-alpine, dev server only -- not used in production CI/CD) |
+| `llm-frontend/Dockerfile` | Frontend container (node:18-alpine, dev server — not used in production CI/CD) |
 | `llm-backend/.coveragerc` | Coverage omissions for daily CI workflow |
+| `docker-compose.yml` (repo root) | Local-dev compose: postgres + api + frontend |
 | `e2e/scenarios.json` | E2E test scenarios (bundled into backend Docker image during CI/CD) |

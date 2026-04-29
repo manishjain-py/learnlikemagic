@@ -22,6 +22,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 |---------|-------------|
 | **Learning Sessions** | Interactive tutoring conversations on any topic in the curriculum |
 | **Learning Modes** | Three ways to learn: Teach Me (structured lesson), Clarify Doubts (Q&A), and Let's Practice (batch drill) |
+| **Teach Me Sub-Mode** | Within Teach Me, students pick between **Baatcheet** (recommended — Mr. Verma + Meera conversational dialogue) and **Explain** (step-by-step explanation cards). No memory of last choice — picked every entry |
 | **Voice Input** | Students can speak their answers instead of typing |
 | **Voice Output** | The tutor can read responses aloud (text-to-speech) in English, Hindi, or Hinglish |
 | **Practice Results** | After a practice set, students see fractional scores and per-question rationale explaining why each pick was right or wrong |
@@ -35,8 +36,8 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
 | **Feature Flags** | Admin tool to toggle runtime features on or off (e.g., visuals in tutor flow). Changes take effect immediately for new sessions |
 | **Pre-Computed Explanations** | During book ingestion, the system pre-generates multiple explanation variants for each topic (e.g., everyday analogies, visual/hands-on, story-based). During a Teach Me session, the tutor can present these as step-by-step explanation cards. If the student wants a different approach, they can request an alternative variant |
-| **Interactive Questions** | During teaching and practice drills, questions are rendered in rich interactive formats — fill-in-the-blank, multiple choice, true/false, matching, sort-into-buckets, and sequencing — instead of plain text. Students tap or type answers directly in the structured format |
-| **Check-In Activities** | Mid-explanation comprehension checks rendered as quick interactive activities (match-the-pairs, pick-one, true/false, fill-in-blank, sort-into-buckets, sequence) to verify understanding before moving on |
+| **Interactive Questions** | During teaching and practice drills, questions are rendered in 11 rich interactive formats: fill-in-the-blank, multiple choice, true/false, matching, sort-into-buckets, sequencing, spot-the-error, odd-one-out, predict-then-reveal, swipe-classify, tap-to-eliminate. Students tap or type answers directly in the structured format |
+| **Check-In Activities** | Mid-explanation comprehension checks rendered as quick interactive activities (any of the 11 question formats) to verify understanding before moving on |
 | **Get Ready Refresher** | A prerequisite "warm-up" topic appears at the top of each chapter. It revisits foundational knowledge needed before diving into the chapter's main topics |
 | **Report Issue** | Students can report problems via text, voice recording, or screenshot attachments. Reports are tracked by status (open, in progress, closed) |
 | **Visual Explanations (PoC)** | Admin tool to generate interactive diagrams and animations from text prompts using AI + Pixi.js |
@@ -48,6 +49,9 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Guidelines Admin** | Per-chapter admin tool to view, edit, approve, reject, and sync teaching guidelines |
 | **Explanations Admin** | Per-chapter admin tool to generate, view, and delete pre-computed explanation card variants per topic |
 | **Visuals Admin** | Per-chapter admin tool to generate Pixi.js visuals for explanation cards and track visual coverage |
+| **Practice Bank Admin** | Per-chapter admin tool to view, regenerate, and review the practice question bank for each topic |
+| **Topic DAG Dashboard** | Per-topic admin view of the 8-stage ingestion pipeline as a directed graph; click a stage to rerun-cascade or view state |
+| **Visual Render Preview** | Admin-only sandbox to render a single Pixi.js visual by ID for screenshot review |
 | **OCR Admin** | Per-chapter admin tool to view, retry, and bulk re-run OCR on chapter pages |
 
 ---
@@ -58,7 +62,7 @@ After choosing a subtopic, students pick how they want to learn:
 
 | Mode | What It Does |
 |------|-------------|
-| **Teach Me** | The tutor teaches the topic step-by-step from scratch. Tracks progress and coverage. Can be paused and resumed later. |
+| **Teach Me** | The tutor teaches the topic step-by-step from scratch. After picking Teach Me, students pick a sub-mode: **Baatcheet** (recommended — Mr. Verma + Meera dialogue) or **Explain** (explanation cards). Tracks progress and coverage. Can be paused and resumed later. |
 | **Clarify Doubts** | The student asks their own questions about the topic. The tutor answers and tracks which concepts were discussed. |
 | **Let's Practice** | A 10-question batch drill with no hints or tutor-in-the-loop. Students submit once and see per-question results with a rationale. Available on topics that have a question bank ready. See `docs/functional/practice-mode.md`. |
 
@@ -76,13 +80,14 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 4. **Pick a chapter** — Choose a chapter within that subject
 5. **Pick a topic** — Choose a specific topic to study
 6. **Choose a mode** — Teach Me, Clarify Doubts, or Let's Practice (or resume a paused session)
-7. **Learn** — Interact with the tutor through text or voice; listen to responses read aloud; pause to come back later or end early to see results
-8. **Review practice results** — After a practice set, see a question-by-question breakdown with your answer, the correct answer, and a rationale for wrong picks
-9. **Check report card** — View coverage and latest practice scores across subjects, chapters, and topics
-10. **View session history** — Browse past sessions with mastery scores and learning stats
-11. **Manage profile** — Update your name, grade, board, school, and other details
-12. **Report an issue** — Describe a problem via text, voice, or screenshots; the team tracks it
-13. **Practice again** — Jump back into topics that need more work
+7. **(Teach Me only) Pick sub-mode** — Baatcheet (recommended) or Explain. Cards show availability + resume CTA + (Baatcheet) stale badge
+8. **Learn** — Interact with the tutor through text or voice; listen to responses read aloud; pause to come back later or end early to see results
+9. **Review practice results** — After a practice set, see a question-by-question breakdown with your answer, the correct answer, and a rationale for wrong picks
+10. **Check report card** — View coverage and latest practice scores across subjects, chapters, and topics
+11. **View session history** — Browse past sessions with mastery scores and learning stats
+12. **Manage profile** — Update your name, grade, board, school, and other details
+13. **Report an issue** — Describe a problem via text, voice, or screenshots; the team tracks it
+14. **Practice again** — Jump back into topics that need more work
 
 ### Parents
 

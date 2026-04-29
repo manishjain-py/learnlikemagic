@@ -39,7 +39,8 @@ Generate Reports (JSON + Markdown artifacts)
 - All turn decisions (correct/incorrect, probability) are tracked in `turn_decisions` for debugging
 - A "natural variation" instruction tells the LLM to vary behavior turn-by-turn rather than rigidly following the persona script
 - If cards were shown, card content is included in the prompt so the simulated student can reference what they read
-- Builds a single flat prompt string (system context + conversation history + turn directive) passed to `self.llm.call()` with `reasoning_effort="low"`
+- Builds a single flat prompt string (system context + conversation history + turn directive) passed to `self.llm.call()` with `reasoning_effort="low"`, `json_mode=False`
+- Note: `EvalConfig.simulator_temperature` (0.8) and `simulator_max_tokens` (150) exist on the dataclass but are **not currently read** by the simulator -- generation is governed by the underlying `LLMService` defaults
 
 ---
 
@@ -60,9 +61,9 @@ Generate Reports (JSON + Markdown artifacts)
 - All events are logged to `run.log` with millisecond timestamps
 
 **Server management modes:**
-- `skip_server_management=True` (API/in-process): verifies server health via `/health/db` endpoint
-- `skip_server_management=False` (CLI): starts uvicorn as subprocess, waits for health check, stops on cleanup
-- `restart_server=True`: kills existing process on the port, then starts fresh (ensures code changes take effect)
+- `skip_server_management=True` (API path + CLI `--skip-server`): verifies server health via `/health/db`, does not start/stop the server
+- `skip_server_management=False` (CLI default): starts `uvicorn main:app` as a subprocess from `PROJECT_ROOT`, waits up to `server_startup_timeout=30s`, terminates on cleanup
+- `restart_server=True` (used by `run_experiment.py`): kills any existing process on `server_port` via `lsof -ti :PORT`, then starts a fresh subprocess (ensures code changes take effect across iterations)
 
 ---
 
@@ -223,7 +224,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `claude_code` (no API key needed). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display purposes, and `LLMService` itself routes `anthropic-haiku` to the Anthropic client. However, `EvalConfig.create_llm_service()` selects the model_id by checking `provider == "anthropic"` only -- with `anthropic-haiku`, it falls through to the default `evaluator_model`/`simulator_model` (e.g., `gpt-5.2`), so the call would attempt to use the Anthropic client with an OpenAI model_id and fail. Use `anthropic` for Opus or wire haiku model selection into `create_llm_service` to use Haiku.
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `claude_code` (no API key needed). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display, and `LLMService.call()` routes `anthropic-haiku` through the Anthropic client. However, `EvalConfig.create_llm_service()` selects `model_id` only when `provider == "anthropic"` -- with `anthropic-haiku` it falls through to the default `evaluator_model`/`simulator_model` (e.g., `gpt-5.2`), so the call attempts the Anthropic client with an OpenAI model id and fails. Use `anthropic` for Opus, or extend `create_llm_service()` to map `anthropic-haiku` to the haiku model id.
 
 ---
 
@@ -415,6 +416,25 @@ The frontend `DIMENSIONS` constant hardcodes the 5 core evaluation dimensions: r
 
 ---
 
+## Autoresearch Integration
+
+**File:** `autoresearch/tutor_teaching_quality/run_experiment.py`
+
+The autoresearch loop reuses this pipeline as its fixed evaluator (analogous to `prepare.py` in DSPy). One command produces a composite quality score for the current commit.
+
+- Wraps `EvalConfig.from_db()` + `StudentSimulator` + `SessionRunner` + `ConversationEvaluator` + `ReportGenerator`
+- Default persona: `average_student.json` only (`DEFAULT_PERSONAS`); `--quick` shortens to `QUICK_MAX_TURNS=12`
+- Default `--runs=2` averages across stochastic simulator variance (~0.6 single-run noise → ~0.35 with 3 runs)
+- Run directories are named `autoresearch_{timestamp}_{persona_id}` to distinguish from manual runs
+- `--restart-server` flag triggers `SessionRunner(restart_server=True)` so iterative tutor-prompt edits take effect each run
+- Appends a row to `autoresearch/tutor_teaching_quality/results.tsv` (`commit \t avg_score \t elapsed_min \t status \t description \t scores_json`)
+- Optional `--email` invokes `autoresearch/tutor_teaching_quality/email_report.py` for HTML iteration reports
+- Topic resolution: `AUTORESEARCH_TOPIC_ID` env var overrides; otherwise DB lookup by `--subject`/`--chapter` (defaults: Mathematics / Fractions)
+
+Used by the autoresearch agent (see `docs/technical/auto-research/overview.md`) to score prompt edits.
+
+---
+
 ## Key Files
 
 | File | Purpose |
@@ -426,9 +446,11 @@ The frontend `DIMENSIONS` constant hardcodes the 5 core evaluation dimensions: r
 | `autoresearch/tutor_teaching_quality/evaluation/report_generator.py` | Markdown + JSON report generation, card-phase-aware reports, comparison reports |
 | `autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py` | CLI entry point, single-persona and multi-persona orchestration |
 | `autoresearch/tutor_teaching_quality/evaluation/api.py` | FastAPI endpoints, background thread execution, status polling, session evaluation |
-| `autoresearch/tutor_teaching_quality/evaluation/personas/*.json` | 8 student persona definitions |
+| `autoresearch/tutor_teaching_quality/evaluation/personas/*.json` | 8 student persona definitions (`ace`, `average_student`, `confused_confident`, `distractor`, `quiet_one`, `repetition_detector`, `simplicity_seeker`, `struggler`) |
 | `autoresearch/tutor_teaching_quality/evaluation/prompts/evaluator.txt` | LLM judge system prompt with 5 core dimension rubrics, persona-aware criteria, and JSON output schema templates |
 | `autoresearch/tutor_teaching_quality/evaluation/prompts/card_phase_dimensions.txt` | Two card-phase dimension rubrics, spliced into evaluator prompt only when cards present |
+| `autoresearch/tutor_teaching_quality/run_experiment.py` | Autoresearch experiment runner — wraps the eval pipeline, averages multiple runs, appends to `results.tsv`, optional email report |
+| `autoresearch/tutor_teaching_quality/results.tsv` | Append-only experiment log: commit, avg_score, elapsed_min, status, description, scores_json |
 | `llm-frontend/src/features/admin/pages/EvaluationDashboard.tsx` | Evaluation UI: run list, detail view, start form, status polling |
 | `llm-frontend/src/features/admin/api/adminApi.ts` | API client functions for evaluation endpoints |
-| `llm-frontend/src/features/admin/types/index.ts` | TypeScript types for evaluation data |
+| `llm-frontend/src/features/admin/types/index.ts` | TypeScript types for evaluation data (`EvalRunSummary`, `EvalRunDetail`, `EvalStatus`, `EvalProblem`, `EvalResult`, `EvalPersona`) |

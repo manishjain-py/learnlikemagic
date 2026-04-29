@@ -30,6 +30,9 @@ docs/
 │   ├── database.md                   # Tables, schema, migrations
 │   ├── ai-agent-files.md             # Agent context file inventory, update policy
 │   ├── new-machine-setup.md          # New machine dev environment setup
+│   ├── llm-prompts.md                # Catalog of all LLM prompts (tutor, ingestion, eval)
+│   ├── audio-typewriter-bug-analysis.md  # Historical: TTS+typewriter sync bug investigation
+│   ├── aws-cost-optimization.md      # Historical: 2026-04 AWS cost reduction log
 │   └── auto-research/
 │       └── overview.md               # Autonomous prompt optimization system
 ├── principles/                       # Teaching & content principles
@@ -74,7 +77,10 @@ docs/
 | `docs/technical/database.md` | DB schema, migrations | Database changes |
 | `docs/technical/ai-agent-files.md` | Agent context file inventory, update policy | Understanding/updating agent files |
 | `docs/technical/new-machine-setup.md` | New machine dev environment setup | Setting up a new dev machine |
+| `docs/technical/llm-prompts.md` | Catalog of all LLM prompts across tutor / ingestion / eval / autoresearch | Editing or auditing prompts |
 | `docs/technical/auto-research/overview.md` | Autonomous prompt optimization system | Working on autoresearch |
+| `docs/technical/audio-typewriter-bug-analysis.md` | Historical: TTS+typewriter sync bug investigation | Reference when touching audio/typewriter code |
+| `docs/technical/aws-cost-optimization.md` | Historical: 2026-04 AWS cost reduction log | Understanding past infra/cost decisions |
 
 ---
 

@@ -48,11 +48,11 @@ Blank answers are allowed. They count as wrong at grading.
 
 Submit is immediate. The student is routed to a results page and grading runs in the background — typically under a few seconds for a 10-question set.
 
-While grading, the results page shows a "We're grading your set..." state. When grading completes, the score and per-question breakdown appear.
+While grading, the results page shows a "Grading your answers..." state. When grading completes, the score and per-question breakdown appear.
 
 If the student leaves the results page before grading finishes, a **banner** appears at the top of the app when the results are ready. The banner persists across Teach Me, Clarify Doubts, and all other in-app screens. Tapping the banner jumps to the results.
 
-If grading fails (e.g., an LLM transient error after 3 retries), the banner is amber and exposes an inline **Retry** button.
+If grading fails (e.g., an LLM transient error after retries), the banner is amber and exposes an inline **Retry** button. If the student stays on the results page and grading hasn't finished after ~5 minutes, the page shows a "Grading is taking longer than expected" state with the same Retry option.
 
 ---
 
@@ -78,7 +78,7 @@ The review uses the same interactive components as the runner, but in a disabled
 
 ## History
 
-Every submitted attempt is stored forever. The landing screen's past-attempts list shows every submission with date and score. Tapping any row opens that attempt's full card-by-card review — the exact same UI as a fresh submit.
+Every submitted attempt is stored forever. The landing screen's past-attempts list shows every submission with status chip, date, and score. Graded and grading-failed rows are tappable; in-progress and grading rows are read-only placeholders. Tapping a graded row opens that attempt's full card-by-card review — the exact same UI as a fresh submit.
 
 Because each attempt snapshots its 10 questions at creation time, regenerating a topic's question bank doesn't affect historical reviews.
 

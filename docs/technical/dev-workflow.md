@@ -14,11 +14,11 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env  # Edit with your credentials
 ```
 
-**Required `.env` variables:** `OPENAI_API_KEY`, `DATABASE_URL`
+**Required at runtime** (validated by `entrypoint.sh` + `validate_required_settings()`): `DATABASE_URL`, `OPENAI_API_KEY`.
 
-**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`
+**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`.
 
-Configuration is managed by `config.py` using pydantic-settings, which loads from the `.env` file automatically.
+Configuration is managed by `config.py` using pydantic-settings (loads `.env` automatically; case-insensitive; `extra="ignore"`).
 
 ### Frontend
 ```bash
@@ -28,6 +28,9 @@ echo "VITE_API_URL=http://localhost:8000" > .env
 ```
 
 ### Local Database (Optional)
+
+Either run `postgres:15-alpine` directly or use the repo-root `docker-compose.yml` (which also wires `api` + `frontend` services):
+
 ```bash
 docker run -d --name llm-postgres \
   -e POSTGRES_USER=llmuser -e POSTGRES_PASSWORD=dev_password -e POSTGRES_DB=tutor \
@@ -35,7 +38,7 @@ docker run -d --name llm-postgres \
 
 cd llm-backend
 source venv/bin/activate
-python db.py --migrate
+python db.py --migrate   # or: make db-migrate
 ```
 
 The default `DATABASE_URL` in `.env.example` is `postgresql://llmuser:dev_password@localhost:5432/tutor`, matching the Docker container above.
@@ -150,11 +153,13 @@ npm run test:ui          # Interactive Playwright UI
 npm run report           # View HTML report
 ```
 
-**Configuration:** `e2e/playwright.config.ts` -- baseURL `http://localhost:3000`, Chromium only, sequential execution (workers: 1), 60s timeout, 1 retry, screenshots on failure, trace on first retry. Reports output to `reports/e2e-runner/` (HTML + JSON). Git metadata (branch, commit) is embedded in report metadata.
+**Configuration:** `e2e/playwright.config.ts` — baseURL `http://localhost:3000`, Chromium only, sequential (workers: 1), 60s timeout, 10s expect/action timeout, 1 retry, screenshots on failure, trace on first retry, viewport 1280×720. Reports output to `reports/e2e-runner/` (HTML + JSON + list). Test output dir `reports/e2e-runner/test-output`. Git metadata (branch, commit) is embedded in report metadata.
 
-**Auth setup:** Tests use a `setup` project (`auth.setup.ts`) that stores auth state in `e2e/.auth/user.json`, reused by subsequent tests.
+**Auth setup:** Tests use a `setup` project (`auth.setup.ts`) that stores auth state in `e2e/.auth/user.json`, reused by the `chromium` project. Test credentials are loaded from `e2e/.env` via dotenv.
 
-**Scenarios:** `e2e/scenarios.json` defines test scenarios. This file is also copied into the backend Docker image during CI/CD builds.
+**Test files:** `tests/auth.setup.ts`, `tests/scenarios.spec.ts`, `tests/check-in-cards.spec.ts`, `tests/practice-v2.spec.ts`, `tests/cross-dag-warning.spec.ts`.
+
+**Scenarios:** `e2e/scenarios.json` defines test scenarios. This file is also copied into the backend Docker image during CI/CD builds (so the deployed backend can serve scenario metadata).
 
 ### Manual API Testing
 ```bash
@@ -179,11 +184,11 @@ curl -X POST http://localhost:8000/sessions \
 
 ### Adding Database Models
 
-1. **ORM model** (`shared/models/entities.py`): Define table
+1. **ORM model** (`shared/models/entities.py` for core; `book_ingestion_v2/models/database.py` for V2 pipeline)
 2. **Repository** (`repositories/`): Add CRUD operations
 3. **Migrate**: `python db.py --migrate` (or `make db-migrate`)
 
-If adding columns to an existing table, you must also add an `ALTER TABLE` migration in `db.py` with a column existence check. See `_apply_learning_modes_columns()` for the pattern.
+`Base.metadata.create_all()` handles new tables. For new columns on existing tables, add an `ALTER TABLE` migration helper in `db.py` with a column-existence check via `inspect()`, register it in `migrate()`, and document it in `docs/technical/database.md`. See `_apply_learning_modes_columns()` for the pattern, and `_ensure_llm_config()` for the seed-if-missing helper.
 
 See `docs/technical/architecture-overview.md` for detailed file structure and conventions.
 
@@ -289,7 +294,8 @@ aws logs tail /aws/apprunner/llm-backend-prod/3681f3cee2884f25842f6b15e9eacbfd/s
 | `llm-backend/pytest.ini` | Pytest configuration, markers, coverage settings |
 | `llm-backend/.coveragerc` | Coverage configuration used by daily CI workflow (adds `database.py` to omissions) |
 | `llm-backend/tests/conftest.py` | Shared test fixtures |
-| `llm-backend/db.py` | Database migration CLI |
+| `llm-backend/db.py` | Database migration CLI + helpers |
 | `llm-backend/database.py` | DatabaseManager, connection pooling |
+| `docker-compose.yml` (repo root) | Local Postgres + api + frontend services |
 | `e2e/playwright.config.ts` | E2E test configuration (Playwright) |
 | `e2e/scenarios.json` | E2E test scenarios (also bundled into backend Docker image) |
