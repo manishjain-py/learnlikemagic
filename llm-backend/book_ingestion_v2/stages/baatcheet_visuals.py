@@ -90,33 +90,46 @@ def _status(ctx: StatusContext) -> StageStatusOutput:
             1 for idx in required_idxs
             if _has_pixi(cards_by_idx.get(idx))
         )
-        # Extras: selector also picks default-generate cards. Surface for
-        # transparency but they don't gate `done`.
+        # Extras: selector also picks default-generate cards on every run,
+        # regardless of `visual_required` flags on the plan.
         extras_present = sum(
             1 for c in cards
             if _has_pixi(c) and c.get("card_idx") not in required_idxs
         )
         total_required = len(required_idxs)
-        total_extras_present = extras_present
-
-        if total_required == 0:
-            # Plan didn't flag any slot as required — trivially done.
-            return build_stage(
-                "baatcheet_visuals", "done",
-                "No visual_required slots in plan", [], job=job,
-            )
 
         artifact_present = required_present > 0 or extras_present > 0
-        if required_present == total_required:
-            state = "done"
-        elif required_present > 0:
-            state = "warning"
+
+        if total_required > 0:
+            if required_present == total_required:
+                state = "done"
+            elif required_present > 0:
+                state = "warning"
+            else:
+                state = "ready"
+            summary = (
+                f"{required_present}/{total_required} required visuals · "
+                f"{extras_present} extras"
+            )
         else:
-            state = "ready"
-        summary = (
-            f"{required_present}/{total_required} required visuals · "
-            f"{total_extras_present} extras"
-        )
+            # No `visual_required` flags in the plan — common when the
+            # planner predates the field. The selector still picks 12-18
+            # default cards on every run, so don't pre-declare `done`
+            # before the stage has executed: that hides the work from the
+            # admin and burns the dashboard's signal.
+            job_completed = bool(
+                job and job.status in ("completed", "completed_with_errors")
+            )
+            if extras_present > 0:
+                state = "done"
+                summary = f"No required slots in plan · {extras_present} default visuals enriched"
+            elif job_completed:
+                # Job ran but selector returned nothing — surface explicitly.
+                state = "done"
+                summary = "No required slots in plan · selector picked no cards"
+            else:
+                state = "ready"
+                summary = "No required slots in plan · selector picks defaults; not yet run"
 
         state, summary, warnings = overlay_job_state(
             state=state, summary=summary, warnings=[],
