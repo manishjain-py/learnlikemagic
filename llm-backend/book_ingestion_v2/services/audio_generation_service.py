@@ -18,22 +18,14 @@ from google.api_core.client_options import ClientOptions
 from config import get_settings
 from shared.utils.s3_client import S3Client
 
-# Chirp 3 HD's text normalizer reads the bare English word "us" as the
-# country abbreviation "U.S.", especially under the hi-IN voices we use for
-# Hinglish/Hindi. Chirp 3 HD doesn't support <sub>/<say-as> SSML, so we
-# rewrite the token to a homophone-ish spelling the normalizer parses as a
-# regular word. Case-sensitive — leaves the acronym "US" alone.
-#
-# Replacement history (iterated against the live TTS):
-#   "uss"  → also parsed as initialism, voice spells "U S S" (USS / USSR-like)
-#   "uhs"  → current pick. Vowel + consonant, single-syllable phonetic spelling
-#            that Chirp parses as a regular word ≈ /ʌs/. Acceptable approximation
-#            of "us" without triggering acronym detection.
-# If "uhs" later regresses (Chirp updates), try "uhss" or move the rewrite to
-# a per-locale table.
-_TTS_PRONUNCIATION_FIXES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bus\b"), "uhs"),
-]
+# Pre-synthesis text fixes for Chirp 3 HD pronunciation quirks. Empty under
+# the current en-IN voice pair — those voices handle "us" / "U.S." cleanly.
+# Earlier hi-IN voices misread bare "us" as "U.S.", and the various phonetic
+# rewrites we tried ("uss", "uhs", etc.) triggered initialism detection
+# instead. Audition results landed on en-IN voices as the right fix; this
+# hook is kept so future regressions can be patched in one place without
+# replumbing call sites.
+_TTS_PRONUNCIATION_FIXES: list[tuple[re.Pattern[str], str]] = []
 
 
 def normalize_tts_text(text: str) -> str:
@@ -44,21 +36,24 @@ def normalize_tts_text(text: str) -> str:
 
 logger = logging.getLogger(__name__)
 
-# Voice config — same as the real-time TTS endpoint
-VOICE_MAP = {
-    "en": ("en-US", "en-US-Chirp3-HD-Kore"),
-    "hi": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
-    "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
-}
+# Voice config — same as the real-time TTS endpoint. We standardised on
+# en-IN voices after auditioning the en-IN catalog: hi-IN voices misread bare
+# English tokens like "us" as "U.S.", and the phonetic-rewrite workaround
+# regressed each iteration. en-IN-Chirp3-HD-Orus is the adult-male tutor
+# voice (Mr. Verma); en-IN-Chirp3-HD-Leda is the youthful-feminine peer
+# voice (Meera) — closest "girl" timbre Chirp 3 HD ships, since the catalog
+# has no literal child voices.
+TUTOR_VOICE = ("en-IN", "en-IN-Chirp3-HD-Orus")
+PEER_VOICE = ("en-IN", "en-IN-Chirp3-HD-Leda")
 
-# Baatcheet voices — tutor reuses the existing Kore voice (smooth, neutral);
-# peer (Meera) gets a distinct hi-IN-Chirp3-HD-* voice. Per Google's published
-# Chirp 3 HD voice catalog, `Leda` is documented as a youthful feminine voice,
-# which fits Meera's persona (peer-aged, warm, curious) and contrasts most
-# audibly with Kore. Pilot the pick during the first dialogue listen-test;
-# revisit if it sounds too similar in production audio.
-TUTOR_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Kore")
-PEER_VOICE = ("hi-IN", "hi-IN-Chirp3-HD-Leda")
+# Tutor voice keyed by content-language. All map to the same en-IN tutor
+# voice now — the language key is preserved so future per-locale routing
+# (e.g. dedicated Devanagari pronunciation) can plug back in.
+VOICE_MAP = {
+    "en": TUTOR_VOICE,
+    "hi": TUTOR_VOICE,
+    "hinglish": TUTOR_VOICE,
+}
 
 
 def _voice_for_speaker(speaker: Optional[str], language: str) -> tuple[str, str]:

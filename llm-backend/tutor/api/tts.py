@@ -69,13 +69,9 @@ async def text_to_speech(
         if request.voice_role == "peer":
             lang_code, voice_name = PEER_VOICE
         else:
-            # Select voice based on language preference (tutor default).
-            voice_map = {
-                "en": ("en-US", "en-US-Chirp3-HD-Kore"),
-                "hi": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
-                "hinglish": ("hi-IN", "hi-IN-Chirp3-HD-Kore"),
-            }
-            lang_code, voice_name = voice_map.get(request.language, ("en-US", "en-US-Chirp3-HD-Kore"))
+            # Tutor voice — en-IN-Chirp3-HD-Orus across all languages.
+            # See `audio_generation_service.VOICE_MAP` for the rationale.
+            lang_code, voice_name = TUTOR_VOICE
 
         voice = texttospeech.VoiceSelectionParams(
             language_code=lang_code,
