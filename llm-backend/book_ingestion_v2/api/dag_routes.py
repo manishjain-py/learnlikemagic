@@ -8,6 +8,7 @@ cascade orchestrator's state map is keyed by `guideline_id`.
 Endpoints:
 - GET  /admin/v2/dag/definition                                  → DAG topology (stages, edges)
 - GET  /admin/v2/topics/{guideline_id}/dag                       → per-stage state + cascade
+- GET  /admin/v2/topics/{guideline_id}/cross-dag-warnings        → upstream-mutation banner (Phase 6)
 - POST /admin/v2/topics/{guideline_id}/stages/{stage_id}/rerun   → cascade from stage
 - POST /admin/v2/topics/{guideline_id}/dag/run-all               → cascade over not-done
 - POST /admin/v2/topics/{guideline_id}/dag/cancel                → soft-cancel
@@ -26,12 +27,19 @@ from book_ingestion_v2.dag.cascade import (
     CascadeNotReadyError,
     get_cascade_orchestrator,
 )
+from book_ingestion_v2.dag.cross_dag_warnings import (
+    compute_input_hash_for_guideline,
+    get_stored_hash,
+    stable_key_for_guideline,
+)
 from book_ingestion_v2.dag.topic_pipeline_dag import DAG
 from book_ingestion_v2.models.database import BookChapter
 from book_ingestion_v2.models.schemas import (
     CascadeCancelResponse,
     CascadeInfo,
     CascadeKickoffResponse,
+    CrossDagWarning,
+    CrossDagWarningsResponse,
     DAGDefinitionResponse,
     DAGStageDefinition,
     RunAllCascadeRequest,
@@ -302,6 +310,69 @@ def run_all_stages(
         cascade_id=cascade.cascade_id,
         pending=sorted(cascade.pending),
         running=cascade.running,
+    )
+
+
+@router.get(
+    "/topics/{guideline_id}/cross-dag-warnings",
+    response_model=CrossDagWarningsResponse,
+)
+def get_cross_dag_warnings(
+    guideline_id: str, db: Session = Depends(get_db),
+):
+    """Surface upstream-DAG events that may have invalidated this topic's
+    cached `explanations` artefacts.
+
+    Lookup is keyed on the stable `(book_id, chapter_key, topic_key)`
+    tuple, not `guideline_id` — `topic_sync` deletes-and-recreates the
+    guideline row on every chapter resync, so a guideline-keyed lookup
+    would silently lose the captured hash through the very signal we're
+    trying to detect.
+
+    A warning fires when the live hash of the guideline's effective
+    explanation inputs differs from the hash captured at the last
+    successful `explanations` run on this curriculum tuple. Empty list
+    if no successful run has ever captured a hash, or if the stored hash
+    matches the live hash. The banner clears automatically the next time
+    `explanations` runs successfully.
+    """
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id
+    ).first()
+    if not guideline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Guideline {guideline_id} not found",
+        )
+
+    key = stable_key_for_guideline(guideline)
+    if key is None:
+        # Legacy row without book_id / chapter_key / topic_key. Can't
+        # look up a stable hash; banner stays silent. The per-stage DAG
+        # state is unaffected.
+        return CrossDagWarningsResponse(warnings=[])
+
+    stored = get_stored_hash(db, *key)
+    if stored is None:
+        # Explanations has never finished successfully on this curriculum
+        # tuple — no baseline to compare against.
+        return CrossDagWarningsResponse(warnings=[])
+
+    live = compute_input_hash_for_guideline(guideline)
+    if live == stored.explanations_input_hash:
+        return CrossDagWarningsResponse(warnings=[])
+
+    return CrossDagWarningsResponse(
+        warnings=[
+            CrossDagWarning(
+                kind="chapter_resynced",
+                message=(
+                    "Chapter content changed since this topic's explanations "
+                    "were last generated. Re-run Explanations to refresh."
+                ),
+                last_explanations_at=stored.last_explanations_at,
+            )
+        ]
     )
 
 

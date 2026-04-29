@@ -18,8 +18,8 @@
 3. Cascade orchestrator + rerun APIs ✅ shipped 2026-04-28 (PR #129)
 3.5. Cascade codex follow-ups (P1 force-per-stage, P1 defense halt, P2 NULL-topic-key 404, P2 scoped stale-clear) ✅ shipped 2026-04-28 (PR #130, bundled with Phase 4)
 4. `baatcheet_visuals` V2 refactor ✅ shipped 2026-04-28 (PR #130, bundled with Phase 3.5)
-5. React Flow UI replaces stage ladder ← **next**
-6. Cross-DAG warning + tests + polish
+5. React Flow UI replaces stage ladder ✅ shipped 2026-04-29 (PR #131)
+6. Cross-DAG warning + tests + polish ← **next**
 7. (Later, not v1) Chapter DAG — same pattern
 
 ## §1 — Pains we're solving
@@ -362,12 +362,26 @@ Each phase ships independently, can be reverted cleanly, and validates a separab
 
 **Goal:** ship the warning signal + tighten the v1 test surface.
 
-- Detect cross-DAG events: when `topic_sync` or `refresher_generation` runs and creates/updates a `teaching_guideline`, capture a `topic_content_hash` over `(guideline_text, prior_topics_context, topic_title)`. Compare against the hash captured at last successful `explanations` run.
-- Surface as banner on `TopicDAGView`: "Chapter was re-extracted on 2026-04-28. Topic content may have changed." No automatic state change (per Q4).
-- Integration tests in `tests/integration/test_topic_pipeline_dag.py`:
+**Design decisions locked 2026-04-29:**
+- **Hash persistence:** single `explanations_input_hash` column on `teaching_guidelines` (not a sibling events table). Table can be added later if Phase 7 chapter DAG needs richer cross-DAG state.
+- **Banner UX:** no dismiss button. Banner shows whenever `current_input_hash != explanations_input_hash`; clears automatically when admin reruns `explanations` (which writes the new hash). Avoids the "ignore-and-forget" failure mode the DAG is fighting against.
+
+**Split into two PRs for reviewability:**
+
+**Phase 6a — Backend hash plumbing + integration tests (one PR):**
+- Migration: add `explanations_input_hash VARCHAR(64) NULL` to `teaching_guidelines`.
+- Hash function over `(guideline_text, prior_topics_context, topic_title)` — SHA-256 hex.
+- Capture: write to `explanations_input_hash` in the `explanations` stage's terminal hook on success (alongside the existing `topic_stage_runs` write).
+- Compare: new endpoint `GET /admin/v2/topics/{guideline_id}/cross-dag-warnings` → `{warnings: [{kind: "chapter_resynced", message: ..., last_explanations_at: ...}]}` returned when stored hash differs from live hash. Empty list otherwise.
+- Integration tests in `tests/integration/test_topic_pipeline_dag.py` (new file):
   - Cascade halt-on-failure end-to-end (mock launchers, assert downstream stays untouched).
   - Cancel mid-cascade.
   - Rerun a stage → downstream marked stale → next rerun runs them.
+  - Cross-DAG warning fires when `topic_sync`/`refresher_generation` mutates the guideline after `explanations` ran.
+
+**Phase 6b — Frontend banner + E2E + docs polish (follow-up PR):**
+- Wire the existing top-bar banner area in `TopicDAGView.tsx:728-763` to the new endpoint.
+- Poll on the same cadence as the DAG (2s active / 30s idle).
 - E2E test: open dashboard, click rerun, assert UI updates.
 - Documentation: update `docs/technical/architecture-overview.md` with a pointer to the DAG file.
 

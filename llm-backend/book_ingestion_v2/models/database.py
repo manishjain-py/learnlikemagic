@@ -327,3 +327,35 @@ class TopicStageRun(Base):
             sqlite_where=text("is_stale = TRUE"),
         ),
     )
+
+
+class TopicContentHash(Base):
+    """Phase 6 — durable content-hash anchor for cross-DAG warnings.
+
+    `teaching_guidelines` rows are deleted-and-recreated by `topic_sync`
+    on every chapter resync, so anything keyed on `guideline_id` dies
+    with them. This table is keyed on the stable curriculum tuple
+    `(book_id, chapter_key, topic_key)` so the hash captured at a
+    successful `explanations` run survives that delete-recreate. The
+    cross-DAG warning endpoint compares this stored hash to a live one
+    computed from the current guideline row to surface a "chapter
+    re-extracted" banner.
+
+    No FK to `teaching_guidelines` — the whole point is to outlive that
+    row.
+    """
+    __tablename__ = "topic_content_hashes"
+
+    book_id = Column(String, primary_key=True, nullable=False)
+    chapter_key = Column(String, primary_key=True, nullable=False)
+    topic_key = Column(String, primary_key=True, nullable=False)
+
+    explanations_input_hash = Column(String(64), nullable=False)
+    last_explanations_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )

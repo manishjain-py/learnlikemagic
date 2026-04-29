@@ -156,6 +156,9 @@ def migrate():
         # Topic Pipeline DAG (Phase 2) — per-stage durable state
         _apply_topic_stage_runs_table(db_manager)
 
+        # Topic Pipeline DAG (Phase 6) — durable hash store for cross-DAG warning
+        _apply_topic_content_hashes_table(db_manager)
+
         # Practice v2 tables (create_all handles base tables; this adds the partial
         # unique index + seeds practice_bank_generator / practice_grader LLM configs)
         _apply_practice_tables(db_manager)
@@ -351,6 +354,44 @@ def _apply_topic_stage_runs_table(db_manager):
             ))
         conn.commit()
     print("  ✓ topic_stage_runs table + indexes verified")
+
+
+def _apply_topic_content_hashes_table(db_manager):
+    """Phase 6 — create `topic_content_hashes` + drop the earlier
+    `teaching_guidelines.explanations_input_hash` column.
+
+    The column was an earlier (broken) design that keyed the hash on
+    `guideline_id` — but `topic_sync` deletes-and-recreates guidelines
+    on every chapter resync, so the hash never survived a sync. The new
+    table is keyed on the stable curriculum tuple
+    `(book_id, chapter_key, topic_key)`.
+
+    Idempotent — drops the column only if present, creates the table
+    via `Base.metadata.create_all` (handled by the V2 import block).
+    """
+    inspector = inspect(db_manager.engine)
+    if "teaching_guidelines" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        col["name"] for col in inspector.get_columns("teaching_guidelines")
+    }
+    with db_manager.engine.connect() as conn:
+        if "explanations_input_hash" in existing_columns:
+            print("  Dropping legacy explanations_input_hash column from teaching_guidelines...")
+            conn.execute(text(
+                "ALTER TABLE teaching_guidelines "
+                "DROP COLUMN explanations_input_hash"
+            ))
+            conn.commit()
+            print("  ✓ explanations_input_hash column dropped")
+
+    if "topic_content_hashes" in inspector.get_table_names():
+        print("  ✓ topic_content_hashes table verified")
+    else:
+        # `Base.metadata.create_all` in `migrate()` already creates new V2
+        # tables; this branch reports the post-create state for clarity.
+        print("  ⚠ topic_content_hashes table not found — will be created by create_all()")
 
 
 def _apply_practice_mode_support(db_manager):
