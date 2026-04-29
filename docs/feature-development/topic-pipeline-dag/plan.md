@@ -19,7 +19,8 @@
 3.5. Cascade codex follow-ups (P1 force-per-stage, P1 defense halt, P2 NULL-topic-key 404, P2 scoped stale-clear) ✅ shipped 2026-04-28 (PR #130, bundled with Phase 4)
 4. `baatcheet_visuals` V2 refactor ✅ shipped 2026-04-28 (PR #130, bundled with Phase 3.5)
 5. React Flow UI replaces stage ladder ✅ shipped 2026-04-29 (PR #131)
-6. Cross-DAG warning + tests + polish ← **next**
+6a. Cross-DAG warning backend + integration tests ✅ shipped 2026-04-29 (PR #132)
+6b. Cross-DAG warning frontend banner + E2E + docs polish ← **next**
 7. (Later, not v1) Chapter DAG — same pattern
 
 ## §1 — Pains we're solving
@@ -368,22 +369,25 @@ Each phase ships independently, can be reverted cleanly, and validates a separab
 
 **Split into two PRs for reviewability:**
 
-**Phase 6a — Backend hash plumbing + integration tests (one PR):**
-- Migration: add `explanations_input_hash VARCHAR(64) NULL` to `teaching_guidelines`.
-- Hash function over `(guideline_text, prior_topics_context, topic_title)` — SHA-256 hex.
-- Capture: write to `explanations_input_hash` in the `explanations` stage's terminal hook on success (alongside the existing `topic_stage_runs` write).
-- Compare: new endpoint `GET /admin/v2/topics/{guideline_id}/cross-dag-warnings` → `{warnings: [{kind: "chapter_resynced", message: ..., last_explanations_at: ...}]}` returned when stored hash differs from live hash. Empty list otherwise.
-- Integration tests in `tests/integration/test_topic_pipeline_dag.py` (new file):
+**Phase 6a — Backend hash plumbing + integration tests (PR #132, ✅ shipped 2026-04-29):**
+
+*Final design after reviewer P0 — initial guideline_id-keyed column was dropped before merge:*
+- Migration: new `topic_content_hashes` table keyed on `(book_id, chapter_key, topic_key)`. The earlier `teaching_guidelines.explanations_input_hash` column would have died with every `topic_sync` resync (delete-and-recreate; FK cascade), defeating the banner's purpose.
+- Hash function over `(guideline OR description OR "", topic_title OR topic, prior_topics_context)` — SHA-256 hex. Mirrors `explanation_generator_service`'s fallback chain so a `description`/`topic` mutation triggers the banner when it should.
+- Capture: `capture_explanations_input_hash` resolves `guideline → stable tuple` and upserts the hash row in the `explanations` terminal hook on success. `last_explanations_at` lives on the same row, written only on `done`.
+- Compare: new endpoint `GET /admin/v2/topics/{guideline_id}/cross-dag-warnings` → `{warnings: [{kind: "chapter_resynced", message: ..., last_explanations_at: ...}]}` when the stored hash differs from live. Empty list otherwise. Lookup is via the stable tuple, so the new (post-resync) `guideline_id` resolves to the same hash row.
+- Integration tests in `tests/integration/test_topic_pipeline_dag.py`:
   - Cascade halt-on-failure end-to-end (mock launchers, assert downstream stays untouched).
   - Cancel mid-cascade.
   - Rerun a stage → downstream marked stale → next rerun runs them.
-  - Cross-DAG warning fires when `topic_sync`/`refresher_generation` mutates the guideline after `explanations` ran.
+  - Cross-DAG warning lifecycle exercises actual `topic_sync` delete-and-recreate (not in-place mutation).
 
-**Phase 6b — Frontend banner + E2E + docs polish (follow-up PR):**
-- Wire the existing top-bar banner area in `TopicDAGView.tsx:728-763` to the new endpoint.
-- Poll on the same cadence as the DAG (2s active / 30s idle).
+**Phase 6b — Frontend banner + E2E + docs polish (next PR):**
+- Wire the existing top-bar banner area in `TopicDAGView.tsx:728-763` to `GET /admin/v2/topics/{guideline_id}/cross-dag-warnings`.
+- Poll on the same cadence as the DAG (2s active / 30s idle). Fold into the existing polling tick rather than a separate timer to keep the visibility-pause logic free.
+- Add the API client method in `llm-frontend/src/features/admin/api/adminApiV2.ts` (mirror the existing `getTopicDAG` shape; new types `CrossDagWarning`, `CrossDagWarningsResponse`).
 - E2E test: open dashboard, click rerun, assert UI updates.
-- Documentation: update `docs/technical/architecture-overview.md` with a pointer to the DAG file.
+- Documentation: update `docs/technical/architecture-overview.md` with a pointer to the DAG file (`book_ingestion_v2/dag/topic_pipeline_dag.py`).
 
 **Acceptance:** reasonable test coverage (the orchestrator behaviours each have a test). Cross-DAG banner appears when chapter is re-synced. Docs reference the DAG file.
 
