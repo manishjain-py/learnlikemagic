@@ -156,12 +156,6 @@ class TeachingGuideline(Base):
     version = Column(Integer, default=1)
     prior_topics_context = Column(Text, nullable=True)
 
-    # Topic Pipeline DAG (Phase 6) — SHA-256 hex of (guideline, prior_topics_context,
-    # topic_title) at last successful explanations run. Compared to the live hash to
-    # surface a "chapter was re-extracted" banner on the topic DAG view. NULL means
-    # explanations has never run for this topic.
-    explanations_input_hash = Column(String(64), nullable=True)
-
     __table_args__ = (
         Index("idx_curriculum", "country", "board", "grade", "subject", "chapter"),
     )

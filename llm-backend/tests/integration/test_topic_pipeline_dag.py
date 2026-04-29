@@ -347,36 +347,41 @@ class TestRerunMarksDownstreamStaleAndCatchesUp:
 
 
 class TestCrossDAGWarningLifecycle:
-    def test_full_lifecycle_through_terminal_hook_and_endpoint(
+    def test_full_lifecycle_with_topic_sync_delete_recreate(
         self, app_db, fake_launchers,
     ):
-        """Simulates the operator-facing experience end-to-end:
+        """End-to-end against the actual `topic_sync` semantics.
 
-        1. Run explanations → terminal hook captures the input hash.
-        2. Cross-DAG warnings endpoint returns no warnings.
-        3. Upstream (e.g., topic_sync) mutates the guideline.
-        4. Endpoint returns a `chapter_resynced` warning.
-        5. Re-run explanations → endpoint returns no warnings.
+        `topic_sync_service._delete_chapter_guidelines` deletes every
+        `teaching_guidelines` row for the chapter and `_sync_topic`
+        recreates them with fresh uuids — the FK on
+        `topic_stage_runs.guideline_id` cascades, wiping per-stage
+        history too. The banner must survive this: it's the headline
+        use case the cross-DAG warning is built for.
+
+        Flow:
+          1. Run `explanations` → terminal hook captures hash on the
+             stable `(book_id, chapter_key, topic_key)` tuple.
+          2. Endpoint returns no warnings.
+          3. Simulate `topic_sync` resync: delete the guideline + insert
+             a fresh one with a new uuid + rewritten content + the same
+             chapter_key/topic_key.
+          4. Endpoint, hit with the NEW guideline_id, returns
+             `chapter_resynced`.
+          5. Re-run `explanations` against the new guideline → endpoint
+             returns no warnings.
         """
         client, session = app_db
         topic = _seed_topic(session)
         gid = topic["guideline_id"]
+        book_id = topic["book_id"]
 
-        # Step 1: rerun explanations → finish successfully → terminal
-        # hook captures the input hash on the guideline row.
+        # Step 1: rerun explanations → finish successfully → hash captured.
         client.post(f"/admin/v2/topics/{gid}/stages/explanations/rerun")
         _finish_running_job(session, gid, "explanations", status="completed")
 
-        guideline = session.query(TeachingGuideline).filter_by(id=gid).first()
-        assert guideline.explanations_input_hash is not None
-        original_hash = guideline.explanations_input_hash
-
-        # Cancel the cascade so subsequent rerun calls aren't blocked by
-        # it auto-driving descendants. (Halt-on-failure / completion
-        # cleanup leaves the next stage running; cancelling is the
-        # cleanest way to isolate the cross-DAG flow.)
+        # Cancel cascade + drain in-flight so subsequent reruns aren't blocked.
         client.post(f"/admin/v2/topics/{gid}/dag/cancel")
-        # Drain whatever's running so the cascade clears.
         cascade = cascade_module.get_cascade_orchestrator().get_cascade(gid)
         if cascade and cascade.running:
             _finish_running_job(session, gid, cascade.running)
@@ -386,26 +391,47 @@ class TestCrossDAGWarningLifecycle:
         assert resp.status_code == 200
         assert resp.json() == {"warnings": []}
 
-        # Step 3: simulate `topic_sync` rewriting the guideline text.
-        guideline = session.query(TeachingGuideline).filter_by(id=gid).first()
-        guideline.guideline = "rewritten chapter content"
+        # Step 3: simulate `topic_sync` resync — delete the old guideline
+        # (FK cascade wipes its `topic_stage_runs` history) and insert a
+        # fresh one with a new uuid + rewritten content + the same
+        # curriculum tuple.
+        old_chapter_key = "chapter-5"
+        old_topic_key = "comparing-fractions"
+        session.query(TeachingGuideline).filter_by(id=gid).delete()
         session.commit()
 
-        # Step 4: warning fires.
-        resp = client.get(f"/admin/v2/topics/{gid}/cross-dag-warnings")
+        new_gid = str(uuid.uuid4())
+        session.add(TeachingGuideline(
+            id=new_gid, country="India", board="CBSE", grade=4,
+            subject="Mathematics", chapter="Fractions",
+            topic="Comparing Fractions",
+            guideline="rewritten chapter content",
+            chapter_key=old_chapter_key, topic_key=old_topic_key,
+            chapter_title="Fractions", topic_title="Comparing Fractions",
+            book_id=book_id, review_status="APPROVED", topic_sequence=1,
+            prior_topics_context="initial prior context",
+        ))
+        session.commit()
+
+        # Step 4: endpoint hit with the NEW guideline_id surfaces the
+        # banner — the hash row outlived the guideline row.
+        resp = client.get(f"/admin/v2/topics/{new_gid}/cross-dag-warnings")
         assert resp.status_code == 200
         warnings = resp.json()["warnings"]
         assert len(warnings) == 1
         assert warnings[0]["kind"] == "chapter_resynced"
         assert warnings[0]["last_explanations_at"] is not None
 
-        # Step 5: re-run explanations → terminal hook writes the new hash.
-        client.post(f"/admin/v2/topics/{gid}/stages/explanations/rerun")
-        _finish_running_job(session, gid, "explanations", status="completed")
+        # Step 5: rerun explanations against the new guideline → terminal
+        # hook writes the new hash → warning clears.
+        # First seed a chapter row + topic_stage_runs entry so the
+        # cascade has something to operate on (the lazy backfill the
+        # dashboard normally triggers).
+        client.post(
+            f"/admin/v2/topics/{new_gid}/stages/explanations/rerun"
+        )
+        _finish_running_job(session, new_gid, "explanations", status="completed")
 
-        guideline = session.query(TeachingGuideline).filter_by(id=gid).first()
-        assert guideline.explanations_input_hash != original_hash
-
-        resp = client.get(f"/admin/v2/topics/{gid}/cross-dag-warnings")
+        resp = client.get(f"/admin/v2/topics/{new_gid}/cross-dag-warnings")
         assert resp.status_code == 200
         assert resp.json() == {"warnings": []}

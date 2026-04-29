@@ -598,18 +598,22 @@ def _write_topic_stage_run_terminal(
         return
 
     # Phase 6 — capture the input hash whenever `explanations` finishes
-    # successfully. Lives on `teaching_guidelines.explanations_input_hash`
-    # and drives the cross-DAG warning endpoint. Wrapped in its own
-    # try/except so a hash-write hiccup can't break the terminal write
-    # the rest of the system depends on. Reuses the caller's session —
-    # the terminal upsert above already committed, so this rides a fresh
-    # transaction on the same connection.
+    # successfully. Writes to `topic_content_hashes`, keyed on the stable
+    # `(book_id, chapter_key, topic_key)` tuple so the captured hash
+    # survives `topic_sync`'s delete-recreate of guideline rows. Drives
+    # the cross-DAG warning endpoint. Wrapped in its own try/except so a
+    # hash-write hiccup can't break the terminal write the rest of the
+    # system depends on. Reuses the caller's session — the terminal
+    # upsert above already committed, so this rides a fresh transaction
+    # on the same connection.
     if stage_id == "explanations" and terminal_state == "done":
         try:
             from book_ingestion_v2.dag.cross_dag_warnings import (
                 capture_explanations_input_hash,
             )
-            capture_explanations_input_hash(session, guideline_id)
+            capture_explanations_input_hash(
+                session, guideline_id, completed_at=completed_at,
+            )
             session.commit()
         except Exception as e:
             logger.warning(

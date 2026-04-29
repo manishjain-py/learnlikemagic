@@ -156,8 +156,8 @@ def migrate():
         # Topic Pipeline DAG (Phase 2) — per-stage durable state
         _apply_topic_stage_runs_table(db_manager)
 
-        # Topic Pipeline DAG (Phase 6) — input-hash column for cross-DAG warning
-        _apply_explanations_input_hash_column(db_manager)
+        # Topic Pipeline DAG (Phase 6) — durable hash store for cross-DAG warning
+        _apply_topic_content_hashes_table(db_manager)
 
         # Practice v2 tables (create_all handles base tables; this adds the partial
         # unique index + seeds practice_bank_generator / practice_grader LLM configs)
@@ -356,16 +356,18 @@ def _apply_topic_stage_runs_table(db_manager):
     print("  ✓ topic_stage_runs table + indexes verified")
 
 
-def _apply_explanations_input_hash_column(db_manager):
-    """Phase 6 — add `explanations_input_hash` column to teaching_guidelines.
+def _apply_topic_content_hashes_table(db_manager):
+    """Phase 6 — create `topic_content_hashes` + drop the earlier
+    `teaching_guidelines.explanations_input_hash` column.
 
-    Stores a SHA-256 hex of (guideline, prior_topics_context, topic_title)
-    captured on each successful `explanations` stage run. The cross-DAG
-    warning endpoint compares this to a live hash to detect that an
-    upstream chapter resync mutated topic content since the cached
-    explanations were generated.
+    The column was an earlier (broken) design that keyed the hash on
+    `guideline_id` — but `topic_sync` deletes-and-recreates guidelines
+    on every chapter resync, so the hash never survived a sync. The new
+    table is keyed on the stable curriculum tuple
+    `(book_id, chapter_key, topic_key)`.
 
-    Idempotent — checks for the column before adding.
+    Idempotent — drops the column only if present, creates the table
+    via `Base.metadata.create_all` (handled by the V2 import block).
     """
     inspector = inspect(db_manager.engine)
     if "teaching_guidelines" not in inspector.get_table_names():
@@ -374,17 +376,22 @@ def _apply_explanations_input_hash_column(db_manager):
     existing_columns = {
         col["name"] for col in inspector.get_columns("teaching_guidelines")
     }
-    if "explanations_input_hash" in existing_columns:
-        return
-
     with db_manager.engine.connect() as conn:
-        print("  Adding explanations_input_hash column to teaching_guidelines...")
-        conn.execute(text(
-            "ALTER TABLE teaching_guidelines "
-            "ADD COLUMN explanations_input_hash VARCHAR(64)"
-        ))
-        conn.commit()
-    print("  ✓ explanations_input_hash column added")
+        if "explanations_input_hash" in existing_columns:
+            print("  Dropping legacy explanations_input_hash column from teaching_guidelines...")
+            conn.execute(text(
+                "ALTER TABLE teaching_guidelines "
+                "DROP COLUMN explanations_input_hash"
+            ))
+            conn.commit()
+            print("  ✓ explanations_input_hash column dropped")
+
+    if "topic_content_hashes" in inspector.get_table_names():
+        print("  ✓ topic_content_hashes table verified")
+    else:
+        # `Base.metadata.create_all` in `migrate()` already creates new V2
+        # tables; this branch reports the post-create state for clarity.
+        print("  ⚠ topic_content_hashes table not found — will be created by create_all()")
 
 
 def _apply_practice_mode_support(db_manager):
