@@ -518,9 +518,10 @@ class TestChapterSummary:
         topic = summary.topics[0]
         assert topic.topic_key == seed_book_chapter_topic["topic_key"]
         counts = topic.stage_counts
-        # 8 = explanations, baatcheet_dialogue, baatcheet_visuals, visuals,
+        # 10 = explanations, baatcheet_dialogue, baatcheet_visuals,
+        # baatcheet_audio_review, baatcheet_audio_synthesis, visuals,
         # check_ins, practice_bank, audio_review, audio_synthesis.
-        assert counts.done + counts.warning + counts.running + counts.ready + counts.blocked + counts.failed == 8
+        assert counts.done + counts.warning + counts.running + counts.ready + counts.blocked + counts.failed == 10
 
     def test_chapter_topic_statuses_returns_full_statuses(self, db_session, seed_book_chapter_topic):
         gid = seed_book_chapter_topic["guideline_id"]
@@ -535,4 +536,4 @@ class TestChapterSummary:
         s = statuses[0]
         assert s.topic_key == seed_book_chapter_topic["topic_key"]
         assert s.guideline_id == gid
-        assert len(s.stages) == 8
+        assert len(s.stages) == 10

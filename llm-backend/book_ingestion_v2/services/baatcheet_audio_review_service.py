@@ -56,11 +56,18 @@ class BaatcheetAudioReviewService:
         *,
         heartbeat_fn: Optional[Callable] = None,
         stage_collector: Optional[list] = None,
+        force: bool = False,
     ) -> dict:
         """Review every card in this guideline's dialogue.
 
         Returns the same shape as `AudioTextReviewService.review_guideline`
         so callers can aggregate identically.
+
+        `force=True` clears every `audio_url` on the dialogue up front (via
+        `AudioTextReviewService._clear_audio_urls_in_place`) so the
+        downstream `baatcheet_audio_synthesis` run regenerates the full
+        clip set instead of only re-synthesizing the lines this pass
+        happens to revise.
         """
         result = {
             "cards_reviewed": 0,
@@ -75,6 +82,11 @@ class BaatcheetAudioReviewService:
         cards = dialogue.cards_json
         topic = guideline.topic_title or guideline.topic
         any_change = False
+
+        if force:
+            for card in cards:
+                self._inner._clear_audio_urls_in_place(card)
+            any_change = True
 
         for card in cards:
             if heartbeat_fn:

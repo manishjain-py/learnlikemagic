@@ -149,6 +149,8 @@ def fake_launchers(monkeypatch, db_session, seed_topic):
         "explanations": V2JobType.EXPLANATION_GENERATION,
         "baatcheet_dialogue": V2JobType.BAATCHEET_DIALOGUE_GENERATION,
         "baatcheet_visuals": V2JobType.BAATCHEET_VISUAL_ENRICHMENT,
+        "baatcheet_audio_review": V2JobType.BAATCHEET_AUDIO_REVIEW,
+        "baatcheet_audio_synthesis": V2JobType.BAATCHEET_AUDIO_GENERATION,
         "visuals": V2JobType.VISUAL_ENRICHMENT,
         "check_ins": V2JobType.CHECK_IN_ENRICHMENT,
         "practice_bank": V2JobType.PRACTICE_BANK_GENERATION,
@@ -220,17 +222,35 @@ class TestBuildLauncherKwargs:
         assert kw["mode"] == "generate"
         assert kw["review_rounds"] == 2  # balanced default
 
-    def test_audio_synthesis_minimal(self):
+    def test_audio_synthesis_passes_force(self):
         kw = build_launcher_kwargs(
             "audio_synthesis", book_id="b", chapter_id="c", guideline_id="g",
         )
-        assert kw == {"book_id": "b", "chapter_id": "c", "guideline_id": "g"}
+        assert kw == {
+            "book_id": "b", "chapter_id": "c", "guideline_id": "g",
+            "force": False,
+        }
 
-    def test_audio_review_passes_language_none(self):
+    def test_audio_synthesis_force_true(self):
+        kw = build_launcher_kwargs(
+            "audio_synthesis", book_id="b", chapter_id="c", guideline_id="g",
+            force=True,
+        )
+        assert kw["force"] is True
+
+    def test_audio_review_passes_language_none_and_force(self):
         kw = build_launcher_kwargs(
             "audio_review", book_id="b", chapter_id="c", guideline_id="g",
         )
         assert kw["language"] is None
+        assert kw["force"] is False
+
+    def test_audio_review_force_true(self):
+        kw = build_launcher_kwargs(
+            "audio_review", book_id="b", chapter_id="c", guideline_id="g",
+            force=True,
+        )
+        assert kw["force"] is True
 
     def test_quality_level_fast_zeros_review_rounds(self):
         kw = build_launcher_kwargs(

@@ -25,8 +25,6 @@ LAUNCHER_BY_STAGE: dict[str, Callable[..., str]] = {
 
 # Reverse lookup used by the `run_in_background_v2` hook to map an in-flight
 # `chapter_processing_jobs.job_type` value back to its DAG stage_id.
-# `BAATCHEET_AUDIO_REVIEW` is intentionally omitted — that opt-in stage is
-# launched manually and is not part of the Phase 1 topic DAG.
 JOB_TYPE_TO_STAGE_ID: dict[str, str] = {
     V2JobType.EXPLANATION_GENERATION.value: "explanations",
     V2JobType.VISUAL_ENRICHMENT.value: "visuals",
@@ -36,6 +34,8 @@ JOB_TYPE_TO_STAGE_ID: dict[str, str] = {
     V2JobType.AUDIO_GENERATION.value: "audio_synthesis",
     V2JobType.BAATCHEET_DIALOGUE_GENERATION.value: "baatcheet_dialogue",
     V2JobType.BAATCHEET_VISUAL_ENRICHMENT.value: "baatcheet_visuals",
+    V2JobType.BAATCHEET_AUDIO_REVIEW.value: "baatcheet_audio_review",
+    V2JobType.BAATCHEET_AUDIO_GENERATION.value: "baatcheet_audio_synthesis",
 }
 
 # Cross-check: every mapped stage_id must exist in the DAG.

@@ -371,6 +371,8 @@ StageId = Literal[
     "explanations",
     "baatcheet_dialogue",
     "baatcheet_visuals",
+    "baatcheet_audio_review",
+    "baatcheet_audio_synthesis",
     "visuals",
     "check_ins",
     "practice_bank",

@@ -14,6 +14,8 @@ from book_ingestion_v2.dag.types import Stage, TopicPipelineDAG
 from book_ingestion_v2.stages import (
     audio_review,
     audio_synthesis,
+    baatcheet_audio_review,
+    baatcheet_audio_synthesis,
     baatcheet_dialogue,
     baatcheet_visuals,
     check_ins,
@@ -27,6 +29,8 @@ STAGES: list[Stage] = [
     explanations.STAGE,
     baatcheet_dialogue.STAGE,
     baatcheet_visuals.STAGE,
+    baatcheet_audio_review.STAGE,
+    baatcheet_audio_synthesis.STAGE,
     visuals.STAGE,
     check_ins.STAGE,
     practice_bank.STAGE,

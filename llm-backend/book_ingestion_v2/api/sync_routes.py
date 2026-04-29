@@ -937,20 +937,25 @@ def generate_audio(
 
 def _run_audio_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
-    guideline_id: str = "",
+    guideline_id: str = "", force_str: str = "False",
 ):
-    """Background task for TTS audio generation and S3 upload.
+    """Background task for variant A explanation TTS audio generation.
 
-    Synthesizes audio for both the variant A explanation cards AND (if
-    present) the Baatcheet dialogue cards for each guideline. Voice routing
-    branches on `card.speaker` for dialogue cards.
+    Synthesizes audio for `topic_explanations.cards_json` only — Baatcheet
+    dialogue audio lives in the parallel `baatcheet_audio_synthesis` stage.
+
+    `force_str == "True"` overwrites lines that already have an `audio_url`
+    — used by the dashboard's "Re-run" affordance so a TTS-config change
+    (e.g. voice swap, pre-synth text fix) propagates to topics that already
+    have audio.
     """
     import json as _json
-    from shared.models.entities import TeachingGuideline, TopicExplanation, TopicDialogue
+    from shared.models.entities import TeachingGuideline, TopicExplanation
     from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
     from sqlalchemy.orm import attributes
 
+    force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
     audio_svc = AudioGenerationService()
 
@@ -988,7 +993,9 @@ def _run_audio_generation(
             topic_had_failure = False
             for explanation in explanations:
                 try:
-                    updated_cards = audio_svc.generate_for_topic_explanation(explanation)
+                    updated_cards = audio_svc.generate_for_topic_explanation(
+                        explanation, force=force,
+                    )
                     if updated_cards is not None:
                         explanation.cards_json = updated_cards
                         attributes.flag_modified(explanation, "cards_json")
@@ -998,24 +1005,6 @@ def _run_audio_generation(
                     db.rollback()
                     topic_had_failure = True
                     errors.append(f"{topic} ({explanation.variant_key}): {e}")
-
-            # Baatcheet dialogue audio (parallel namespace, voice routed by speaker).
-            # Skipped silently when no dialogue exists for this guideline.
-            dialogue = db.query(TopicDialogue).filter(
-                TopicDialogue.guideline_id == guideline.id,
-            ).first()
-            if dialogue is not None:
-                try:
-                    updated_dialogue_cards = audio_svc.generate_for_topic_dialogue(dialogue)
-                    if updated_dialogue_cards is not None:
-                        dialogue.cards_json = updated_dialogue_cards
-                        attributes.flag_modified(dialogue, "cards_json")
-                        db.commit()
-                except Exception as e:
-                    logger.error(f"Dialogue audio failed for guideline={guideline.id}: {e}")
-                    db.rollback()
-                    topic_had_failure = True
-                    errors.append(f"{topic} (dialogue): {e}")
 
             if topic_had_failure:
                 failed += 1
@@ -1084,10 +1073,15 @@ def generate_audio_review(
 
 def _run_audio_text_review(
     db: Session, job_id: str, book_id: str, chapter_id: str,
-    guideline_id: str = "", language: str = "",
+    guideline_id: str = "", language: str = "", force_str: str = "False",
 ):
     """Background task — builds LLMService from DB config (same pattern as
-    check-in enrichment) and injects it into AudioTextReviewService."""
+    check-in enrichment) and injects it into AudioTextReviewService.
+
+    `force_str == "True"` clears every `audio_url` on the variant up front
+    so a downstream `audio_synthesis` run regenerates the full clip set,
+    not just the lines this review pass happens to revise.
+    """
     import json as _json
     from config import get_settings
     from shared.models.entities import TeachingGuideline
@@ -1098,6 +1092,7 @@ def _run_audio_text_review(
     )
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
 
+    force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
     try:
         settings = get_settings()
@@ -1140,6 +1135,7 @@ def _run_audio_text_review(
                     guideline,
                     heartbeat_fn=heartbeat_fn,
                     stage_collector=stage_collector,
+                    force=force,
                 )
                 if stage_collector:
                     try:
@@ -1159,6 +1155,7 @@ def _run_audio_text_review(
             result = service.review_chapter(
                 book_id, chapter_id or None,
                 job_service=job_service, job_id=job_id,
+                force=force,
             )
 
         final_status = (
@@ -2432,43 +2429,6 @@ def generate_baatcheet_visuals(
         )
 
 
-@router.post(
-    "/review-baatcheet-audio",
-    response_model=FanOutJobResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-def review_baatcheet_audio(
-    book_id: str,
-    chapter_id: Optional[str] = Query(None),
-    guideline_id: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-):
-    """Opt-in safety valve — runs the existing audio_text_review LLM logic
-    against `topic_dialogues.cards_json`. Not part of the default pipeline."""
-    from book_ingestion_v2.services.stage_launchers import (
-        launch_baatcheet_audio_review_job,
-    )
-
-    try:
-        return _fan_out(
-            db,
-            launcher=launch_baatcheet_audio_review_job,
-            book_id=book_id,
-            chapter_id=chapter_id,
-            guideline_id=guideline_id,
-        )
-    except ChapterJobLockError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(f"Baatcheet audio review failed for book {book_id}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
-
-
 def _run_baatcheet_dialogue_generation(
     db: Session, job_id: str, book_id: str, chapter_id: str,
     guideline_id: str = "", force_str: str = "False",
@@ -2681,9 +2641,14 @@ def _run_baatcheet_visual_enrichment(
 
 def _run_baatcheet_audio_review(
     db: Session, job_id: str, book_id: str, chapter_id: str,
-    guideline_id: str = "", language: str = "",
+    guideline_id: str = "", language: str = "", force_str: str = "False",
 ):
-    """Background task — opt-in audio text review against topic_dialogues."""
+    """Background task — audio text review against topic_dialogues.
+
+    Now a first-class DAG stage (sibling of `audio_review` for variant A).
+    `force_str == "True"` clears every dialogue `audio_url` up front so the
+    cascaded `baatcheet_audio_synthesis` regenerates the full clip set.
+    """
     import json as _json
     from config import get_settings
     from shared.models.entities import TeachingGuideline
@@ -2694,6 +2659,7 @@ def _run_baatcheet_audio_review(
     )
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
 
+    force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
     try:
         settings = get_settings()
@@ -2720,7 +2686,7 @@ def _run_baatcheet_audio_review(
             ).first()
             if not guideline:
                 raise ValueError(f"Guideline {guideline_id} not found")
-            result = service.review_guideline(guideline)
+            result = service.review_guideline(guideline, force=force)
             completed = 1 if result.get("failed", 0) == 0 else 0
             failed = result.get("failed", 0)
         else:
@@ -2740,7 +2706,7 @@ def _run_baatcheet_audio_review(
             agg = {"cards_reviewed": 0, "cards_revised": 0, "errors": []}
             for g in guidelines:
                 try:
-                    res = service.review_guideline(g)
+                    res = service.review_guideline(g, force=force)
                     agg["cards_reviewed"] += res.get("cards_reviewed", 0)
                     agg["cards_revised"] += res.get("cards_revised", 0)
                     if res.get("failed", 0):
@@ -2762,4 +2728,93 @@ def _run_baatcheet_audio_review(
 
     except Exception as e:
         logger.error(f"Baatcheet audio review job {job_id} failed: {e}")
+        job_service.release_lock(job_id, status="failed", error=str(e))
+
+
+def _run_baatcheet_audio_generation(
+    db: Session, job_id: str, book_id: str, chapter_id: str,
+    guideline_id: str = "", force_str: str = "False",
+):
+    """Background task for Baatcheet dialogue TTS audio generation.
+
+    Synthesizes audio for `topic_dialogues.cards_json` only — variant A
+    explanation audio lives in the parallel `audio_synthesis` stage.
+
+    `force_str == "True"` overwrites lines that already have an
+    `audio_url`. S3 keys are deterministic so writes overwrite cleanly at
+    the same URL — no orphan cleanup needed.
+    """
+    import json as _json
+    from shared.models.entities import TeachingGuideline, TopicDialogue
+    from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
+    from book_ingestion_v2.services.chapter_job_service import ChapterJobService
+    from sqlalchemy.orm import attributes
+
+    force = force_str.lower() == "true"
+    job_service = ChapterJobService(db)
+    audio_svc = AudioGenerationService()
+
+    try:
+        if guideline_id:
+            guidelines = db.query(TeachingGuideline).filter(
+                TeachingGuideline.id == guideline_id,
+            ).all()
+        else:
+            query = db.query(TeachingGuideline).filter(
+                TeachingGuideline.book_id == book_id,
+                TeachingGuideline.review_status == "APPROVED",
+            )
+            if chapter_id:
+                from shared.repositories.chapter_repository import ChapterRepository
+                chapter = ChapterRepository(db).get_by_id(chapter_id)
+                if chapter:
+                    chapter_key = f"chapter-{chapter.chapter_number}"
+                    query = query.filter(TeachingGuideline.chapter_key == chapter_key)
+            guidelines = query.all()
+
+        completed = 0
+        failed = 0
+        errors: list[str] = []
+
+        for guideline in guidelines:
+            topic = guideline.topic_title or guideline.topic
+            job_service.update_progress(
+                job_id, current_item=topic, completed=completed, failed=failed,
+            )
+
+            dialogue = db.query(TopicDialogue).filter(
+                TopicDialogue.guideline_id == guideline.id,
+            ).first()
+            if dialogue is None:
+                # No dialogue for this guideline — silently skip; not an error.
+                continue
+
+            try:
+                updated_cards = audio_svc.generate_for_topic_dialogue(
+                    dialogue, force=force,
+                )
+                if updated_cards is not None:
+                    dialogue.cards_json = updated_cards
+                    attributes.flag_modified(dialogue, "cards_json")
+                    db.commit()
+                completed += 1
+            except Exception as e:
+                logger.error(
+                    f"Dialogue audio failed for guideline={guideline.id}: {e}"
+                )
+                db.rollback()
+                failed += 1
+                errors.append(f"{topic} (dialogue): {e}")
+
+        job_service.update_progress(
+            job_id, current_item=None, completed=completed, failed=failed,
+            detail=_json.dumps({
+                "generated": completed, "failed": failed, "errors": errors[:10],
+            }),
+        )
+        final_status = "completed" if failed == 0 else "completed_with_errors"
+        job_service.release_lock(job_id, status=final_status)
+
+    except Exception as e:
+        logger.error(f"Baatcheet audio generation job {job_id} failed: {e}")
         job_service.release_lock(job_id, status="failed", error=str(e))

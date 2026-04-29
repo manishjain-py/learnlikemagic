@@ -193,7 +193,14 @@ class TopicPipelineOrchestrator:
             kwargs["force"] = self.force
         elif stage == "audio_review":
             kwargs["language"] = None
-        # audio_synthesis has no extra args
+            kwargs["force"] = self.force
+        elif stage == "audio_synthesis":
+            kwargs["force"] = self.force
+        elif stage == "baatcheet_audio_review":
+            kwargs["language"] = None
+            kwargs["force"] = self.force
+        elif stage == "baatcheet_audio_synthesis":
+            kwargs["force"] = self.force
         return kwargs
 
     def _poll_to_terminal(self, db: Session, job_id: str) -> str:

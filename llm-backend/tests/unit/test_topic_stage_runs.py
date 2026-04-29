@@ -265,12 +265,12 @@ class TestRepositoryReadAndStale:
 
 
 class TestJobTypeToStageIdMap:
-    def test_every_dag_stage_except_baatcheet_audio_review_has_mapping(self):
-        # The 8 DAG stages map to 8 V2 job types; BAATCHEET_AUDIO_REVIEW is
-        # intentionally excluded because the stage is opt-in and not in the
-        # Phase 1 DAG.
-        assert len(JOB_TYPE_TO_STAGE_ID) == 8
-        assert V2JobType.BAATCHEET_AUDIO_REVIEW.value not in JOB_TYPE_TO_STAGE_ID
+    def test_every_dag_stage_has_mapping(self):
+        # The 10 DAG stages map to 10 V2 job types — both Baatcheet audio
+        # stages are now first-class DAG nodes with their own job types.
+        assert len(JOB_TYPE_TO_STAGE_ID) == 10
+        assert V2JobType.BAATCHEET_AUDIO_REVIEW.value in JOB_TYPE_TO_STAGE_ID
+        assert V2JobType.BAATCHEET_AUDIO_GENERATION.value in JOB_TYPE_TO_STAGE_ID
 
     def test_all_mapped_stage_ids_are_unique(self):
         assert len(set(JOB_TYPE_TO_STAGE_ID.values())) == len(JOB_TYPE_TO_STAGE_ID)
@@ -315,13 +315,16 @@ class TestHookStartedWriter:
         assert db_session.query(TopicStageRun).count() == 0
 
     def test_skips_unknown_job_type(self, db_session, seed_topic):
-        # BAATCHEET_AUDIO_REVIEW is not in the DAG → hook must skip silently.
+        # REFRESHER_GENERATION is not in the topic DAG → hook must skip
+        # silently. (Both Baatcheet audio job types are now first-class DAG
+        # stages and therefore mapped, so we use a different unknown-to-DAG
+        # job type here.)
         job = _add_job(
             db_session,
             book_id=seed_topic["book_id"],
             chapter_id=seed_topic["chapter_id"],
             guideline_id=seed_topic["guideline_id"],
-            job_type=V2JobType.BAATCHEET_AUDIO_REVIEW.value,
+            job_type=V2JobType.REFRESHER_GENERATION.value,
             status="running",
         )
         _write_topic_stage_run_started(db_session, job.id, started_at=datetime.utcnow())
@@ -535,7 +538,7 @@ class TestStatusServiceLazyBackfill:
             seed_topic["book_id"], seed_topic["chapter_id"], seed_topic["topic_key"],
         )
         assert resp.guideline_id == gid
-        assert len(resp.stages) == 8
+        assert len(resp.stages) == 10
 
 
 # ---------------------------------------------------------------------------
