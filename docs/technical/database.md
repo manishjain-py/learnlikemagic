@@ -394,6 +394,8 @@ See `book_ingestion_v2/models/database.py` for the full V2 pipeline tables:
 - `chapter_chunks` — processing chunk records
 - `chapter_topics` — extracted topics with guidelines (includes `prior_topics_context` and `topic_assignment` columns for topic-quality planning)
 - `chapter_processing_jobs` — background job tracking (includes `planned_topics_json` column for topic-quality planning)
+- `topic_stage_runs` — durable per-stage state for the topic-pipeline DAG (PK `(guideline_id, stage_id)`; columns: `state`, `is_stale`, `started_at`, `completed_at`, `duration_ms`, `last_job_id`, `summary_json`)
+- `topic_content_hashes` — captured `explanations` input hash per topic for the cross-DAG warning. PK `(book_id, chapter_key, topic_key)` — the stable curriculum tuple (NOT `guideline_id`, which dies on `topic_sync` resync)
 
 ---
 

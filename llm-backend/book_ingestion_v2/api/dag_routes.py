@@ -33,7 +33,7 @@ from book_ingestion_v2.dag.cross_dag_warnings import (
     stable_key_for_guideline,
 )
 from book_ingestion_v2.dag.topic_pipeline_dag import DAG
-from book_ingestion_v2.models.database import BookChapter
+from book_ingestion_v2.models.database import BookChapter, TopicContentHash
 from book_ingestion_v2.models.schemas import (
     CascadeCancelResponse,
     CascadeInfo,
@@ -374,6 +374,120 @@ def get_cross_dag_warnings(
             )
         ]
     )
+
+
+_CROSS_DAG_TEST_SENTINEL_HASH = "e2e-injected-divergent-hash-do-not-rely-on"
+
+
+def _resolve_for_test(db: Session, guideline_id: str):
+    """Shared lookup for the test-only inject/restore endpoints.
+
+    Returns `(guideline, key)` or raises HTTPException matching the
+    public endpoint's contract — same 404 semantics so the e2e spec
+    fails loudly when the fixture is wrong (e.g. wrong guideline id,
+    or explanations never ran so no hash row exists yet).
+    """
+    guideline = db.query(TeachingGuideline).filter(
+        TeachingGuideline.id == guideline_id
+    ).first()
+    if not guideline:
+        raise HTTPException(404, f"Guideline {guideline_id} not found")
+    key = stable_key_for_guideline(guideline)
+    if key is None:
+        raise HTTPException(
+            404, "Guideline missing book_id/chapter_key/topic_key — fixture invalid"
+        )
+    return guideline, key
+
+
+def _upsert_test_hash(
+    db: Session, key, hash_value: str, completed_at
+) -> "TopicContentHash":
+    """Create-or-update the hash row for the test endpoints. Mirrors the
+    capture path in `cross_dag_warnings.py` but takes the hash + timestamp
+    as inputs so the same helper serves both diverge and restore."""
+    book_id, chapter_key, topic_key = key
+    row = db.query(TopicContentHash).filter(
+        TopicContentHash.book_id == book_id,
+        TopicContentHash.chapter_key == chapter_key,
+        TopicContentHash.topic_key == topic_key,
+    ).first()
+    if row is None:
+        row = TopicContentHash(
+            book_id=book_id,
+            chapter_key=chapter_key,
+            topic_key=topic_key,
+            explanations_input_hash=hash_value,
+            last_explanations_at=completed_at,
+        )
+        db.add(row)
+    else:
+        row.explanations_input_hash = hash_value
+        if completed_at is not None:
+            row.last_explanations_at = completed_at
+    db.commit()
+    return row
+
+
+@router.post(
+    "/topics/{guideline_id}/cross-dag-warnings/_test/diverge",
+    response_model=CrossDagWarningsResponse,
+    include_in_schema=False,
+)
+def _test_diverge_cross_dag_hash(
+    guideline_id: str, db: Session = Depends(get_db),
+):
+    """E2E-only — set the stored hash to a sentinel so the next
+    `/cross-dag-warnings` read fires `chapter_resynced`. Creates the row
+    if no successful `explanations` run has captured one yet.
+
+    This stays test-only because the production trigger is `topic_sync`'s
+    delete-and-recreate flow, which is destructive and already covered by
+    `tests/integration/test_topic_pipeline_dag.py::test_full_lifecycle_with_topic_sync_delete_recreate`.
+    The e2e spec needs a non-destructive way to flip the banner so it can
+    exercise the polling → render → button-click loop.
+
+    Pair with `_test/restore` to reset state after the test.
+    """
+    from datetime import datetime
+    guideline, key = _resolve_for_test(db, guideline_id)
+    row = _upsert_test_hash(
+        db, key, _CROSS_DAG_TEST_SENTINEL_HASH, datetime.utcnow()
+    )
+    return CrossDagWarningsResponse(
+        warnings=[
+            CrossDagWarning(
+                kind="chapter_resynced",
+                message=(
+                    "Chapter content changed since this topic's explanations "
+                    "were last generated. Re-run Explanations to refresh."
+                ),
+                last_explanations_at=row.last_explanations_at,
+            )
+        ]
+    )
+
+
+@router.post(
+    "/topics/{guideline_id}/cross-dag-warnings/_test/restore",
+    response_model=CrossDagWarningsResponse,
+    include_in_schema=False,
+)
+def _test_restore_cross_dag_hash(
+    guideline_id: str, db: Session = Depends(get_db),
+):
+    """E2E-only — recompute the live hash from the current guideline and
+    write it to stored. Equivalent in effect to a fresh successful
+    `explanations` run for the purpose of clearing the banner.
+
+    Pairs with `_test/diverge` for test cleanup. Creates the row if none
+    exists so calling restore on a never-captured topic is a no-op-equivalent
+    instead of a 404.
+    """
+    guideline, key = _resolve_for_test(db, guideline_id)
+    live = compute_input_hash_for_guideline(guideline)
+    _upsert_test_hash(db, key, live, completed_at=None)
+    return CrossDagWarningsResponse(warnings=[])
 
 
 @router.post(

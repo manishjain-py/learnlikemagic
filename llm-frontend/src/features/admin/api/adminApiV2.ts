@@ -1189,6 +1189,26 @@ export async function getTopicDAG(guidelineId: string): Promise<TopicDAGResponse
   return apiFetch<TopicDAGResponse>(`/admin/v2/topics/${guidelineId}/dag`);
 }
 
+export type CrossDagWarningKind = 'chapter_resynced';
+
+export interface CrossDagWarning {
+  kind: CrossDagWarningKind;
+  message: string;
+  last_explanations_at: string | null;
+}
+
+export interface CrossDagWarningsResponse {
+  warnings: CrossDagWarning[];
+}
+
+export async function getCrossDagWarnings(
+  guidelineId: string,
+): Promise<CrossDagWarningsResponse> {
+  return apiFetch<CrossDagWarningsResponse>(
+    `/admin/v2/topics/${guidelineId}/cross-dag-warnings`,
+  );
+}
+
 export async function rerunStageCascade(
   guidelineId: string,
   stageId: string,

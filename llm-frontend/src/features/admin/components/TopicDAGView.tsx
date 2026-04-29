@@ -23,12 +23,14 @@ import '@xyflow/react/dist/style.css';
 import {
   ApiError,
   cancelCascade,
+  getCrossDagWarnings,
   getDAGDefinition,
   getTopicDAG,
   getTopicPipeline,
   rerunStageCascade,
   runAllStagesCascade,
   type CascadeInfo,
+  type CrossDagWarning,
   type DAGDefinitionResponse,
   type TopicDAGResponse,
   type TopicDAGStageRow,
@@ -53,8 +55,24 @@ interface DAGNode {
 }
 
 /**
- * Port of the reference orchestrator's autoLayoutSteps (BFS depth → row groups,
- * each row centered against the widest row).
+ * Two-pass hierarchical layout — BFS-depth rows + parent-aligned columns.
+ *
+ * The naive "center each row against the widest row" approach (the original
+ * port from the reference orchestrator) packs leaves into the middle of the
+ * canvas regardless of which parent they hang off, which produces long
+ * crossing edges as soon as there are more than two leaves on a wide row.
+ *
+ * Instead:
+ *   1. BFS-assign each node a depth (row).
+ *   2. Top-down sweep: place each node at avg(parent.x), then push siblings
+ *      apart to enforce min spacing.
+ *   3. Bottom-up sweep: pull each parent toward avg(child.x) so multi-child
+ *      nodes sit centered above their subtree.
+ *   4. Normalize so the canvas starts at x=0.
+ *
+ * Pure tree shapes converge in one pass each; DAGs with shared descendants
+ * will look reasonable too because the spacing pass never lets nodes
+ * overlap.
  */
 function computeLayout(
   stages: DAGNode[],
@@ -63,14 +81,17 @@ function computeLayout(
 
   const inDeg: Record<string, number> = {};
   const children: Record<string, string[]> = {};
+  const parents: Record<string, string[]> = {};
   stages.forEach((s) => {
     inDeg[s.id] = 0;
     children[s.id] = [];
+    parents[s.id] = [];
   });
   stages.forEach((s) => {
     s.depends_on.forEach((dep) => {
       if (children[dep]) {
         children[dep].push(s.id);
+        parents[s.id].push(dep);
         inDeg[s.id] = (inDeg[s.id] || 0) + 1;
       }
     });
@@ -78,7 +99,8 @@ function computeLayout(
 
   // BFS depth assignment — each node placed at max(parent_depth) + 1.
   const level: Record<string, number> = {};
-  const queue: string[] = stages.filter((s) => (inDeg[s.id] || 0) === 0).map((s) => s.id);
+  const inDegMut = { ...inDeg };
+  const queue: string[] = stages.filter((s) => (inDegMut[s.id] || 0) === 0).map((s) => s.id);
   queue.forEach((id) => {
     level[id] = 0;
   });
@@ -89,11 +111,13 @@ function computeLayout(
     visited.add(id);
     (children[id] || []).forEach((childId) => {
       level[childId] = Math.max(level[childId] || 0, (level[id] ?? 0) + 1);
-      inDeg[childId] = (inDeg[childId] || 1) - 1;
-      if (inDeg[childId] <= 0) queue.push(childId);
+      inDegMut[childId] = (inDegMut[childId] || 1) - 1;
+      if (inDegMut[childId] <= 0) queue.push(childId);
     });
   }
 
+  // Group nodes by row, preserving STAGES order within each row so cosmetic
+  // ordering is deterministic + matches the dependency declaration order.
   const rows: Record<number, string[]> = {};
   stages.forEach((s) => {
     const l = level[s.id] ?? 0;
@@ -101,18 +125,60 @@ function computeLayout(
     rows[l].push(s.id);
   });
 
-  const maxCount = Math.max(...Object.values(rows).map((r) => r.length));
-  const totalMaxWidth = maxCount * NODE_WIDTH + (maxCount - 1) * NODE_H_GAP;
-  const pos: Record<string, LayoutPos> = {};
-  Object.entries(rows).forEach(([l, ids]) => {
-    const rowWidth = ids.length * NODE_WIDTH + (ids.length - 1) * NODE_H_GAP;
-    const offsetX = (totalMaxWidth - rowWidth) / 2;
-    ids.forEach((id, i) => {
-      pos[id] = {
-        x: offsetX + i * (NODE_WIDTH + NODE_H_GAP),
-        y: Number(l) * NODE_V_GAP,
-      };
+  const xStep = NODE_WIDTH + NODE_H_GAP;
+  const x: Record<string, number> = {};
+  const sortedLevels = Object.keys(rows)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  // Pass 1 (top-down): each node wants to sit at avg(parent.x); enforce
+  // min spacing within its row by left-to-right sweep on the desired x.
+  for (const l of sortedLevels) {
+    const ids = rows[l];
+    const desired = ids.map((id) => {
+      const ps = parents[id];
+      const ideal =
+        ps.length > 0
+          ? ps.reduce((sum, p) => sum + (x[p] ?? 0), 0) / ps.length
+          : 0;
+      return { id, ideal };
     });
+    desired.sort((a, b) => a.ideal - b.ideal);
+    let lastX = -Infinity;
+    desired.forEach(({ id, ideal }) => {
+      const placed = Math.max(ideal, lastX === -Infinity ? ideal : lastX + xStep);
+      x[id] = placed;
+      lastX = placed;
+    });
+  }
+
+  // Pass 2 (bottom-up): pull each parent toward avg(child.x) so the parent
+  // ends up centered above its subtree, then re-enforce min spacing.
+  for (const l of [...sortedLevels].reverse()) {
+    const ids = rows[l];
+    const desired = ids.map((id) => {
+      const cs = children[id];
+      if (cs.length === 0) return { id, ideal: x[id] };
+      const childAvg = cs.reduce((sum, c) => sum + (x[c] ?? 0), 0) / cs.length;
+      return { id, ideal: Math.max(x[id], childAvg) };
+    });
+    desired.sort((a, b) => a.ideal - b.ideal);
+    let lastX = -Infinity;
+    desired.forEach(({ id, ideal }) => {
+      const placed = Math.max(ideal, lastX === -Infinity ? ideal : lastX + xStep);
+      x[id] = placed;
+      lastX = placed;
+    });
+  }
+
+  // Normalize: shift everything so min x is 0.
+  const minX = Math.min(...Object.values(x));
+  const pos: Record<string, LayoutPos> = {};
+  stages.forEach((s) => {
+    pos[s.id] = {
+      x: (x[s.id] ?? 0) - minX,
+      y: (level[s.id] ?? 0) * NODE_V_GAP,
+    };
   });
   return pos;
 }
@@ -323,6 +389,7 @@ const TopicDAGView: React.FC = () => {
   const [topicTitle, setTopicTitle] = useState<string>('');
   const [definition, setDefinition] = useState<DAGDefinitionResponse | null>(null);
   const [dag, setDag] = useState<TopicDAGResponse | null>(null);
+  const [warnings, setWarnings] = useState<CrossDagWarning[]>([]);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
@@ -339,6 +406,7 @@ const TopicDAGView: React.FC = () => {
     aliveRef.current = true;
     setGuidelineId(null);
     setDag(null);
+    setWarnings([]);
     setTopicTitle('');
     setSelectedStageId(null);
     setResolveError(null);
@@ -404,6 +472,21 @@ const TopicDAGView: React.FC = () => {
     }
   }, [guidelineId]);
 
+  // Cross-DAG warnings poll alongside DAG state but stay silent on failure —
+  // they're a soft signal and a transient endpoint blip shouldn't spam toasts
+  // every 2s. The banner just won't update; the next successful tick recovers.
+  const fetchWarnings = useCallback(async (): Promise<void> => {
+    if (!guidelineId) return;
+    try {
+      const resp = await getCrossDagWarnings(guidelineId);
+      if (!aliveRef.current) return;
+      setWarnings(resp.warnings);
+    } catch {
+      // Silent — don't clear existing warnings either; stale-but-known beats
+      // disappearing the banner on a single network hiccup.
+    }
+  }, [guidelineId]);
+
   const clearTimer = useCallback(() => {
     if (pollTimerRef.current != null) {
       window.clearTimeout(pollTimerRef.current);
@@ -414,12 +497,12 @@ const TopicDAGView: React.FC = () => {
   const tick = useCallback(async () => {
     if (!aliveRef.current) return;
     if (document.hidden) return; // resumed by visibilitychange handler below
-    const next = await fetchDAG();
+    const [next] = await Promise.all([fetchDAG(), fetchWarnings()]);
     if (!aliveRef.current) return;
     if (document.hidden) return;
     const interval = isAnyActive(next) ? POLL_FAST_MS : POLL_SLOW_MS;
     pollTimerRef.current = window.setTimeout(tick, interval);
-  }, [fetchDAG]);
+  }, [fetchDAG, fetchWarnings]);
 
   useEffect(() => {
     if (!guidelineId) return;
@@ -762,6 +845,64 @@ const TopicDAGView: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Cross-DAG warnings — stacked above the cascade halo because the
+            warning is durable (until admin reruns explanations) while the
+            cascade halo is ephemeral. */}
+        {warnings.map((warning, idx) => {
+          const rerunInFlight = actionInFlight === 'rerun:explanations';
+          const explanationsRow = stageRowById['explanations'];
+          const explanationsRunning = explanationsRow?.state === 'running';
+          const buttonDisabled =
+            !guidelineId || rerunInFlight || explanationsRunning;
+          return (
+            <div
+              key={`${warning.kind}-${idx}`}
+              data-testid="cross-dag-warning"
+              style={{
+                padding: '8px 12px',
+                fontSize: 12,
+                color: '#92400E',
+                backgroundColor: '#FFFBEB',
+                border: '1px solid #FCD34D',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>⚠ {warning.message}</span>
+              {warning.last_explanations_at && (
+                <span style={{ color: '#78350F' }}>
+                  Last explanations: {formatRelativeTime(warning.last_explanations_at)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => handleRerun('explanations')}
+                disabled={buttonDisabled}
+                style={{
+                  marginLeft: 'auto',
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: 'white',
+                  backgroundColor: buttonDisabled ? '#9CA3AF' : '#D97706',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: buttonDisabled ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {rerunInFlight
+                  ? 'Starting…'
+                  : explanationsRunning
+                    ? 'Explanations running…'
+                    : '▶ Rerun explanations'}
+              </button>
+            </div>
+          );
+        })}
 
         {/* Cascade halo banner */}
         {cascadeActive && cascade && (

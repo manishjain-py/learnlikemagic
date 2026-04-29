@@ -36,7 +36,8 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │          kid_personalities, book_chapters, chapter_pages,        │
 │          chapter_processing_jobs, chapter_chunks, chapter_topics,│
 │          topic_explanations, issues, practice_questions,         │
-│          practice_attempts                                       │
+│          practice_attempts, topic_stage_runs,                    │
+│          topic_content_hashes                                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -95,15 +96,19 @@ llm-backend/
 │   ├── utils/            # schema_utils, state_utils, prompt_utils
 │   └── exceptions.py     # Custom exception hierarchy for tutor module
 ├── book_ingestion_v2/    # Book upload, TOC extraction, chapter processing, topic sync (V2 pipeline)
-│   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes
+│   ├── api/              # book_routes, toc_routes, page_routes, processing_routes, sync_routes, dag_routes
+│   ├── dag/              # Topic-pipeline DAG: topic_pipeline_dag.py (single source of truth for stages),
+│   │                     #   cascade.py (auto-cascade orchestrator), cross_dag_warnings.py (chapter-resync banner)
+│   ├── stages/           # One module per pipeline stage (Stage objects imported by dag/topic_pipeline_dag.py)
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
 │   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
 │   │                     #   explanation_generator_service, animation_enrichment_service,
 │   │                     #   check_in_enrichment_service, refresher_topic_generator_service,
-│   │                     #   practice_bank_generator_service
+│   │                     #   practice_bank_generator_service, topic_pipeline_orchestrator,
+│   │                     #   topic_pipeline_status_service, baatcheet_visual_enrichment_service
 │   ├── repositories/     # chapter_repository, chapter_page_repository, chunk_repository,
-│   │                     #   processing_job_repository, topic_repository
+│   │                     #   processing_job_repository, topic_repository, topic_stage_run_repository
 │   ├── models/           # schemas, database, processing_models
 │   ├── utils/            # chunk_builder
 │   ├── constants.py      # Pipeline config, status enums, job types
@@ -190,6 +195,7 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 | v2 page routes | `/admin/v2/books/{id}/chapters/{id}/pages` | Chapter page management (V2) |
 | v2 processing routes | `/admin/v2/books/{id}/chapters/{id}` | Chapter processing, topic extraction, jobs (V2) |
 | v2 sync routes | `/admin/v2/books/{id}` | Sync processed topics to curriculum + results (V2) |
+| v2 dag routes | `/admin/v2` | Topic-pipeline DAG: definition, per-topic state, cascade rerun/run-all/cancel, cross-DAG warnings (banner fires when upstream chapter is re-synced) |
 | issues | `/issues` | Issue reporting (create, list, update status, screenshot upload/retrieval) |
 
 ---
