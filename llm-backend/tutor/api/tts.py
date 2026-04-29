@@ -15,6 +15,7 @@ from auth.middleware.auth_middleware import get_optional_user
 from book_ingestion_v2.services.audio_generation_service import (
     PEER_VOICE,
     TUTOR_VOICE,
+    normalize_tts_text,
 )
 from config import get_settings
 
@@ -63,7 +64,7 @@ async def text_to_speech(
     try:
         client = _get_tts_client()
 
-        synthesis_input = texttospeech.SynthesisInput(text=request.text)
+        synthesis_input = texttospeech.SynthesisInput(text=normalize_tts_text(request.text))
 
         if request.voice_role == "peer":
             lang_code, voice_name = PEER_VOICE

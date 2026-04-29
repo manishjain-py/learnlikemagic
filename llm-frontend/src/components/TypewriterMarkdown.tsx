@@ -140,6 +140,15 @@ export default function TypewriterMarkdown({
 
   const fullMarkdown = useMemo(() => joinBlocks(blocks), [blocks]);
 
+  // Mirror blocks through a ref so the speaking effect can read it without
+  // listing it as a dep. Parents (e.g. BaatcheetViewer) recreate audioLines
+  // every render — that flows into a fresh blocks array via useMemo. If the
+  // speaking effect listed `blocks` as a dep, every parent re-render mid-line
+  // (e.g. setSpeaking(true) on the first line) would re-fire the effect and
+  // call onBlockTyped a second time, playing the same audio in parallel = echo.
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+
   // Maps block index → audio text for TTS callbacks
   const blockAudioRef = useRef<Map<number, string>>(new Map());
   useMemo(() => {
@@ -284,8 +293,8 @@ export default function TypewriterMarkdown({
 
     // Notify parent that this block is starting (for audio pre-fetch).
     // Use LLM-generated audio text when available, fall back to raw block text.
-    const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
-    debugLog(`${_tag} TYPING start — activeIdx=${activeIdx}/${blocks.length}, words=${total}, audioText="${audioText?.slice(0, 40)}..."`);
+    const audioText = blockAudioRef.current.get(activeIdx) || blocksRef.current[activeIdx]?.raw || '';
+    debugLog(`${_tag} TYPING start — activeIdx=${activeIdx}/${blocksRef.current.length}, words=${total}, audioText="${audioText?.slice(0, 40)}..."`);
     onBlockStartRef.current?.(audioText, activeIdx);
 
     if (total === 0) {
@@ -327,7 +336,7 @@ export default function TypewriterMarkdown({
 
     timerRef.current = setTimeout(revealNext, WORD_DELAY);
     return clearTimer;
-  }, [started, wrapped, phase, isActive, clearTimer, blocks, activeIdx]);
+  }, [started, wrapped, phase, isActive, clearTimer, activeIdx]);
 
   // Speaking: play audio or hold after line completes
   useEffect(() => {
@@ -335,7 +344,7 @@ export default function TypewriterMarkdown({
 
     if (onBlockTypedRef.current) {
       let cancelled = false;
-      const audioText = blockAudioRef.current.get(activeIdx) || blocks[activeIdx].raw;
+      const audioText = blockAudioRef.current.get(activeIdx) || blocksRef.current[activeIdx]?.raw || '';
       debugLog(`${_tag} SPEAKING — calling onBlockTyped for activeIdx=${activeIdx}, audioText="${audioText?.slice(0, 40)}..."`);
       const speakStart = Date.now();
       // Safety: if onBlockTyped never resolves (e.g. audio hangs), force-advance.
@@ -369,7 +378,7 @@ export default function TypewriterMarkdown({
       timerRef.current = setTimeout(() => setPhase('transitioning'), HOLD_DURATION);
       return clearTimer;
     }
-  }, [phase, started, clearTimer, blocks, activeIdx]);
+  }, [phase, started, clearTimer, activeIdx]);
 
   // Transitioning: after animation, advance to next block
   useEffect(() => {

@@ -9,6 +9,7 @@ Check-in fields use card_id-based keys `{card_id}/check_in/{field}.mp3` so
 re-insertion at a new card_idx doesn't serve stale audio.
 """
 import logging
+import re
 from typing import Optional
 
 from google.cloud import texttospeech
@@ -16,6 +17,22 @@ from google.api_core.client_options import ClientOptions
 
 from config import get_settings
 from shared.utils.s3_client import S3Client
+
+# Chirp 3 HD's text normalizer reads the bare English word "us" as the
+# country abbreviation "U.S.", especially under the hi-IN voices we use for
+# Hinglish/Hindi. Chirp 3 HD doesn't support <sub>/<say-as> SSML, so we
+# rewrite the token to a homophone-ish spelling the normalizer parses as a
+# regular word. Case-sensitive — leaves the acronym "US" alone.
+_TTS_PRONUNCIATION_FIXES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bus\b"), "uss"),
+]
+
+
+def normalize_tts_text(text: str) -> str:
+    """Apply pre-synthesis fixes for known Chirp 3 HD pronunciation quirks."""
+    for pattern, replacement in _TTS_PRONUNCIATION_FIXES:
+        text = pattern.sub(replacement, text)
+    return text
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +117,7 @@ class AudioGenerationService:
         variant A behavior). Pass an explicit voice to route per-speaker.
         """
         response = self.tts_client.synthesize_speech(
-            input=texttospeech.SynthesisInput(text=text),
+            input=texttospeech.SynthesisInput(text=normalize_tts_text(text)),
             voice=voice or self.voice,
             audio_config=self.audio_config,
         )

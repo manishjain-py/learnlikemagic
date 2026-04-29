@@ -282,6 +282,29 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
     [],
   );
 
+  // ─── Tap-to-skip (mirrors explanation cards) ──────────────────────────
+  // Tap on the active slide while it's still animating → halt audio, mark
+  // revealed (which flips skipAnimation on TypewriterMarkdown so it completes
+  // immediately and shows the full text) and unlock the bottom nav.
+  // No-op on check-in cards (their activity drives progression) and on cards
+  // without animatable lines (already auto-revealed elsewhere).
+  const handleSlideTap = useCallback((idx: number) => {
+    if (idx !== cardIdxRef.current) return;
+    const card = cardsRef.current[idx];
+    if (!card || card.card_type === 'check_in') return;
+    if (!hasAnimatableLines(card)) return;
+    setRevealedCards((prev) => {
+      if (prev.has(idx)) return prev;
+      cancelPlaybackRef.current = true;
+      stopAllAudio();
+      audioVersionRef.current++;
+      setSpeaking(false);
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+  }, []);
+
   // ─── Imperative handle (replay / stop driven by parent's nav button) ──
   useImperativeHandle(ref, () => ({
     replayCurrent: () => {
@@ -483,6 +506,7 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
                 className="focus-slide baatcheet-slide"
                 data-card-type={card.card_type}
                 aria-hidden={!isActive}
+                onClick={() => handleSlideTap(i)}
               >
                 {(cardBadge || (card.speaker && speakerName)) && (
                   <div className="baatcheet-card-head">
