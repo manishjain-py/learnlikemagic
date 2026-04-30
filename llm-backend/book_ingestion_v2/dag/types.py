@@ -83,6 +83,8 @@ class Stage:
     status_check: StatusCheckFn
     staleness_check: Optional[StalenessCheckFn] = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    description: Optional[str] = None
+    review_rounds: Optional[int] = None
 
     def __post_init__(self) -> None:
         # Coerce to tuple so a list silently passed by a future contributor
@@ -207,6 +209,8 @@ class TopicPipelineDAG:
                     "scope": s.scope.value,
                     "label": s.label,
                     "depends_on": list(s.depends_on),
+                    "description": s.description,
+                    "review_rounds": s.review_rounds,
                 }
                 for s in self.stages
             ],

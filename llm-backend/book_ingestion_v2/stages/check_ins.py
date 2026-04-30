@@ -14,6 +14,9 @@ from book_ingestion_v2.dag.types import (
     StageStatusOutput,
     StatusContext,
 )
+from book_ingestion_v2.services.check_in_enrichment_service import (
+    DEFAULT_REVIEW_ROUNDS,
+)
 from book_ingestion_v2.services.stage_launchers import launch_check_in_job
 
 
@@ -54,4 +57,11 @@ STAGE = Stage(
     depends_on=("explanations",),
     launch=launch_check_in_job,
     status_check=_status,
+    description=(
+        "Generates check-in activity cards (11 activity types) and inserts "
+        "them at boundaries chosen by the LLM. "
+        "Pipeline: analyze cards → generate → review-and-refine → "
+        "validate → insert into variant-A cards_json."
+    ),
+    review_rounds=DEFAULT_REVIEW_ROUNDS,
 )

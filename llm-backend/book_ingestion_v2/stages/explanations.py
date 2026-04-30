@@ -19,6 +19,9 @@ from book_ingestion_v2.dag.types import (
     StageStatusOutput,
     StatusContext,
 )
+from book_ingestion_v2.services.explanation_generator_service import (
+    DEFAULT_REVIEW_ROUNDS,
+)
 from book_ingestion_v2.services.stage_launchers import launch_explanation_job
 
 
@@ -50,4 +53,10 @@ STAGE = Stage(
     depends_on=(),
     launch=launch_explanation_job,
     status_check=_status,
+    description=(
+        "Generates the variant-A explanation deck for the topic. "
+        "Pipeline: generate cards → review-and-refine → validate → store. "
+        "Anchors staleness for all downstream stages."
+    ),
+    review_rounds=DEFAULT_REVIEW_ROUNDS,
 )

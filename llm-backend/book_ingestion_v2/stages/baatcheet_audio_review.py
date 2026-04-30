@@ -92,4 +92,10 @@ STAGE = Stage(
     depends_on=("baatcheet_dialogue",),
     launch=launch_baatcheet_audio_review_job,
     status_check=_status,
+    description=(
+        "Single-pass LLM review of each dialogue line's audio_text for "
+        "TTS-friendliness. Applies surgical edits in place and clears "
+        "audio_url on revised lines so synthesis regenerates only what "
+        "changed."
+    ),
 )

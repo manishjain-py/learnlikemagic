@@ -181,6 +181,8 @@ def get_dag_definition():
                 scope=s.scope.value,
                 label=s.label,
                 depends_on=list(s.depends_on),
+                description=s.description,
+                review_rounds=s.review_rounds,
             )
             for s in DAG.stages
         ]

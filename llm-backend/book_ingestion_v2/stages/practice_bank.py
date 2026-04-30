@@ -19,6 +19,9 @@ from book_ingestion_v2.dag.types import (
     StatusContext,
 )
 from book_ingestion_v2.models.schemas import StageState
+from book_ingestion_v2.services.practice_bank_generator_service import (
+    DEFAULT_REVIEW_ROUNDS,
+)
 from book_ingestion_v2.services.stage_launchers import launch_practice_bank_job
 
 
@@ -84,4 +87,11 @@ STAGE = Stage(
     depends_on=("explanations",),
     launch=launch_practice_bank_job,
     status_check=_status,
+    description=(
+        "Generates the offline practice question bank (30–40 questions "
+        "across 12 formats) for Let's Practice. "
+        "Pipeline: generate → review-and-refine → validate (format counts, "
+        "dedup) → bulk insert into practice_questions."
+    ),
+    review_rounds=DEFAULT_REVIEW_ROUNDS,
 )

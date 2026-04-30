@@ -75,4 +75,9 @@ STAGE = Stage(
     depends_on=("audio_review",),
     launch=launch_audio_synthesis_job,
     status_check=_status,
+    description=(
+        "Synthesizes Google Cloud Chirp 3 HD audio for every explanation "
+        "line and check-in field, uploads MP3s to S3, writes audio_url back "
+        "into cards_json. Idempotent."
+    ),
 )

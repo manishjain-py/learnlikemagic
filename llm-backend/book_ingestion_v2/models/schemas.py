@@ -482,6 +482,8 @@ class DAGStageDefinition(BaseModel):
     scope: str
     label: str
     depends_on: List[str]
+    description: Optional[str] = None
+    review_rounds: Optional[int] = None
 
 
 class DAGDefinitionResponse(BaseModel):

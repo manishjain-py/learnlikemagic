@@ -14,6 +14,9 @@ from book_ingestion_v2.dag.types import (
     StageStatusOutput,
     StatusContext,
 )
+from book_ingestion_v2.services.animation_enrichment_service import (
+    DEFAULT_REVIEW_ROUNDS,
+)
 from book_ingestion_v2.services.stage_launchers import launch_visual_job
 
 
@@ -68,4 +71,12 @@ STAGE = Stage(
     depends_on=("explanations",),
     launch=launch_visual_job,
     status_check=_status,
+    description=(
+        "Generates PixiJS animation code on variant-A explanation cards. "
+        "Pipeline: LLM selects cards + writes spec → generate code → "
+        "review-and-refine → vision-LLM review gate (renders to "
+        "screenshot; one targeted refine if flagged) → store. "
+        "Requires the frontend dev server running."
+    ),
+    review_rounds=DEFAULT_REVIEW_ROUNDS,
 )

@@ -82,4 +82,9 @@ STAGE = Stage(
     depends_on=("baatcheet_audio_review",),
     launch=launch_baatcheet_audio_synthesis_job,
     status_check=_status,
+    description=(
+        "Synthesizes Google Cloud Chirp 3 HD audio per dialogue line and "
+        "uploads MP3s to S3. Mr. Verma uses the Orus voice, Meera uses "
+        "Leda. Idempotent — skips lines that already have audio_url."
+    ),
 )

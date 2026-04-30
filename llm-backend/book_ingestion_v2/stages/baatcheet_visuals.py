@@ -175,4 +175,10 @@ STAGE = Stage(
     depends_on=("baatcheet_dialogue",),
     launch=launch_baatcheet_visual_job,
     status_check=_status,
+    description=(
+        "Fills `visual_explanation.pixi_code` on dialogue cards. "
+        "An LLM selector picks cards from the plan (visual_required + "
+        "default-generate rules); PixiCodeGenerator turns each intent into "
+        "runnable PixiJS. Skips cards already enriched."
+    ),
 )

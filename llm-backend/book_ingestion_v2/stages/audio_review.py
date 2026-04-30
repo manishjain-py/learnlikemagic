@@ -82,4 +82,9 @@ STAGE = Stage(
     depends_on=("explanations",),
     launch=launch_audio_review_job,
     status_check=_status,
+    description=(
+        "Single-pass LLM review of each explanation line's audio_text for "
+        "TTS-friendliness (no markdown, no naked equals, no emoji). "
+        "Applies surgical edits and clears audio_url on revised lines."
+    ),
 )

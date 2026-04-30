@@ -32,6 +32,7 @@ import {
   type CascadeInfo,
   type CrossDagWarning,
   type DAGDefinitionResponse,
+  type DAGStageDefinition,
   type TopicDAGResponse,
   type TopicDAGStageRow,
   type TopicStageRunState,
@@ -200,16 +201,21 @@ const STATE_STYLE: Record<
 
 interface StageNodeData extends Record<string, unknown> {
   row: TopicDAGStageRow;
+  def: DAGStageDefinition;
   selected: boolean;
   isCascadeRunning: boolean;
   onClick: (stageId: string) => void;
 }
 
 function StageNode({ data }: NodeProps<Node<StageNodeData>>) {
-  const { row, selected, isCascadeRunning, onClick } = data;
+  const { row, def, selected, isCascadeRunning, onClick } = data;
   const style = STATE_STYLE[row.state];
   const isRunningHere = row.state === 'running' || isCascadeRunning;
   const showStaleBadge = row.is_stale && row.state === 'done';
+  const labelText =
+    def.review_rounds != null
+      ? `${row.label} (review-refine = ${def.review_rounds})`
+      : row.label;
 
   return (
     <div
@@ -267,7 +273,7 @@ function StageNode({ data }: NodeProps<Node<StageNodeData>>) {
           lineHeight: 1.25,
         }}
       >
-        {row.label}
+        {labelText}
       </div>
 
       {/* State badge */}
@@ -573,6 +579,7 @@ const TopicDAGView: React.FC = () => {
         position: layout[s.id] ?? { x: 0, y: 0 },
         data: {
           row,
+          def: s,
           selected: selectedStageId === s.id,
           isCascadeRunning: cascadeRunningStage === s.id,
           onClick: handleNodeClick,
@@ -1073,7 +1080,7 @@ const TopicDAGView: React.FC = () => {
 
 interface SidePanelProps {
   row: TopicDAGStageRow;
-  definition: { id: string; label: string; depends_on: string[] };
+  definition: DAGStageDefinition;
   bookId: string;
   chapterId: string;
   cascadeActive: boolean;
@@ -1153,6 +1160,23 @@ function SidePanel({
       </div>
 
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* What this stage does */}
+        {definition.description && (
+          <div>
+            <div style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>
+              What this stage does
+            </div>
+            <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
+              {definition.description}
+              {definition.review_rounds != null && (
+                <div style={{ marginTop: 6, color: '#4F46E5', fontWeight: 500 }}>
+                  Review-refine rounds: {definition.review_rounds}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* State */}
         <div>
           <div style={{ fontSize: 10, color: '#6B7280', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>

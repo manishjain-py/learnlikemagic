@@ -1112,6 +1112,8 @@ export interface DAGStageDefinition {
   scope: string;
   label: string;
   depends_on: string[];
+  description: string | null;
+  review_rounds: number | null;
 }
 
 export interface DAGDefinitionResponse {

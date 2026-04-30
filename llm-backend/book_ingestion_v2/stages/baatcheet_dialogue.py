@@ -20,6 +20,9 @@ from book_ingestion_v2.dag.types import (
     StageStatusOutput,
     StatusContext,
 )
+from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+    DEFAULT_REVIEW_ROUNDS,
+)
 from book_ingestion_v2.services.stage_launchers import launch_baatcheet_dialogue_job
 
 
@@ -77,4 +80,11 @@ STAGE = Stage(
     depends_on=("explanations",),
     launch=launch_baatcheet_dialogue_job,
     status_check=_status,
+    description=(
+        "Generates the Mr. Verma + Meera conversational lesson. "
+        "Pipeline: load lesson plan → generate cards → review-and-refine "
+        "using validator feedback → validate → persist. "
+        "Server prepends a fixed welcome card."
+    ),
+    review_rounds=DEFAULT_REVIEW_ROUNDS,
 )
