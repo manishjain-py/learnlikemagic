@@ -131,8 +131,8 @@ def migrate():
         # Add focus_mode column to users
         _apply_focus_mode_column(db_manager)
 
-        # Session feedback table (created by create_all, this is a no-op placeholder)
-        _apply_session_feedback_table(db_manager)
+        # Session feedback feature removed — drop the table if present
+        _drop_session_feedback_table(db_manager)
 
         # Topic planning columns for quality improvement
         _apply_topic_planning_columns(db_manager)
@@ -787,13 +787,15 @@ def _apply_focus_mode_column(db_manager):
         conn.commit()
 
 
-def _apply_session_feedback_table(db_manager):
-    """Ensure session_feedback table exists (created by Base.metadata.create_all)."""
+def _drop_session_feedback_table(db_manager):
+    """Drop session_feedback table (mid-session feedback feature removed)."""
     inspector = inspect(db_manager.engine)
     if "session_feedback" in inspector.get_table_names():
-        print("  ✓ session_feedback table already exists")
-    else:
-        print("  ✓ session_feedback table created")
+        with db_manager.engine.connect() as conn:
+            print("  Dropping session_feedback table...")
+            conn.execute(text("DROP TABLE session_feedback CASCADE"))
+            conn.commit()
+            print("  ✓ session_feedback dropped")
 
 
 def _apply_topic_planning_columns(db_manager):
