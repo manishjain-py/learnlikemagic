@@ -55,7 +55,6 @@ Code baseline: `main@e0c0338`
 - Admin pages: `llm-frontend/src/features/admin/pages/*`
 - Visual explanation component: `llm-frontend/src/components/VisualExplanation.tsx`
 - Admin API client: `llm-frontend/src/features/admin/api/adminApi.ts`
-- Devtools API client: `llm-frontend/src/features/devtools/api/devToolsApi.ts`
 
 ## E2E + QA High-Signal Files
 - Playwright config: `e2e/playwright.config.ts`

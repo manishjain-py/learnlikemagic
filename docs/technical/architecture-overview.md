@@ -33,7 +33,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Database (Aurora Serverless v2 PostgreSQL)                      │
 │  Tables: users, sessions, events, contents,                     │
 │          teaching_guidelines, study_plans, books, llm_config,    │
-│          feature_flags, session_feedback, kid_enrichment_profiles,│
+│          feature_flags, kid_enrichment_profiles,                │
 │          kid_personalities, book_chapters, chapter_pages,        │
 │          chapter_processing_jobs, chapter_chunks, chapter_topics,│
 │          topic_explanations, topic_dialogues, student_topic_cards,│
@@ -217,7 +217,6 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 ```
 llm-frontend/src/
 ├── App.tsx               # Root component + routing
-├── TutorApp.tsx          # Legacy redirect (→ /learn)
 ├── api.ts                # API client with auth token handling
 ├── pages/                # Route-level pages
 │   ├── LoginPage.tsx, EmailLoginPage.tsx, PhoneLoginPage.tsx
@@ -302,14 +301,6 @@ llm-frontend/src/
 │   │   │   └── AdminIssuesPage.tsx  # Issue management (list, status update, screenshots)
 │   │   └── types/
 │   │       └── index.ts             # TypeScript types for admin features (eval, LLM config, feature flags)
-│   └── devtools/         # Debug tools (shown in chat session)
-│       ├── api/devToolsApi.ts         # Dev tools API client
-│       ├── components/
-│       │   ├── DevToolsDrawer.tsx     # Expandable debug drawer
-│       │   ├── AgentLogsPanel.tsx     # Agent execution log viewer
-│       │   ├── GuidelinesPanel.tsx    # Active guidelines viewer
-│       │   └── StudyPlanPanel.tsx     # Active study plan viewer
-│       └── types/index.ts            # Dev tools type definitions
 └── config/
     └── auth.ts           # Cognito config
 ```

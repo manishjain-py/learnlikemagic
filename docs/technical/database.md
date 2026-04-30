@@ -200,26 +200,6 @@ Centralized model configuration per component. Single source of truth for which 
 
 Existing deployments (table non-empty) get individual seeds injected via `_ensure_llm_config()` from per-feature migration steps (e.g. `_apply_topic_explanations_table`, `_apply_topic_dialogues_table`, `_apply_practice_tables`).
 
-### Session Feedback
-
-**Table:** `session_feedback` | **Model:** `SessionFeedback` (`shared/models/entities.py`)
-
-Mid-session feedback from parents/students that can trigger study plan regeneration.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | VARCHAR | Primary key |
-| `user_id` | VARCHAR | FK --> users (CASCADE delete) |
-| `guideline_id` | VARCHAR | FK --> teaching_guidelines (CASCADE delete) |
-| `session_id` | VARCHAR | FK --> sessions (SET NULL on delete, nullable) |
-| `feedback_text` | TEXT | Feedback content |
-| `step_at_feedback` | INT | Step index when feedback was given |
-| `total_steps_at_feedback` | INT | Total steps in plan when feedback was given |
-| `plan_regenerated` | BOOL | Whether the plan was regenerated (default false) |
-| `created_at` | DATETIME | Timestamp |
-
-**Indexes:** `idx_session_feedback_user_guideline` (user_id, guideline_id), `idx_session_feedback_session` (session_id)
-
 ### Kid Enrichment Profiles
 
 **Table:** `kid_enrichment_profiles` | **Model:** `KidEnrichmentProfile` (`shared/models/entities.py`)
@@ -539,12 +519,6 @@ python db.py --migrate
 1. Add column to the SQLAlchemy model in `entities.py`
 2. Add an `ALTER TABLE` migration in `db.py` with column existence check via `inspect()`
 3. Run `python db.py --migrate`
-
-**V1 data cleanup** (one-time, after migration):
-```bash
-python scripts/cleanup_v1_data.py              # dry run — shows what would be deleted
-python scripts/cleanup_v1_data.py --execute    # actually delete V1 books, guidelines, study plans
-```
 
 ---
 

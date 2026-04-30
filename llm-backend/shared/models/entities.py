@@ -196,26 +196,6 @@ class StudyPlan(Base):
 
 
 
-class SessionFeedback(Base):
-    """Mid-session feedback from parents/students that triggers study plan regeneration."""
-    __tablename__ = "session_feedback"
-
-    id = Column(String, primary_key=True)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    guideline_id = Column(String, ForeignKey("teaching_guidelines.id", ondelete="CASCADE"), nullable=False)
-    session_id = Column(String, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
-    feedback_text = Column(Text, nullable=False)
-    step_at_feedback = Column(Integer, nullable=False)
-    total_steps_at_feedback = Column(Integer, nullable=False)
-    plan_regenerated = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        Index("idx_session_feedback_user_guideline", "user_id", "guideline_id"),
-        Index("idx_session_feedback_session", "session_id"),
-    )
-
-
 class Book(Base):
     """
     Book table - stores metadata for uploaded textbooks.

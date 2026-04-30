@@ -234,7 +234,6 @@ Analyzes avg words/message, emoji usage, question-asking. Detects disengagement 
 | `POST` | `/sessions/{id}/card-progress` | Single endpoint for both `card_phase` and `dialogue_phase`: nav (`card_idx`), `mark_complete` flag, optional `check_in_events` |
 | `POST` | `/sessions/{id}/card-action` | `clear` (end Teach Me, build summary, surface Practice CTA) or `explain_differently` (switch variant; finalize when exhausted). Optional `check_in_events` |
 | `POST` | `/sessions/{id}/simplify-card` | Per-card simplification (Explain only; blocked on refresher) |
-| `POST` | `/sessions/{id}/feedback` | Mid-session feedback to regenerate study plan (max 3/session); `action: continue` or `restart` |
 | `GET` | `/sessions/{id}/summary` | Performance summary |
 | `GET` | `/sessions` | List sessions for current user |
 | `GET` | `/sessions/history` | Paginated history (filterable by subject) |
@@ -452,19 +451,6 @@ Plan resolution order at session creation (clarify only):
 3. For clarify_doubts with an authenticated user: generate on-the-fly via `StudyPlanGeneratorService`.
 4. Default 5-step plan (`explain → explain → check → explain → practice`) if no plan exists at all (`topic_adapter._generate_default_plan`).
 
-### Mid-Session Feedback
-
-`POST /sessions/{id}/feedback` (`SessionService.process_feedback`):
-- Accepts `feedback_text` + `action` (`continue` or `restart`).
-- Rate-limited to 3 submissions per session (`session_feedbacks` table).
-- Generates new plan via `StudyPlanGeneratorService.generate_plan_with_feedback()` with feedback text + concepts already covered + current position.
-- **Continue**: splice new remaining steps from current step forward; filter out covered concepts; re-number steps.
-- **Restart**: replace plan, reset state (step=1, mastery={}, misconceptions=[], explanation_phases={}, conversation_history=[]), generate new welcome.
-- Both actions upsert `study_plans` and persist via CAS.
-- A `[FEEDBACK]` or `[FEEDBACK-RESTART]` marker is added to the turn timeline; the turn prompt detects it and surfaces a feedback notice.
-
-Most useful for clarify_doubts; teach_me card-based flow doesn't trigger plan regeneration.
-
 ---
 
 ## LLM Calls
@@ -553,7 +539,7 @@ Card audio playback uses pre-rendered MP3 URLs (populated by ingestion stages) w
 
 | File | Purpose |
 |------|---------|
-| `tutor/services/session_service.py` | Session creation (3 paths: baatcheet branch, explain branch with card phase init + saved-simplifications pre-load, clarify branch). `record_card_progress()` (single endpoint for both phases — nav + completion + check_in_events). `process_step()` (rejects card_phase + dialogue_phase). `pause_session()`, `resume_session()`, `end_clarify_session()`. `complete_card_phase()` (clear → `_finalize_teach_me_session`; explain_differently → `_switch_variant_internal` or finalize when exhausted; refresher short-circuits with session_complete message). `simplify_card()` (RemedialCard/ConfusionEvent tracking, base-card-only input, previous attempts context, blocked for refresher, persists to `student_topic_cards`). `_finalize_teach_me_session()` (sets card_phase.completed, builds `precomputed_explanation_summary` from variants + confusion events + check-in struggles, populates `concepts_covered_set`, returns Practice CTA payload). `_finalize_baatcheet_session()` (token-level coverage propagation). `process_feedback()` (continue/restart with CAS). Vestigial: `_generate_v2_session_plan()` (no longer called) |
+| `tutor/services/session_service.py` | Session creation (3 paths: baatcheet branch, explain branch with card phase init + saved-simplifications pre-load, clarify branch). `record_card_progress()` (single endpoint for both phases — nav + completion + check_in_events). `process_step()` (rejects card_phase + dialogue_phase). `pause_session()`, `resume_session()`, `end_clarify_session()`. `complete_card_phase()` (clear → `_finalize_teach_me_session`; explain_differently → `_switch_variant_internal` or finalize when exhausted; refresher short-circuits with session_complete message). `simplify_card()` (RemedialCard/ConfusionEvent tracking, base-card-only input, previous attempts context, blocked for refresher, persists to `student_topic_cards`). `_finalize_teach_me_session()` (sets card_phase.completed, builds `precomputed_explanation_summary` from variants + confusion events + check-in struggles, populates `concepts_covered_set`, returns Practice CTA payload). `_finalize_baatcheet_session()` (token-level coverage propagation). Vestigial: `_generate_v2_session_plan()` (no longer called) |
 | `tutor/services/pixi_code_generator.py` | `PixiCodeGenerator`: NL visual description → Pixi.js v8 code via tutor model. Canvas 500x350. Gated by `show_visuals_in_tutor_flow`. Returns empty string on failure |
 | `tutor/services/topic_adapter.py` | `convert_guideline_to_topic()` (refresher returns empty plan; otherwise `_convert_study_plan`). `convert_session_plan_to_study_plan()` for v2 plans. `_infer_step_type()` for v1 step type inference. `_generate_default_plan()` 5-step fallback |
 | `tutor/services/report_card_service.py` | Report card aggregation, topic progress |
@@ -580,4 +566,4 @@ Card audio playback uses pre-rendered MP3 URLs (populated by ingestion stages) w
 | `components/teach/BaatcheetViewer.tsx` | Baatcheet carousel with per-line MP3 + typewriter sync. Owns card index, audio playback, check-in dispatch, server progress posting |
 | `components/CheckInDispatcher.tsx` | Dispatches per-card check-in activity by type |
 | `components/ModeSelection.tsx` | Mode picker (Teach Me / Clarify Doubts / Practice). Shows resume CTA for in-progress teach_me sessions |
-| `api.ts` | Typed wrappers: `createSession` (with `teach_me_mode`), `submitStep`, `pauseSession`, `resumeSession`, `endClarifySession`, `cardAction`, `simplifyCard`, `postCardProgress`, `getTeachMeOptions`, `getSessionReplay`, `submitFeedback`, `getReportCard`, `getTopicProgress`, `getResumableSession`, `getGuidelineSessions`, `transcribeAudio`. WebSocket helpers for the chat loop |
+| `api.ts` | Typed wrappers: `createSession` (with `teach_me_mode`), `submitStep`, `pauseSession`, `resumeSession`, `endClarifySession`, `cardAction`, `simplifyCard`, `postCardProgress`, `getTeachMeOptions`, `getSessionReplay`, `getReportCard`, `getTopicProgress`, `getResumableSession`, `getGuidelineSessions`, `transcribeAudio`. WebSocket helpers for the chat loop |

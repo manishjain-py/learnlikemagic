@@ -26,7 +26,7 @@ After this command runs, documentation must be complete for the current codebase
    - Docs: `docs/functional/app-overview.md`, `docs/technical/architecture-overview.md`
    - Discover:
      - Read the existing docs' "Key Files" sections as a starting point
-     - Glob `llm-frontend/src/App.tsx` and `llm-frontend/src/TutorApp.tsx` for routes and main flow
+     - Glob `llm-frontend/src/App.tsx` for routes and main flow
      - Glob `llm-backend/main.py` for registered routers
      - Glob `llm-backend/config.py` for settings
      - Glob `llm-backend/shared/**/*.py` for shared services

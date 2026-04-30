@@ -9,7 +9,6 @@ import {
   getSessionReplay,
   transcribeAudio,
   synthesizeSpeech,
-  submitFeedback,
   cardAction,
   simplifyCard,
   postCardProgress,
@@ -32,7 +31,6 @@ import BaatcheetViewer, {
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 import { useAuth } from '../contexts/AuthContext';
-import DevToolsDrawer from '../features/devtools/components/DevToolsDrawer';
 import VisualExplanationComponent from '../components/VisualExplanation';
 import InteractiveQuestion from '../components/InteractiveQuestion';
 import CheckInDispatcher, { CheckInActivityResult } from '../components/CheckInDispatcher';
@@ -130,7 +128,6 @@ export default function ChatSession() {
   const [isComplete, setIsComplete] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
-  const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
   const [sessionMode, setSessionMode] = useState<'teach_me' | 'clarify_doubts'>(
     (locState?.mode as any) || 'teach_me',
@@ -201,17 +198,6 @@ export default function ChatSession() {
   const wsRef = useRef<TutorWebSocket | null>(null);
   const streamResolveRef = useRef<(() => void) | null>(null);
 
-  // Feedback modal state
-  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
-  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [feedbackCount, setFeedbackCount] = useState(0);
-  const [isFeedbackRecording, setIsFeedbackRecording] = useState(false);
-  const feedbackRecorderRef = useRef<MediaRecorder | null>(null);
-  const feedbackChunksRef = useRef<Blob[]>([]);
-  const [isFeedbackTranscribing, setIsFeedbackTranscribing] = useState(false);
   const isSpeaking = playingSlideId !== null;
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
   // Bumped by handleRestartExplain to force-remount slides so
@@ -1110,80 +1096,6 @@ export default function ChatSession() {
     if (widgetSequenceRef.current === token) widgetSequenceRef.current = null;
   };
 
-  const handleFeedbackSubmit = async (action: 'continue' | 'restart') => {
-    if (!sessionId || !feedbackText.trim()) return;
-    setFeedbackSubmitting(true);
-    setFeedbackError(null);
-    try {
-      const result = await submitFeedback(sessionId, feedbackText.trim(), action);
-      setFeedbackCount(result.feedback_count);
-      setFeedbackSuccess(true);
-      setFeedbackText('');
-
-      // On restart, reload the session to get the new welcome message & reset UI
-      if (action === 'restart') {
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
-      } else {
-        setTimeout(() => {
-          setFeedbackModalOpen(false);
-          setFeedbackSuccess(false);
-        }, 2000);
-      }
-    } catch (err: any) {
-      setFeedbackError(err.message || 'Failed to submit feedback');
-    } finally {
-      setFeedbackSubmitting(false);
-    }
-  };
-
-  const toggleFeedbackRecording = async () => {
-    if (isFeedbackRecording) {
-      feedbackRecorderRef.current?.stop();
-      setIsFeedbackRecording(false);
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const preferredTypes = ['audio/webm', 'audio/mp4', 'audio/ogg'];
-      const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t));
-      const mediaRecorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      const activeMime = mediaRecorder.mimeType || 'audio/webm';
-      feedbackChunksRef.current = [];
-      const baseFeedback = feedbackText;
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) feedbackChunksRef.current.push(e.data);
-      };
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        feedbackRecorderRef.current = null;
-        const audioBlob = new Blob(feedbackChunksRef.current, { type: activeMime });
-        if (audioBlob.size === 0) return;
-        setIsFeedbackTranscribing(true);
-        try {
-          const text = await transcribeAudio(audioBlob);
-          if (text) {
-            const spacer = baseFeedback && !baseFeedback.endsWith(' ') ? ' ' : '';
-            setFeedbackText(`${baseFeedback}${spacer}${text}`);
-          }
-        } catch (err) {
-          console.error('Feedback transcription failed:', err);
-        } finally {
-          setIsFeedbackTranscribing(false);
-        }
-      };
-      feedbackRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
-      setIsFeedbackRecording(true);
-    } catch (err) {
-      console.error('Microphone access denied:', err);
-    }
-  };
-
   // ─── Card phase action handler ─────────────────────────────────────
   const handleCardAction = async (action: 'clear' | 'explain_differently') => {
     if (!sessionId) return;
@@ -1425,17 +1337,6 @@ export default function ChatSession() {
           </span>
 
           <div className="nav-actions">
-            {/* TODO(2026-04-30): "Feedback" and "Dev" buttons removed from
-                the topic bar to clean up narrow-screen layout. Their
-                supporting code is still in this file:
-                  - Feedback: feedbackModalOpen/feedbackText/feedbackSubmitting/
-                    feedbackSuccess/feedbackError/feedbackCount/isFeedback*
-                    state, handleFeedbackSubmit, submitFeedback API import,
-                    and the feedback modal JSX further down.
-                  - Dev: devToolsOpen state, DevToolsDrawer import + render.
-                Evaluate whether these features are still wanted at all (no
-                other entry point exists today). If not, deprecate and delete
-                the supporting code in a follow-up cleanup. */}
             {baatcheetCardCount > 0 && (
               <>
                 <button
@@ -1501,8 +1402,6 @@ export default function ChatSession() {
           </span>
 
           <div className="nav-actions">
-            {/* TODO(2026-04-30): "Feedback" and "Dev" buttons removed —
-                see the matching note in the Baatcheet branch above. */}
             {sessionId && !isComplete && carouselSlides.length > 0 && (
               <>
                 <button
@@ -2055,13 +1954,6 @@ export default function ChatSession() {
           )}
         </div>
       </div>
-      {sessionId && (
-        <DevToolsDrawer
-          sessionId={sessionId}
-          isOpen={devToolsOpen}
-          onClose={() => setDevToolsOpen(false)}
-        />
-      )}
       <ConfirmDialog
         open={restartConfirmOpen}
         title="Restart from the beginning?"
@@ -2071,86 +1963,6 @@ export default function ChatSession() {
         onConfirm={performRestartExplain}
         onCancel={() => setRestartConfirmOpen(false)}
       />
-
-      {/* Feedback Modal */}
-      {feedbackModalOpen && (
-        <div className="feedback-modal-backdrop" onClick={() => !feedbackSubmitting && setFeedbackModalOpen(false)}>
-          <div className="feedback-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="feedback-modal-header">
-              <h3 className="feedback-modal-title">Share Feedback</h3>
-              <button
-                className="feedback-modal-close"
-                onClick={() => !feedbackSubmitting && setFeedbackModalOpen(false)}
-                aria-label="Close"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <p className="feedback-hint">Tell us how the session is going (e.g., &ldquo;too fast&rdquo;, &ldquo;use more examples&rdquo;, &ldquo;my child knows this already&rdquo;)</p>
-            {feedbackSuccess ? (
-              <div className="feedback-success">Plan updated successfully!</div>
-            ) : (
-              <>
-                <textarea
-                  className="feedback-textarea"
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value.slice(0, 500))}
-                  placeholder="Type your feedback..."
-                  maxLength={500}
-                  rows={4}
-                  disabled={feedbackSubmitting}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <button
-                    type="button"
-                    onClick={toggleFeedbackRecording}
-                    disabled={feedbackSubmitting || isFeedbackTranscribing}
-                    className={`mic-button${isFeedbackRecording ? ' recording' : ''}${isFeedbackTranscribing ? ' transcribing' : ''}`}
-                    title={isFeedbackRecording ? 'Stop recording' : isFeedbackTranscribing ? 'Transcribing...' : 'Voice input'}
-                    aria-label={isFeedbackRecording ? 'Stop recording' : 'Start voice input'}
-                  >
-                    {isFeedbackTranscribing ? (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 6v6l4 2" />
-                      </svg>
-                    ) : (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                        <line x1="12" y1="19" x2="12" y2="23" />
-                        <line x1="8" y1="23" x2="16" y2="23" />
-                      </svg>
-                    )}
-                  </button>
-                  <span style={{ fontSize: '0.75rem', color: '#718096' }}>{feedbackText.length}/500</span>
-                  <span style={{ fontSize: '0.75rem', color: '#718096', marginLeft: 'auto' }}>{3 - feedbackCount} feedback{3 - feedbackCount !== 1 ? 's' : ''} remaining</span>
-                </div>
-                {feedbackError && <div className="feedback-error">{feedbackError}</div>}
-                <div className="feedback-action-buttons">
-                  <button
-                    className="feedback-submit-btn feedback-continue-btn"
-                    onClick={() => handleFeedbackSubmit('continue')}
-                    disabled={feedbackSubmitting || !feedbackText.trim() || isFeedbackTranscribing}
-                  >
-                    {feedbackSubmitting ? 'Updating...' : 'Continue Session'}
-                  </button>
-                  <button
-                    className="feedback-submit-btn feedback-restart-btn"
-                    onClick={() => handleFeedbackSubmit('restart')}
-                    disabled={feedbackSubmitting || !feedbackText.trim() || isFeedbackTranscribing}
-                  >
-                    {feedbackSubmitting ? 'Restarting...' : 'Restart Session'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -52,7 +52,6 @@ LearnLikeMagic is an AI tutoring platform with:
 ## Frontend Domain Map
 - `src/pages/`: auth (email/phone/OAuth login, signup, verify, forgot-password), onboarding, profile, history, report card, learning flow (subject/chapter/topic select, chat, mode select), enrichment, exam review
 - `src/features/admin/`: books (v2), evaluation, docs, model config, feature flags, test scenarios, pixi PoC
-- `src/features/devtools/`: agent logs + guidelines + study plan panels via drawer
 - `src/contexts/AuthContext.tsx`: Cognito + backend profile sync
 
 ## Infra Module Map
