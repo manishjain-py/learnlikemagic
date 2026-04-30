@@ -4388,7 +4388,10 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   color: var(--chalk-white);
 }
 
-/* Back/Next pills */
+/* Back/Next pills.
+   flex: 1 1 0 + min-width: 0 lets the two pills share whatever width is left
+   after the (content-sized) Restart button, gracefully shrinking on narrow
+   viewports instead of overflowing. Padding scales fluidly via clamp(). */
 .chalkboard-active .explanation-nav-btn.primary,
 .chalkboard-active .explanation-nav-btn.secondary {
   border-radius: var(--r-pill);
@@ -4397,9 +4400,13 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   font-family: var(--font-body);
   font-weight: 700;
   letter-spacing: 0.05em;
-  padding: 14px 24px;
-  min-width: 110px;
+  padding: clamp(12px, 3vw, 14px) clamp(14px, 5vw, 24px);
+  flex: 1 1 0;
+  min-width: 0;
   transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.chalkboard-active .explanation-nav-btn.restart {
+  padding: clamp(12px, 3vw, 14px);
 }
 .chalkboard-active .explanation-nav-btn.primary {
   background: linear-gradient(180deg, #6C7DE8 0%, var(--cb-action-primary) 100%);
@@ -8719,13 +8726,15 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 /* ── Speaker spotlight — large presenter strip in BaatcheetViewer ──────── */
 /* Replaces the old 44px chip. Spec: variant-2-spotlight.html mockup.
    Idle: subtle white inset ring, drop shadow only.
-   Speaking: gold inset ring + gold halo + glow pulse + animated equalizer. */
+   Speaking: gold inset ring + gold halo + glow pulse + animated equalizer.
+   Sizing is fluid (clamp) so the strip scales smoothly from ~320px up to
+   desktop without per-breakpoint overrides. */
 
 .speaker-spotlight {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: clamp(10px, 3vw, 12px);
+  padding: clamp(10px, 2.5vw, 12px) clamp(12px, 3.2vw, 14px);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(244, 244, 239, 0.04), rgba(0, 0, 0, 0.18));
   border: 1px solid rgba(244, 244, 239, 0.10);
@@ -8745,9 +8754,9 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 
 .speaker-spotlight__portrait {
   position: relative;
-  width: 92px;
-  height: 92px;
-  border-radius: 18px;
+  width: clamp(72px, 22vw, 92px);
+  height: clamp(72px, 22vw, 92px);
+  border-radius: clamp(14px, 4.5vw, 18px);
   overflow: hidden;
   flex-shrink: 0;
   background: rgba(0, 0, 0, 0.2);
@@ -8783,7 +8792,7 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
 }
 .speaker-spotlight__name {
   font-family: var(--font-body);
-  font-size: 18px;
+  font-size: clamp(16px, 4.5vw, 18px);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--chalk-gold);
@@ -8888,16 +8897,6 @@ body:has(.app.chalkboard-active) { background: var(--wall-cream); }
   .baatcheet-viewer__line-text {
     font-size: var(--fs-md);
   }
-  .speaker-spotlight {
-    padding: 10px 12px;
-    gap: 10px;
-  }
-  .speaker-spotlight__portrait {
-    width: 80px;
-    height: 80px;
-    border-radius: 16px;
-  }
-  .speaker-spotlight__name {
-    font-size: 16px;
-  }
+  /* Speaker spotlight scales fluidly via clamp() in its base rules — no
+     per-breakpoint overrides needed. See .speaker-spotlight above. */
 }
