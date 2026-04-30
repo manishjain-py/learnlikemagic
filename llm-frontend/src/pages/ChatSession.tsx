@@ -1425,16 +1425,17 @@ export default function ChatSession() {
           </span>
 
           <div className="nav-actions">
-            {sessionId && !isComplete && (
-              <button
-                onClick={() => setFeedbackModalOpen(true)}
-                className="nav-action-btn feedback-btn"
-                disabled={feedbackCount >= 3}
-                title={feedbackCount >= 3 ? 'Feedback limit reached' : 'Share feedback'}
-              >
-                Feedback
-              </button>
-            )}
+            {/* TODO(2026-04-30): "Feedback" and "Dev" buttons removed from
+                the topic bar to clean up narrow-screen layout. Their
+                supporting code is still in this file:
+                  - Feedback: feedbackModalOpen/feedbackText/feedbackSubmitting/
+                    feedbackSuccess/feedbackError/feedbackCount/isFeedback*
+                    state, handleFeedbackSubmit, submitFeedback API import,
+                    and the feedback modal JSX further down.
+                  - Dev: devToolsOpen state, DevToolsDrawer import + render.
+                Evaluate whether these features are still wanted at all (no
+                other entry point exists today). If not, deprecate and delete
+                the supporting code in a follow-up cleanup. */}
             {baatcheetCardCount > 0 && (
               <>
                 <button
@@ -1458,15 +1459,6 @@ export default function ChatSession() {
                 </button>
                 <span className="focus-counter">{baatcheetProgress.cardIdx + 1}/{baatcheetCardCount}</span>
               </>
-            )}
-            {sessionId && (
-              <button
-                onClick={() => setDevToolsOpen(true)}
-                className="nav-action-btn"
-                title="Dev Tools"
-              >
-                Dev
-              </button>
             )}
           </div>
         </nav>
@@ -1509,16 +1501,8 @@ export default function ChatSession() {
           </span>
 
           <div className="nav-actions">
-            {sessionId && !isComplete && (
-              <button
-                onClick={() => setFeedbackModalOpen(true)}
-                className="nav-action-btn feedback-btn"
-                disabled={feedbackCount >= 3}
-                title={feedbackCount >= 3 ? 'Feedback limit reached' : 'Share feedback'}
-              >
-                Feedback
-              </button>
-            )}
+            {/* TODO(2026-04-30): "Feedback" and "Dev" buttons removed —
+                see the matching note in the Baatcheet branch above. */}
             {sessionId && !isComplete && carouselSlides.length > 0 && (
               <>
                 <button
@@ -1556,15 +1540,6 @@ export default function ChatSession() {
                 </button>
                 <span className="focus-counter">{currentSlideIdx + 1}/{carouselSlides.length}</span>
               </>
-            )}
-            {sessionId && (
-              <button
-                onClick={() => setDevToolsOpen(true)}
-                className="nav-action-btn"
-                title="Dev Tools"
-              >
-                Dev
-              </button>
             )}
           </div>
         </nav>
