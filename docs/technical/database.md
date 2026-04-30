@@ -433,7 +433,6 @@ users ──1:N──> sessions ──1:N──> events
 users ──1:N──> study_plans
 users ──1:1──> kid_enrichment_profiles
 users ──1:N──> kid_personalities
-users ──1:N──> session_feedback
 users ──1:N──> issues
 users ──1:N──> practice_attempts
 users ──1:N──> student_topic_cards
@@ -456,9 +455,6 @@ topic_content_hashes (standalone — keyed on stable curriculum tuple, no FKs)
 - `Event.session_id` --> `Session.id`
 - `StudyPlan.guideline_id` --> `TeachingGuideline.id` (CASCADE delete)
 - `StudyPlan.user_id` --> `User.id` (CASCADE delete, nullable -- null for generic plans; unique on user_id + guideline_id)
-- `SessionFeedback.user_id` --> `User.id` (CASCADE delete)
-- `SessionFeedback.guideline_id` --> `TeachingGuideline.id` (CASCADE delete)
-- `SessionFeedback.session_id` --> `Session.id` (SET NULL on delete, nullable)
 - `KidEnrichmentProfile.user_id` --> `User.id` (unique, 1:1)
 - `KidPersonality.user_id` --> `User.id`
 - `TopicExplanation.guideline_id` --> `TeachingGuideline.id` (CASCADE delete; unique on guideline_id + variant_key)
@@ -492,7 +488,7 @@ Custom imperative migration (not Alembic). `migrate()` runs `Base.metadata.creat
 12. `_drop_unused_enrichment_columns()` — drops `my_world`, `strengths`, `personality_traits`, `favorite_media`, `favorite_characters`, `memorable_experience`, `aspiration` from kid_enrichment_profiles
 13. `_apply_study_plan_user_column()` — adds `user_id` to study_plans (CASCADE), drops legacy single-column unique on guideline_id, creates composite unique on (user_id, guideline_id)
 14. `_apply_focus_mode_column()` — adds `focus_mode` (default TRUE); resets pre-existing FALSE values to TRUE
-15. `_apply_session_feedback_table()` — verification only (table created by create_all)
+15. `_drop_session_feedback_table()` — drops the legacy `session_feedback` table if present (mid-session feedback feature removed)
 16. `_apply_topic_planning_columns()` — adds `planned_topics_json` to chapter_processing_jobs, `prior_topics_context` + `topic_assignment` to chapter_topics, `prior_topics_context` to teaching_guidelines
 17. `_apply_topic_explanations_table()` — verifies + seeds `explanation_generator` and `check_in_enrichment` configs via `_ensure_llm_config`
 18. `_apply_topic_dialogues_table()` — verifies topic_dialogues; adds `idx_topic_dialogues_guideline` unique index + `plan_json` column (V2 designed lesson); seeds `baatcheet_dialogue_generator` config
@@ -551,9 +547,8 @@ python db.py --migrate
 
 | File | Purpose |
 |------|---------|
-| `shared/models/entities.py` | Core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, SessionFeedback, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation, TopicDialogue, StudentTopicCards, Issue, PracticeQuestion, PracticeAttempt) |
+| `shared/models/entities.py` | Core ORM models (User, Session, Event, Content, TeachingGuideline, StudyPlan, Book, LLMConfig, KidEnrichmentProfile, KidPersonality, FeatureFlag, TopicExplanation, TopicDialogue, StudentTopicCards, Issue, PracticeQuestion, PracticeAttempt) |
 | `book_ingestion_v2/models/database.py` | V2 pipeline ORM models (BookChapter, ChapterPage, ChapterChunk, ChapterTopic, ChapterProcessingJob, TopicStageRun, TopicContentHash) |
 | `db.py` | Migration CLI + helpers (`_LLM_CONFIG_SEEDS`, `_FEATURE_FLAG_SEEDS`, `_ensure_llm_config`) |
 | `database.py` | `DatabaseManager` (lazy engine, QueuePool, pool_pre_ping, pool_recycle=280s), `get_db()` FastAPI dependency, `session_scope()` context manager, `health_check()`, `reset_db_manager()` |
 | `config.py` | Database URL and pool settings via pydantic-settings |
-| `scripts/cleanup_v1_data.py` | One-time V1 data cleanup script (`--execute` to delete) |

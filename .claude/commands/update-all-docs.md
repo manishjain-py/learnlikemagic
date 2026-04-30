@@ -39,7 +39,6 @@ After this command runs, documentation must be complete for the current codebase
    - Discover:
      - Read the existing docs' "Key Files" sections as a starting point
      - Glob `llm-backend/tutor/**/*.py` to find all tutor module files
-     - Glob `llm-frontend/src/TutorApp.tsx` for the student-facing UI
      - Grep for `class.*Agent` in `llm-backend/tutor/` for agent definitions
      - Grep for `def process_turn` in `llm-backend/tutor/` for orchestration flow
      - Grep for `MASTER_TUTOR` in `llm-backend/tutor/prompts/` for teaching rules
