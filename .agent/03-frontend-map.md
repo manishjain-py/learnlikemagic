@@ -60,7 +60,6 @@ Code baseline: `main@e0c0338`
 - Student API: `src/api.ts`
 - Admin API (evaluation, docs, llm-config, feature-flags, test-scenarios): `src/features/admin/api/adminApi.ts`
 - Admin API (book ingestion V2): `src/features/admin/api/adminApiV2.ts`
-- Devtools API: `src/features/devtools/api/devToolsApi.ts`
 
 ## Main UI Domains
 - Learning flow: subject -> chapter -> topic -> mode -> chat
