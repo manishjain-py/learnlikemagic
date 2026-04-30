@@ -385,6 +385,16 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
     stopAllAudio();
     if (cardIdx < totalCards - 1) setCardIdx(cardIdx + 1);
   };
+  // The cardIdx useEffect auto-fires persistProgress(true) on landing on
+  // the summary card, so the parent normally transitions before Done is
+  // ever clicked. handleDone is the manual retry — covers the case where
+  // that response was lost, slow, or the debounced call hadn't fired yet.
+  // postCardProgress with mark_complete is idempotent on the backend.
+  const handleDone = () => {
+    cancelPlaybackRef.current = true;
+    stopAllAudio();
+    persistProgress(cardIdx, true);
+  };
   const goPrev = () => {
     cancelPlaybackRef.current = true;
     stopAllAudio();
@@ -439,7 +449,8 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
     hasAnimatableLines(currentCard) &&
     !revealedCards.has(cardIdx);
 
-  const showRestart = cardIdx > 0 && currentCard.card_type !== 'summary';
+  const isSummary = currentCard.card_type === 'summary';
+  const showRestart = cardIdx > 0 && !isSummary;
 
   return (
     <div className="baatcheet-viewer">
@@ -594,10 +605,10 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
             <button
               type="button"
               className="explanation-nav-btn primary"
-              onClick={goNext}
-              disabled={cardIdx >= totalCards - 1 || activeCardAnimating}
+              onClick={isSummary ? handleDone : goNext}
+              disabled={activeCardAnimating || (!isSummary && cardIdx >= totalCards - 1)}
             >
-              {currentCard.card_type === 'summary' ? 'Done' : 'Next'}
+              {isSummary ? 'Done' : 'Next'}
             </button>
           </div>
         </div>
