@@ -401,7 +401,11 @@ export default function TypewriterMarkdown({
     return clearTimer;
   }, [phase, started, activeIdx, blocks.length, clearTimer, completeAll]);
 
-  // Auto-scroll spotlight into view (scroll only the .focus-slide ancestor, not the carousel track)
+  // Auto-scroll the active block into focus (scroll only the .focus-slide
+  // ancestor, not the carousel track). Skip the scroll when the block is
+  // already fully visible — otherwise on short viewports the centering math
+  // pushes preceding content (e.g. Baatcheet's speaker spotlight strip) off
+  // the top of the slide.
   useEffect(() => {
     if (!started || completedRef.current) return;
     requestAnimationFrame(() => {
@@ -414,7 +418,12 @@ export default function TypewriterMarkdown({
       if (!scrollParent) return;
       const parentRect = scrollParent.getBoundingClientRect();
       const elRect = el.getBoundingClientRect();
-      const scrollTarget = el.offsetTop - (parentRect.height / 2) + (elRect.height / 2);
+      const elTop = el.offsetTop;
+      const elBottom = elTop + elRect.height;
+      const viewTop = scrollParent.scrollTop;
+      const viewBottom = viewTop + parentRect.height;
+      if (elTop >= viewTop && elBottom <= viewBottom) return;
+      const scrollTarget = elTop - (parentRect.height / 2) + (elRect.height / 2);
       scrollParent.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
     });
   }, [started, activeIdx, wrapped]);
