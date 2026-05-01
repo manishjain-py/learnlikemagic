@@ -87,18 +87,22 @@ module "ecr" {
 module "app_runner" {
   source = "./modules/app-runner"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  ecr_repository_url    = module.ecr.repository_url
-  database_url          = module.database.database_url
-  openai_secret_arn     = module.secrets.openai_api_key_secret_arn
-  gemini_secret_arn     = module.secrets.gemini_api_key_secret_arn
-  anthropic_secret_arn  = module.secrets.anthropic_api_key_secret_arn
-  elevenlabs_secret_arn = module.secrets.elevenlabs_api_key_secret_arn
-  tts_provider          = var.tts_provider
-  tutor_llm_provider    = var.tutor_llm_provider
-  llm_model             = var.llm_model
-  s3_books_bucket       = "learnlikemagic-books"
+  project_name             = var.project_name
+  environment              = var.environment
+  ecr_repository_url       = module.ecr.repository_url
+  database_url             = module.database.database_url
+  openai_secret_arn        = module.secrets.openai_api_key_secret_arn
+  gemini_secret_arn        = module.secrets.gemini_api_key_secret_arn
+  anthropic_secret_arn     = module.secrets.anthropic_api_key_secret_arn
+  elevenlabs_secret_arn    = module.secrets.elevenlabs_api_key_secret_arn
+  google_cloud_tts_api_key = var.gemini_api_key
+  tts_provider             = var.tts_provider
+  tutor_llm_provider       = var.tutor_llm_provider
+  llm_model                = var.llm_model
+  s3_books_bucket          = "learnlikemagic-books"
+  cognito_app_client_id    = var.cognito_app_client_id
+  cognito_region           = var.cognito_region
+  cognito_user_pool_id     = var.cognito_user_pool_id
 
   depends_on = [
     module.database,

@@ -5,8 +5,7 @@ resource "aws_s3_bucket" "frontend" {
   bucket = "${var.project_name}-frontend-${var.environment}"
 
   tags = {
-    Name        = "${var.project_name}-frontend"
-    Environment = var.environment
+    Name = "${var.project_name}-frontend"
   }
 }
 
@@ -128,8 +127,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   tags = {
-    Name        = "${var.project_name}-frontend-distribution"
-    Environment = var.environment
+    Name = "${var.project_name}-frontend-distribution"
   }
 }
 

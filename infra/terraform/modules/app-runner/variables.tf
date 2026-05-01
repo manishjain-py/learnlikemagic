@@ -64,3 +64,25 @@ variable "s3_books_bucket" {
   type        = string
   default     = "learnlikemagic-books"
 }
+
+variable "cognito_app_client_id" {
+  description = "Cognito User Pool app client ID"
+  type        = string
+}
+
+variable "cognito_region" {
+  description = "AWS region for Cognito User Pool"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  type        = string
+}
+
+variable "google_cloud_tts_api_key" {
+  description = "Google Cloud TTS API key (plain-text env var; matches manual prod state)"
+  type        = string
+  sensitive   = true
+}

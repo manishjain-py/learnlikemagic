@@ -14,8 +14,7 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
 
   tags = {
-    Name        = "${var.project_name}-github-oidc"
-    Environment = var.environment
+    Name = "${var.project_name}-github-oidc"
   }
 }
 
@@ -43,8 +42,7 @@ resource "aws_iam_role" "github_actions" {
   })
 
   tags = {
-    Name        = "${var.project_name}-github-actions-role"
-    Environment = var.environment
+    Name = "${var.project_name}-github-actions-role"
   }
 }
 

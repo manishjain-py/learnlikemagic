@@ -13,8 +13,7 @@ resource "aws_ecr_repository" "backend" {
   }
 
   tags = {
-    Name        = "${var.project_name}-backend-${var.environment}"
-    Environment = var.environment
+    Name = "${var.project_name}-backend-${var.environment}"
   }
 }
 

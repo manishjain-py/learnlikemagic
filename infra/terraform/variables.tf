@@ -91,6 +91,28 @@ variable "tutor_llm_provider" {
   default     = "openai"
 }
 
+#############################################################################
+# Cognito Variables (manually provisioned; values reflect live prod)
+#############################################################################
+
+variable "cognito_app_client_id" {
+  description = "Cognito User Pool app client ID"
+  type        = string
+  default     = "6jae1kj5sp5slr9sobi7phk60"
+}
+
+variable "cognito_region" {
+  description = "AWS region for Cognito"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  type        = string
+  default     = "us-east-1_bcCiF7myD"
+}
+
 variable "llm_model" {
   description = "OpenAI model to use"
   type        = string

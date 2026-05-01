@@ -7,8 +7,7 @@ resource "aws_secretsmanager_secret" "openai_api_key" {
   recovery_window_in_days = 7 # Allow recovery within 7 days if deleted
 
   tags = {
-    Name        = "${var.project_name}-openai-api-key"
-    Environment = var.environment
+    Name = "${var.project_name}-openai-api-key"
   }
 }
 
@@ -24,8 +23,7 @@ resource "aws_secretsmanager_secret" "db_password" {
   recovery_window_in_days = 7
 
   tags = {
-    Name        = "${var.project_name}-db-password"
-    Environment = var.environment
+    Name = "${var.project_name}-db-password"
   }
 }
 
@@ -41,8 +39,7 @@ resource "aws_secretsmanager_secret" "gemini_api_key" {
   recovery_window_in_days = 7 # Allow recovery within 7 days if deleted
 
   tags = {
-    Name        = "${var.project_name}-gemini-api-key"
-    Environment = var.environment
+    Name = "${var.project_name}-gemini-api-key"
   }
 }
 
@@ -59,8 +56,7 @@ resource "aws_secretsmanager_secret" "anthropic_api_key" {
   recovery_window_in_days = 7
 
   tags = {
-    Name        = "${var.project_name}-anthropic-api-key"
-    Environment = var.environment
+    Name = "${var.project_name}-anthropic-api-key"
   }
 }
 
@@ -78,8 +74,7 @@ resource "aws_secretsmanager_secret" "elevenlabs_api_key" {
   recovery_window_in_days = 7
 
   tags = {
-    Name        = "${var.project_name}-elevenlabs-api-key"
-    Environment = var.environment
+    Name = "${var.project_name}-elevenlabs-api-key"
   }
 }
 
