@@ -1,21 +1,33 @@
 """Generate TTS audio for explanation card lines and check-in fields, upload to S3.
 
-Runs offline as part of the explanation generation pipeline.
-Each audio text is synthesized via Google Cloud TTS, uploaded to S3, and the
-resulting public URL is stored on the corresponding dict.
+Runs offline as part of the explanation generation pipeline. Each audio text
+is synthesized via the configured TTS provider (Google Cloud TTS or
+ElevenLabs v3), uploaded to S3, and the resulting public URL is stored on
+the corresponding dict.
+
+Provider routing is inline (no factory): `__init__` reads the resolved
+provider once at construction; `_synthesize` dispatches per call. ElevenLabs
+is the future default; Google remains the env-level fallback (admin DB
+override resolves first via shared.services.tts_config_service).
 
 Explanation lines use positional S3 keys `{card_idx}/{line_idx}.mp3`.
 Check-in fields use card_id-based keys `{card_id}/check_in/{field}.mp3` so
 re-insertion at a new card_idx doesn't serve stale audio.
 """
+import json
 import logging
 import re
+import time
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from google.cloud import texttospeech
 from google.api_core.client_options import ClientOptions
 
 from config import get_settings
+from shared.services.tts_config_service import resolve_tts_provider
+from shared.types.emotion import Emotion, canonicalize_emotion
 from shared.utils.s3_client import S3Client
 
 # Pre-synthesis text fixes for Chirp 3 HD pronunciation quirks. Empty under
@@ -24,18 +36,21 @@ from shared.utils.s3_client import S3Client
 # rewrites we tried ("uss", "uhs", etc.) triggered initialism detection
 # instead. Audition results landed on en-IN voices as the right fix; this
 # hook is kept so future regressions can be patched in one place without
-# replumbing call sites.
+# replumbing call sites. ElevenLabs v3 doesn't share the quirk but reuses
+# the same hook so any future provider-agnostic fixes (e.g. lakh/crore
+# pronunciation overrides) live in one place.
 _TTS_PRONUNCIATION_FIXES: list[tuple[re.Pattern[str], str]] = []
 
 
 def normalize_tts_text(text: str) -> str:
-    """Apply pre-synthesis fixes for known Chirp 3 HD pronunciation quirks."""
+    """Apply pre-synthesis fixes for known pronunciation quirks (provider-agnostic)."""
     for pattern, replacement in _TTS_PRONUNCIATION_FIXES:
         text = pattern.sub(replacement, text)
     return text
 
 logger = logging.getLogger(__name__)
 
+# ─── Google voices ────────────────────────────────────────────────────────
 # Voice config — same as the real-time TTS endpoint. We standardised on
 # en-IN voices after auditioning the en-IN catalog: hi-IN voices misread bare
 # English tokens like "us" as "U.S.", and the phonetic-rewrite workaround
@@ -55,9 +70,41 @@ VOICE_MAP = {
     "hinglish": TUTOR_VOICE,
 }
 
+# ─── ElevenLabs voices ────────────────────────────────────────────────────
+# Locked by audition (PR #137 plan). Both Indian-English shared library
+# voices. ElevenLabs prohibits actual child voices industry-wide; Meera is
+# an adult voice performing a youthful character.
+EL_TUTOR_VOICE_ID = "81uXfTrZ08xcmV31Rvrb"  # Sekhar — Warm & Energetic
+EL_PEER_VOICE_ID = "IEBxKtmsE9KTrXUwNazR"   # Amara  — Calm & Intellectual Narrator
+EL_MODEL_ID = "eleven_v3"
+
+# Voice settings auto-keyed by emotion presence:
+# - Expressive (locked from bake-off) — used when a line carries an emotion
+#   tag. Higher style + mid stability lets v3 modulate prosody around the
+#   tag.
+# - Steady — used for emotion=None (explanation cards, check-in fields,
+#   neutral baatcheet lines). High stability + low style keeps the voice
+#   consistent across long stretches of monologue.
+EL_VOICE_SETTINGS_EXPRESSIVE = {
+    "stability": 0.5,
+    "similarity_boost": 0.75,
+    "style": 0.4,
+    "use_speaker_boost": True,
+}
+EL_VOICE_SETTINGS_STEADY = {
+    "stability": 0.7,
+    "similarity_boost": 0.75,
+    "style": 0.2,
+    "use_speaker_boost": True,
+}
+
+_EL_RETRY_ATTEMPTS = 3
+_EL_RETRY_BASE_SECONDS = 5.0
+_EL_TIMEOUT_SECONDS = 120.0
+
 
 def _voice_for_speaker(speaker: Optional[str], language: str) -> tuple[str, str]:
-    """Return (language_code, voice_name) for a given speaker.
+    """Return (language_code, voice_name) for a given speaker (Google).
 
     `speaker == "peer"` → Meera's voice.
     Anything else (including None / "tutor" / unknown) → the language-mapped
@@ -67,6 +114,14 @@ def _voice_for_speaker(speaker: Optional[str], language: str) -> tuple[str, str]
     if speaker == "peer":
         return PEER_VOICE
     return VOICE_MAP.get(language, VOICE_MAP["en"])
+
+
+def _el_voice_id_for_speaker(speaker: Optional[str]) -> str:
+    """Return the ElevenLabs voice_id for a given speaker."""
+    if speaker == "peer":
+        return EL_PEER_VOICE_ID
+    return EL_TUTOR_VOICE_ID
+
 
 # Check-in fields that get synthesized. (text_field, s3_key_suffix, url_field)
 _CHECK_IN_FIELDS_ALWAYS = [
@@ -87,44 +142,188 @@ def _check_in_fields_for(check_in: dict) -> list[tuple[str, str, str]]:
     return fields
 
 
-class AudioGenerationService:
-    """Generates TTS audio for explanation lines and check-in fields, stores them on S3."""
+class TTSProviderError(RuntimeError):
+    """Raised when the configured TTS provider fails persistently.
 
-    def __init__(self, language: str = "hinglish"):
+    Stage callers translate this into a job failure (no per-line fallback
+    to a different provider — the plan prohibits mixed-provider audio).
+    """
+
+
+class AudioGenerationService:
+    """Generates TTS audio for explanation lines and check-in fields, stores them on S3.
+
+    Provider is chosen at construction:
+      provider = "google_tts" → Google Cloud TTS (Chirp 3 HD, no emotion control)
+      provider = "elevenlabs" → ElevenLabs v3 (emotion via [tag] prefix)
+
+    Constructor args override settings; pass `None` (default) to read from
+    Settings.
+    """
+
+    def __init__(
+        self,
+        language: str = "hinglish",
+        *,
+        provider: Optional[str] = None,
+        elevenlabs_api_key: Optional[str] = None,
+        db=None,
+    ):
+        """Construct the service for the active TTS provider.
+
+        Resolution order for `provider`:
+          1. Explicit `provider=` arg.
+          2. `db` session → admin override row in `llm_config` (component_key='tts').
+          3. `Settings.tts_provider` env var.
+          4. Hard default `'google_tts'`.
+
+        Pass `db` from FastAPI route handlers / pipeline workers so
+        admin toggles take effect on the next service construction.
+        """
         settings = get_settings()
-        if not settings.google_cloud_tts_api_key:
-            raise RuntimeError("Google Cloud TTS API key not configured")
-        self.tts_client = texttospeech.TextToSpeechClient(
-            client_options=ClientOptions(api_key=settings.google_cloud_tts_api_key),
-        )
-        self.s3 = S3Client()
         self.language = language
-        lang_code, voice_name = VOICE_MAP.get(language, VOICE_MAP["en"])
-        self.voice = texttospeech.VoiceSelectionParams(
-            language_code=lang_code, name=voice_name,
-        )
-        self.audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-        )
+        self.s3 = S3Client()
         self.bucket = settings.aws_s3_bucket
         self.region = settings.aws_region
+        if provider is not None:
+            self.provider = provider.strip().lower()
+        else:
+            self.provider = resolve_tts_provider(db)
+
+        if self.provider == "google_tts":
+            if not settings.google_cloud_tts_api_key:
+                raise RuntimeError("Google Cloud TTS API key not configured")
+            self.tts_client = texttospeech.TextToSpeechClient(
+                client_options=ClientOptions(api_key=settings.google_cloud_tts_api_key),
+            )
+            self.audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+            )
+            # Per-call voice is built from speaker via _voice_for_speaker;
+            # nothing pinned on the instance.
+            self.elevenlabs_api_key = None
+        elif self.provider == "elevenlabs":
+            api_key = elevenlabs_api_key or settings.elevenlabs_api_key
+            if not api_key:
+                raise RuntimeError("ElevenLabs API key not configured")
+            self.elevenlabs_api_key = api_key
+            self.tts_client = None
+            self.audio_config = None
+        else:
+            raise RuntimeError(
+                f"Unknown tts_provider {self.provider!r}; "
+                f"expected 'google_tts' or 'elevenlabs'"
+            )
+
+    # ─── Provider dispatch ────────────────────────────────────────────────
 
     def _synthesize(
         self,
         text: str,
-        voice: Optional["texttospeech.VoiceSelectionParams"] = None,
+        *,
+        speaker: Optional[str] = None,
+        emotion: Optional[Emotion] = None,
     ) -> bytes:
-        """Call Google Cloud TTS and return raw MP3 bytes.
+        """Synthesize text → MP3 bytes via the configured provider.
 
-        `voice` defaults to the instance's language-mapped voice (existing
-        variant A behavior). Pass an explicit voice to route per-speaker.
+        `speaker == "peer"` → Meera's voice. Anything else → tutor.
+        `emotion` is honored only on the ElevenLabs path; Google ignores it
+        (Chirp 3 HD has no SSML / emotion control). Both providers go through
+        the same `normalize_tts_text` hook.
         """
+        normalized = normalize_tts_text(text)
+        if self.provider == "google_tts":
+            return self._synthesize_google(normalized, speaker=speaker)
+        return self._synthesize_elevenlabs(normalized, speaker=speaker, emotion=emotion)
+
+    def _synthesize_google(
+        self,
+        text: str,
+        *,
+        speaker: Optional[str] = None,
+    ) -> bytes:
+        lang_code, voice_name = _voice_for_speaker(speaker, self.language)
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=lang_code, name=voice_name,
+        )
         response = self.tts_client.synthesize_speech(
-            input=texttospeech.SynthesisInput(text=normalize_tts_text(text)),
-            voice=voice or self.voice,
+            input=texttospeech.SynthesisInput(text=text),
+            voice=voice,
             audio_config=self.audio_config,
         )
         return response.audio_content
+
+    def _synthesize_elevenlabs(
+        self,
+        text: str,
+        *,
+        speaker: Optional[str] = None,
+        emotion: Optional[Emotion] = None,
+    ) -> bytes:
+        """Call ElevenLabs v3 single-voice TTS; return raw MP3 bytes.
+
+        Voice settings are auto-keyed: emotion present → expressive preset
+        (the bake-off values); emotion None → steady preset (high stability,
+        low style) for clean monologue. Retries 3× with exponential backoff
+        on rate limits / 5xx, then raises TTSProviderError. No fallback to
+        Google — mixed-provider audio is not allowed (plan §risks).
+        """
+        emotion = canonicalize_emotion(emotion)
+        voice_id = _el_voice_id_for_speaker(speaker)
+        if emotion is not None:
+            payload_text = f"[{emotion.value}] {text}"
+            voice_settings = EL_VOICE_SETTINGS_EXPRESSIVE
+        else:
+            payload_text = text
+            voice_settings = EL_VOICE_SETTINGS_STEADY
+        body = {
+            "text": payload_text,
+            "model_id": EL_MODEL_ID,
+            "voice_settings": voice_settings,
+        }
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        last_err: Optional[Exception] = None
+        for attempt in range(1, _EL_RETRY_ATTEMPTS + 1):
+            try:
+                req = Request(
+                    url,
+                    data=json.dumps(body).encode("utf-8"),
+                    headers={
+                        "xi-api-key": self.elevenlabs_api_key,
+                        "Content-Type": "application/json",
+                        "Accept": "audio/mpeg",
+                    },
+                    method="POST",
+                )
+                with urlopen(req, timeout=_EL_TIMEOUT_SECONDS) as resp:
+                    return resp.read()
+            except HTTPError as e:
+                # Retry on rate limit + 5xx; surface 4xx (auth, bad request,
+                # quota exhausted) immediately so the stage fails fast.
+                detail = e.read().decode("utf-8", "replace")[:400]
+                if e.code == 429 or 500 <= e.code < 600:
+                    last_err = TTSProviderError(
+                        f"ElevenLabs HTTP {e.code} (attempt {attempt}/"
+                        f"{_EL_RETRY_ATTEMPTS}): {detail}"
+                    )
+                    logger.warning(str(last_err))
+                else:
+                    raise TTSProviderError(
+                        f"ElevenLabs HTTP {e.code}: {detail}"
+                    ) from e
+            except (URLError, TimeoutError) as e:
+                # `urlopen(timeout=...)` raises `TimeoutError` on socket
+                # read timeout; `TimeoutError` is NOT a `URLError` subclass,
+                # so it must be caught explicitly or it bypasses the retry
+                # loop and bubbles up as a single-attempt failure.
+                last_err = TTSProviderError(
+                    f"ElevenLabs network error (attempt {attempt}/"
+                    f"{_EL_RETRY_ATTEMPTS}): {e}"
+                )
+                logger.warning(str(last_err))
+            if attempt < _EL_RETRY_ATTEMPTS:
+                time.sleep(_EL_RETRY_BASE_SECONDS * (2 ** (attempt - 1)))
+        raise last_err or TTSProviderError("ElevenLabs synthesis failed")
 
     def _s3_url(self, key: str) -> str:
         """Construct the public HTTPS URL for an S3 object."""
@@ -134,10 +333,12 @@ class AudioGenerationService:
         self,
         text: str,
         s3_key: str,
-        voice: Optional["texttospeech.VoiceSelectionParams"] = None,
+        *,
+        speaker: Optional[str] = None,
+        emotion: Optional[Emotion] = None,
     ) -> str:
         """Synthesize text → MP3 → upload to S3 → return public URL."""
-        mp3_bytes = self._synthesize(text, voice=voice)
+        mp3_bytes = self._synthesize(text, speaker=speaker, emotion=emotion)
         self.s3.upload_bytes(mp3_bytes, s3_key, content_type="audio/mpeg")
         return self._s3_url(s3_key)
 
@@ -159,6 +360,10 @@ class AudioGenerationService:
         same URL — no orphan cleanup needed. Items whose text is empty are
         always skipped regardless of force. Returns the same cards_json
         list (mutated).
+
+        Variant A explanation cards: speaker resolves to the language-mapped
+        tutor voice (no per-card speaker field), and `emotion=None` so the
+        ElevenLabs path uses the steady preset.
         """
         total = 0
         generated = 0
@@ -183,6 +388,10 @@ class AudioGenerationService:
                 try:
                     line["audio_url"] = self._synth_and_upload(audio_text, s3_key)
                     generated += 1
+                except TTSProviderError:
+                    # Provider exhausted retries — abort the topic stage
+                    # rather than power through every remaining line.
+                    raise
                 except Exception as e:
                     logger.error(
                         f"TTS/upload failed for {guideline_id}/{variant_key}/"
@@ -219,6 +428,8 @@ class AudioGenerationService:
                 try:
                     check_in[url_field] = self._synth_and_upload(text, s3_key)
                     generated += 1
+                except TTSProviderError:
+                    raise
                 except Exception as e:
                     logger.error(
                         f"TTS/upload failed for {guideline_id}/{variant_key}/"
@@ -228,8 +439,9 @@ class AudioGenerationService:
 
         logger.info(
             f"Audio generation for {guideline_id}/{variant_key} "
-            f"(force={force}): {generated} generated, {skipped} skipped, "
-            f"{failed} failed (total items={total})"
+            f"(provider={self.provider}, force={force}): "
+            f"{generated} generated, {skipped} skipped, {failed} failed "
+            f"(total items={total})"
         )
         return cards_json
 
@@ -328,6 +540,8 @@ class AudioGenerationService:
           frontend handles these via runtime TTS at session start so the
           student's actual name can be substituted into the audio).
         - Routes voice per `card.speaker` ("peer" → Meera; otherwise tutor).
+        - Routes emotion per `line.emotion` on the ElevenLabs path
+          (canonicalized via shared.types.emotion); Google ignores it.
         - S3 keys live in a parallel namespace
           `audio/{guideline_id}/dialogue/{card_id}/{line_idx}.mp3`. Variant A
           keys are unchanged.
@@ -350,10 +564,6 @@ class AudioGenerationService:
                 continue  # runtime TTS — never pre-render
 
             speaker = card.get("speaker")
-            lang_code, voice_name = _voice_for_speaker(speaker, self.language)
-            voice = texttospeech.VoiceSelectionParams(
-                language_code=lang_code, name=voice_name,
-            )
             card_id = card.get("card_id")
             if not card_id:
                 logger.warning(
@@ -371,12 +581,15 @@ class AudioGenerationService:
                 if not text or "{student_name}" in text:
                     skipped += 1
                     continue
+                emotion = canonicalize_emotion(line.get("emotion"))
                 s3_key = f"audio/{guideline_id}/dialogue/{card_id}/{line_idx}.mp3"
                 try:
                     line["audio_url"] = self._synth_and_upload(
-                        text, s3_key, voice=voice,
+                        text, s3_key, speaker=speaker, emotion=emotion,
                     )
                     generated += 1
+                except TTSProviderError:
+                    raise
                 except Exception as e:
                     logger.error(
                         f"Dialogue TTS failed for {guideline_id}/{card_id}/"
@@ -389,10 +602,9 @@ class AudioGenerationService:
                 # Tutor voice for all check-in fields — PRD §FR-27 (no Meera
                 # reactions to real student in V1). Match the existing
                 # check-in S3 key shape for variant A but in the dialogue
-                # subtree.
-                tutor_voice = texttospeech.VoiceSelectionParams(
-                    language_code=TUTOR_VOICE[0], name=TUTOR_VOICE[1],
-                )
+                # subtree. Emotion is intentionally None — these are
+                # static, instructional prompts, so the steady preset is
+                # right.
                 for text_field, key_suffix, url_field in _check_in_fields_for(check_in):
                     if check_in.get(url_field) and not force:
                         if (check_in.get(text_field) or "").strip():
@@ -409,9 +621,11 @@ class AudioGenerationService:
                     )
                     try:
                         check_in[url_field] = self._synth_and_upload(
-                            text, s3_key, voice=tutor_voice,
+                            text, s3_key, speaker="tutor",
                         )
                         generated += 1
+                    except TTSProviderError:
+                        raise
                     except Exception as e:
                         logger.error(
                             f"Dialogue check-in TTS failed for "
@@ -420,7 +634,8 @@ class AudioGenerationService:
                         failed += 1
 
         logger.info(
-            f"Dialogue audio for {guideline_id} (force={force}): "
+            f"Dialogue audio for {guideline_id} "
+            f"(provider={self.provider}, force={force}): "
             f"{generated} generated, {skipped} skipped, {failed} failed "
             f"(total items={total})"
         )

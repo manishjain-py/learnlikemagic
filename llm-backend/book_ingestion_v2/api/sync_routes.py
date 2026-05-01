@@ -951,13 +951,16 @@ def _run_audio_generation(
     """
     import json as _json
     from shared.models.entities import TeachingGuideline, TopicExplanation
-    from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
+    from book_ingestion_v2.services.audio_generation_service import (
+        AudioGenerationService,
+        TTSProviderError,
+    )
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
     from sqlalchemy.orm import attributes
 
     force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
-    audio_svc = AudioGenerationService()
+    audio_svc = AudioGenerationService(db=db)
 
     try:
         # Build list of guidelines to process
@@ -1000,6 +1003,14 @@ def _run_audio_generation(
                         explanation.cards_json = updated_cards
                         attributes.flag_modified(explanation, "cards_json")
                         db.commit()
+                except TTSProviderError:
+                    # Provider outage — bail the whole job rather than
+                    # power through every remaining guideline. The outer
+                    # except marks job=failed; admin retries when EL is
+                    # healthy. Plan §error handling: fail the synthesis
+                    # stage, no fallback.
+                    db.rollback()
+                    raise
                 except Exception as e:
                     logger.error(f"Audio generation failed for {guideline.id}/{explanation.variant_key}: {e}")
                     db.rollback()
@@ -2746,13 +2757,16 @@ def _run_baatcheet_audio_generation(
     """
     import json as _json
     from shared.models.entities import TeachingGuideline, TopicDialogue
-    from book_ingestion_v2.services.audio_generation_service import AudioGenerationService
+    from book_ingestion_v2.services.audio_generation_service import (
+        AudioGenerationService,
+        TTSProviderError,
+    )
     from book_ingestion_v2.services.chapter_job_service import ChapterJobService
     from sqlalchemy.orm import attributes
 
     force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
-    audio_svc = AudioGenerationService()
+    audio_svc = AudioGenerationService(db=db)
 
     try:
         if guideline_id:
@@ -2798,6 +2812,11 @@ def _run_baatcheet_audio_generation(
                     attributes.flag_modified(dialogue, "cards_json")
                     db.commit()
                 completed += 1
+            except TTSProviderError:
+                # Provider outage — fail the whole job. See parallel
+                # comment in generate_audio_for_chapter (variant A path).
+                db.rollback()
+                raise
             except Exception as e:
                 logger.error(
                     f"Dialogue audio failed for guideline={guideline.id}: {e}"

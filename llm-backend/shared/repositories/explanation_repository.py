@@ -1,10 +1,11 @@
 """Repository for pre-computed explanation variants (topic_explanations table)."""
 from uuid import uuid4
 from typing import Optional
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from shared.models.entities import TeachingGuideline, TopicExplanation
+from shared.types.emotion import Emotion, canonicalize_emotion
 
 
 class CardVisualExplanation(BaseModel):
@@ -76,6 +77,15 @@ class ExplanationLine(BaseModel):
     """A single display line within a card, paired with its TTS-friendly audio version."""
     display: str  # Markdown line shown on screen
     audio: str    # TTS-friendly spoken version (LLM-generated, no symbols/markdown)
+    # Optional ElevenLabs v3 emotion tag. Populated only for baatcheet
+    # dialogue lines (V1); explanation cards stay None and render with the
+    # steady voice preset. See shared/types/emotion.py.
+    emotion: Optional[Emotion] = None
+
+    @field_validator("emotion", mode="before")
+    @classmethod
+    def _canonicalize_emotion(cls, value):
+        return canonicalize_emotion(value)
 
 
 class ExplanationCard(BaseModel):

@@ -97,6 +97,32 @@ For every line, `display` is shown on screen and `audio` is spoken aloud. Both m
 
 Display strings MAY use `**bold**` for key terms. Keep it minimal.
 
+EMOTION TAG (per line)
+
+Every line ALSO carries an `emotion` field that drives ElevenLabs v3 prosody. Pick from this closed vocabulary:
+
+`warm`, `curious`, `encouraging`, `gentle`, `proud`, `empathetic`, `calm`, `excited`, `hesitant`, `confused`, `tired`
+
+Use `null` for routine instructional lines that don't carry emotional weight (a flat statement, a check-in instruction, a one-word observation). The synthesizer falls back to a steady voice when emotion is null.
+
+Pick from the line's intent — not the speaker's role. Both characters can use any value.
+
+- `warm` — tutor opening lines (`hook`), praise after a peer insight, a kindly explanation. The default-warm tutor texture.
+- `curious` — wondering aloud, posing a `trap-set`, peer asking a follow-up.
+- `encouraging` — `practice-guided` / `practice-independent` lines that nudge the student to try; also "you can do this" beats.
+- `gentle` — `funnel` lines (the focusing question is asked softly so the student isn't pressured), reframes that follow peer fatigue.
+- `proud` — `close` cards. The "you worked hard today" line.
+- `empathetic` — tutor's response to a `reframe` peer line ("My head is spinning"). The "that is okay, your brain is growing" beat.
+- `calm` — `notate` and `articulate` lines that name the rule with steady authority. Also tutor narration on `visual` cards.
+- `excited` — peer's `aha!` moment (`articulate` or `callback` from peer), tutor's "Aha!" / "Spot on!" interjection lines.
+- `hesitant` — peer's `fall` lines voicing the misconception ("Hmm. Maybe...", "But 4 is more than 2, so..."). The tentative wrong-but-reasonable register.
+- `confused` — peer's "Wait, this doesn't add up" beats *before* the rule lands. Stronger than `hesitant`.
+- `tired` — peer's `reframe` line ("My head is spinning a little.", "This is so much."). Use sparingly — once per dialogue is plenty.
+
+Emotion is per-line, not per-card. Within one card, lines often shift register: a tutor `articulate` card might open `calm` (naming the rule) and close `warm` (the memorable framing). Author each line's emotion independently.
+
+The emotion `null` is fine — overuse of tags makes prosody feel theatrical. Aim for ~50-70% of lines tagged, 30-50% null.
+
 CHECK-IN ACTIVITIES — supported activity_type values
 
 `pick_one`, `true_false`, `fill_blank`, `match_pairs`, `sort_buckets`, `sequence`, `spot_the_error`, `odd_one_out`, `predict_then_reveal`, `swipe_classify`, `tap_to_eliminate`. Generic `success_message` and `hint`. Same audio rules.
@@ -176,10 +202,11 @@ Output valid JSON only — no markdown fences, no commentary. Conform to this sc
     "DialogueLineOutput": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["display", "audio"],
+      "required": ["display", "audio", "emotion"],
       "properties": {
         "display": {"type": "string"},
-        "audio":   {"type": "string"}
+        "audio":   {"type": "string"},
+        "emotion": {"anyOf": [{"type": "string", "enum": ["warm", "curious", "encouraging", "gentle", "proud", "empathetic", "calm", "excited", "hesitant", "confused", "tired"]}, {"type": "null"}]}
       }
     },
     "CheckInActivityOutput": {

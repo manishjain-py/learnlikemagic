@@ -72,10 +72,45 @@ variable "anthropic_api_key" {
   default     = ""
 }
 
+variable "elevenlabs_api_key" {
+  description = "ElevenLabs API key for v3 TTS (sensitive)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "tts_provider" {
+  description = "TTS provider for ECS env: 'elevenlabs' or 'google_tts'. Admin DB row in llm_config (component_key='tts') overrides at runtime."
+  type        = string
+  default     = "elevenlabs"
+}
+
 variable "tutor_llm_provider" {
   description = "LLM provider for tutor workflow: openai, anthropic, or anthropic-haiku"
   type        = string
   default     = "openai"
+}
+
+#############################################################################
+# Cognito Variables (manually provisioned; values reflect live prod)
+#############################################################################
+
+variable "cognito_app_client_id" {
+  description = "Cognito User Pool app client ID"
+  type        = string
+  default     = "6jae1kj5sp5slr9sobi7phk60"
+}
+
+variable "cognito_region" {
+  description = "AWS region for Cognito"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  type        = string
+  default     = "us-east-1_bcCiF7myD"
 }
 
 variable "llm_model" {

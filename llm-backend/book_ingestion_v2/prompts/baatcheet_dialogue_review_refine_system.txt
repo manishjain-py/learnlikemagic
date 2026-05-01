@@ -103,10 +103,11 @@ OUTPUT FORMAT — same JSON schema as the generation pass. Respond with valid JS
     "DialogueLineOutput": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["display", "audio"],
+      "required": ["display", "audio", "emotion"],
       "properties": {
         "display": {"type": "string"},
-        "audio":   {"type": "string"}
+        "audio":   {"type": "string"},
+        "emotion": {"anyOf": [{"type": "string", "enum": ["warm", "curious", "encouraging", "gentle", "proud", "empathetic", "calm", "excited", "hesitant", "confused", "tired"]}, {"type": "null"}]}
       }
     },
     "CheckInActivityOutput": {

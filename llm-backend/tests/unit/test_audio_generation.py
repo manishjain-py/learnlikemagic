@@ -20,16 +20,19 @@ def _make_service() -> AudioGenerationService:
     """Build an AudioGenerationService without running __init__ (avoids loading
     real Google creds). Internal helpers are stubbed to record calls."""
     svc = AudioGenerationService.__new__(AudioGenerationService)
+    svc.provider = "google_tts"
     svc.tts_client = MagicMock()
     svc.s3 = MagicMock()
     svc.bucket = "test-bucket"
     svc.region = "us-east-1"
-    svc.voice = MagicMock()
     svc.audio_config = MagicMock()
     svc.language = "en"
+    svc.elevenlabs_api_key = None
     # Deterministic stub: synth_and_upload returns a URL derived from the key.
+    # Accepts kwargs (speaker / emotion) since callers thread them through
+    # in the dialogue path.
     svc._synth_and_upload = MagicMock(
-        side_effect=lambda text, s3_key: f"https://s3/{s3_key}"
+        side_effect=lambda text, s3_key, **_: f"https://s3/{s3_key}"
     )
     return svc
 

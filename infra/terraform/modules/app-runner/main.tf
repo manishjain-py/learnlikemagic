@@ -16,8 +16,7 @@ resource "aws_iam_role" "app_runner_access" {
   })
 
   tags = {
-    Name        = "${var.project_name}-apprunner-access-role"
-    Environment = var.environment
+    Name = "${var.project_name}-apprunner-access-role"
   }
 }
 
@@ -43,12 +42,11 @@ resource "aws_iam_role" "app_runner_instance" {
   })
 
   tags = {
-    Name        = "${var.project_name}-apprunner-instance-role"
-    Environment = var.environment
+    Name = "${var.project_name}-apprunner-instance-role"
   }
 }
 
-# Policy to allow App Runner to read secrets
+# secrets-access: OpenAI only (matches live prod shape — split per-secret policies)
 resource "aws_iam_role_policy" "app_runner_secrets" {
   name = "secrets-access"
   role = aws_iam_role.app_runner_instance.id
@@ -62,11 +60,65 @@ resource "aws_iam_role_policy" "app_runner_secrets" {
       ]
       Resource = [
         var.openai_secret_arn,
-        var.gemini_secret_arn
       ]
     }]
   })
 }
+
+resource "aws_iam_role_policy" "app_runner_anthropic_secret" {
+  count = var.anthropic_secret_arn != "" ? 1 : 0
+  name  = "anthropic-secret-access"
+  role  = aws_iam_role.app_runner_instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "secretsmanager:GetSecretValue"
+      ]
+      Resource = var.anthropic_secret_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "app_runner_elevenlabs_secret" {
+  count = var.elevenlabs_secret_arn != "" ? 1 : 0
+  name  = "elevenlabs-secret-access"
+  role  = aws_iam_role.app_runner_instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "secretsmanager:GetSecretValue"
+      ]
+      Resource = var.elevenlabs_secret_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "app_runner_cognito" {
+  name = "cognito-admin"
+  role = aws_iam_role.app_runner_instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "cognito-idp:AdminGetUser",
+        "cognito-idp:AdminCreateUser",
+        "cognito-idp:AdminSetUserPassword",
+        "cognito-idp:AdminDeleteUser",
+      ]
+      Resource = "arn:aws:cognito-idp:${var.cognito_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.cognito_user_pool_id}"
+    }]
+  })
+}
+
+data "aws_caller_identity" "current" {}
 
 # Policy to allow App Runner to access S3 for book ingestion
 resource "aws_iam_role_policy" "app_runner_s3_books" {
@@ -100,8 +152,7 @@ resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
   min_size        = 1
 
   tags = {
-    Name        = "${var.project_name}-autoscaling"
-    Environment = var.environment
+    Name = "${var.project_name}-autoscaling"
   }
 }
 
@@ -121,25 +172,29 @@ resource "aws_apprunner_service" "backend" {
       image_configuration {
         port = "8000"
 
-        runtime_environment_variables = merge(
-          {
-            API_HOST           = "0.0.0.0"
-            API_PORT           = "8000"
-            DATABASE_URL       = var.database_url
-            LLM_MODEL          = var.llm_model
-            ENVIRONMENT        = var.environment
-            TUTOR_LLM_PROVIDER = var.tutor_llm_provider
-          }
-        )
+        runtime_environment_variables = {
+          API_HOST                 = "0.0.0.0"
+          API_PORT                 = "8000"
+          COGNITO_APP_CLIENT_ID    = var.cognito_app_client_id
+          COGNITO_REGION           = var.cognito_region
+          COGNITO_USER_POOL_ID     = var.cognito_user_pool_id
+          DATABASE_URL             = var.database_url
+          ENVIRONMENT              = var.environment
+          GOOGLE_CLOUD_TTS_API_KEY = var.google_cloud_tts_api_key
+          LLM_MODEL                = var.llm_model
+          TTS_PROVIDER             = var.tts_provider
+          TUTOR_LLM_PROVIDER       = var.tutor_llm_provider
+        }
 
         runtime_environment_secrets = merge(
           {
-            OPENAI_API_KEY         = var.openai_secret_arn
-            GEMINI_API_KEY         = var.gemini_secret_arn
-            GOOGLE_CLOUD_TTS_API_KEY = var.gemini_secret_arn
+            OPENAI_API_KEY = var.openai_secret_arn
           },
           var.anthropic_secret_arn != "" ? {
             ANTHROPIC_API_KEY = var.anthropic_secret_arn
+          } : {},
+          var.elevenlabs_secret_arn != "" ? {
+            ELEVENLABS_API_KEY = var.elevenlabs_secret_arn
           } : {}
         )
       }
@@ -168,7 +223,7 @@ resource "aws_apprunner_service" "backend" {
 
   health_check_configuration {
     protocol            = "HTTP"
-    path                = "/health"
+    path                = "/"
     interval            = 10
     timeout             = 5
     healthy_threshold   = 1
@@ -176,7 +231,6 @@ resource "aws_apprunner_service" "backend" {
   }
 
   tags = {
-    Name        = "${var.project_name}-backend"
-    Environment = var.environment
+    Name = "${var.project_name}-backend"
   }
 }

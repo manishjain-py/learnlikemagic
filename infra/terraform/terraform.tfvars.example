@@ -15,5 +15,7 @@ db_user     = "llmuser"
 db_password = "CHANGE_ME_STRONG_PASSWORD_HERE"
 
 # Application Configuration
-openai_api_key = "sk-your-openai-api-key-here"
-llm_model      = "gpt-4o-mini"
+openai_api_key     = "sk-your-openai-api-key-here"
+elevenlabs_api_key = "sk-your-elevenlabs-api-key-here"  # required when tts_provider=elevenlabs
+tts_provider       = "elevenlabs"                        # 'elevenlabs' or 'google_tts'
+llm_model          = "gpt-4o-mini"

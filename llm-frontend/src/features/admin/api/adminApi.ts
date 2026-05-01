@@ -184,6 +184,25 @@ export async function getLLMConfigOptions(): Promise<LLMConfigOptions> {
   return apiFetch<LLMConfigOptions>('/api/admin/llm-config/options');
 }
 
+// ===== TTS Config =====
+
+export interface TTSConfigResponse {
+  provider: string;
+  available_providers: string[];
+}
+
+export async function getTTSConfig(): Promise<TTSConfigResponse> {
+  return apiFetch<TTSConfigResponse>('/api/admin/tts-config');
+}
+
+export async function updateTTSConfig(provider: string): Promise<unknown> {
+  return apiFetch<unknown>('/api/admin/tts-config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider }),
+  });
+}
+
 // ===== Feature Flags =====
 
 export async function getFeatureFlags(): Promise<FeatureFlag[]> {
