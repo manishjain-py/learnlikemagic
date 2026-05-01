@@ -957,7 +957,7 @@ def _run_audio_generation(
 
     force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
-    audio_svc = AudioGenerationService()
+    audio_svc = AudioGenerationService(db=db)
 
     try:
         # Build list of guidelines to process
@@ -2752,7 +2752,7 @@ def _run_baatcheet_audio_generation(
 
     force = force_str.lower() == "true"
     job_service = ChapterJobService(db)
-    audio_svc = AudioGenerationService()
+    audio_svc = AudioGenerationService(db=db)
 
     try:
         if guideline_id:

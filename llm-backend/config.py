@@ -57,6 +57,17 @@ class Settings(BaseSettings):
         default="",
         description="Google Cloud API key for TTS"
     )
+    elevenlabs_api_key: str = Field(
+        default="",
+        description="ElevenLabs API key (required when tts_provider=elevenlabs)"
+    )
+
+    # TTS provider — env-level default. Admin DB row in llm_config
+    # (component_key='tts') overrides at runtime via get_tts_config().
+    tts_provider: str = Field(
+        default="google_tts",
+        description="TTS provider: 'google_tts' or 'elevenlabs'"
+    )
 
     # Application Settings
     log_level: str = Field(

@@ -56,6 +56,18 @@ const ADMIN_PAGES: AdminPageCard[] = [
     ),
   },
   {
+    title: 'TTS Config',
+    description: 'Switch the speech synthesis provider (ElevenLabs v3 vs Google Chirp 3 HD).',
+    path: '/admin/tts-config',
+    icon: (
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12a9 9 0 0 1 9-9v0a9 9 0 0 1 9 9"/>
+        <path d="M21 16v2a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/>
+        <path d="M3 16v2a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+      </svg>
+    ),
+  },
+  {
     title: 'Docs',
     description: 'Browse project documentation rendered in-app.',
     path: '/admin/docs',

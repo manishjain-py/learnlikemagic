@@ -18,6 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Evaluation', path: '/admin/evaluation' },
   { label: 'Test Scenarios', path: '/admin/test-scenarios' },
   { label: 'LLM Config', path: '/admin/llm-config' },
+  { label: 'TTS Config', path: '/admin/tts-config' },
   { label: 'Docs', path: '/admin/docs' },
   { label: 'Interactive PoC', path: '/admin/interactive-poc' },
   { label: 'Feature Flags', path: '/admin/feature-flags' },

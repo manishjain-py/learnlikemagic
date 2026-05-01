@@ -12,6 +12,7 @@ from config import get_settings, validate_required_settings
 from database import get_db_manager
 from shared.api import health
 from shared.api import llm_config_routes
+from shared.api import tts_config_routes
 from shared.api import feature_flag_routes
 from shared.api import issue_routes
 from tutor.api import curriculum, practice, sessions, transcription, tts
@@ -115,6 +116,7 @@ app.include_router(profile_router)           # Profile: GET/PUT /profile
 app.include_router(enrichment_router)       # Enrichment: GET/PUT /profile/enrichment, /profile/personality
 app.include_router(docs_router)              # Docs: GET /api/docs
 app.include_router(llm_config_routes.router) # LLM config: GET/PUT /api/admin/llm-config
+app.include_router(tts_config_routes.router) # TTS provider toggle: GET/PUT /api/admin/tts-config
 app.include_router(feature_flag_routes.router)  # Feature flags: GET/PUT /api/admin/feature-flags
 app.include_router(test_scenarios_router)    # Test scenarios: GET /api/test-scenarios
 app.include_router(v2_book_routes.router)   # Book Ingestion V2: /admin/v2/books

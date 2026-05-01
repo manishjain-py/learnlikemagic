@@ -54,6 +54,7 @@ import ChatSession from './pages/ChatSession';
 import EvaluationDashboard from './features/admin/pages/EvaluationDashboard';
 import DocsViewer from './features/admin/pages/DocsViewer';
 import LLMConfigPage from './features/admin/pages/LLMConfigPage';
+import TTSConfigPage from './features/admin/pages/TTSConfigPage';
 import TestScenariosPage from './features/admin/pages/TestScenariosPage';
 import BookV2Dashboard from './features/admin/pages/BookV2Dashboard';
 import CreateBookV2 from './features/admin/pages/CreateBookV2';
@@ -152,6 +153,7 @@ function App() {
             <Route path="evaluation" element={<EvaluationDashboard />} />
             <Route path="docs" element={<DocsViewer />} />
             <Route path="llm-config" element={<LLMConfigPage />} />
+            <Route path="tts-config" element={<TTSConfigPage />} />
             <Route path="test-scenarios" element={<TestScenariosPage />} />
             <Route path="books-v2" element={<BookV2Dashboard />} />
             <Route path="books-v2/new" element={<CreateBookV2 />} />

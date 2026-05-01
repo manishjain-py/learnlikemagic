@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session as DBSession
 
 from shared.models.entities import TeachingGuideline, TopicDialogue
@@ -33,6 +33,7 @@ from shared.repositories.dialogue_repository import DialogueRepository
 from shared.repositories.explanation_repository import ExplanationRepository
 from shared.repositories.guideline_repository import TeachingGuidelineRepository
 from shared.services import LLMService
+from shared.types.emotion import Emotion, canonicalize_emotion
 from shared.utils.dialogue_hash import compute_explanation_content_hash
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,19 @@ WELCOME_CARD_TEMPLATE = (
 class DialogueLineOutput(BaseModel):
     display: str = Field(description="Text shown on screen (may use **bold**)")
     audio: str = Field(description="TTS-friendly spoken version — no markdown, no naked =, no emoji")
+    emotion: Optional[Emotion] = Field(
+        default=None,
+        description=(
+            "ElevenLabs v3 emotion tag for this line. One of: warm, curious, "
+            "encouraging, gentle, proud, empathetic, calm, excited, hesitant, "
+            "confused, tired. Use null for neutral/instructional lines."
+        ),
+    )
+
+    @field_validator("emotion", mode="before")
+    @classmethod
+    def _canonicalize_emotion(cls, value):
+        return canonicalize_emotion(value)
 
 
 class CheckInActivityOutput(BaseModel):
@@ -343,8 +357,12 @@ def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> 
 
 def _card_output_to_dict(card: DialogueCardOutput) -> dict:
     """Convert LLM output card to storage dict; preserves all dialogue-only
-    fields (speaker, includes_student_name, visual_intent)."""
-    d = card.model_dump()
+    fields (speaker, includes_student_name, visual_intent).
+
+    `mode="json"` ensures Emotion enum values serialize as their string
+    values ("warm", "curious", …) so the JSONB column receives plain
+    strings — round-trips cleanly through Pydantic on read."""
+    d = card.model_dump(mode="json")
     # Tutor turns + welcome + summary always speak with the tutor voice.
     # Peer turns always speak with the peer voice. Visual narration is tutor.
     if d.get("speaker") is None:
