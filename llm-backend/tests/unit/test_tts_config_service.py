@@ -57,13 +57,16 @@ class TestGetProvider:
             monkeypatch.delenv("TTS_PROVIDER", raising=False)
             reset_settings()
 
-    def test_no_admin_no_env_defaults_to_google_tts(self, monkeypatch):
+    def test_no_admin_no_env_defaults_to_elevenlabs(self, monkeypatch):
+        # Post-PR-#7 cutover: with no admin row and no env override, the
+        # Pydantic field default in Settings.tts_provider supplies
+        # "elevenlabs". (Pre-cutover this was "google_tts".)
         from config import reset_settings
         monkeypatch.delenv("TTS_PROVIDER", raising=False)
         reset_settings()
         try:
             svc = _service_with_row(None)
-            assert svc.get_provider() == "google_tts"
+            assert svc.get_provider() == "elevenlabs"
         finally:
             reset_settings()
 

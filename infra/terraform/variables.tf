@@ -72,6 +72,19 @@ variable "anthropic_api_key" {
   default     = ""
 }
 
+variable "elevenlabs_api_key" {
+  description = "ElevenLabs API key for v3 TTS (sensitive)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "tts_provider" {
+  description = "TTS provider for ECS env: 'elevenlabs' or 'google_tts'. Admin DB row in llm_config (component_key='tts') overrides at runtime."
+  type        = string
+  default     = "elevenlabs"
+}
+
 variable "tutor_llm_provider" {
   description = "LLM provider for tutor workflow: openai, anthropic, or anthropic-haiku"
   type        = string

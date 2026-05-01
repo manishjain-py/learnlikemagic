@@ -69,3 +69,22 @@ resource "aws_secretsmanager_secret_version" "anthropic_api_key" {
   secret_id     = aws_secretsmanager_secret.anthropic_api_key[0].id
   secret_string = var.anthropic_api_key
 }
+
+resource "aws_secretsmanager_secret" "elevenlabs_api_key" {
+  count       = var.elevenlabs_api_key != "" ? 1 : 0
+  name        = "${var.project_name}-${var.environment}-elevenlabs-api-key"
+  description = "ElevenLabs API key for v3 TTS"
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Name        = "${var.project_name}-elevenlabs-api-key"
+    Environment = var.environment
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "elevenlabs_api_key" {
+  count         = var.elevenlabs_api_key != "" ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.elevenlabs_api_key[0].id
+  secret_string = var.elevenlabs_api_key
+}

@@ -17,3 +17,8 @@ output "anthropic_api_key_secret_arn" {
   description = "ARN of Anthropic API key secret"
   value       = var.anthropic_api_key != "" ? aws_secretsmanager_secret.anthropic_api_key[0].arn : ""
 }
+
+output "elevenlabs_api_key_secret_arn" {
+  description = "ARN of ElevenLabs API key secret"
+  value       = var.elevenlabs_api_key != "" ? aws_secretsmanager_secret.elevenlabs_api_key[0].arn : ""
+}

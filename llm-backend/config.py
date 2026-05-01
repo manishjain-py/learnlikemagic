@@ -65,8 +65,8 @@ class Settings(BaseSettings):
     # TTS provider — env-level default. Admin DB row in llm_config
     # (component_key='tts') overrides at runtime via get_tts_config().
     tts_provider: str = Field(
-        default="google_tts",
-        description="TTS provider: 'google_tts' or 'elevenlabs'"
+        default="elevenlabs",
+        description="TTS provider: 'elevenlabs' or 'google_tts'"
     )
 
     # Application Settings

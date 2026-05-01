@@ -4,38 +4,43 @@ Switch all student-facing TTS from Google Chirp 3 HD (flat, robotic) to **Eleven
 
 ## Status — 2026-05-01
 
-**PRs #1–#6 implemented and merged-ready in [#138](https://github.com/manishjain-py/learnlikemagic/pull/138)** (branch `feat/tts-elevenlabs-impl`, cut off `main`). Default provider stays `google_tts` in this PR — admin can flip to `elevenlabs` via the new TTS Config page without redeploy.
+All seven plan rows now land in a single bundle PR [#138](https://github.com/manishjain-py/learnlikemagic/pull/138) (branch `feat/tts-elevenlabs-impl`, cut off `main`). The earlier intent to split #7 into a separate stacked PR was collapsed once the operator confirmed: EL Pro tier provisioning is out-of-band, the bulk re-render is scoped to a single smoke topic (Math G4 Ch1 T1), and 48h monitoring is dropped.
 
 | Phase | Status | Landed in |
 |---|---|---|
 | #1 Inline EL synthesis path + `TTS_PROVIDER` setting | ✅ done | #138 |
 | #2 `Emotion` enum + `ExplanationLine.emotion` field | ✅ done | #138 |
 | #3 V2 dialogue generator emits per-line emotion (baatcheet only) | ✅ done | #138 |
-| #4 Voice-settings auto-keying (steady ↔ expressive presets) | ✅ done | #138 (default flip deferred to #7) |
+| #4 Voice-settings auto-keying (steady ↔ expressive presets) | ✅ done | #138 |
 | #5 Runtime TTS branching in `tutor/api/tts.py` | ✅ done | #138 |
 | #6 Admin config UI toggle (`/admin/tts-config`) | ✅ done | #138 |
-| #7 Terraform secrets + cutover deploy + bulk re-render | ⏳ pending | next PR |
+| #7 Terraform secrets + env default flip + smoke re-render | ✅ done (code) | #138 |
 
 **What landed on top after review:** `6f94bcf` addresses four reviewer findings — `TTSProviderError` propagates out of per-line catches (no power-through on EL outage); `TimeoutError` caught explicitly in retry loops; the `tts` row is hidden + write-refused on `/admin/llm-config` so it can't be overwritten with an LLM provider; dropped a dead `self.voice` attribute. 12 regression tests added.
 
 **Bundling decision (vs. plan's original phasing).** The plan had each row as a separate PR. We bundled #1–#6 into a single PR because (a) several phases are too small to justify their own review, (b) the cutover (#7) has external blockers — EL Pro tier provisioned, API key in Terraform — that would have held everything if collapsed in. Default still `google_tts` in #138 means the bundle lands safely without committing to the cutover.
 
-### Next steps — PR #7 cutover
+### PR #7 cutover — what landed
 
-Order of operations matters here; doing them out of order risks an outage window or quota exhaustion:
+EL Pro tier provisioning is the operator's responsibility (out-of-band, treated as already done). Full-library re-render and 48h monitoring were dropped per operator call; the smoke test is reduced to one topic.
 
-1. **Provision the EL Pro plan** ($99/mo, 500K chars/mo) on the org account *before* anything code-related. Bulk re-render alone consumes a meaningful slice of monthly quota.
-2. **Add `ELEVENLABS_API_KEY` and `TTS_PROVIDER=elevenlabs` to the Terraform `secrets` module** — wiring already sketched in [#137 plan §Terraform/secrets](#terraform--secrets). `terraform apply` brings the new env into ECS task definitions on next deploy.
-3. **Flip the env-level default** in `Settings.tts_provider` from `"google_tts"` to `"elevenlabs"` (one-line config change in `llm-backend/config.py`) so any environment without an admin DB row picks EL.
-4. **Bulk re-render the audio library.** Trigger the Stage 5/5b/audio-synth force-rerun for every guideline:
-   - 1 baatcheet dialogue currently in prod (Place Value, Grade 4)
-   - All variant A explanation card libraries (across approved guidelines)
-   - All check-ins (synthesized in-place per check-in card)
-   - Operationally: cap parallelism so we don't hit the per-minute rate limit; the bulk job is mostly serial today which is fine.
-5. **Operational smoke test.** Hit `/api/text-to-speech` with `voice_role=tutor` and `voice_role=peer`; load a topic; verify dialogue + explanation MP3s sound expressive on tagged lines and steady on `emotion=None` lines.
-6. **Monitor for 48h.** Watch ECS error rate, S3 audio sizes (expect ~3–5× larger MP3s), India TTFB on the runtime endpoint.
+What the cutover PR contains:
 
-Rollback in this PR is just an admin toggle flip (`elevenlabs → google_tts` on `/admin/tts-config`) — but cached S3 audio is not regenerated automatically, so a flip serves the existing EL-rendered library until the next stage rerun.
+1. **Terraform secret wiring** — `infra/terraform/{variables.tf, main.tf}` accept `elevenlabs_api_key` (sensitive) and `tts_provider` and pass them through. `infra/terraform/modules/secrets/` creates a `${project}-${env}-elevenlabs-api-key` Secrets Manager entry guarded by `count = var.elevenlabs_api_key != "" ? 1 : 0` (mirrors the Anthropic shape so an empty key doesn't leave a dangling secret). `infra/terraform/modules/app-runner/main.tf` adds `TTS_PROVIDER` to `runtime_environment_variables`, conditionally adds `ELEVENLABS_API_KEY` to `runtime_environment_secrets`, and grants `secretsmanager:GetSecretValue` to the new ARN via `compact([...])`. `terraform.tfvars.example` updated.
+2. **Env-level default flipped** in `llm-backend/config.py` (`Settings.tts_provider` default `"google_tts"` → `"elevenlabs"`). The hard fallback in `shared/services/tts_config_service.py` (both `TTSConfigService.get_provider()` and the `resolve_tts_provider()` helper's no-DB branch) was flipped to match.
+3. **Smoke re-render scoped to Math G4 Ch1 T1** — operational, run after deploy. Resolve the guideline_id (admin UI or DB query), then trigger the two stage rerun endpoints; both default `force=true`:
+   ```bash
+   # Variant A explanation cards + check-ins
+   curl -X POST "$BACKEND/v2/topics/$GUIDELINE_ID/stages/audio_synthesis/rerun" \
+        -H 'Content-Type: application/json' -d '{"force": true}'
+   # Baatcheet dialogue
+   curl -X POST "$BACKEND/v2/topics/$GUIDELINE_ID/stages/baatcheet_audio_synthesis/rerun" \
+        -H 'Content-Type: application/json' -d '{"force": true}'
+   ```
+   Or use the DAG re-run buttons on the topic page in the admin UI. S3 keys are deterministic so EL clips overwrite the prior Google clips at the same URL — the frontend audio cache will serve the new MP3s on next fetch.
+4. **Verification.** Hit `/api/text-to-speech` with `voice_role=tutor` and `voice_role=peer` (admin DB row override resolves per request, so the toggle on `/admin/tts-config` lets you compare providers without redeploying). Load the smoke topic; tagged dialogue lines should be expressive, `emotion=None` lines steady.
+
+Rollback is the admin toggle on `/admin/tts-config` (`elevenlabs → google_tts`). Cached S3 audio isn't auto-regenerated on flip — the EL-rendered library keeps serving until the next stage rerun.
 
 ### Deferred to V2+ (unchanged from plan)
 
@@ -218,17 +223,17 @@ elevenlabs_api_key: str | None = None
 
 ## Phasing — each row was originally one landable PR
 
-> **Implementation note (2026-05-01).** Rows #1–#6 were bundled into a single PR (#138) for review velocity; default `TTS_PROVIDER` stays `google_tts` in that PR, and the env-flip from #4 was deferred into #7 alongside the cutover. Original phasing kept below for traceability — the "Status" section at the top of this doc has the current state.
+> **Implementation note (2026-05-01).** All seven rows landed in a single PR (#138). The earlier intent to split #7 (cutover) into a stacked PR was collapsed once the operator confirmed EL Pro provisioning is out-of-band, the bulk re-render is scoped to a single smoke topic, and 48h monitoring is dropped. Original phasing kept below for traceability — the "Status" section at the top of this doc has the current state.
 
 | # | PR | Land sequence | Status | Notes |
 |---|---|---|---|---|
-| 1 | **Inline EL synthesis path + `TTS_PROVIDER` setting** | First | ✅ #138 | `_synthesize_elevenlabs` lives alongside Google in `audio_generation_service.py`. `Settings.tts_provider` + `elevenlabs_api_key` wired. Default still `google_tts` for safety. Mocked-HTTP unit tests for the EL path. No factory, no shared module. |
+| 1 | **Inline EL synthesis path + `TTS_PROVIDER` setting** | First | ✅ #138 | `_synthesize_elevenlabs` lives alongside Google in `audio_generation_service.py`. `Settings.tts_provider` + `elevenlabs_api_key` wired. Mocked-HTTP unit tests for the EL path. No factory, no shared module. |
 | 2 | **Emotion field on `ExplanationLine`** | Independent | ✅ #138 | `shared/types/emotion.py` (11-value enum + synonym normalizer). Pydantic field + `field_validator(mode="before")` on `ExplanationLine` and `DialogueLineOutput`. No SQL migration (JSONB). Backward compatible. Both speakers can use any value (no role split enforced). |
 | 3 | **V2 dialogue generator emits emotion (baatcheet only)** | Depends on #2 | ✅ #138 | V2 prompt updated (schema + craft section explaining the 11-value vocab and per-line authoring). Audio review pass canonicalizes via the shared validator. Explanation card generator untouched. |
-| 4 | **Synthesis uses emotion + voice-settings auto-keying** | Depends on #1, #2 | ✅ #138 (default flip deferred) | `_synthesize_elevenlabs` picks expressive vs steady preset based on `emotion` presence (`0.5/0.75/0.4/true` vs `0.7/0.75/0.2/true`). Applies to baatcheet + explanation cards + check-ins. **Default flip from `google_tts` → `elevenlabs` moved into #7** so the bundle lands without committing to the cutover. |
+| 4 | **Synthesis uses emotion + voice-settings auto-keying** | Depends on #1, #2 | ✅ #138 | `_synthesize_elevenlabs` picks expressive vs steady preset based on `emotion` presence (`0.5/0.75/0.4/true` vs `0.7/0.75/0.2/true`). Applies to baatcheet + explanation cards + check-ins. Env-level default flipped to `elevenlabs` in the same PR. |
 | 5 | **Runtime TTS gets inline branching** | Depends on #1 | ✅ #138 | Same dispatch logic in `tutor/api/tts.py`. Personalized cards now route via the resolved provider. Steady preset only at runtime (no per-line emotion on `{student_name}` openers, by design). |
 | 6 | **Admin config UI toggle** | Independent | ✅ #138 | `/admin/tts-config` page with single dropdown. Backed by `llm_config` row keyed `'tts'`. `LLMConfigService` filters/refuses `'tts'` so the row can't leak into `/admin/llm-config`. |
-| 7 | **Terraform secrets + cutover deploy + bulk re-render** | Last | ⏳ pending | Add `ELEVENLABS_API_KEY` + `TTS_PROVIDER=elevenlabs` to prod env via Terraform secrets module. Flip the env-level default in `Settings`. **Re-render entire audio library** (1 dialogue + all explanation card libraries + check-ins). Smoke test runtime synthesis. No human listen-test gate. **External blocker: EL Pro plan ($99/mo) provisioned.** |
+| 7 | **Terraform secrets + env default flip + smoke re-render** | Last | ✅ #138 (code) | `ELEVENLABS_API_KEY` + `TTS_PROVIDER=elevenlabs` added to Terraform `secrets` module + app-runner env. Env-level default flipped in `config.py` + `tts_config_service.py` hard fallback. Smoke re-render scoped to one topic (Math G4 Ch1 T1) — operational, runs post-deploy via the DAG `audio_synthesis` + `baatcheet_audio_synthesis` rerun endpoints. Full-library re-render and 48h monitor dropped. |
 
 ## Risks & mitigations
 

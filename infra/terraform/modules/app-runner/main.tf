@@ -60,10 +60,11 @@ resource "aws_iam_role_policy" "app_runner_secrets" {
       Action = [
         "secretsmanager:GetSecretValue"
       ]
-      Resource = [
+      Resource = compact([
         var.openai_secret_arn,
-        var.gemini_secret_arn
-      ]
+        var.gemini_secret_arn,
+        var.elevenlabs_secret_arn,
+      ])
     }]
   })
 }
@@ -129,17 +130,21 @@ resource "aws_apprunner_service" "backend" {
             LLM_MODEL          = var.llm_model
             ENVIRONMENT        = var.environment
             TUTOR_LLM_PROVIDER = var.tutor_llm_provider
+            TTS_PROVIDER       = var.tts_provider
           }
         )
 
         runtime_environment_secrets = merge(
           {
-            OPENAI_API_KEY         = var.openai_secret_arn
-            GEMINI_API_KEY         = var.gemini_secret_arn
+            OPENAI_API_KEY           = var.openai_secret_arn
+            GEMINI_API_KEY           = var.gemini_secret_arn
             GOOGLE_CLOUD_TTS_API_KEY = var.gemini_secret_arn
           },
           var.anthropic_secret_arn != "" ? {
             ANTHROPIC_API_KEY = var.anthropic_secret_arn
+          } : {},
+          var.elevenlabs_secret_arn != "" ? {
+            ELEVENLABS_API_KEY = var.elevenlabs_secret_arn
           } : {}
         )
       }

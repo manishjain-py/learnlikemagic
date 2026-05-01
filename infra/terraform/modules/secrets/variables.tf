@@ -32,3 +32,10 @@ variable "anthropic_api_key" {
   sensitive   = true
   default     = ""
 }
+
+variable "elevenlabs_api_key" {
+  description = "ElevenLabs API key"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

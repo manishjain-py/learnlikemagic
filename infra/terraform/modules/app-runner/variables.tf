@@ -35,6 +35,18 @@ variable "anthropic_secret_arn" {
   default     = ""
 }
 
+variable "elevenlabs_secret_arn" {
+  description = "ARN of ElevenLabs API key secret in Secrets Manager. Empty string when EL is not provisioned."
+  type        = string
+  default     = ""
+}
+
+variable "tts_provider" {
+  description = "TTS provider env value: 'elevenlabs' or 'google_tts'. Admin DB row overrides at runtime."
+  type        = string
+  default     = "elevenlabs"
+}
+
 variable "tutor_llm_provider" {
   description = "LLM provider for tutor workflow"
   type        = string

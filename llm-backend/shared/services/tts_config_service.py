@@ -4,7 +4,7 @@ Provider is stored in the `llm_config` table under `component_key='tts'`,
 mirroring the LLM provider toggle pattern. Resolution order:
   1. `llm_config` row (admin override; takes effect immediately)
   2. `Settings.tts_provider` env var (bootstrap default)
-  3. Hard default `'google_tts'` (will flip to 'elevenlabs' at the PR #7 cutover)
+  3. Hard default `'elevenlabs'` (post-cutover; was `'google_tts'` before PR #7)
 
 The schema reuses `LLMConfig.provider` for the provider value
 ('google_tts' | 'elevenlabs'). `model_id` is set to a placeholder model
@@ -60,7 +60,7 @@ class TTSConfigService:
         env_provider = (get_settings().tts_provider or "").strip().lower()
         if env_provider in VALID_TTS_PROVIDERS:
             return env_provider
-        return "google_tts"
+        return "elevenlabs"
 
     def update_provider(
         self,
@@ -101,4 +101,4 @@ def resolve_tts_provider(db: Optional[DBSession]) -> str:
     env_provider = (get_settings().tts_provider or "").strip().lower()
     if env_provider in VALID_TTS_PROVIDERS:
         return env_provider
-    return "google_tts"
+    return "elevenlabs"
