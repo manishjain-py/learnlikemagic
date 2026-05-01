@@ -155,7 +155,9 @@ def _synth_elevenlabs(text: str, voice_role: str) -> bytes:
                     status_code=502,
                     detail=f"ElevenLabs HTTP {e.code}: {detail}",
                 ) from e
-        except URLError as e:
+        except (URLError, TimeoutError) as e:
+            # `urlopen(timeout=...)` raises `TimeoutError` on socket read
+            # timeout — NOT a `URLError` subclass, so catch explicitly.
             last_err = RuntimeError(
                 f"ElevenLabs network error (attempt {attempt}/"
                 f"{_EL_RETRY_ATTEMPTS}): {e}"

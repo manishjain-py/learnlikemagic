@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
 from database import get_db
-from shared.services.llm_config_service import LLMConfigService, LLMConfigNotFoundError
+from shared.services.llm_config_service import LLMConfigService, LLMConfigNotFoundError  # noqa: F401
 
 router = APIRouter(prefix="/api/admin", tags=["llm-config"])
 
@@ -64,12 +64,17 @@ def update_llm_config(
         )
 
     service = LLMConfigService(db)
-    result = service.update_config(
-        component_key=component_key,
-        provider=request.provider,
-        model_id=request.model_id,
-        reasoning_effort=request.reasoning_effort,
-    )
+    try:
+        result = service.update_config(
+            component_key=component_key,
+            provider=request.provider,
+            model_id=request.model_id,
+            reasoning_effort=request.reasoning_effort,
+        )
+    except LLMConfigNotFoundError as e:
+        # Triggered when the component_key targets a non-LLM row
+        # (e.g. 'tts') that's owned by a dedicated admin surface.
+        raise HTTPException(status_code=404, detail=str(e))
     db.commit()
     return result
 

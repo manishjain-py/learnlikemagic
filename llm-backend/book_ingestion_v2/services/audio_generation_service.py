@@ -196,13 +196,11 @@ class AudioGenerationService:
             self.tts_client = texttospeech.TextToSpeechClient(
                 client_options=ClientOptions(api_key=settings.google_cloud_tts_api_key),
             )
-            lang_code, voice_name = VOICE_MAP.get(language, VOICE_MAP["en"])
-            self.voice = texttospeech.VoiceSelectionParams(
-                language_code=lang_code, name=voice_name,
-            )
             self.audio_config = texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.MP3,
             )
+            # Per-call voice is built from speaker via _voice_for_speaker;
+            # nothing pinned on the instance.
             self.elevenlabs_api_key = None
         elif self.provider == "elevenlabs":
             api_key = elevenlabs_api_key or settings.elevenlabs_api_key
@@ -210,7 +208,6 @@ class AudioGenerationService:
                 raise RuntimeError("ElevenLabs API key not configured")
             self.elevenlabs_api_key = api_key
             self.tts_client = None
-            self.voice = None
             self.audio_config = None
         else:
             raise RuntimeError(
@@ -314,7 +311,11 @@ class AudioGenerationService:
                     raise TTSProviderError(
                         f"ElevenLabs HTTP {e.code}: {detail}"
                     ) from e
-            except URLError as e:
+            except (URLError, TimeoutError) as e:
+                # `urlopen(timeout=...)` raises `TimeoutError` on socket
+                # read timeout; `TimeoutError` is NOT a `URLError` subclass,
+                # so it must be caught explicitly or it bypasses the retry
+                # loop and bubbles up as a single-attempt failure.
                 last_err = TTSProviderError(
                     f"ElevenLabs network error (attempt {attempt}/"
                     f"{_EL_RETRY_ATTEMPTS}): {e}"
@@ -387,6 +388,10 @@ class AudioGenerationService:
                 try:
                     line["audio_url"] = self._synth_and_upload(audio_text, s3_key)
                     generated += 1
+                except TTSProviderError:
+                    # Provider exhausted retries — abort the topic stage
+                    # rather than power through every remaining line.
+                    raise
                 except Exception as e:
                     logger.error(
                         f"TTS/upload failed for {guideline_id}/{variant_key}/"
@@ -423,6 +428,8 @@ class AudioGenerationService:
                 try:
                     check_in[url_field] = self._synth_and_upload(text, s3_key)
                     generated += 1
+                except TTSProviderError:
+                    raise
                 except Exception as e:
                     logger.error(
                         f"TTS/upload failed for {guideline_id}/{variant_key}/"
@@ -581,6 +588,8 @@ class AudioGenerationService:
                         text, s3_key, speaker=speaker, emotion=emotion,
                     )
                     generated += 1
+                except TTSProviderError:
+                    raise
                 except Exception as e:
                     logger.error(
                         f"Dialogue TTS failed for {guideline_id}/{card_id}/"
@@ -615,6 +624,8 @@ class AudioGenerationService:
                             text, s3_key, speaker="tutor",
                         )
                         generated += 1
+                    except TTSProviderError:
+                        raise
                     except Exception as e:
                         logger.error(
                             f"Dialogue check-in TTS failed for "

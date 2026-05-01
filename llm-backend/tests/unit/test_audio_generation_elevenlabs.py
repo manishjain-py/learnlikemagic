@@ -32,7 +32,6 @@ def _make_el_service() -> AudioGenerationService:
     svc.provider = "elevenlabs"
     svc.elevenlabs_api_key = "test-key"
     svc.tts_client = None
-    svc.voice = None
     svc.audio_config = None
     svc.s3 = MagicMock()
     svc.bucket = "test-bucket"
@@ -223,6 +222,30 @@ class TestPersistentFailure:
             with pytest.raises(TTSProviderError):
                 svc._synthesize("hello", speaker="tutor")
         assert calls["n"] == 1
+
+    def test_socket_timeout_triggers_retry(self):
+        """A bare TimeoutError from urlopen must trigger retries — it's
+        NOT a URLError subclass, so a missing catch would skip the retry
+        loop and let the timeout bubble up as a single-attempt failure.
+        Regression test for review feedback."""
+        svc = _make_el_service()
+        calls = {"n": 0}
+
+        def fail(req, timeout=None):
+            calls["n"] += 1
+            raise TimeoutError("read timeout")
+
+        with patch(
+            "book_ingestion_v2.services.audio_generation_service.urlopen",
+            side_effect=fail,
+        ), patch(
+            "book_ingestion_v2.services.audio_generation_service.time.sleep",
+            return_value=None,
+        ):
+            with pytest.raises(TTSProviderError):
+                svc._synthesize("hello", speaker="tutor")
+        # All 3 attempts should have run, not just one.
+        assert calls["n"] == 3
 
 
 class TestHeaders:

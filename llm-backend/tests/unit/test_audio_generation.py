@@ -25,7 +25,6 @@ def _make_service() -> AudioGenerationService:
     svc.s3 = MagicMock()
     svc.bucket = "test-bucket"
     svc.region = "us-east-1"
-    svc.voice = MagicMock()
     svc.audio_config = MagicMock()
     svc.language = "en"
     svc.elevenlabs_api_key = None
