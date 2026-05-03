@@ -100,7 +100,9 @@ Key details:
 - Keeps the code portable between SQLite (tests) and Postgres (prod) without dialect-specific aggregates.
 - `attempts[0]` per group is automatically the latest thanks to the ORDER BY on the fetch.
 
-Practice-only topics — i.e., a student completed a practice attempt but never a Teach Me session on the topic — still appear on the scorecard because `_build_guideline_lookup` was extended to accept practice attempts as a second source of guideline_ids, and `_merge_practice_attempts_into_grouped` creates a fresh `(subject, chapter, topic)` row in `grouped` when none exists.
+Practice-only topics — i.e., a student completed a practice attempt but never a Teach Me session on the topic — still appear in the report card response because `_build_guideline_lookup` was extended to accept practice attempts as a second source of guideline_ids, and `_merge_practice_attempts_into_grouped` creates a fresh `(subject, chapter, topic)` row in `grouped` when none exists.
+
+**Caveat:** the frontend's empty-state guard short-circuits on `total_sessions === 0` (which counts only `Session` rows, not practice attempts). A student with practice-only attempts and zero teach_me/clarify sessions sees the empty state even though `subjects` is populated. Aligning these would require either counting practice attempts toward `total_sessions` or changing the frontend guard to `subjects.length === 0`.
 
 ### Cross-Session Accumulation
 

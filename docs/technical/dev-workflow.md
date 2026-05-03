@@ -16,7 +16,7 @@ cp .env.example .env  # Edit with your credentials
 
 **Required at runtime** (validated by `entrypoint.sh` + `validate_required_settings()`): `DATABASE_URL`, `OPENAI_API_KEY`.
 
-**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`.
+**Optional `.env` variables:** `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY`, `ELEVENLABS_API_KEY`, `TTS_PROVIDER` (`elevenlabs` or `google_tts`; default `elevenlabs`), `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `LOG_FORMAT`, `ENVIRONMENT`, `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_REGION`, `AWS_REGION`, `AWS_S3_BUCKET`.
 
 Configuration is managed by `config.py` using pydantic-settings (loads `.env` automatically; case-insensitive; `extra="ignore"`).
 

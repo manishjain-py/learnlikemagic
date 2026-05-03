@@ -178,12 +178,12 @@ infra/terraform/
   outputs.tf           # Outputs (URLs, ARNs, GitHub secrets map)
   Makefile             # Automation targets
   modules/
-    secrets/           # Secrets Manager (OpenAI, Gemini, DB password; Anthropic conditional)
+    secrets/           # Secrets Manager (OpenAI, Gemini, DB password always; Anthropic + ElevenLabs each conditional)
     database/          # RDS PostgreSQL 15 instance (db.t4g.micro) + subnet group + parameter group + security group
     ecr/               # ECR repository + lifecycle policy (keep last 10 images)
-    app-runner/        # App Runner service + IAM roles (ECR access, Secrets, S3)
+    app-runner/        # App Runner service + IAM roles (ECR access, per-secret access, S3 books, Cognito admin)
     frontend/          # S3 bucket + CloudFront distribution + SPA routing function
-    github-oidc/       # OIDC provider + IAM role for GitHub Actions
+    github-oidc/       # OIDC provider + IAM role for GitHub Actions (ECR + S3 + CloudFront + App Runner)
 ```
 
 ---
@@ -273,11 +273,11 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 
 | Component | Config |
 |-----------|--------|
-| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, provisioned (always-on) for background-job CPU. Service name `llm-backend-prod`. Health check `/health` HTTP, 10s interval, 5s timeout, healthy=1, unhealthy=5. Auto-deploy disabled — deploys triggered via GitHub Actions |
+| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, provisioned (always-on) for background-job CPU. Service name `llm-backend-prod`. Health check `/` HTTP, 10s interval, 5s timeout, healthy=1, unhealthy=5. Auto-deploy disabled — deploys triggered via GitHub Actions |
 | RDS PostgreSQL | Engine `postgres` 15, `db.t4g.micro`, 20GB `gp2`, default VPC, publicly accessible (sg allows 0.0.0.0/0:5432), 7-day backups (03:00-04:00 UTC), maintenance Mon 04:00-05:00 UTC, deletion protection off, skip final snapshot |
 | ECR | Mutable tags, keep last 10 images, scan on push, AES256 encryption |
 | CloudFront | Redirect-to-HTTPS, gzip+brotli, custom cache policy (default TTL 86400s, max 31536000s, no cookies/headers/query forwarded), SPA routing via CloudFront Function (rewrites extensionless URIs to `/index.html`), 403/404 → `/index.html`, OAI for S3 access, PriceClass_100 (NA+EU) |
-| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window. App Runner instance role grants `secretsmanager:GetSecretValue` only to OpenAI + Gemini ARNs (Anthropic not in IAM policy). `GOOGLE_CLOUD_TTS_API_KEY` reuses the Gemini secret ARN in App Runner env |
+| Secrets Manager | 3-5 secrets (OpenAI, Gemini, DB password always; Anthropic + ElevenLabs each conditional on `var.*_api_key`), 7-day recovery window. App Runner instance role grants `secretsmanager:GetSecretValue` via per-secret split policies: OpenAI always; Anthropic + ElevenLabs each created `count = arn != "" ? 1 : 0`. **Gemini is NOT granted to App Runner** — `GOOGLE_CLOUD_TTS_API_KEY` is passed as a plaintext runtime env var (the `var.gemini_api_key` value, not a secret ARN reference) |
 
 **Estimated cost (low traffic):** ~$10-30/month
 
@@ -291,8 +291,8 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 | `infra/terraform/variables.tf` | All input variables |
 | `infra/terraform/outputs.tf` | Outputs including `github_secrets` map + `deployment_summary` |
 | `infra/terraform/Makefile` | Terraform automation targets |
-| `infra/terraform/terraform.tfvars.example` | Starter tfvars (gemini_api_key must be added manually) |
-| `infra/terraform/modules/secrets/main.tf` | Secrets Manager: openai, gemini, db_password (always); anthropic (conditional) |
+| `infra/terraform/terraform.tfvars.example` | Starter tfvars (gemini_api_key + anthropic_api_key must be added manually) |
+| `infra/terraform/modules/secrets/main.tf` | Secrets Manager: openai, gemini, db_password (always); anthropic + elevenlabs (each conditional on non-empty var) |
 | `infra/terraform/modules/database/main.tf` | RDS PostgreSQL 15 + subnet + parameter + security group |
 | `infra/terraform/modules/ecr/main.tf` | ECR repo + lifecycle policy (keep last 10) |
 | `infra/terraform/modules/app-runner/main.tf` | App Runner service, IAM roles, autoscaling, runtime env + secrets, health check |

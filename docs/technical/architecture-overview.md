@@ -201,6 +201,7 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 | enrichment | `/profile` | Enrichment profile + personality endpoints (`/profile/enrichment`, `/profile/personality`) |
 | docs | `/api/docs` | Documentation API for admin viewer |
 | llm config | `/api/admin` | LLM model configuration (`/api/admin/llm-config/*`) |
+| tts config | `/api/admin` | TTS provider toggle (`/api/admin/tts-config`) — switches active TTS provider (ElevenLabs / Google Cloud TTS) at runtime |
 | feature flags | `/api/admin` | Runtime feature flag management (`/api/admin/feature-flags/*`) |
 | test scenarios | `/api/test-scenarios` | E2E test scenario results and screenshots |
 | v2 book routes | `/admin/v2/books` | Book CRUD (V2) |
@@ -240,7 +241,10 @@ llm-frontend/src/
 │   ├── ReportCardPage.tsx    # Student report card (coverage %, practice scores)
 │   └── ReportIssuePage.tsx   # Issue reporting form (text, voice, screenshots)
 ├── hooks/
-│   └── useStudentProfile.ts  # Student profile hook (board, grade, country)
+│   ├── useStudentProfile.ts    # Student profile hook (board, grade, country)
+│   ├── audioController.ts      # Shared audio playback controller (single-clip lifecycle)
+│   ├── useCheckInAudio.ts      # TTS playback for check-in activity prompts
+│   └── usePersonalizedAudio.ts # Personalized tutor TTS playback (cached per message)
 ├── contexts/
 │   └── AuthContext.tsx    # Global auth state (Cognito SDK)
 ├── components/
@@ -281,7 +285,7 @@ llm-frontend/src/
 │   │   ├── components/
 │   │   │   ├── AdminLayout.tsx      # Shared admin layout with persistent top nav bar
 │   │   │   ├── QualitySelector.tsx  # Fast / Balanced / Thorough quality selector popover
-│   │   │   └── TopicDAGView.tsx     # React Flow per-topic DAG dashboard (8 stages, click to rerun)
+│   │   │   └── TopicDAGView.tsx     # React Flow per-topic DAG dashboard (10 stages, click to rerun)
 │   │   ├── pages/
 │   │   │   ├── AdminHome.tsx        # Admin dashboard landing page with cards linking to all admin sections
 │   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
@@ -297,6 +301,7 @@ llm-frontend/src/
 │   │   │   ├── EvaluationDashboard.tsx
 │   │   │   ├── DocsViewer.tsx        # In-app documentation browser
 │   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
+│   │   │   ├── TTSConfigPage.tsx     # TTS provider toggle admin (ElevenLabs / Google Cloud TTS)
 │   │   │   ├── FeatureFlagsPage.tsx  # Feature flag toggle admin
 │   │   │   ├── TestScenariosPage.tsx # E2E test results viewer
 │   │   │   ├── InteractiveVisualsPocPage.tsx # Interactive template testing PoC
@@ -348,11 +353,12 @@ llm-frontend/src/
 | `/admin/books-v2/:bookId/visuals/:chapterId` | AdminLayout > VisualsAdmin | Unprotected | Per-chapter Pixi visuals |
 | `/admin/books-v2/:bookId/ocr/:chapterId` | AdminLayout > OCRAdmin | Unprotected | Per-chapter OCR page viewer |
 | `/admin/books-v2/:bookId/practice-banks/:chapterId` | AdminLayout > PracticeBankAdmin | Unprotected | Per-chapter practice question bank viewer |
-| `/admin/books-v2/:bookId/pipeline/:chapterId/:topicKey` | AdminLayout > TopicDAGView | Unprotected | Per-topic 8-stage React Flow DAG dashboard |
+| `/admin/books-v2/:bookId/pipeline/:chapterId/:topicKey` | AdminLayout > TopicDAGView | Unprotected | Per-topic 10-stage React Flow DAG dashboard |
 | `/admin/visual-render-preview/:id` | AdminLayout > VisualRenderPreview | Unprotected | Admin-only Pixi single-visual sandbox preview |
 | `/admin/evaluation` | AdminLayout > EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | AdminLayout > DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
+| `/admin/tts-config` | AdminLayout > TTSConfigPage | Unprotected | TTS provider toggle (ElevenLabs vs Google Cloud TTS) |
 | `/admin/feature-flags` | AdminLayout > FeatureFlagsPage | Unprotected | Toggle runtime feature flags on/off |
 | `/admin/test-scenarios` | AdminLayout > TestScenariosPage | Unprotected | E2E test results and screenshots |
 | `/admin/interactive-poc` | AdminLayout > InteractiveVisualsPocPage | Unprotected | Interactive visual template testing PoC |
