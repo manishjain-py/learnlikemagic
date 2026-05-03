@@ -103,7 +103,7 @@ After a chapter is synced, every topic enters a 10-stage post-sync pipeline. Eac
 9. **Baatcheet audio review** — Same as Audio review but on dialogue cards.
 10. **Baatcheet audio synthesis** — Pre-renders MP3 audio for every dialogue line.
 
-Stages 2-7 and 5 (Baatcheet dialogue) all depend on Step 1 (Explanations). Audio synthesis depends on Audio review. Baatcheet visuals and Baatcheet audio review depend on Baatcheet dialogue. Baatcheet audio synthesis depends on Baatcheet audio review.
+Stages 2-5 and 7 all depend on Step 1 (Explanations). Audio synthesis depends on Audio review. Baatcheet visuals and Baatcheet audio review depend on Baatcheet dialogue. Baatcheet audio synthesis depends on Baatcheet audio review.
 
 ### Step 7.1: Generate Explanations
 
@@ -151,9 +151,9 @@ Same idea as the explanation visuals step, but for the dialogue cards. The lesso
 
 The stage is considered done only when every required slot has a working visual. The extras are generated too but don't gate completion.
 
-### Step 7.7: Review Audio Text
+### Step 7.7: Review Audio Text (variant A)
 
-An AI re-reads the audio text on every card and rewrites lines that have defects:
+An AI re-reads the audio text on every variant A card and rewrites lines that have defects:
 
 - Symbol or markdown leaks (e.g. an equation written with literal plus and equals signs that a TTS voice would read awkwardly, or stray bold markers)
 - Visual-only references (e.g. "as you can see in the diagram")
@@ -163,15 +163,23 @@ An AI re-reads the audio text on every card and rewrites lines that have defects
 
 Revisions are surgical — only the audio strings are rewritten; display text, line ordering, and card structure are never touched. The reviewer drops any revision that still contains banned patterns, and a drift guard prevents clobbering admin edits made between read and write. Revised lines have their stored audio file URL cleared so the next synthesis pass re-renders only those lines.
 
-The admin can also run a separate Baatcheet audio review against dialogue cards via a manual "Review Baatcheet audio" button — opt-in safety valve for subtle defects.
+### Step 7.8: Synthesize Variant A Audio (TTS)
 
-### Step 7.8: Synthesize Audio (TTS)
+Generates MP3 audio for every line on variant A explanation cards and every check-in field (audio text, hint, success message, predict-then-reveal text). MP3s upload to S3 and the public URLs are stamped back onto each card.
 
-Generates MP3 audio for every line on variant A explanation cards, every dialogue card (when present), and every check-in field (audio text, hint, success message, predict-then-reveal text) using Google Cloud TTS. MP3s upload to S3 and the public URLs are stamped back onto each card.
+The TTS provider is admin-toggled. The default is **ElevenLabs v3** (supports per-line emotion tags such as `warm` / `curious` / `excited` so the voice modulates prosody around emotional beats); **Google Cloud TTS** (Chirp 3 HD) is the alternative. Admin switches the provider from the TTS Config admin page; the toggle takes effect on the next job.
 
-Voice routing: variant A and check-ins use a smooth tutor voice; Baatcheet routes by speaker — Mr. Verma uses the tutor voice, Meera uses a distinct peer voice. Lines containing the `{student_name}` placeholder are skipped because runtime TTS handles them at session start with the actual student's name.
+Voice routing: variant A and check-ins use the smooth tutor voice (Mr. Verma). Lines containing the `{student_name}` placeholder are skipped because runtime TTS handles them at session start with the actual student's name.
 
 Idempotent at line+field granularity: a line that already has an audio URL is skipped. Soft guardrail: if no audio review has run for the scope, the synthesis endpoint asks for explicit confirmation before proceeding (so the admin doesn't waste TTS quota on unreviewed text).
+
+### Step 7.9: Review Baatcheet Audio Text
+
+Same machinery as variant A audio review, but applied to dialogue cards. Catches subtle defects the deterministic Baatcheet validators (markdown / equals / emoji) can't detect. Revised lines have their stored dialogue audio URL cleared so only those lines re-render on the next pass.
+
+### Step 7.10: Synthesize Baatcheet Audio (TTS)
+
+Generates MP3 audio for every line on dialogue cards and every dialogue check-in field. Voice routing: Mr. Verma uses the tutor voice, Meera uses a distinct peer voice. On the ElevenLabs path, each line's emotion tag (when present) drives an expressive voice preset; lines without an emotion tag use a steady preset for clean monologue. Idempotent — lines that already have an audio URL are skipped.
 
 ### Step 8: Generate a Get-Ready Refresher
 
@@ -186,7 +194,7 @@ If the AI decides no prerequisite warm-up is needed, the refresher is skipped. G
 
 ### Step 9: Topic Pipeline Dashboard
 
-Each topic gets a per-topic dashboard showing all 8 stages laid out as a directed graph. Each node displays the stage's current state — done, warning, running, ready, blocked, or failed — plus a one-line summary (e.g. "12 cards", "30 questions", "8/12 audio clips").
+Each topic gets a per-topic dashboard showing all 10 stages laid out as a directed graph. Each node displays the stage's current state — done, warning, running, ready, blocked, or failed — plus a one-line summary (e.g. "12 cards", "30 questions", "8/12 audio clips").
 
 From the dashboard the admin can:
 
@@ -219,7 +227,7 @@ Processing can fail due to AI model errors or network issues. The system provide
 
 ## Study Plans
 
-After guidelines are synced, the system can generate study plans from them. Two plan types exist:
+After guidelines are synced, the system can generate study plans from them. Three plan types exist:
 
 ### Standard Study Plans
 
@@ -250,6 +258,10 @@ Session plans are generated after a student reads explanation cards and says "I 
 
 Session plans know which explanation variants the student saw and build on those specific analogies and examples.
 
+### Practice Plans
+
+Practice plans drive the Let's Practice flow (no upfront teaching). Generated when the student starts a practice session. Same 3-5-step shape as session plans but only question-style step types (`check_understanding` / `guided_practice` / `independent_practice` / `extend`). Cold-start sessions (no prior Teach Me context for the topic) start at medium difficulty; post-Teach-Me sessions start easy and weight early steps toward concepts the student struggled on during check-ins.
+
 ---
 
 ## Key Details
@@ -269,6 +281,7 @@ Session plans know which explanation variants the student saw and build on those
 - Check-in enrichment cannot run while explanation generation or visual enrichment is running on the same chapter
 - Practice bank generation cannot run while explanations, visuals, or check-ins are running on the same chapter
 - Audio synthesis asks for explicit confirmation if no audio text review has run on the scope yet
+- TTS provider is admin-toggled (ElevenLabs v3 or Google Cloud TTS); ElevenLabs is the default and supports per-line emotion tags
 - Each chapter can have at most one refresher topic; regenerating replaces the existing one
 - A failed re-run cascade halts at the failed stage; downstream stages stay in their previous state (the failed run didn't actually change upstream artifacts)
 - Re-running explanations after the chapter has been resynced clears the "chapter content changed" banner automatically

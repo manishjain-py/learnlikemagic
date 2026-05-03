@@ -6,7 +6,7 @@ Pipeline architecture for extracting structured teaching guidelines from textboo
 
 ## Pipeline Architecture
 
-Two phases: **chapter-scope** (book → TOC → pages → topics → guidelines) and **topic-scope** post-sync DAG (8 stages keyed per guideline, declared in `book_ingestion_v2/dag/topic_pipeline_dag.py`).
+Two phases: **chapter-scope** (book → TOC → pages → topics → guidelines) and **topic-scope** post-sync DAG (10 stages keyed per guideline, declared in `book_ingestion_v2/dag/topic_pipeline_dag.py`).
 
 ```
 ─── Chapter scope ───
@@ -34,11 +34,12 @@ Sync to teaching_guidelines table  ────┐  one row per topic
 explanations  ─┬─►  visuals
                ├─►  check_ins
                ├─►  practice_bank
-               ├─►  baatcheet_dialogue ─►  baatcheet_visuals
-               └─►  audio_review ─►  audio_synthesis (covers variant A + dialogue MP3s)
+               ├─►  baatcheet_dialogue ─┬─►  baatcheet_visuals
+               │                        └─►  baatcheet_audio_review ─►  baatcheet_audio_synthesis
+               └─►  audio_review ─►  audio_synthesis (variant A + check-in MP3s only)
 
 Refresher Topic Generation (chapter-scoped; produces a sequence-0 "get-ready" guideline + variant A cards)
-Study Plan + Session Plan (runtime: tutor calls StudyPlanGeneratorService directly)
+Study Plan + Session Plan + Practice Plan (runtime: tutor calls StudyPlanGeneratorService directly)
 ```
 
 All ingestion code lives under `book_ingestion_v2/`. The DAG package is `book_ingestion_v2/dag/`; per-stage modules under `book_ingestion_v2/stages/`. Study plan generation is a separate module under `study_plans/`. Ingestion quality evaluation is `autoresearch/book_ingestion_quality/`.
@@ -311,7 +312,7 @@ Sync accepts chapters with status `chapter_completed` or `needs_review`.
 
 Sync is idempotent: deletes existing guidelines for the chapter before creating new ones. This also cascade-deletes any pre-computed explanations linked to those guidelines.
 
-**API routes:** `book_ingestion_v2/api/sync_routes.py` (prefix `/admin/v2/books/{book_id}`). Post-sync `POST /generate-*` and `/review-baatcheet-audio` routes return `FanOutJobResponse` (see Topic Pipeline DAG above) and accept scoping `guideline_id` > `chapter_id` > book-wide.
+**API routes:** `book_ingestion_v2/api/sync_routes.py` (prefix `/admin/v2/books/{book_id}`). Post-sync `POST /generate-*` routes return `FanOutJobResponse` (see Topic Pipeline DAG above) and accept scoping `guideline_id` > `chapter_id` > book-wide. Baatcheet audio review and Baatcheet audio synthesis have NO HTTP route — they're cascade-only.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -350,11 +351,10 @@ Sync is idempotent: deletes existing guidelines for the chapter before creating 
 | POST | `/generate-audio-review` | LLM-review `audio` strings on cards; clears `audio_url` on revised lines (query: `language`) |
 | GET | `/audio-review-jobs/latest` | Latest audio review job |
 | **Audio synthesis (TTS)** | | |
-| POST | `/generate-audio` | Google Cloud TTS for variant A + dialogue lines + check-in fields → S3 → stamp `audio_url` (query: `confirm_skip_review`). Idempotent at line+field granularity. Soft guardrail: 409 with `requires_confirmation:true` if no completed review exists for the scope. |
+| POST | `/generate-audio` | TTS for variant A explanation lines + check-in fields → S3 → stamp `audio_url` (query: `confirm_skip_review`). Provider routed via `tts_config_service` (ElevenLabs v3 default; Google Cloud TTS alternative). Idempotent at line+field granularity. Soft guardrail: 409 with `requires_confirmation:true` if no completed review exists for the scope. **Does NOT cover dialogue MP3s** — those live on `baatcheet_audio_synthesis`. |
 | **Baatcheet (conversational mode)** | | |
 | POST | `/generate-baatcheet-dialogue` | Stage 5b — generate two-step lesson plan + dialogue cards anchored on variant A (query: `force`, `review_rounds`) |
 | POST | `/generate-baatcheet-visuals` | Stage 5c — fill PixiJS on dialogue cards selected from `plan_json.card_plan` (query: `force`) |
-| POST | `/review-baatcheet-audio` | Opt-in safety valve — runs audio review LLM against `topic_dialogues.cards_json` (not part of default DAG) |
 | **Refresher** | | |
 | POST | `/refresher/generate` | Generate prerequisite refresher topic for a chapter (query: `chapter_id`) |
 | GET | `/refresher-jobs/latest` | Latest refresher job |
@@ -545,43 +545,70 @@ Per-card LLM reviewer that catches defects in the `audio` strings on variant A e
 
 **Service:** `book_ingestion_v2/services/audio_generation_service.py` (`AudioGenerationService`)
 
-Pre-computes Google Cloud TTS MP3s for every `audio` line on variant A explanation cards, every dialogue card, and every check-in field. Uploads to S3 and writes back URLs into the appropriate JSON columns. Not an LLM stage.
+Pre-computes TTS MP3s for variant A explanation lines, check-in fields, and dialogue cards. Uploads to S3 and writes back URLs into the appropriate JSON columns. Not an LLM stage. Variant A and Baatcheet are split across two DAG stages (`audio_synthesis` and `baatcheet_audio_synthesis`) but both are served by this one service.
 
-### Provider & voices
+### Provider routing
 
-Google Cloud TTS via API key (`GOOGLE_CLOUD_TTS_API_KEY`). MP3 encoding.
+Provider chosen per `__init__` via `resolve_tts_provider(db)` → `tts_config_service`:
+1. `llm_config` row with `component_key='tts'` (admin override; valid values `google_tts` | `elevenlabs`)
+2. `Settings.tts_provider` env var
+3. Hard default `'elevenlabs'`
+
+Mixed-provider audio is forbidden (plan §risks): `TTSProviderError` after retry exhaustion bails the entire stage rather than silently falling back.
+
+### Google Cloud TTS
+
+API key from `GOOGLE_CLOUD_TTS_API_KEY`. MP3 encoding. Standardised on en-IN voices after auditioning — hi-IN voices misread bare English tokens like "us" as "U.S.", and phonetic-rewrite workarounds regressed each iteration.
 
 | Use | Language code | Voice name |
 |---|---|---|
-| `en` (default for variant A audio_text) | `en-US` | `en-US-Chirp3-HD-Kore` |
-| `hi` / `hinglish` | `hi-IN` | `hi-IN-Chirp3-HD-Kore` |
-| Baatcheet tutor (Mr. Verma) | `hi-IN` | `hi-IN-Chirp3-HD-Kore` |
-| Baatcheet peer (Meera) | `hi-IN` | `hi-IN-Chirp3-HD-Leda` |
+| Tutor (Mr. Verma) — variant A, check-ins, dialogue tutor turns | `en-IN` | `en-IN-Chirp3-HD-Orus` |
+| Peer (Meera) — dialogue peer turns | `en-IN` | `en-IN-Chirp3-HD-Leda` |
 
-Pre-synthesis fixup: rewrites bare `\\bus\\b` → `uss` so Chirp 3 HD's normalizer doesn't read it as the country abbreviation under the hi-IN voices (`normalize_tts_text`). Chirp 3 HD doesn't support SSML.
+Chirp 3 HD doesn't support SSML or emotion control; emotion tags are dropped on this path. `normalize_tts_text` is the provider-agnostic pre-synthesis hook (currently empty under the en-IN voices; reserved for future locale fixes).
+
+### ElevenLabs v3
+
+API key from `ELEVENLABS_API_KEY`. Single-voice TTS endpoint.
+
+| Use | Voice ID | Persona |
+|---|---|---|
+| Tutor (Mr. Verma) | `81uXfTrZ08xcmV31Rvrb` | "Sekhar — Warm & Energetic" |
+| Peer (Meera) | `IEBxKtmsE9KTrXUwNazR` | "Amara — Calm & Intellectual Narrator" |
+
+Model `eleven_v3`. Voice settings auto-keyed by emotion presence:
+- **Expressive** (`stability=0.5`, `style=0.4`) when the line carries an emotion tag — lets v3 modulate prosody around `[emotion]` prefix
+- **Steady** (`stability=0.7`, `style=0.2`) when `emotion=None` — clean monologue baseline
+
+Emotion is canonicalized via `shared.types.emotion.canonicalize_emotion`. `[<emotion>]` is prefixed onto the text payload before the API call. Retries: 3 attempts, 5s base backoff, 120s timeout. Retries on 429 + 5xx; 4xx surfaced immediately. ElevenLabs prohibits actual child voices; Meera is an adult voice performing youthful character.
 
 ### Pipeline
 
-1. **Variant A explanations**: For each line in `cards_json`, skip if `line.audio_url` is set or `line.audio` empty. S3 key `audio/{guideline_id}/{variant_key}/{card_idx}/{line_idx}.mp3`.
-2. **Check-in fields** (always: `audio_text` / `hint` / `success_message`; predict_then_reveal also: `reveal_text`): UUID-keyed S3 path `audio/{guideline_id}/{variant_key}/{card_id}/check_in/{key_suffix}.mp3`. Reinsert at a different `card_idx` doesn't serve stale audio.
-3. **Baatcheet dialogue** (when `topic_dialogues` row exists): Routes voice per `card.speaker` (`peer` → Meera; otherwise tutor). S3 path `audio/{guideline_id}/dialogue/{card_id}/{line_idx}.mp3`. Skips lines where `includes_student_name=True` (runtime TTS handles those at session start with the actual name) or `audio` contains `{student_name}` placeholder.
+1. **Variant A explanations** (`generate_for_topic_explanation`): For each line, skip if `audio_url` set (unless `force=True`) or text empty. S3 key `audio/{guideline_id}/{variant_key}/{card_idx}/{line_idx}.mp3`. Variant A always uses the tutor voice; emotion is None (steady preset on EL).
+2. **Check-in fields** (always: `audio_text` / `hint` / `success_message`; `predict_then_reveal` also: `reveal_text`): UUID-keyed S3 path `audio/{guideline_id}/{variant_key}/{card_id}/check_in/{key_suffix}.mp3`. Re-insertion at a different `card_idx` doesn't serve stale audio.
+3. **Baatcheet dialogue** (`generate_for_topic_dialogue`): Routes voice per `card.speaker` (`peer` → Meera; otherwise tutor). Routes emotion per `line.emotion` on EL path; Google ignores it. S3 path `audio/{guideline_id}/dialogue/{card_id}/{line_idx}.mp3`. Dialogue check-in fields use `audio/{guideline_id}/dialogue/{card_id}/check_in/{key_suffix}.mp3` (tutor voice; emotion None). Skips lines where `includes_student_name=True` or `audio` contains `{student_name}` placeholder.
 4. **Stamp URL**: Set the corresponding `audio_url` field, `flag_modified(explanation_or_dialogue, "cards_json")`, commit.
 
-`count_audio_items()` and `count_dialogue_audio_items()` are static — used by `audio_synthesis` stage status to count `total_clips / clips_with_audio` without instantiating a TTS client.
+`count_audio_items()` and `count_dialogue_audio_items()` are static — used by the two synthesis stages' status checks to count `total_clips / clips_with_audio` without instantiating a TTS client.
 
-### Trigger & guardrail
+### Triggers & guardrail
 
-`POST /generate-audio?confirm_skip_review=false|true` with scoping `guideline_id` > `chapter_id` > book-wide. Soft guardrail: if no completed `v2_audio_text_review` job exists for the scope, the endpoint returns HTTP 409 with `{code:"no_audio_review", requires_confirmation:true}`. Frontend re-calls with `confirm_skip_review=true` to bypass.
+`POST /generate-audio?confirm_skip_review=false|true` (variant A only) with scoping `guideline_id` > `chapter_id` > book-wide. Soft guardrail: if no completed `v2_audio_text_review` job exists for the scope, the endpoint returns HTTP 409 with `{code:"no_audio_review", requires_confirmation:true}`. Frontend re-calls with `confirm_skip_review=true` to bypass.
+
+Baatcheet audio synthesis has **no standalone HTTP route** — triggered only via the cascade DAG (`POST /admin/v2/topics/{guideline_id}/stages/baatcheet_audio_synthesis/rerun` or `/run-all`).
 
 ### Entry points
 
-- `generate_for_cards(cards_json, guideline_id, variant_key)` — mutate cards in place
-- `generate_for_topic_explanation(explanation, dry_run=False)` — variant-A path
-- `generate_for_topic_dialogue(dialogue, dry_run=False)` — Baatcheet path
+- `generate_for_cards(cards_json, guideline_id, variant_key, force=False)` — mutate cards in place
+- `generate_for_topic_explanation(explanation, dry_run=False, force=False)` — variant-A path
+- `generate_for_topic_dialogue(dialogue, dry_run=False, force=False)` — Baatcheet path
 
-### Background job
+### Background jobs
 
-`v2_audio_generation`. Per-topic granularity. Errors (first 10) surfaced in job `detail`. Idempotent at line+field granularity — no `force`. To regenerate a single line, clear its `audio_url` first.
+- `v2_audio_generation` — variant A + check-ins (run by `_run_audio_generation` in `sync_routes.py`)
+- `v2_baatcheet_audio_generation` — dialogue MP3s (run by `_run_baatcheet_audio_generation`)
+
+Per-topic granularity. Errors (first 10) surfaced in job `detail`. Idempotent at line+field granularity. `force=True` overwrites lines with existing `audio_url` — used by the dashboard's "Re-run" affordance so a TTS-config change (provider swap, voice swap) propagates. S3 keys are deterministic so writes overwrite cleanly at the same URL — no orphan cleanup needed.
 
 ---
 
@@ -671,13 +698,13 @@ V2: stage is `done` only when every plan slot with `visual_required=True` has `p
 
 ---
 
-## Baatcheet Audio Review (opt-in)
+## Baatcheet Audio Review (DAG stage)
 
 **Service:** `book_ingestion_v2/services/baatcheet_audio_review_service.py` (`BaatcheetAudioReviewService`)
 
-Wraps `AudioTextReviewService._review_card` + `_apply_revisions` against `topic_dialogues.cards_json` instead of variant A. Same defect classes, same drift guard. Stage 5b validators already enforce deterministic audio defects (markdown/equals/emoji); this is an admin safety valve for subtle defects an LLM reviewer might catch.
+Wraps `AudioTextReviewService._review_card` + `_apply_revisions` against `topic_dialogues.cards_json` instead of variant A. Same defect classes, same drift guard. Stage 5b validators already enforce deterministic audio defects (markdown/equals/emoji); this stage catches subtle defects an LLM reviewer can find.
 
-Trigger: `POST /review-baatcheet-audio` (admin button, NOT auto-run during the default DAG). Job type `v2_baatcheet_audio_review`. Not part of the DAG (`launcher_map.JOB_TYPE_TO_STAGE_ID` intentionally omits it).
+First-class DAG stage (sibling of `audio_review` for variant A). Job type `v2_baatcheet_audio_review`; depends on `baatcheet_dialogue`; gates `baatcheet_audio_synthesis`. Triggered via the cascade DAG (no standalone HTTP route). `force=True` clears every dialogue `audio_url` up front so the cascaded `baatcheet_audio_synthesis` regenerates the full clip set. Stale when the review's `completed_at < dialogue.created_at`.
 
 ---
 
@@ -687,23 +714,30 @@ Trigger: `POST /review-baatcheet-audio` (admin button, NOT auto-run during the d
 
 Inserts inline interactive `check_in` cards between explanation cards. Reads/writes the same `topic_explanations.cards_json` array. Decoupled from explanation generation — runs after explanations (and optionally visuals) exist.
 
-### Activity Types
+### Activity Types (11)
 
-| Type | Fields |
-|------|--------|
-| `pick_one` | 2-3 `options`, `correct_index` |
-| `true_false` | `statement`, `correct_answer` |
-| `fill_blank` | 2-3 `options`, `correct_index` |
-| `match_pairs` | 2-3 `pairs` (left/right) |
-| `sort_buckets` | 2 `bucket_names`, 4-6 `bucket_items` (each with `correct_bucket` 0/1) |
-| `sequence` | 3-4 `sequence_items` in correct order |
+| Type | Class | Fields |
+|------|-------|--------|
+| `pick_one` | light | 2-3 `options`, `correct_index` |
+| `true_false` | light | `statement`, `correct_answer` |
+| `fill_blank` | light | 2-3 `options`, `correct_index` |
+| `odd_one_out` | light | 3-4 `odd_items`, `odd_index` |
+| `match_pairs` | heavy | 2-3 `pairs` (left/right) |
+| `sort_buckets` | heavy | 2 `bucket_names`, 4-6 `bucket_items` (each `correct_bucket` 0/1) |
+| `sequence` | heavy | 3-4 `sequence_items` in correct order |
+| `spot_the_error` | heavy | 3-5 `error_steps`, `error_index` |
+| `swipe_classify` | heavy | 2 `bucket_names`, 4-8 `bucket_items` |
+| `tap_to_eliminate` | heavy | 4-5 `options`, `correct_index` |
+| `predict_then_reveal` | heavy | 2-3 `options`, `correct_index`, `reveal_text` |
+
+Light types are short recall/understand activities (~5-10s); heavy types are longer analyze/evaluate activities (~15-25s). The generator pairs them as light-then-heavy.
 
 ### Pipeline Per Variant
 
 1. **Pre-flight**: Fail-fast if a `v2_explanation_generation` or `v2_visual_enrichment` job is running on the same chapter.
 2. **Skip check**: If any card is already `card_type == "check_in"` and not `force`, skip the variant. Strip existing check-ins before regenerating.
 3. **Generate**: Calls LLM with `check_in_generation.txt` prompt and `reasoning_effort="medium"`. Cards passed to the prompt are stripped of `visual_explanation` and `audio_text` to save tokens. Returns `CheckInGenerationOutput` with a flat list of `CheckInDecision` items (one per check-in to insert).
-4. **Validate**: Drops check-ins with unknown activity_type, invalid `insert_after_card_idx`, placement before card 3, missing hint/success_message, type-specific failures (wrong option count, duplicates, all items in one bucket, etc.), or insufficient gap (`MIN_GAP=1`) from the previous accepted check-in.
+4. **Validate**: Drops check-ins with unknown activity_type, invalid `insert_after_card_idx`, placement before `MIN_POSITION=3`, placement on a summary card, missing hint/success_message, type-specific failures (wrong option count, duplicates, all items in one bucket, etc.). Pairs allowed at the same position up to `PAIR_SIZE=2`; different positions must be ≥ `MIN_GAP_BETWEEN_PAIRS=2` content cards apart.
 5. **Insert**: Builds new `card_type="check_in"` cards (each with a UUID `card_id` and `check_in` payload), inserts at the correct positions, then re-numbers `card_idx` 1-based.
 6. **Persist**: Updates `cards_json` via `flag_modified` and commits.
 
@@ -758,17 +792,18 @@ The `/landing` endpoint reads the refresher's `metadata_json` to surface prerequ
 
 Single source of truth: `book_ingestion_v2/dag/topic_pipeline_dag.py` composes a `TopicPipelineDAG` from the per-stage `STAGE` exports under `book_ingestion_v2/stages/`. Adding a stage = create `stages/{stage_id}.py` exporting `STAGE = Stage(...)` and append to `STAGES`. `DAG.validate_acyclic()` runs at import.
 
-**8 stages** with these declared dependencies:
+**10 stages** with these declared dependencies:
 
 ```
 explanations  ──┬─►  visuals
                 ├─►  check_ins
                 ├─►  practice_bank
-                ├─►  baatcheet_dialogue ──►  baatcheet_visuals
+                ├─►  baatcheet_dialogue ──┬─►  baatcheet_visuals
+                │                         └─►  baatcheet_audio_review ──►  baatcheet_audio_synthesis
                 └─►  audio_review ──►  audio_synthesis
 ```
 
-`audio_synthesis` declares only `audio_review` as a hard dep. Baatcheet dialogue is a **soft join** at runtime: if a dialogue exists, synthesis covers its MP3s too; otherwise just variant A. (Modelling it as a hard dep would make a dialogue regen mark synthesis fully stale even though variant-A MP3s are unchanged.)
+`audio_synthesis` covers variant A explanation lines + check-in fields only. Dialogue MP3s live on the parallel `baatcheet_audio_synthesis` stage (own audio_review sibling). Splitting them avoids the previous design where a dialogue regen marked the unified synthesis stage fully stale even though variant-A MP3s were unchanged.
 
 **Per-topic serialization.** Partial unique index `idx_chapter_active_topic_job` on `chapter_processing_jobs` enforces ≤1 active job per `(chapter_id, guideline_id)`. visuals / check_ins / audio_synthesis all mutate `topic_explanations.cards_json` in-place — concurrent writes would race. Throughput comes from cross-topic parallelism (chapter runner spawns multiple orchestrators).
 
@@ -785,13 +820,15 @@ Each module under `book_ingestion_v2/stages/` exports a `STAGE = Stage(...)` wit
 | `explanations` | `stages/explanations.py` | `v2_explanation_generation` | `launch_explanation_job` | (none) |
 | `baatcheet_dialogue` | `stages/baatcheet_dialogue.py` | `v2_baatcheet_dialogue_generation` | `launch_baatcheet_dialogue_job` | `explanations` |
 | `baatcheet_visuals` | `stages/baatcheet_visuals.py` | `v2_baatcheet_visual_enrichment` | `launch_baatcheet_visual_job` | `baatcheet_dialogue` |
+| `baatcheet_audio_review` | `stages/baatcheet_audio_review.py` | `v2_baatcheet_audio_review` | `launch_baatcheet_audio_review_job` | `baatcheet_dialogue` |
+| `baatcheet_audio_synthesis` | `stages/baatcheet_audio_synthesis.py` | `v2_baatcheet_audio_generation` | `launch_baatcheet_audio_synthesis_job` | `baatcheet_audio_review` |
 | `visuals` | `stages/visuals.py` | `v2_visual_enrichment` | `launch_visual_job` | `explanations` |
 | `check_ins` | `stages/check_ins.py` | `v2_check_in_enrichment` | `launch_check_in_job` | `explanations` |
 | `practice_bank` | `stages/practice_bank.py` | `v2_practice_bank_generation` | `launch_practice_bank_job` | `explanations` |
 | `audio_review` | `stages/audio_review.py` | `v2_audio_text_review` | `launch_audio_review_job` | `explanations` |
 | `audio_synthesis` | `stages/audio_synthesis.py` | `v2_audio_generation` | `launch_audio_synthesis_job` | `audio_review` |
 
-`v2_baatcheet_audio_review` is an opt-in safety valve, NOT part of the default DAG.
+`baatcheet_audio_review` and `baatcheet_audio_synthesis` are first-class DAG stages — the cascade DAG triggers them. There are no separate `/review-baatcheet-audio` or `/generate-baatcheet-audio` HTTP routes; admin runs them via the cascade rerun/run-all endpoints.
 
 ### Two orchestrators
 
@@ -811,7 +848,7 @@ Polls by the `job_id` returned from each launcher (NOT `get_latest_job`, which w
 | balanced | 2 | 1 | 1 | 2 | 1 |
 | thorough | 3 | 2 | 2 | 3 | 2 |
 
-`baatcheet_visuals`, `audio_review`, `audio_synthesis` take no review_rounds.
+`baatcheet_visuals`, `audio_review`, `audio_synthesis`, `baatcheet_audio_review`, `baatcheet_audio_synthesis` take no review_rounds.
 
 ### Topic Pipeline endpoints
 
@@ -819,7 +856,7 @@ Polls by the `job_id` returned from each launcher (NOT `get_latest_job`, which w
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `.../chapters/{chapter_id}/topics/{topic_key}/pipeline` | Consolidated 8-stage status for one topic |
+| GET | `.../chapters/{chapter_id}/topics/{topic_key}/pipeline` | Consolidated 10-stage status for one topic |
 | POST | `.../chapters/{chapter_id}/topics/{topic_key}/run-pipeline` | Legacy super-button (TopicPipelineOrchestrator) |
 | GET | `.../chapters/{chapter_id}/pipeline-summary` | Per-topic stage_counts roll-up for chapter chip |
 | POST | `.../chapters/{chapter_id}/run-pipeline-all` | Chapter-wide fan-out via `run_chapter_pipeline_all()` |
@@ -850,7 +887,7 @@ Cascade conflicts return 409 with `code` ∈ `cascade_active`, `upstream_not_don
 
 ### Fan-out on legacy routes
 
-`POST /generate-explanations`, `/generate-visuals`, `/generate-check-ins`, `/generate-practice-banks`, `/generate-audio-review`, `/generate-audio`, `/generate-baatcheet-dialogue`, `/generate-baatcheet-visuals`, `/review-baatcheet-audio` all return `FanOutJobResponse = { launched: int, job_ids: list[str], skipped_guidelines: list[str] }`. When `guideline_id` is omitted, the route resolves all APPROVED guidelines in scope (chapter or book) and launches one topic-level job per guideline. Topics with an active job are reported in `skipped_guidelines` rather than aborting the batch. Helper: `_fan_out` + `_resolve_lookup_scope` in `sync_routes.py`.
+`POST /generate-explanations`, `/generate-visuals`, `/generate-check-ins`, `/generate-practice-banks`, `/generate-audio-review`, `/generate-audio`, `/generate-baatcheet-dialogue`, `/generate-baatcheet-visuals` all return `FanOutJobResponse = { launched: int, job_ids: list[str], skipped_guidelines: list[str] }`. When `guideline_id` is omitted, the route resolves all APPROVED guidelines in scope (chapter or book) and launches one topic-level job per guideline. Topics with an active job are reported in `skipped_guidelines` rather than aborting the batch. Helper: `_fan_out` + `_resolve_lookup_scope` in `sync_routes.py`. Baatcheet audio review/synthesis are cascade-only — no fan-out HTTP route.
 
 ### Stage launchers
 
@@ -937,7 +974,7 @@ The judge classifies problems into: `over_splitting`, `under_splitting`, `missin
 
 **Module:** `study_plans/`
 
-Study plans are generated from teaching guidelines and consumed by the tutor at session start. Two plan types exist. There is no longer a `StudyPlanOrchestrator` — the tutor (`tutor/services/session_service.py`) instantiates `StudyPlanGeneratorService` directly and persists the result to `study_plans`.
+Study plans are generated from teaching guidelines and consumed by the tutor at session start. Three plan types exist (standard, session, practice). There is no longer a `StudyPlanOrchestrator` — the tutor (`tutor/services/session_service.py`) instantiates `StudyPlanGeneratorService` directly and persists the result to `study_plans`.
 
 ### Standard Study Plan Generator
 
@@ -964,6 +1001,18 @@ Generated after a student reads explanation cards and indicates understanding. C
 - Output structure (`SessionPlan` model):
   - `steps`: 3-5 `SessionPlanStep` items, each with step_id, type (check_understanding / guided_practice / independent_practice / extend), concept, description, card_references, misconceptions_to_probe, success_criteria, difficulty, personalization_hint
   - `metadata`: `SessionPlanMetadata` with plan_version=2, variants_shown, estimated_duration_minutes, is_generic
+
+### Practice Plan Generator
+
+**Service:** `study_plans/services/generator_service.py` (`StudyPlanGeneratorService.generate_practice_plan()`)
+
+Generated when the student starts a Let's Practice session. Question-only `SessionPlan` (no upfront teaching steps).
+
+- Loads `practice_plan_generator` prompt template
+- `is_cold_start=True` (no prior Teach Me on the topic) → first-step difficulty `medium`; describe `session_context` accordingly
+- Else if `check_in_struggles` provided (struggle events from a prior Teach Me) → weight early steps toward those concepts; first-step difficulty `easy`
+- Else (post-Teach-Me, no obvious struggles) → distribute evenly; first-step difficulty `easy`
+- Output: same `SessionPlan` shape as session plans, but step types restricted to `{check_understanding, guided_practice, independent_practice, extend}` (`extend` allowed); a guard rejects any other step type
 
 ### Reviewer (legacy, currently unused)
 
@@ -1058,6 +1107,7 @@ All prompts under `book_ingestion_v2/prompts/` unless noted. `_system.txt` files
 | `refresher_topic_generation.txt` | `RefresherTopicGeneratorService` | Identify prerequisites + generate "Get Ready" topic |
 | `shared/prompts/templates/study_plan_generator.txt` | `StudyPlanGeneratorService` | 3-5 step study plan |
 | `shared/prompts/templates/session_plan_generator.txt` | `StudyPlanGeneratorService.generate_session_plan()` | Post-explanation session plan |
+| `shared/prompts/templates/practice_plan_generator.txt` | `StudyPlanGeneratorService.generate_practice_plan()` | Question-only practice session plan |
 | `shared/prompts/templates/study_plan_reviewer.txt` | `StudyPlanReviewerService` (legacy/unused) | Plan quality review |
 | `autoresearch/book_ingestion_quality/evaluation/prompts/judge.txt` | `IngestionEvaluator` | Score extraction quality across granularity/coverage/copyright |
 
@@ -1077,9 +1127,10 @@ LLM config keys (rows in `llm_config` table; admin-tunable provider/model_id/rea
 | `animation_code_gen` | Visual + Baatcheet visual PixiJS code generation | — |
 | `check_in_enrichment` | Check-in enrichment | `explanation_generator` |
 | `practice_bank_generator` | Practice bank | `explanation_generator` |
-| `audio_text_review` | Audio text review | `explanation_generator` |
+| `audio_text_review` | Audio text review (variant A + Baatcheet) | `explanation_generator` |
 | `baatcheet_dialogue_generator` | Baatcheet dialogue (Stage 5b) | `explanation_generator` |
 | `study_plan_generator` | Study plans (runtime) | — |
+| `tts` (component_key) | TTS provider toggle (`provider` ∈ {`google_tts`, `elevenlabs`}); `model_id` is a placeholder (NOT NULL constraint), unused for routing | env `TTS_PROVIDER` → `'elevenlabs'` |
 
 Constants:
 
@@ -1091,13 +1142,15 @@ Constants:
 - **Default variant count:** `DEFAULT_VARIANT_COUNT=1`; default review-refine rounds: `DEFAULT_REVIEW_ROUNDS=1`
 - **Visual code max length:** `MAX_CODE_LENGTH=5000` (`animation_enrichment_service.py`)
 - **IoU overlap threshold:** `0.05` (visual_overlap_detector)
-- **Check-in placement:** never before card 3; `MIN_GAP=1` between check-ins
+- **Check-in placement:** never before `MIN_POSITION=3`; pairs allowed at same position up to `PAIR_SIZE=2`; different positions ≥ `MIN_GAP_BETWEEN_PAIRS=2` content cards apart
 - **Practice bank target/max:** `TARGET_BANK_SIZE=30`, `MAX_BANK_SIZE=40`, `MAX_GENERATION_ATTEMPTS=3`, free-form bound `MIN_FREE_FORM=0`/`MAX_FREE_FORM=3`
 - **Baatcheet card-count bounds:** `MIN_TOTAL_CARDS=25`, `MAX_TOTAL_CARDS=42`, `MIN_CHECK_IN_SPACING=4`
 - **Topic pipeline parallelism:** `TOPIC_PIPELINE_MAX_PARALLEL_TOPICS = 4` (settings; `run_chapter_pipeline_all` default)
 - **Orchestrator poll bounds:** `POLL_INTERVAL_SEC = 5`, `MAX_POLL_WALL_TIME_SEC = 4 * 60 * 60` (4 h)
 - **Page image limits:** max 20 MB; PNG / JPG / JPEG / TIFF / WEBP
 - **TOC image limits:** max 5 images, 10 MB each
+- **TTS provider env:** `TTS_PROVIDER` ∈ {`elevenlabs`, `google_tts`}; default `elevenlabs`. API keys: `ELEVENLABS_API_KEY`, `GOOGLE_CLOUD_TTS_API_KEY`
+- **ElevenLabs retries:** `_EL_RETRY_ATTEMPTS=3`, `_EL_RETRY_BASE_SECONDS=5.0`, `_EL_TIMEOUT_SECONDS=120.0`
 
 ---
 
@@ -1111,13 +1164,15 @@ Constants:
 | OCRAdmin | `pages/OCRAdmin.tsx` | Per-chapter OCR: grid, page detail modal, retry/bulk OCR controls |
 | TopicsAdmin | `pages/TopicsAdmin.tsx` | Per-chapter extracted topics review; reprocess/refinalize |
 | GuidelinesAdmin | `pages/GuidelinesAdmin.tsx` | Per-chapter synced guideline editing (text edit, approve, delete) |
-| ExplanationAdmin | `pages/ExplanationAdmin.tsx` | Per-chapter explanation generation: variant counts, generate/refine_only, stage snapshot diff viewer, audio review button per topic |
+| ExplanationAdmin | `pages/ExplanationAdmin.tsx` | Per-chapter explanation generation: variant counts, generate/refine_only, stage snapshot diff viewer, audio review button per topic, baatcheet dialogue + visuals controls |
 | VisualsAdmin | `pages/VisualsAdmin.tsx` | Per-chapter visual enrichment: coverage stats, generate/strip, layout warning chip |
 | PracticeBankAdmin | `pages/PracticeBankAdmin.tsx` | Per-chapter practice bank: question counts, generate/regenerate, full payloads |
-| TopicDAGView | `components/TopicDAGView.tsx` | Per-topic React Flow DAG dashboard. BFS-depth auto-layout. Polls `topic_stage_runs` durably; click a node for the side panel with rerun + deep-link. Surfaces cross-DAG warning banner. |
+| TopicDAGView | `components/TopicDAGView.tsx` | Per-topic React Flow DAG dashboard. BFS-depth auto-layout. Polls `topic_stage_runs` durably; click a node for the side panel with rerun + deep-link. Surfaces cross-DAG warning banner. Renders all 10 stages including `baatcheet_audio_review` and `baatcheet_audio_synthesis`. |
 | QualitySelector | `components/QualitySelector.tsx` | fast/balanced/thorough picker shared by run-pipeline buttons |
 | VisualRenderPreview | `pages/VisualRenderPreview.tsx` | Admin-only Pixi preview at `/admin/visual-render-preview/:id`; the Playwright harness reaches in via `window.__pixiApp` |
-| Admin API V2 | `api/adminApiV2.ts` | TypeScript client for V2 endpoints: books, TOC, pages, OCR, topics, sync, guidelines, explanations + stages, visuals, check-ins, practice bank, audio review, audio synthesis, baatcheet dialogue + visuals + audio review, refresher, landing, topic-pipeline (legacy), DAG topology + cascade + cross-dag-warnings |
+| LLMConfigPage | `pages/LLMConfigPage.tsx` | Edit per-component LLM provider/model/reasoning_effort rows in `llm_config` |
+| TTSConfigPage | `pages/TTSConfigPage.tsx` | Toggle TTS provider (`google_tts` / `elevenlabs`) — writes the `tts` row in `llm_config` via `tts_config_service` |
+| Admin API V2 | `api/adminApiV2.ts` | TypeScript client for V2 endpoints: books, TOC, pages, OCR, topics, sync, guidelines, explanations + stages, visuals, check-ins, practice bank, audio review, audio synthesis, baatcheet dialogue + visuals, refresher, landing, topic-pipeline (legacy), DAG topology + cascade + cross-dag-warnings |
 
 All paths are relative to `llm-frontend/src/features/admin/`.
 
@@ -1146,7 +1201,7 @@ All paths relative to `llm-backend/` unless noted.
 
 | File | Purpose |
 |------|---------|
-| `book_ingestion_v2/constants.py` | Enums (`ChapterStatus`, `V2JobType` [13 job types incl. `v2_practice_bank_generation`, `v2_audio_text_review`, `v2_baatcheet_dialogue_generation`, `v2_baatcheet_visual_enrichment`, `v2_baatcheet_audio_review`], `V2JobStatus`, `OCRStatus`, `TopicStatus`), `HEARTBEAT_STALE_THRESHOLD=1800`, deviation thresholds |
+| `book_ingestion_v2/constants.py` | Enums (`ChapterStatus`, `V2JobType` [14 job types incl. `v2_practice_bank_generation`, `v2_audio_text_review`, `v2_baatcheet_dialogue_generation`, `v2_baatcheet_visual_enrichment`, `v2_baatcheet_audio_review`, `v2_baatcheet_audio_generation`], `V2JobStatus`, `OCRStatus`, `TopicStatus`), `HEARTBEAT_STALE_THRESHOLD=1800`, deviation thresholds |
 | `book_ingestion_v2/models/database.py` | ORM: `BookChapter`, `ChapterPage`, `ChapterProcessingJob` (chapter + topic-level partial unique indexes), `ChapterChunk`, `ChapterTopic`, `TopicStageRun`, `TopicContentHash` |
 | `book_ingestion_v2/models/schemas.py` | Pydantic request/response schemas — `StageId`, `StageState`, `StageStatus`, `TopicPipelineStatusResponse`, `RunPipelineRequest/Response`, `RunChapterPipelineAllRequest/Response`, `ChapterPipelineSummaryResponse`, `FanOutJobResponse`, `DAGStageDefinition`, `DAGDefinitionResponse`, `TopicDAGStageRow`, `TopicDAGResponse`, `CascadeInfo`, `StartCascadeRequest`, `RunAllCascadeRequest`, `CascadeKickoffResponse`, `CascadeCancelResponse`, `CrossDagWarning`, `CrossDagWarningsResponse`, plus per-domain status responses |
 | `book_ingestion_v2/models/processing_models.py` | Pipeline internals: `ChunkWindow`, `TopicAccumulator`, `RunningState`, `PlannedTopic`, `ChapterTopicPlan`, `ChunkInput`, `ChunkExtractionOutput`, `ConsolidationOutput` (with `deviations`), `ConsolidationDeviation`, `FinalizationResult`, `TopicCurriculumContext` |
@@ -1172,9 +1227,11 @@ All paths relative to `llm-backend/` unless noted.
 | `book_ingestion_v2/stages/check_ins.py` | Counts `card_type=="check_in"` cards on variant A |
 | `book_ingestion_v2/stages/practice_bank.py` | Counts `practice_questions` rows; stale when `min(created_at) < content_anchor`; `_PRACTICE_DONE_THRESHOLD = 30` |
 | `book_ingestion_v2/stages/audio_review.py` | Latest `v2_audio_text_review` job state; stale when `completed_at < content_anchor` |
-| `book_ingestion_v2/stages/audio_synthesis.py` | Combined variant A + dialogue clip counting via `AudioGenerationService.count_audio_items` / `count_dialogue_audio_items` |
+| `book_ingestion_v2/stages/audio_synthesis.py` | Variant A + check-in clip counting via `AudioGenerationService.count_audio_items`. Dialogue MP3s are NOT counted here. |
 | `book_ingestion_v2/stages/baatcheet_dialogue.py` | Reads `topic_dialogues`; stale signal via `DialogueRepository.is_stale()` (content hash) |
 | `book_ingestion_v2/stages/baatcheet_visuals.py` | V2 path: `done` only when every plan slot with `visual_required=True` has `pixi_code`; V1 fallback for legacy dialogues |
+| `book_ingestion_v2/stages/baatcheet_audio_review.py` | Latest `v2_baatcheet_audio_review` job state; stale when `completed_at < dialogue.created_at` |
+| `book_ingestion_v2/stages/baatcheet_audio_synthesis.py` | Dialogue clip counting via `AudioGenerationService.count_dialogue_audio_items` |
 
 ### Services
 
@@ -1194,15 +1251,15 @@ All paths relative to `llm-backend/` unless noted.
 | `services/check_in_enrichment_service.py` | Insert check-in cards (`MIN_GAP=1`, never before card 3) |
 | `services/practice_bank_generator_service.py` | 30-40 mixed-format practice questions; review-refine; structural validation; top-up generation |
 | `services/audio_text_review_service.py` | Per-card LLM review of `audio` strings; surgical revisions; drift guard; clears `audio_url` |
-| `services/audio_generation_service.py` | Google Cloud TTS for variant A + dialogue + check-in fields; per-speaker voice routing; `count_audio_items` / `count_dialogue_audio_items` |
+| `services/audio_generation_service.py` | Provider-routed TTS (Google Cloud TTS / ElevenLabs v3) for variant A + dialogue + check-in fields; per-speaker voice routing; per-line emotion via EL `[tag]` payload prefix; expressive vs steady voice settings; `count_audio_items` / `count_dialogue_audio_items` |
 | `services/baatcheet_dialogue_generator_service.py` | Stage 5b — two-step plan + dialogue; welcome card; validators; `_refresh_db_session()` between LLM calls |
 | `services/baatcheet_visual_enrichment_service.py` | Stage 5c — V2 selector (plan + dialogue) + `PixiCodeGenerator` |
-| `services/baatcheet_audio_review_service.py` | Wraps `AudioTextReviewService` against dialogue cards (opt-in) |
+| `services/baatcheet_audio_review_service.py` | Wraps `AudioTextReviewService` against dialogue cards; first-class DAG stage (sibling of `audio_review`) |
 | `services/refresher_topic_generator_service.py` | "Get Ready" prerequisite topic + cards (special `topic_key="get-ready"`) |
 | `services/chapter_job_service.py` | Lock acquisition (chapter + topic level), heartbeat, stale detection, snapshot persistence, stale-job reaper |
-| `services/stage_launchers.py` | `launch_*` helpers for all 8 stages + opt-in baatcheet audio review; each acquires lock and spawns background task; PEP 562 shim for `LAUNCHER_BY_STAGE` |
+| `services/stage_launchers.py` | `launch_*` helpers for all 10 stages (incl. `launch_baatcheet_audio_review_job`, `launch_baatcheet_audio_synthesis_job`); each acquires lock and spawns background task; PEP 562 shim for `LAUNCHER_BY_STAGE` |
 | `services/stage_gating.py` | `require_stage_ready` — chapter-status prerequisites for chapter-scoped stages |
-| `services/topic_pipeline_status_service.py` | Computes 8-stage pipeline status by delegating to each `Stage.status_check`; backfills `topic_stage_runs` on read |
+| `services/topic_pipeline_status_service.py` | Computes 10-stage pipeline status by delegating to each `Stage.status_check`; backfills `topic_stage_runs` on read |
 | `services/topic_pipeline_orchestrator.py` | Synchronous super-button orchestrator. `QUALITY_ROUNDS`. `run_chapter_pipeline_all` wraps with bounded parallelism. |
 | `services/visual_render_harness.py` | Playwright wrapper around the admin preview page; `preflight()` HEADs localhost:3000 at job start |
 | `services/visual_preview_store.py` | TTL+LRU keyed store for Pixi code (closes reflected-XSS vector) |
@@ -1232,7 +1289,7 @@ All paths relative to `llm-backend/` unless noted.
 | `book_ingestion_v2/api/toc_routes.py` | TOC extraction + CRUD |
 | `book_ingestion_v2/api/page_routes.py` | Page upload, retry-OCR, page detail |
 | `book_ingestion_v2/api/processing_routes.py` | `/process`, `/reprocess`, `/refinalize`, bulk OCR, `/jobs/latest`, `/topics`. `run_in_background_v2()` daemon-thread runner — also writes `topic_stage_runs` started/terminal rows, captures explanations input hash, and fires the cascade hook. |
-| `book_ingestion_v2/api/sync_routes.py` | Sync, results, landing, guidelines admin, explanations + visuals + check-ins + practice bank + audio review + audio synthesis + baatcheet (dialogue / visuals / opt-in audio review) + refresher; legacy super-button (`/run-pipeline`, `/run-pipeline-all`, `/pipeline`, `/pipeline-summary`); `_run_*` background tasks + `_fan_out` + `_resolve_lookup_scope` helpers |
+| `book_ingestion_v2/api/sync_routes.py` | Sync, results, landing, guidelines admin, explanations + visuals + check-ins + practice bank + audio review + audio synthesis + baatcheet (dialogue / visuals) + refresher; legacy super-button (`/run-pipeline`, `/run-pipeline-all`, `/pipeline`, `/pipeline-summary`); `_run_*` background tasks (incl. `_run_baatcheet_audio_review` + `_run_baatcheet_audio_generation` for the cascade DAG) + `_fan_out` + `_resolve_lookup_scope` helpers |
 | `book_ingestion_v2/api/dag_routes.py` | Phase 3+ DAG admin: `/dag/definition`, `/topics/{guideline_id}/dag`, cascade rerun/run-all/cancel, `/cross-dag-warnings` (+ test-only diverge/restore endpoints, hidden from OpenAPI schema) |
 | `book_ingestion_v2/api/visual_preview_routes.py` | `POST /admin/v2/visual-preview/prepare`, `GET /admin/v2/visual-preview/{id}` for Playwright overlap harness |
 
@@ -1243,7 +1300,9 @@ All paths relative to `llm-backend/` unless noted.
 | `shared/models/entities.py` | ORM: `StudyPlan`, `TopicExplanation`, `TopicDialogue`, `PracticeQuestion`, `PracticeAttempt`, `TeachingGuideline`, `Book`, `LLMConfig`, etc. |
 | `shared/utils/dialogue_hash.py` | `compute_explanation_content_hash` — semantic identity for dialogue staleness |
 | `shared/utils/s3_client.py` | Wrapper around AWS S3 used by ingestion + audio synthesis |
-| `study_plans/services/generator_service.py` | `StudyPlanGeneratorService` — `StudyPlan`/`StudyPlanStep`/`StudyPlanMetadata`/`SessionPlan`/`SessionPlanStep`/`SessionPlanMetadata` Pydantic models; `generate_plan`, `generate_plan_with_feedback`, `generate_session_plan` |
+| `study_plans/services/generator_service.py` | `StudyPlanGeneratorService` — `StudyPlan`/`StudyPlanStep`/`StudyPlanMetadata`/`SessionPlan`/`SessionPlanStep`/`SessionPlanMetadata` Pydantic models; `generate_plan`, `generate_plan_with_feedback`, `generate_session_plan`, `generate_practice_plan` |
+| `shared/services/tts_config_service.py` | `TTSConfigService.get_provider()` / `update_provider()`; `resolve_tts_provider(db)` convenience wrapper. Reads `llm_config` row with `component_key='tts'`; valid providers `{'google_tts', 'elevenlabs'}`; default `'elevenlabs'` |
+| `shared/types/emotion.py` | `Emotion` enum + `canonicalize_emotion`; routes per-line emotion through to ElevenLabs `[tag]` prefix |
 | `study_plans/services/reviewer_service.py` | Legacy/unused study plan reviewer |
 | `tutor/services/session_service.py` | Tutor session entry — instantiates `StudyPlanGeneratorService` directly |
 | `tutor/services/pixi_code_generator.py` | PixiJS code generation reused by Stage 5c |
