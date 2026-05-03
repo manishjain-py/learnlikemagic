@@ -21,12 +21,13 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Backend (FastAPI + Python)                                     │
 │  AWS App Runner                                                 │
 │                                                                 │
-│  Modules: tutor, book_ingestion_v2, study_plans, evaluation,    │
+│  Modules: tutor, book_ingestion_v2, study_plans, autoresearch,  │
 │           auth (+ enrichment, personality)                      │
 │  Root API: api/ (docs, test_scenarios)                          │
-│  Shared: llm_service, llm_config_service, feature_flag_service, │
-│          issue_service, anthropic_adapter, claude_code_adapter,  │
-│          ocr_service, s3_client, api, models, utils, repos       │
+│  Shared: llm_service, llm_config_service, tts_config_service,   │
+│          feature_flag_service, issue_service, anthropic_adapter, │
+│          claude_code_adapter, ocr_service, s3_client, api,       │
+│          models, types (emotion), utils, repos                   │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -57,6 +58,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | OpenAI | LLM provider (GPT-5.4, GPT-5.3-codex, GPT-5.2, GPT-5.1, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 | Google | LLM provider (Gemini) + Cloud TTS | Additional provider option, text-to-speech |
+| ElevenLabs | TTS provider (default) | Higher-quality multi-language voices for tutor read-aloud |
 | Claude Code | LLM provider via CLI subprocess | Local/admin workflows, no API key needed (uses local Claude Code session) |
 
 ### Frontend
@@ -103,8 +105,8 @@ llm-backend/
 │   │                     #   cascade.py (auto-cascade orchestrator), cross_dag_warnings.py (chapter-resync banner),
 │   │                     #   launcher_map.py, status_helpers.py, types.py
 │   ├── stages/           # One module per pipeline stage (Stage objects imported by dag/topic_pipeline_dag.py):
-│   │                     #   explanations, visuals, check_ins, practice_bank, audio_synthesis, audio_review,
-│   │                     #   baatcheet_dialogue, baatcheet_visuals
+│   │                     #   explanations, baatcheet_dialogue, baatcheet_visuals, baatcheet_audio_review,
+│   │                     #   baatcheet_audio_synthesis, visuals, check_ins, practice_bank, audio_review, audio_synthesis
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
 │   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
@@ -192,7 +194,7 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 | sessions | `/sessions` | Session management (teach_me, clarify_doubts), report card, topic progress, WebSocket |
 | practice | `/practice` | Let's Practice batch-drill lifecycle: start, save, submit, results, banner poll, history |
 | transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
-| tts | `/text-to-speech` | Text-to-speech via Google Cloud TTS (English, Hindi, Hinglish) |
+| tts | `/text-to-speech` | Text-to-speech (English, Hindi, Hinglish). Provider resolved at request time via `llm_config` row keyed `'tts'` (ElevenLabs default; Google Cloud TTS optional) |
 | evaluation | `/api/evaluation` | Evaluation pipeline |
 | auth | `/auth` | Auth sync (Cognito to local DB) |
 | profile | `/profile` | User profile CRUD |

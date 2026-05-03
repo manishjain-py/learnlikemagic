@@ -119,11 +119,11 @@ You can start a new session, jump to Practice, or view your report card. Returni
 
 ---
 
-## Mid-Session Feedback
+## Adjusting the Experience
 
-During a Clarify Doubts session, you (or a parent) can submit feedback to adjust how the tutor is explaining things. The tutor regenerates its approach based on the feedback. Feedback is limited to 3 submissions per session.
+For Teach Me, the cards are pre-built. You change the experience by tapping "I didn't understand" (Explain only — gets a simplified version of that card) or "Explain differently" (Explain only — switches to a different variant). Baatcheet has no per-card adjustments — the dialogue itself is the explanation.
 
-For Teach Me, the cards are pre-built — you change the experience by tapping "I didn't understand" (Explain) or "Explain differently" (Explain).
+For Clarify Doubts, you steer by what you ask. The tutor answers what you ask, then waits for your next question.
 
 ---
 

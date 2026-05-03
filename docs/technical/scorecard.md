@@ -126,7 +126,7 @@ Used by the curriculum picker to show coverage indicators. Both `ChapterSelect.t
 
 **Frontend badge mapping** — Both components define a local `ProgressStatus` type (`completed | in_progress | not_started`) derived from backend coverage values:
 
-- `TopicSelect.tsx`: `coverage >= 80` = completed, `coverage > 0` = in_progress, else not_started. Shows "X% covered" text when coverage > 0. The `get-ready` refresher topic is rendered separately as a "Get Ready" CTA in the chapter landing block, not in the regular topic list.
+- `TopicSelect.tsx`: missing entry or `coverage === 0` = not_started; `coverage >= 80` = completed; else in_progress. Shows "X% covered" text when coverage > 0. The `get-ready` refresher topic is rendered separately as a "Get Ready" CTA in the chapter landing block, not in the regular topic list.
 - `ChapterSelect.tsx`: averages coverage across all `guideline_ids` in the chapter, **excluding `refresher_guideline_id`** so the Get Ready warm-up doesn't drag the chapter status down. `avg >= 80` = completed, `avg > 0` = in_progress, else not_started.
 
 Completed items show a checkmark; in_progress and not_started show the sequence number with different styling.
@@ -262,9 +262,11 @@ The frontend calls `getReportCard()` which hits `/sessions/report-card`. It rend
 
 **File:** `llm-frontend/src/components/ModeSelection.tsx`
 
-On the topic mode selection screen, `ModeSelection` calls `getGuidelineSessions()` + `getPracticeAvailability()` on mount. It uses the returned data to:
-- Show "Continue Lesson" if an incomplete teach_me session with coverage > 0 exists
-- Render the "Let's Practice" tile as active or disabled based on `available` + `question_count`
+`ModeSelection` calls `getGuidelineSessions(topic.guideline_id)` on mount. Practice availability is **not** fetched here — it arrives as the `practiceAvailable` prop from `ModeSelectPage` (which calls `getPracticeAvailability()`). The component then:
+- Renders "Continue Lesson" with `{coverage}% covered` + "Start Fresh" buttons when an incomplete teach_me session with `coverage > 0` exists; else a single "Teach Me" tile
+- Renders "Let's Practice" as enabled/disabled based on `practiceAvailable`
+- Renders "Clarify Doubts"
+- Suppresses "Let's Practice" and "Clarify Doubts" when `topic.topic_key === 'get-ready'` (refresher) — only the "Get Ready" Teach Me tile is shown
 
 ### Practice Again Flow
 
