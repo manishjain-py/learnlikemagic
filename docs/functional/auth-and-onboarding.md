@@ -62,11 +62,11 @@ New email accounts need to verify their email address:
 First-time users go through a short onboarding flow before they can start learning:
 
 1. **What's your name?** — Enter your full name
-2. **What should we call you?** — Enter your preferred name (pre-filled with the first word of your name). This is how the tutor will greet you.
+2. **What should we call you?** — Enter your preferred name (pre-filled with the first word of your name if blank). This is how the tutor will greet you.
 3. **How old are you?** — Enter your age (5-18)
 4. **What grade are you in?** — Tap your grade from a grid of 1-12
 5. **What's your school board?** — Tap your board (CBSE, ICSE, State Board, or Other)
-6. **Tell us about yourself** — Optional free-text about interests and learning style. If you enter text, the button says "Save & Continue"; if left empty, it says "Continue". You can also skip entirely with "Skip for now"
+6. **Tell us about yourself!** — Optional free-text about interests and learning style. If you enter text, the button says "Save & Continue"; if left empty, it says "Continue". You can also skip entirely with "Skip for now"
 7. **You're all set!** — Personalized confirmation screen ("You're all set, {preferred name}!" — falls back to your full name if preferred name isn't set yet) with a "Start Learning" button
 
 Progress dots at the top show which step you're on (six dots for the six input steps). Each step saves automatically — even if you leave mid-flow, your progress is kept. Onboarding is marked complete once your name, age, grade, and board are all filled in.

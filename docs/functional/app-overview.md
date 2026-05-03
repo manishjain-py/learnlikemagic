@@ -24,7 +24,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Learning Modes** | Three ways to learn: Teach Me (structured lesson), Clarify Doubts (Q&A), and Let's Practice (batch drill) |
 | **Teach Me Sub-Mode** | Within Teach Me, students pick between **Baatcheet** (recommended — Mr. Verma + Meera conversational dialogue) and **Explain** (step-by-step explanation cards). No memory of last choice — picked every entry |
 | **Voice Input** | Students can speak their answers instead of typing |
-| **Voice Output** | The tutor can read responses aloud (text-to-speech) in English, Hindi, or Hinglish |
+| **Voice Output** | The tutor can read responses aloud (text-to-speech) in English, Hindi, or Hinglish via ElevenLabs (default) or Google Cloud TTS |
 | **Practice Results** | After a practice set, students see fractional scores and per-question rationale explaining why each pick was right or wrong |
 | **Session Pause & Resume** | Pause a teaching session and pick up where you left off later |
 | **Session History** | View past learning sessions with mastery scores and learning stats |
@@ -34,6 +34,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Book & Guidelines** | Admin tool to upload textbooks, extract table of contents, process chapters, and sync topics to the curriculum |
 | **Evaluation** | Admin tool to test tutor quality using simulated students |
 | **LLM Configuration** | Admin tool to choose which AI model powers each part of the system |
+| **TTS Configuration** | Admin tool to switch the active text-to-speech provider (ElevenLabs vs Google Cloud TTS). Change takes effect immediately |
 | **Feature Flags** | Admin tool to toggle runtime features on or off (e.g., visuals in tutor flow). Changes take effect immediately for new sessions |
 | **Pre-Computed Explanations** | During book ingestion, the system pre-generates multiple explanation variants for each topic (e.g., everyday analogies, visual/hands-on, story-based). During a Teach Me session, the tutor can present these as step-by-step explanation cards. If the student wants a different approach, they can request an alternative variant |
 | **Interactive Questions** | During teaching and practice drills, questions are rendered in 11 rich interactive formats: fill-in-the-blank, multiple choice, true/false, matching, sort-into-buckets, sequencing, spot-the-error, odd-one-out, predict-then-reveal, swipe-classify, tap-to-eliminate. Students tap or type answers directly in the structured format |
@@ -50,7 +51,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 | **Explanations Admin** | Per-chapter admin tool to generate, view, and delete pre-computed explanation card variants per topic |
 | **Visuals Admin** | Per-chapter admin tool to generate Pixi.js visuals for explanation cards and track visual coverage |
 | **Practice Bank Admin** | Per-chapter admin tool to view, regenerate, and review the practice question bank for each topic |
-| **Topic DAG Dashboard** | Per-topic admin view of the 8-stage ingestion pipeline as a directed graph; click a stage to rerun-cascade or view state |
+| **Topic DAG Dashboard** | Per-topic admin view of the 10-stage ingestion pipeline as a directed graph; click a stage to rerun-cascade or view state |
 | **Visual Render Preview** | Admin-only sandbox to render a single Pixi.js visual by ID for screenshot review |
 | **OCR Admin** | Per-chapter admin tool to view, retry, and bulk re-run OCR on chapter pages |
 
@@ -103,13 +104,14 @@ If a student previously paused a Teach Me session on the same subtopic, a **Resu
 4. **Sync to curriculum** — Push processed topics into the live curriculum
 5. **Run evaluations** — Test the tutor with simulated students and review quality scores
 6. **Configure AI models** — Choose which AI provider and model powers each component
-7. **Manage feature flags** — Toggle runtime features on or off from the admin dashboard
-8. **Edit topics, guidelines, explanations, visuals, OCR** — Per-chapter admin tools to inspect and refine each artifact produced by the ingestion pipeline
-9. **Generate visual explanations** — Create interactive diagrams and animations from text descriptions (proof of concept)
-10. **Test interactive visuals** — Try drag-and-drop and other interactive templates with editable parameters (proof of concept)
-11. **Manage reported issues** — View user-reported issues, update status (open / in progress / closed), view attached screenshots
-12. **View test scenarios** — Review end-to-end test results and screenshots for each feature
-13. **Browse documentation** — View project docs directly in the admin interface
+7. **Configure TTS provider** — Switch between ElevenLabs and Google Cloud TTS for voice output
+8. **Manage feature flags** — Toggle runtime features on or off from the admin dashboard
+9. **Edit topics, guidelines, explanations, visuals, OCR** — Per-chapter admin tools to inspect and refine each artifact produced by the ingestion pipeline
+10. **Generate visual explanations** — Create interactive diagrams and animations from text descriptions (proof of concept)
+11. **Test interactive visuals** — Try drag-and-drop and other interactive templates with editable parameters (proof of concept)
+12. **Manage reported issues** — View user-reported issues, update status (open / in progress / closed), view attached screenshots
+13. **View test scenarios** — Review end-to-end test results and screenshots for each feature
+14. **Browse documentation** — View project docs directly in the admin interface
 
 ---
 

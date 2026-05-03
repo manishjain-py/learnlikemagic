@@ -16,7 +16,8 @@ AWS infrastructure, Terraform, CI/CD, and production operations.
 |       v                                                      |
 |  RDS PostgreSQL 15 (db.t4g.micro, 20GB gp2)      [Database]  |
 |                                                              |
-|  Secrets Manager (OpenAI, Gemini, Anthropic, DB password)    |
+|  Secrets Manager (OpenAI, Gemini, Anthropic, ElevenLabs,     |
+|                   DB password)                               |
 |  Cognito (Authentication)                                    |
 |  S3 Books Bucket (Book ingestion storage)                    |
 +-------------------------------------------------------------+
@@ -69,10 +70,13 @@ cp terraform.tfvars.example terraform.tfvars
 #   environment (production), project_name (learnlikemagic), github_repo
 #   (learnlikemagic), db_name (tutor), db_user (llmuser), llm_model
 #   (gpt-4o-mini), tutor_llm_provider (openai), anthropic_api_key (""),
-#   domain_names ([]), acm_certificate_arn ("")
+#   elevenlabs_api_key (""), tts_provider ("elevenlabs"),
+#   cognito_app_client_id, cognito_user_pool_id, cognito_region (defaulted to
+#   live prod values in variables.tf), domain_names ([]),
+#   acm_certificate_arn ("")
 ```
 
-`terraform.tfvars.example` ships with a starter set (excluding `gemini_api_key`); add it (and any optional vars) manually. `gemini_api_key` is required by `variables.tf` (no default) and must be set. The `GOOGLE_CLOUD_TTS_API_KEY` runtime env var on App Runner reuses the Gemini secret ARN.
+`terraform.tfvars.example` ships with a starter set covering `openai_api_key`, `elevenlabs_api_key`, `tts_provider`, `llm_model`, and DB/GitHub vars — but **omits** `gemini_api_key` and `anthropic_api_key`. `gemini_api_key` has no default in `variables.tf` and must be added manually. The `GOOGLE_CLOUD_TTS_API_KEY` runtime env var on App Runner reuses the Gemini value (passed directly, not via secret ARN).
 
 ### 2. Deploy Infrastructure
 
@@ -80,7 +84,7 @@ cp terraform.tfvars.example terraform.tfvars
 make init && make plan && make apply
 ```
 
-Creates: ECR, RDS PostgreSQL (db.t4g.micro instance, default VPC, publicly accessible, 20GB gp2, 7-day backups), Secrets Manager (3-4 secrets; Anthropic is conditional on `var.anthropic_api_key`), App Runner service + IAM roles + autoscaling config, S3 + CloudFront + SPA-routing function, GitHub OIDC provider + IAM role
+Creates: ECR, RDS PostgreSQL (db.t4g.micro instance, default VPC, publicly accessible, 20GB gp2, 7-day backups), Secrets Manager (3-5 secrets: OpenAI, Gemini, db_password always; Anthropic + ElevenLabs each conditional on their `var.*_api_key` being non-empty), App Runner service + IAM roles + autoscaling config, S3 + CloudFront + SPA-routing function, GitHub OIDC provider + IAM role
 
 ### 3. Initialize Database
 
@@ -174,12 +178,12 @@ infra/terraform/
   outputs.tf           # Outputs (URLs, ARNs, GitHub secrets map)
   Makefile             # Automation targets
   modules/
-    secrets/           # Secrets Manager (OpenAI, Gemini, DB password; Anthropic conditional)
+    secrets/           # Secrets Manager (OpenAI, Gemini, DB password always; Anthropic + ElevenLabs each conditional)
     database/          # RDS PostgreSQL 15 instance (db.t4g.micro) + subnet group + parameter group + security group
     ecr/               # ECR repository + lifecycle policy (keep last 10 images)
-    app-runner/        # App Runner service + IAM roles (ECR access, Secrets, S3)
+    app-runner/        # App Runner service + IAM roles (ECR access, per-secret access, S3 books, Cognito admin)
     frontend/          # S3 bucket + CloudFront distribution + SPA routing function
-    github-oidc/       # OIDC provider + IAM role for GitHub Actions
+    github-oidc/       # OIDC provider + IAM role for GitHub Actions (ECR + S3 + CloudFront + App Runner)
 ```
 
 ---
@@ -248,7 +252,7 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/       # Basic health check
 curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connectivity
 ```
 
-**Note:** App Runner's automatic health check is configured to hit `/health` (HTTP, every 10s, 5s timeout).
+**Note:** App Runner's automatic health check hits `/` (HTTP, every 10s, 5s timeout). Both `/` and `/health` are served by `shared/api/health.py` and return 200.
 
 ---
 
@@ -269,11 +273,11 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 
 | Component | Config |
 |-----------|--------|
-| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, provisioned (always-on) for background-job CPU. Service name `llm-backend-prod`. Health check `/health` HTTP, 10s interval, 5s timeout, healthy=1, unhealthy=5. Auto-deploy disabled — deploys triggered via GitHub Actions |
+| App Runner | 1 vCPU, 2GB RAM, 1-5 instances, max 100 concurrent requests, provisioned (always-on) for background-job CPU. Service name `llm-backend-prod`. Health check `/` HTTP, 10s interval, 5s timeout, healthy=1, unhealthy=5. Auto-deploy disabled — deploys triggered via GitHub Actions |
 | RDS PostgreSQL | Engine `postgres` 15, `db.t4g.micro`, 20GB `gp2`, default VPC, publicly accessible (sg allows 0.0.0.0/0:5432), 7-day backups (03:00-04:00 UTC), maintenance Mon 04:00-05:00 UTC, deletion protection off, skip final snapshot |
 | ECR | Mutable tags, keep last 10 images, scan on push, AES256 encryption |
 | CloudFront | Redirect-to-HTTPS, gzip+brotli, custom cache policy (default TTL 86400s, max 31536000s, no cookies/headers/query forwarded), SPA routing via CloudFront Function (rewrites extensionless URIs to `/index.html`), 403/404 → `/index.html`, OAI for S3 access, PriceClass_100 (NA+EU) |
-| Secrets Manager | 3-4 secrets (OpenAI, Gemini, DB password; Anthropic conditional on `var.anthropic_api_key`), 7-day recovery window. App Runner instance role grants `secretsmanager:GetSecretValue` only to OpenAI + Gemini ARNs (Anthropic not in IAM policy). `GOOGLE_CLOUD_TTS_API_KEY` reuses the Gemini secret ARN in App Runner env |
+| Secrets Manager | 3-5 secrets (OpenAI, Gemini, DB password always; Anthropic + ElevenLabs each conditional on `var.*_api_key`), 7-day recovery window. App Runner instance role grants `secretsmanager:GetSecretValue` via per-secret split policies: OpenAI always; Anthropic + ElevenLabs each created `count = arn != "" ? 1 : 0`. **Gemini is NOT granted to App Runner** — `GOOGLE_CLOUD_TTS_API_KEY` is passed as a plaintext runtime env var (the `var.gemini_api_key` value, not a secret ARN reference) |
 
 **Estimated cost (low traffic):** ~$10-30/month
 
@@ -287,8 +291,8 @@ curl https://ypwbjbcmbd.us-east-1.awsapprunner.com/health/db  # Database connect
 | `infra/terraform/variables.tf` | All input variables |
 | `infra/terraform/outputs.tf` | Outputs including `github_secrets` map + `deployment_summary` |
 | `infra/terraform/Makefile` | Terraform automation targets |
-| `infra/terraform/terraform.tfvars.example` | Starter tfvars (gemini_api_key must be added manually) |
-| `infra/terraform/modules/secrets/main.tf` | Secrets Manager: openai, gemini, db_password (always); anthropic (conditional) |
+| `infra/terraform/terraform.tfvars.example` | Starter tfvars (gemini_api_key + anthropic_api_key must be added manually) |
+| `infra/terraform/modules/secrets/main.tf` | Secrets Manager: openai, gemini, db_password (always); anthropic + elevenlabs (each conditional on non-empty var) |
 | `infra/terraform/modules/database/main.tf` | RDS PostgreSQL 15 + subnet + parameter + security group |
 | `infra/terraform/modules/ecr/main.tf` | ECR repo + lifecycle policy (keep last 10) |
 | `infra/terraform/modules/app-runner/main.tf` | App Runner service, IAM roles, autoscaling, runtime env + secrets, health check |

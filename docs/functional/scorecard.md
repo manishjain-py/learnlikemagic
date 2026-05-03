@@ -55,7 +55,7 @@ When a student completes a practice attempt on a topic, the report card shows th
 - Only **graded** attempts count. In-progress attempts and attempts that failed grading do not appear.
 - If a student has multiple graded attempts on the same topic, the latest is displayed.
 - Scores are fractional with half-point granularity (e.g., `8` displays as `8`, `7.5` displays as `7.5`).
-- A topic with practice attempts but no Teach Me sessions still appears on the report card — the practice chip creates the row.
+- A topic with practice attempts but no Teach Me sessions still appears in the report card data — the practice chip creates the row — provided the student has at least one session of any kind (otherwise the empty state takes over).
 
 ---
 
@@ -77,7 +77,7 @@ For "Get Ready" refresher topics, only the Teach Me option is shown — Clarify 
 
 ## Empty State
 
-When a student has no completed sessions and no graded practice attempts, the report card shows an encouraging message and a "Start Learning" button that takes them to the topic selection screen.
+When a student has zero learning sessions, the report card shows an encouraging message and a "Start Learning" button that takes them to the topic selection screen. (The empty-state check is based on session count, so a student with only graded practice attempts and no Teach Me / Clarify Doubts sessions also sees the empty state.)
 
 ---
 

@@ -129,17 +129,19 @@ Both evaluator and simulator use `config.create_llm_service(component)` which ro
 
 | Provider | Default Model | Config |
 |----------|---------------|--------|
-| OpenAI | gpt-5.2 | reasoning effort: `high`, JSON output mode |
-| Anthropic | claude-opus-4-6 | extended thinking (20,000 token budget) |
-| claude_code | claude-code | No API key needed |
+| `openai` | gpt-5.2 | reasoning effort: `high`, JSON output mode |
+| `anthropic` | claude-opus-4-6 | extended thinking (20,000 token budget) |
+| `anthropic-haiku` | (model id from DB) | requires DB config to set haiku model id |
+| `claude_code` | claude-code | no API key needed |
 
 **Simulator defaults:**
 
 | Provider | Default Model | Config |
 |----------|---------------|--------|
-| OpenAI | gpt-4o | reasoning effort: `low` |
-| Anthropic | claude-opus-4-6 | reasoning effort: `low` |
-| claude_code | claude-code | No API key needed |
+| `openai` | gpt-4o | reasoning effort: `low` |
+| `anthropic` | claude-opus-4-6 | reasoning effort: `low` |
+| `anthropic-haiku` | (model id from DB) | requires DB config to set haiku model id |
+| `claude_code` | claude-code | no API key needed |
 
 The evaluator and simulator models are configured independently. When run from the API, models are read from the DB `llm_config` table (`eval_evaluator` and `eval_simulator` keys). When run from the CLI, models fall back to `EVAL_LLM_PROVIDER` env var. The `claude_code` provider requires no API key.
 
@@ -224,7 +226,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `claude_code` (no API key needed). Note: `anthropic-haiku` (Claude Haiku 4.5) appears in `PROVIDER_LABELS` for display, and `LLMService.call()` routes `anthropic-haiku` through the Anthropic client. However, `EvalConfig.create_llm_service()` selects `model_id` only when `provider == "anthropic"` -- with `anthropic-haiku` it falls through to the default `evaluator_model`/`simulator_model` (e.g., `gpt-5.2`), so the call attempts the Anthropic client with an OpenAI model id and fails. Use `anthropic` for Opus, or extend `create_llm_service()` to map `anthropic-haiku` to the haiku model id.
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `anthropic-haiku` (Claude Haiku 4.5), `claude_code` (no API key needed). When sourced via `EvalConfig.from_db()`, the haiku model id from the DB `llm_config` row is written into `evaluator_model`/`simulator_model` (the `anthropic` branch is only taken for the `"anthropic"` provider string), and `LLMService.call()` routes `anthropic-haiku` through the Anthropic client using that model id. The CLI default-constructed `EvalConfig` (without `from_db`) does not have a haiku model id set, so selecting `--provider anthropic-haiku` from the CLI will misroute (Anthropic client called with the default `gpt-5.2` model id). Prefer DB config (admin LLM config page) when using haiku.
 
 ---
 

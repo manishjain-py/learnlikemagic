@@ -21,12 +21,13 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 │  Backend (FastAPI + Python)                                     │
 │  AWS App Runner                                                 │
 │                                                                 │
-│  Modules: tutor, book_ingestion_v2, study_plans, evaluation,    │
+│  Modules: tutor, book_ingestion_v2, study_plans, autoresearch,  │
 │           auth (+ enrichment, personality)                      │
 │  Root API: api/ (docs, test_scenarios)                          │
-│  Shared: llm_service, llm_config_service, feature_flag_service, │
-│          issue_service, anthropic_adapter, claude_code_adapter,  │
-│          ocr_service, s3_client, api, models, utils, repos       │
+│  Shared: llm_service, llm_config_service, tts_config_service,   │
+│          feature_flag_service, issue_service, anthropic_adapter, │
+│          claude_code_adapter, ocr_service, s3_client, api,       │
+│          models, types (emotion), utils, repos                   │
 └────────────────────────────┬────────────────────────────────────┘
                              │ SQLAlchemy
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -57,6 +58,7 @@ Full-stack architecture, tech stack, and code conventions for LearnLikeMagic.
 | OpenAI | LLM provider (GPT-5.4, GPT-5.3-codex, GPT-5.2, GPT-5.1, Whisper) | Structured outputs, Responses API, reasoning models, audio transcription |
 | Anthropic | LLM provider (Claude) | Multi-provider flexibility, extended thinking capability |
 | Google | LLM provider (Gemini) + Cloud TTS | Additional provider option, text-to-speech |
+| ElevenLabs | TTS provider (default) | Higher-quality multi-language voices for tutor read-aloud |
 | Claude Code | LLM provider via CLI subprocess | Local/admin workflows, no API key needed (uses local Claude Code session) |
 
 ### Frontend
@@ -103,8 +105,8 @@ llm-backend/
 │   │                     #   cascade.py (auto-cascade orchestrator), cross_dag_warnings.py (chapter-resync banner),
 │   │                     #   launcher_map.py, status_helpers.py, types.py
 │   ├── stages/           # One module per pipeline stage (Stage objects imported by dag/topic_pipeline_dag.py):
-│   │                     #   explanations, visuals, check_ins, practice_bank, audio_synthesis, audio_review,
-│   │                     #   baatcheet_dialogue, baatcheet_visuals
+│   │                     #   explanations, baatcheet_dialogue, baatcheet_visuals, baatcheet_audio_review,
+│   │                     #   baatcheet_audio_synthesis, visuals, check_ins, practice_bank, audio_review, audio_synthesis
 │   ├── services/         # book_v2_service, toc_service, toc_extraction_service, chapter_page_service,
 │   │                     #   chapter_job_service, chunk_processor_service, topic_extraction_orchestrator,
 │   │                     #   chapter_finalization_service, topic_sync_service, chapter_topic_planner_service,
@@ -192,13 +194,14 @@ All routers below are wired in `main.py` via `app.include_router()`. The `study_
 | sessions | `/sessions` | Session management (teach_me, clarify_doubts), report card, topic progress, WebSocket |
 | practice | `/practice` | Let's Practice batch-drill lifecycle: start, save, submit, results, banner poll, history |
 | transcription | `/transcribe` | Audio-to-text via OpenAI Whisper |
-| tts | `/text-to-speech` | Text-to-speech via Google Cloud TTS (English, Hindi, Hinglish) |
+| tts | `/text-to-speech` | Text-to-speech (English, Hindi, Hinglish). Provider resolved at request time via `llm_config` row keyed `'tts'` (ElevenLabs default; Google Cloud TTS optional) |
 | evaluation | `/api/evaluation` | Evaluation pipeline |
 | auth | `/auth` | Auth sync (Cognito to local DB) |
 | profile | `/profile` | User profile CRUD |
 | enrichment | `/profile` | Enrichment profile + personality endpoints (`/profile/enrichment`, `/profile/personality`) |
 | docs | `/api/docs` | Documentation API for admin viewer |
 | llm config | `/api/admin` | LLM model configuration (`/api/admin/llm-config/*`) |
+| tts config | `/api/admin` | TTS provider toggle (`/api/admin/tts-config`) — switches active TTS provider (ElevenLabs / Google Cloud TTS) at runtime |
 | feature flags | `/api/admin` | Runtime feature flag management (`/api/admin/feature-flags/*`) |
 | test scenarios | `/api/test-scenarios` | E2E test scenario results and screenshots |
 | v2 book routes | `/admin/v2/books` | Book CRUD (V2) |
@@ -238,7 +241,10 @@ llm-frontend/src/
 │   ├── ReportCardPage.tsx    # Student report card (coverage %, practice scores)
 │   └── ReportIssuePage.tsx   # Issue reporting form (text, voice, screenshots)
 ├── hooks/
-│   └── useStudentProfile.ts  # Student profile hook (board, grade, country)
+│   ├── useStudentProfile.ts    # Student profile hook (board, grade, country)
+│   ├── audioController.ts      # Shared audio playback controller (single-clip lifecycle)
+│   ├── useCheckInAudio.ts      # TTS playback for check-in activity prompts
+│   └── usePersonalizedAudio.ts # Personalized tutor TTS playback (cached per message)
 ├── contexts/
 │   └── AuthContext.tsx    # Global auth state (Cognito SDK)
 ├── components/
@@ -279,7 +285,7 @@ llm-frontend/src/
 │   │   ├── components/
 │   │   │   ├── AdminLayout.tsx      # Shared admin layout with persistent top nav bar
 │   │   │   ├── QualitySelector.tsx  # Fast / Balanced / Thorough quality selector popover
-│   │   │   └── TopicDAGView.tsx     # React Flow per-topic DAG dashboard (8 stages, click to rerun)
+│   │   │   └── TopicDAGView.tsx     # React Flow per-topic DAG dashboard (10 stages, click to rerun)
 │   │   ├── pages/
 │   │   │   ├── AdminHome.tsx        # Admin dashboard landing page with cards linking to all admin sections
 │   │   │   ├── BookV2Dashboard.tsx   # V2 book management dashboard
@@ -295,6 +301,7 @@ llm-frontend/src/
 │   │   │   ├── EvaluationDashboard.tsx
 │   │   │   ├── DocsViewer.tsx        # In-app documentation browser
 │   │   │   ├── LLMConfigPage.tsx     # LLM model config admin
+│   │   │   ├── TTSConfigPage.tsx     # TTS provider toggle admin (ElevenLabs / Google Cloud TTS)
 │   │   │   ├── FeatureFlagsPage.tsx  # Feature flag toggle admin
 │   │   │   ├── TestScenariosPage.tsx # E2E test results viewer
 │   │   │   ├── InteractiveVisualsPocPage.tsx # Interactive template testing PoC
@@ -346,11 +353,12 @@ llm-frontend/src/
 | `/admin/books-v2/:bookId/visuals/:chapterId` | AdminLayout > VisualsAdmin | Unprotected | Per-chapter Pixi visuals |
 | `/admin/books-v2/:bookId/ocr/:chapterId` | AdminLayout > OCRAdmin | Unprotected | Per-chapter OCR page viewer |
 | `/admin/books-v2/:bookId/practice-banks/:chapterId` | AdminLayout > PracticeBankAdmin | Unprotected | Per-chapter practice question bank viewer |
-| `/admin/books-v2/:bookId/pipeline/:chapterId/:topicKey` | AdminLayout > TopicDAGView | Unprotected | Per-topic 8-stage React Flow DAG dashboard |
+| `/admin/books-v2/:bookId/pipeline/:chapterId/:topicKey` | AdminLayout > TopicDAGView | Unprotected | Per-topic 10-stage React Flow DAG dashboard |
 | `/admin/visual-render-preview/:id` | AdminLayout > VisualRenderPreview | Unprotected | Admin-only Pixi single-visual sandbox preview |
 | `/admin/evaluation` | AdminLayout > EvaluationDashboard | Unprotected | Evaluation dashboard |
 | `/admin/docs` | AdminLayout > DocsViewer | Unprotected | Project documentation browser |
 | `/admin/llm-config` | AdminLayout > LLMConfigPage | Unprotected | LLM provider/model configuration |
+| `/admin/tts-config` | AdminLayout > TTSConfigPage | Unprotected | TTS provider toggle (ElevenLabs vs Google Cloud TTS) |
 | `/admin/feature-flags` | AdminLayout > FeatureFlagsPage | Unprotected | Toggle runtime feature flags on/off |
 | `/admin/test-scenarios` | AdminLayout > TestScenariosPage | Unprotected | E2E test results and screenshots |
 | `/admin/interactive-poc` | AdminLayout > InteractiveVisualsPocPage | Unprotected | Interactive visual template testing PoC |
@@ -417,6 +425,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
 - **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`, `baatcheet_dialogue_generator`
 - **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
+- **Non-LLM component_keys** (live in `llm_config` but managed by dedicated admin pages): `tts` — owned by the TTS provider toggle (`/admin/tts-config`). `LLMConfigService` filters these out of `/admin/llm-config` listings and refuses LLM-shaped updates against them (see `_NON_LLM_COMPONENT_KEYS`)
 
 ### Key Provider Files
 
@@ -443,6 +452,31 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls
 - **Gemini**: Google Generative AI client with JSON mode support
 - **Claude Code**: Calls the `claude` CLI as a subprocess (`--dangerously-skip-permissions --no-session-persistence --max-turns 1`). Maps reasoning effort to CLI `--effort` flag. Extracts JSON from response text (handles markdown fences and raw JSON). Used for local/admin workflows where the Claude Code CLI is available on the machine
+
+---
+
+## TTS Provider System
+
+Text-to-speech provider is **DB-backed** via the `llm_config` row keyed `'tts'` (resolved per request). Two providers are wired:
+
+- **ElevenLabs** (default) — multi-voice expressive TTS (`eleven_v3`); used for tutor + Baatcheet (Mr. Verma + Meera) read-aloud
+- **Google Cloud TTS** — Chirp 3 HD; legacy/fallback path
+
+Resolution order (`shared/services/tts_config_service.py::TTSConfigService.get_provider()`): admin DB row → `Settings.tts_provider` env var → hard default `'elevenlabs'`. Switching the admin row takes effect on the next request — no redeploy. Cached S3 audio (Baatcheet stage output) is NOT regenerated on flip; the existing library keeps serving until the audio stage reruns.
+
+- **Admin UI**: `/admin/tts-config` — single dropdown
+- **API**: `GET /api/admin/tts-config` (current + options); `PUT /api/admin/tts-config` (set provider)
+- **Runtime dispatch**: `tutor/api/tts.py` and `book_ingestion_v2/services/audio_generation_service.py` branch on `resolve_tts_provider()`
+
+### Key TTS Files
+
+| File | Purpose |
+|------|---------|
+| `shared/services/tts_config_service.py` | Resolve + persist active TTS provider; `resolve_tts_provider()` helper |
+| `shared/api/tts_config_routes.py` | Admin API endpoints (get, set) |
+| `tutor/api/tts.py` | Per-request TTS endpoint (ElevenLabs + Google Cloud branches) |
+| `book_ingestion_v2/services/audio_generation_service.py` | Baatcheet/explanation audio synthesis (provider-aware) |
+| `shared/types/emotion.py` | Emotion tag enum used for expressive ElevenLabs voice presets |
 
 ---
 
