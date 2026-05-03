@@ -26,7 +26,7 @@ const ROLE_TAG: Record<'tutor' | 'peer', string> = {
 
 export default function SpeakerAvatar({ speaker, speakerName, speaking }: Props) {
   if (!speaker) return null;
-  const src = speaker === 'tutor' ? '/avatars/tutor.svg' : '/avatars/peer.svg';
+  const src = speaker === 'tutor' ? '/avatars/tutor.jpg' : '/avatars/peer.jpg';
   const role = ROLE_TAG[speaker];
   const nameClass =
     speaker === 'peer'
