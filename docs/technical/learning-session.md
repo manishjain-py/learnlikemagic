@@ -17,9 +17,10 @@ Architecture, agents, orchestration, and APIs for the tutoring pipeline.
                 │                      │                      │
                 v                      v                      v
        /card-progress         /card-progress              WS /ws/{id}
-       (nav + complete)       /card-action               + REST /step
-       /card-action          (clear|explain_differently)  + /end-clarify
-       /simplify-card
+       (nav + complete)       (nav + complete)           + REST /step
+                              /card-action                + /end-clarify
+                              (clear|explain_differently)
+                              /simplify-card
                 │                      │                      │
                 └──────────────────────┴──────────────────────┘
                                        │

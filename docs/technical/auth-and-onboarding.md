@@ -133,7 +133,7 @@ The onboarding wizard sends `PUT /profile` after each step with just that field'
 | Age | `{"age": 12}` |
 | Grade | `{"grade": 7}` |
 | Board | `{"board": "CBSE"}` |
-| About | `{"about_me": "..."}` |
+| About (optional) | `{"about_me": "..."}` — only sent if non-empty; skipped silently otherwise |
 
 **Auto-completion**: The `ProfileService.update_profile()` method automatically sets `onboarding_complete = true` when all four required fields (name, age, grade, board) are filled. The frontend does not explicitly send `onboarding_complete` — it is derived server-side.
 

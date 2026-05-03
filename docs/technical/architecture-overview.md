@@ -425,6 +425,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **No fallbacks**: If a component's config is missing from the DB, the system raises `LLMConfigNotFoundError`
 - **Seeded component_keys** (defined in `db.py`'s `_LLM_CONFIG_SEEDS`): `tutor`, `study_plan_generator`, `study_plan_reviewer`, `eval_evaluator`, `eval_simulator`, `book_ingestion_v2`, `personality_derivation`, `explanation_generator`, `fast_model`, `check_in_enrichment`, `practice_bank_generator`, `practice_grader`, `baatcheet_dialogue_generator`
 - **Additional component_keys** (read at runtime, not seeded by default): `animation_enrichment` — used by the animation enrichment ingestion service; must be configured manually via the admin UI before that step runs
+- **Non-LLM component_keys** (live in `llm_config` but managed by dedicated admin pages): `tts` — owned by the TTS provider toggle (`/admin/tts-config`). `LLMConfigService` filters these out of `/admin/llm-config` listings and refuses LLM-shaped updates against them (see `_NON_LLM_COMPONENT_KEYS`)
 
 ### Key Provider Files
 
@@ -451,6 +452,31 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 - **Prompt caching**: Anthropic adapter splits prompts on `---` separator to extract a system portion marked with `cache_control`, reducing latency on repeated calls
 - **Gemini**: Google Generative AI client with JSON mode support
 - **Claude Code**: Calls the `claude` CLI as a subprocess (`--dangerously-skip-permissions --no-session-persistence --max-turns 1`). Maps reasoning effort to CLI `--effort` flag. Extracts JSON from response text (handles markdown fences and raw JSON). Used for local/admin workflows where the Claude Code CLI is available on the machine
+
+---
+
+## TTS Provider System
+
+Text-to-speech provider is **DB-backed** via the `llm_config` row keyed `'tts'` (resolved per request). Two providers are wired:
+
+- **ElevenLabs** (default) — multi-voice expressive TTS (`eleven_v3`); used for tutor + Baatcheet (Mr. Verma + Meera) read-aloud
+- **Google Cloud TTS** — Chirp 3 HD; legacy/fallback path
+
+Resolution order (`shared/services/tts_config_service.py::TTSConfigService.get_provider()`): admin DB row → `Settings.tts_provider` env var → hard default `'elevenlabs'`. Switching the admin row takes effect on the next request — no redeploy. Cached S3 audio (Baatcheet stage output) is NOT regenerated on flip; the existing library keeps serving until the audio stage reruns.
+
+- **Admin UI**: `/admin/tts-config` — single dropdown
+- **API**: `GET /api/admin/tts-config` (current + options); `PUT /api/admin/tts-config` (set provider)
+- **Runtime dispatch**: `tutor/api/tts.py` and `book_ingestion_v2/services/audio_generation_service.py` branch on `resolve_tts_provider()`
+
+### Key TTS Files
+
+| File | Purpose |
+|------|---------|
+| `shared/services/tts_config_service.py` | Resolve + persist active TTS provider; `resolve_tts_provider()` helper |
+| `shared/api/tts_config_routes.py` | Admin API endpoints (get, set) |
+| `tutor/api/tts.py` | Per-request TTS endpoint (ElevenLabs + Google Cloud branches) |
+| `book_ingestion_v2/services/audio_generation_service.py` | Baatcheet/explanation audio synthesis (provider-aware) |
+| `shared/types/emotion.py` | Emotion tag enum used for expressive ElevenLabs voice presets |
 
 ---
 
