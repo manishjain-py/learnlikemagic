@@ -66,6 +66,7 @@ def make_unsafe_result():
 def make_tutor_output(**overrides):
     defaults = dict(
         response="Good job!",
+        audio_text="Good job",
         intent="answer",
         answer_correct=True,
         mastery_updates=[MasteryUpdate(concept="Basics", score=0.8)],
@@ -86,6 +87,10 @@ def build_orchestrator():
     orch.master_tutor.set_session = Mock()
     # last_prompt is a read-only property on BaseAgent — mock the internal attribute instead
     orch.master_tutor._last_prompt = "mock prompt"
+    # process_turn now runs translation+safety in parallel via asyncio.gather.
+    # The translation step calls llm.call_fast which would otherwise return a Mock,
+    # corrupting the student_message string. Pass-through the original text.
+    orch._translate_to_english = AsyncMock(side_effect=lambda text: text)
     return orch
 
 
@@ -209,6 +214,7 @@ class TestProcessTurnCompleted:
     @pytest.mark.asyncio
     async def test_completed_session_returns_post_completion(self):
         orch = build_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
         # Mock the post-completion LLM call
         orch.llm.call = Mock(return_value={"output_text": "Great session!"})
 
@@ -220,11 +226,14 @@ class TestProcessTurnCompleted:
 
         result = await orch.process_turn(session, "Thanks!")
         assert result.intent == "session_complete"
-        assert result.state_changed is False
+        # Post-completion always reports state_changed=True since it
+        # appends both student and teacher messages to the history.
+        assert result.state_changed is True
 
     @pytest.mark.asyncio
     async def test_completed_session_still_records_student_message(self):
         orch = build_orchestrator()
+        orch.safety_agent.execute.return_value = make_safe_result()
         orch.llm.call = Mock(return_value={"output_text": "Bye!"})
 
         session = make_test_session()
@@ -243,8 +252,11 @@ class TestProcessTurnCompleted:
 class TestProcessTurnError:
     @pytest.mark.asyncio
     async def test_exception_returns_error_response(self):
+        # When master_tutor (inside the try block) fails, process_turn must
+        # convert the exception into a graceful error TurnResult.
         orch = build_orchestrator()
-        orch.safety_agent.execute.side_effect = RuntimeError("LLM boom")
+        orch.safety_agent.execute.return_value = make_safe_result()
+        orch.master_tutor.execute.side_effect = RuntimeError("LLM boom")
 
         session = make_test_session()
         result = await orch.process_turn(session, "Hi")
@@ -287,10 +299,13 @@ class TestApplyStateUpdates:
         orch = build_orchestrator()
         session = make_test_session()
         assert session.current_step == 1
+        # Mark the explanation phase complete so the advancement guard allows
+        # moving past the explain step.
         output = make_tutor_output(
             advance_to_step=3,
             mastery_updates=[],
             answer_correct=None,
+            explanation_phase_update="complete",
         )
         changed = orch._apply_state_updates(session, output)
         assert changed is True
@@ -622,35 +637,53 @@ class TestGenerateWelcomeMessage:
         orch = build_orchestrator()
         session = make_test_session()
         session.topic = None
-        msg = await orch.generate_welcome_message(session)
+        msg, audio = await orch.generate_welcome_message(session)
         assert msg == "Welcome! Let's start learning together."
+        assert audio is None
 
     @pytest.mark.asyncio
-    async def test_with_topic_calls_llm(self):
+    async def test_with_topic_returns_parsed_json(self):
         orch = build_orchestrator()
+        orch.llm.call = Mock(return_value={
+            "output_text": '{"response": "Welcome to Fractions!", "audio_text": "Welcome to Fractions"}'
+        })
+
+        session = make_test_session()
+        msg, audio = await orch.generate_welcome_message(session)
+        assert msg == "Welcome to Fractions!"
+        assert audio == "Welcome to Fractions"
+        orch.llm.call.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_with_topic_plain_text_treated_as_message(self):
+        orch = build_orchestrator()
+        # LLM returned non-JSON plain text — the parser uses raw text as message
         orch.llm.call = Mock(return_value={"output_text": "Welcome to Fractions!"})
 
         session = make_test_session()
-        msg = await orch.generate_welcome_message(session)
+        msg, audio = await orch.generate_welcome_message(session)
         assert msg == "Welcome to Fractions!"
-        orch.llm.call.assert_called_once()
+        assert audio is None
 
     @pytest.mark.asyncio
     async def test_with_topic_missing_output_key_returns_fallback(self):
         orch = build_orchestrator()
-        # When output_text key is missing entirely, .get() returns the default
+        # When output_text key is missing entirely, .get() returns the default ""
+        # which is falsy, so the fallback message is returned.
         orch.llm.call = Mock(return_value={})
 
         session = make_test_session()
-        msg = await orch.generate_welcome_message(session)
+        msg, audio = await orch.generate_welcome_message(session)
         assert msg == "Welcome! Let's start learning."
+        assert audio is None
 
     @pytest.mark.asyncio
-    async def test_with_topic_empty_output_returns_empty_string(self):
+    async def test_with_topic_empty_output_returns_fallback(self):
         orch = build_orchestrator()
-        # When output_text is "" the key exists so .get() returns ""
+        # Empty string is falsy, so the fallback is used.
         orch.llm.call = Mock(return_value={"output_text": ""})
 
         session = make_test_session()
-        msg = await orch.generate_welcome_message(session)
-        assert msg == ""
+        msg, audio = await orch.generate_welcome_message(session)
+        assert msg == "Welcome! Let's start learning."
+        assert audio is None

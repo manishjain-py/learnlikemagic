@@ -146,6 +146,135 @@ class TestSummarize:
         q = _q("pick_one", options=["a", "b"], correct_index=0)
         assert "blank" in svc._summarize_pick(q, None).lower()
 
+    def test_summarize_correct_match_pairs(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("match_pairs", pairs=[
+            {"left": "1", "right": "one"},
+            {"left": "2", "right": "two"},
+        ])
+        result = svc._summarize_correct(q)
+        assert result == [{"left": "1", "right": "one"}, {"left": "2", "right": "two"}]
+
+    def test_summarize_correct_sort_buckets(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q(
+            "sort_buckets",
+            bucket_names=["Even", "Odd"],
+            bucket_items=[
+                {"text": "2", "correct_bucket": 0},
+                {"text": "3", "correct_bucket": 1},
+            ],
+        )
+        result = svc._summarize_correct(q)
+        assert result == [{"text": "2", "bucket": "Even"}, {"text": "3", "bucket": "Odd"}]
+
+    def test_summarize_correct_sort_buckets_invalid_index(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q(
+            "sort_buckets",
+            bucket_names=["Even"],  # only one bucket
+            bucket_items=[{"text": "x", "correct_bucket": 5}],  # out of range
+        )
+        result = svc._summarize_correct(q)
+        assert result[0]["bucket"] is None
+
+    def test_summarize_correct_sequence(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("sequence", sequence_items=["one", "two", "three"])
+        assert svc._summarize_correct(q) == ["one", "two", "three"]
+
+    def test_summarize_correct_spot_the_error(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("spot_the_error", error_steps=["a", "b", "c"], error_index=1)
+        assert svc._summarize_correct(q) == {"index": 1, "step": "b"}
+
+    def test_summarize_correct_spot_the_error_out_of_range(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("spot_the_error", error_steps=["a"], error_index=5)
+        assert svc._summarize_correct(q) == {"index": 5, "step": None}
+
+    def test_summarize_correct_odd_one_out(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("odd_one_out", odd_items=["a", "b", "c"], odd_index=2)
+        assert svc._summarize_correct(q) == {"index": 2, "item": "c"}
+
+    def test_summarize_correct_unknown_format_returns_none(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("not_a_real_format")
+        assert svc._summarize_correct(q) is None
+
+    def test_summarize_pick_pick_one(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("pick_one", options=["red", "green", "blue"], correct_index=0)
+        assert svc._summarize_pick(q, 1) == "green"
+
+    def test_summarize_pick_pick_one_invalid_index(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("pick_one", options=["a"], correct_index=0)
+        assert "invalid" in svc._summarize_pick(q, 99).lower()
+
+    def test_summarize_pick_true_false(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("true_false", correct_answer_bool=True)
+        assert svc._summarize_pick(q, True) == "TRUE"
+        assert svc._summarize_pick(q, False) == "FALSE"
+
+    def test_summarize_pick_match_pairs_serializes_to_json(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("match_pairs", pairs=[{"left": "x", "right": "y"}])
+        out = svc._summarize_pick(q, [{"left": "x", "right": "y"}])
+        assert out == '[{"left": "x", "right": "y"}]'
+
+    def test_summarize_pick_sort_buckets_with_matching_length(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q(
+            "sort_buckets",
+            bucket_names=["Even", "Odd"],
+            bucket_items=[{"text": "2"}, {"text": "3"}],
+        )
+        out = svc._summarize_pick(q, [0, 1])
+        assert "Even" in out and "Odd" in out
+
+    def test_summarize_pick_sort_buckets_length_mismatch_falls_back(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q(
+            "sort_buckets",
+            bucket_names=["Even", "Odd"],
+            bucket_items=[{"text": "2"}, {"text": "3"}],
+        )
+        # Length mismatch — converts to plain string fallback.
+        out = svc._summarize_pick(q, [0])
+        assert out == "[0]"
+
+    def test_summarize_pick_sequence_joins_with_arrow(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("sequence", sequence_items=["a", "b", "c"])
+        out = svc._summarize_pick(q, ["a", "b", "c"])
+        assert "→" in out
+
+    def test_summarize_pick_spot_the_error(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("spot_the_error", error_steps=["s1", "s2", "s3"], error_index=1)
+        out = svc._summarize_pick(q, 1)
+        assert "Step 1" in out and "s2" in out
+
+    def test_summarize_pick_spot_the_error_invalid(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("spot_the_error", error_steps=["only"], error_index=0)
+        out = svc._summarize_pick(q, 99)
+        assert "invalid" in out.lower()
+
+    def test_summarize_pick_odd_one_out(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("odd_one_out", odd_items=["x", "y", "z"], odd_index=2)
+        assert svc._summarize_pick(q, 1) == "y"
+
+    def test_summarize_pick_value_error_falls_back_to_str(self, db_session):
+        svc, _ = _grader(db_session)
+        q = _q("pick_one", options=["a"], correct_index=0)
+        # student_answer is a non-int, non-numeric str — int() raises ValueError.
+        assert svc._summarize_pick(q, "not-a-number") == "not-a-number"
+
 
 # ─── grade_attempt end-to-end ─────────────────────────────────────────────
 

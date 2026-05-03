@@ -56,7 +56,10 @@ class TestBuildKwargs:
         assert kwargs["max_tokens"] == 16384
         assert kwargs["messages"] == [{"role": "user", "content": "Hello"}]
         assert "system" in kwargs
-        assert "JSON" in kwargs["system"]
+        # System prompt is rendered as a list of content blocks (extended-thinking
+        # cache compatible). Each block has {"type": "text", "text": "..."}.
+        system_text = " ".join(b["text"] for b in kwargs["system"])
+        assert "JSON" in system_text
         assert "thinking" not in kwargs
 
     def test_no_json_mode(self, adapter):
@@ -257,3 +260,151 @@ class TestCallAsync:
         result = await adapter.call_async("Test prompt", json_mode=True)
 
         assert result["parsed"] == {"answer": "async"}
+
+
+# ---------------------------------------------------------------------------
+# Cacheable system-prompt split (---) and APIStatusError handling
+# ---------------------------------------------------------------------------
+
+class TestPromptCachingSplit:
+    """The adapter splits prompts on '\\n\\n---\\n\\n' so the system half can
+    be cache-tagged for prompt caching."""
+
+    def test_split_creates_two_system_blocks(self, adapter):
+        prompt = "system rules here\n\n---\n\nuser question"
+        kwargs = adapter._build_kwargs(prompt, reasoning_effort="none", json_mode=True)
+        # JSON enforcement block + the cached system block.
+        assert len(kwargs["system"]) == 2
+        cached = kwargs["system"][1]
+        assert cached["text"] == "system rules here"
+        assert cached["cache_control"] == {"type": "ephemeral"}
+        # User prompt only carries the post-separator text.
+        assert kwargs["messages"][0]["content"] == "user question"
+
+    def test_no_separator_uses_full_prompt_as_user(self, adapter):
+        kwargs = adapter._build_kwargs("just a flat prompt", reasoning_effort="none", json_mode=True)
+        assert kwargs["messages"][0]["content"] == "just a flat prompt"
+
+
+class TestParseResponseExtras:
+    def test_json_decode_error_when_schema_present_returns_none_parsed(self, adapter):
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "not valid {json"
+        mock_response = MagicMock(content=[mock_block])
+
+        result = adapter._parse_response(
+            mock_response, json_mode=True, json_schema={"type": "object"},
+        )
+        # The schema branch tries to parse output_text and falls back to None.
+        assert result["parsed"] is None
+        assert result["output_text"] == "not valid {json"
+
+
+class TestCallSyncErrorHandling:
+    def test_api_status_error_re_raises(self, adapter):
+        import anthropic
+        # Build a minimal APIStatusError-like exception. anthropic exports the
+        # class but instantiating it requires a response — easiest is to mock
+        # one and patch __mro__ to satisfy the isinstance check.
+        err_cls = anthropic.APIStatusError
+        err = err_cls.__new__(err_cls)
+        err.status_code = 503
+        err.message = "service unavailable"
+
+        adapter.client.messages.create.side_effect = err
+
+        with pytest.raises(err_cls):
+            adapter.call_sync("hello")
+
+
+class TestStreamSync:
+    """stream_sync yields text or tool-input deltas, skipping thinking blocks."""
+
+    def _make_event(self, type_, **attrs):
+        ev = MagicMock()
+        ev.type = type_
+        for k, v in attrs.items():
+            setattr(ev, k, v)
+        return ev
+
+    def _make_delta(self, *, text=None, partial_json=None):
+        delta = MagicMock(spec=["text"] if text is not None else ["partial_json"])
+        if text is not None:
+            delta.text = text
+        if partial_json is not None:
+            delta.partial_json = partial_json
+        return delta
+
+    def test_yields_text_deltas(self, adapter):
+        # Build a synthetic event sequence: open text block → 2 deltas → close.
+        text_block = MagicMock()
+        text_block.type = "text"
+        events = [
+            self._make_event("content_block_start", content_block=text_block),
+            self._make_event("content_block_delta", delta=self._make_delta(text="Hel")),
+            self._make_event("content_block_delta", delta=self._make_delta(text="lo")),
+            self._make_event("content_block_stop"),
+        ]
+
+        ctx = MagicMock()
+        ctx.__enter__.return_value = iter(events)
+        ctx.__exit__.return_value = False
+        adapter.client.messages.stream.return_value = ctx
+
+        chunks = list(adapter.stream_sync("hi", json_mode=True))
+        assert chunks == ["Hel", "lo"]
+
+    def test_skips_thinking_block_deltas(self, adapter):
+        thinking_block = MagicMock()
+        thinking_block.type = "thinking"
+        text_block = MagicMock()
+        text_block.type = "text"
+        events = [
+            self._make_event("content_block_start", content_block=thinking_block),
+            self._make_event("content_block_delta", delta=self._make_delta(text="internal")),
+            self._make_event("content_block_stop"),
+            self._make_event("content_block_start", content_block=text_block),
+            self._make_event("content_block_delta", delta=self._make_delta(text="visible")),
+            self._make_event("content_block_stop"),
+        ]
+        ctx = MagicMock()
+        ctx.__enter__.return_value = iter(events)
+        ctx.__exit__.return_value = False
+        adapter.client.messages.stream.return_value = ctx
+
+        chunks = list(adapter.stream_sync("hi"))
+        assert chunks == ["visible"]
+
+    def test_yields_partial_json_for_tool_use(self, adapter):
+        tool_block = MagicMock()
+        tool_block.type = "tool_use"
+        events = [
+            self._make_event("content_block_start", content_block=tool_block),
+            self._make_event(
+                "content_block_delta", delta=self._make_delta(partial_json='{"a":'),
+            ),
+            self._make_event(
+                "content_block_delta", delta=self._make_delta(partial_json="1}"),
+            ),
+            self._make_event("content_block_stop"),
+        ]
+        ctx = MagicMock()
+        ctx.__enter__.return_value = iter(events)
+        ctx.__exit__.return_value = False
+        adapter.client.messages.stream.return_value = ctx
+
+        chunks = list(adapter.stream_sync("hi", json_schema={"type": "object"}))
+        assert chunks == ['{"a":', "1}"]
+
+    def test_streaming_api_status_error_re_raises(self, adapter):
+        import anthropic
+        err_cls = anthropic.APIStatusError
+        err = err_cls.__new__(err_cls)
+        err.status_code = 500
+        err.message = "boom"
+
+        adapter.client.messages.stream.side_effect = err
+
+        with pytest.raises(err_cls):
+            list(adapter.stream_sync("hi"))

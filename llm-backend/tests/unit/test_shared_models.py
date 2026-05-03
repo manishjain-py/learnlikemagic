@@ -12,6 +12,7 @@ from shared.models.schemas import (
     SummaryResponse,
     GuidelineResponse,
     TopicInfo,
+    ChapterInfo,
     CurriculumResponse,
 )
 from shared.models.entities import (
@@ -184,8 +185,13 @@ class TestCurriculumResponse:
         assert resp.chapters is None
 
     def test_chapters_response(self):
-        resp = CurriculumResponse(chapters=["Fractions", "Decimals"])
-        assert resp.chapters == ["Fractions", "Decimals"]
+        # CurriculumResponse.chapters is now a list of ChapterInfo objects
+        # carrying chapter sequencing + per-topic guideline IDs.
+        resp = CurriculumResponse(chapters=[
+            ChapterInfo(chapter="Fractions"),
+            ChapterInfo(chapter="Decimals"),
+        ])
+        assert [c.chapter for c in resp.chapters] == ["Fractions", "Decimals"]
 
     def test_topics_response(self):
         resp = CurriculumResponse(

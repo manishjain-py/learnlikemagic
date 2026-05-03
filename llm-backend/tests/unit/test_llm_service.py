@@ -367,3 +367,166 @@ class TestParseJsonResponse:
 
         result = service.parse_json_response("{}")
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# call() routing — provider dispatch
+# ---------------------------------------------------------------------------
+
+class TestCallRouting:
+    @patch("shared.services.llm_service.OpenAI")
+    def test_routes_to_anthropic_when_provider_anthropic(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(
+            api_key="fake-key", provider="anthropic", model_id="claude-opus-4-6",
+            anthropic_api_key="anthropic-key",
+        )
+        service._call_anthropic = Mock(return_value={"output_text": "ok"})
+
+        out = service.call("hi", reasoning_effort="high", json_mode=True)
+        service._call_anthropic.assert_called_once()
+        assert out == {"output_text": "ok"}
+
+    @patch("shared.services.llm_service.OpenAI")
+    def test_routes_to_claude_code_when_provider_claude_code(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        with patch("shared.services.llm_service.ClaudeCodeAdapter", create=True):
+            service = LLMService(
+                api_key="fake-key", provider="claude_code", model_id="claude-opus-4-6",
+            )
+        service._call_claude_code = Mock(return_value={"output_text": "claude"})
+
+        out = service.call("hi")
+        service._call_claude_code.assert_called_once()
+        assert out == {"output_text": "claude"}
+
+    @patch("shared.services.llm_service.genai")
+    @patch("shared.services.llm_service.OpenAI")
+    def test_routes_to_gemini_when_provider_google(self, mock_openai_cls, mock_genai):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(
+            api_key="fake-key", provider="google",
+            model_id="gemini-3-pro-preview", gemini_api_key="g-key",
+        )
+        service._call_gemini = Mock(return_value="gemini text")
+
+        out = service.call("hi", json_mode=True)
+        service._call_gemini.assert_called_once()
+        assert out == {"output_text": "gemini text", "reasoning": None}
+
+    @patch("shared.services.llm_service.OpenAI")
+    def test_uses_construction_time_effort_when_caller_passes_none(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(
+            api_key="fake-key", provider="openai", model_id="gpt-5.2",
+            reasoning_effort="medium",
+        )
+        service._call_responses_api = Mock(return_value={"output_text": ""})
+
+        service.call("hi", reasoning_effort="none")
+        # Caller passed "none" → service should fall back to its own "medium".
+        kwargs = service._call_responses_api.call_args
+        assert kwargs[0][2] == "medium"
+
+
+# ---------------------------------------------------------------------------
+# _call_anthropic and _call_claude_code error paths
+# ---------------------------------------------------------------------------
+
+class TestProviderErrorPaths:
+    @patch("shared.services.llm_service.OpenAI")
+    def test_call_anthropic_raises_when_adapter_missing(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
+        service.anthropic_adapter = None
+        with pytest.raises(LLMServiceError, match="Anthropic adapter not configured"):
+            service._call_anthropic("hi")
+
+    @patch("shared.services.llm_service.OpenAI")
+    def test_call_claude_code_raises_when_adapter_missing(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
+        service.claude_code_adapter = None
+        with pytest.raises(LLMServiceError, match="Claude Code adapter not configured"):
+            service._call_claude_code("hi")
+
+    @patch("shared.services.llm_service.OpenAI")
+    def test_call_gemini_raises_when_not_configured(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
+        service.has_gemini = False
+        with pytest.raises(LLMServiceError, match="Gemini API key not configured"):
+            service._call_gemini("hi")
+
+    @patch("shared.services.llm_service.OpenAI")
+    def test_call_anthropic_delegates_with_kwargs(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(
+            api_key="fake-key", provider="anthropic", model_id="claude-opus-4-6",
+            anthropic_api_key="a-key",
+        )
+        adapter = Mock()
+        adapter.call_sync.return_value = {"output_text": "x"}
+        service.anthropic_adapter = adapter
+
+        out = service._call_anthropic(
+            "hi", reasoning_effort="high", json_mode=False,
+            json_schema={"type": "object"}, schema_name="MyOut",
+        )
+        adapter.call_sync.assert_called_once_with(
+            prompt="hi", reasoning_effort="high",
+            json_mode=False, json_schema={"type": "object"},
+            schema_name="MyOut",
+        )
+        assert out == {"output_text": "x"}
+
+
+# ---------------------------------------------------------------------------
+# call_stream — provider dispatch + chunk plumbing
+# ---------------------------------------------------------------------------
+
+class TestCallStream:
+    @patch("shared.services.llm_service.OpenAI")
+    def test_anthropic_stream_yields_via_adapter(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(
+            api_key="fake-key", provider="anthropic", model_id="claude-opus-4-6",
+            anthropic_api_key="a-key",
+        )
+        adapter = Mock()
+        adapter.stream_sync.return_value = iter(["A", "B", "C"])
+        service.anthropic_adapter = adapter
+
+        chunks = list(service.call_stream("hi", json_mode=True))
+        assert chunks == ["A", "B", "C"]
+
+    @patch("shared.services.llm_service.OpenAI")
+    def test_claude_code_stream_falls_back_to_call(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        with patch("shared.services.llm_service.ClaudeCodeAdapter", create=True):
+            service = LLMService(
+                api_key="fake-key", provider="claude_code",
+                model_id="claude-opus-4-6",
+            )
+        service.call = Mock(return_value={"output_text": "full text"})
+
+        chunks = list(service.call_stream("hi"))
+        assert chunks == ["full text"]
+
+
+# ---------------------------------------------------------------------------
+# call_fast — fast model path
+# ---------------------------------------------------------------------------
+
+class TestCallFastEdgeCases:
+    @patch("shared.services.llm_service.OpenAI")
+    def test_call_fast_passes_json_mode_through(self, mock_openai_cls):
+        mock_openai_cls.return_value = Mock()
+        service = LLMService(api_key="fake-key", provider="openai", model_id="gpt-5.2")
+        service._call_chat_completions = Mock(return_value="fast")
+
+        out = service.call_fast("hi", json_mode=False)
+        # Verify json_mode flag flows through
+        kwargs = service._call_chat_completions.call_args
+        assert kwargs.kwargs.get("json_mode") is False
+        assert out == {"output_text": "fast", "reasoning": None}

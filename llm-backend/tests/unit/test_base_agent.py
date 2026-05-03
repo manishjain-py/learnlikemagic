@@ -252,3 +252,145 @@ class TestSummarizeOutput:
         assert summary["output_type"] == "SomeModel"
         assert "field" in summary["fields"]
         assert "score" in summary["fields"]
+
+
+# ---------------------------------------------------------------------------
+# ResponseFieldExtractor — extracts streaming "response" string from JSON
+# ---------------------------------------------------------------------------
+
+class TestResponseFieldExtractor:
+    """Cover the streaming JSON → response-text extractor used by execute_stream."""
+
+    def _new_extractor(self):
+        from tutor.agents.base_agent import ResponseFieldExtractor
+        return ResponseFieldExtractor()
+
+    def test_extracts_simple_response_value(self):
+        ext = self._new_extractor()
+        out = ext.feed('{"response": "Hello world", "other": 1}')
+        assert out == "Hello world"
+
+    def test_handles_chunked_input(self):
+        ext = self._new_extractor()
+        # Trigger pattern is split across chunks — extractor must remember state.
+        parts = ['{"resp', 'onse": "Hi', ' there"}']
+        result = "".join(ext.feed(p) for p in parts)
+        assert result == "Hi there"
+
+    def test_ignores_other_keys(self):
+        ext = self._new_extractor()
+        out = ext.feed('{"prefix": "ignored", "response": "real text"}')
+        assert out == "real text"
+
+    def test_handles_escape_sequences(self):
+        ext = self._new_extractor()
+        out = ext.feed(r'{"response": "line1\nline2\tend"}')
+        assert out == "line1\nline2\tend"
+
+    def test_handles_escaped_quote(self):
+        ext = self._new_extractor()
+        out = ext.feed(r'{"response": "she said \"hi\""}')
+        assert out == 'she said "hi"'
+
+    def test_handles_unicode_escape(self):
+        ext = self._new_extractor()
+        # é is é
+        out = ext.feed(r'{"response": "café"}')
+        assert out == "café"
+
+    def test_invalid_unicode_escape_returns_raw(self):
+        ext = self._new_extractor()
+        # ZZZZ is not valid hex — extractor falls back to the raw escape body.
+        out = ext.feed(r'{"response": "x\uZZZZy"}')
+        assert "ZZZZ" in out
+
+    def test_state_done_after_value_closes(self):
+        ext = self._new_extractor()
+        ext.feed('{"response": "first"')
+        # Anything after the closing quote is dropped — no further extraction.
+        more = ext.feed(', "response": "second"}')
+        assert more == ""
+
+    def test_scan_buffer_truncation_is_safe(self):
+        # The extractor truncates its scan buffer to 20 chars beyond 30 to
+        # avoid unbounded memory while waiting for the trigger.
+        ext = self._new_extractor()
+        long_prefix = "x" * 200 + '"response": "hit"'
+        out = ext.feed(long_prefix)
+        assert out == "hit"
+
+
+# ---------------------------------------------------------------------------
+# execute_stream — streaming token + final-result protocol
+# ---------------------------------------------------------------------------
+
+class TestExecuteStream:
+    """Verify execute_stream yields ('token', str) chunks and a final ('result', model)."""
+
+    @pytest.mark.asyncio
+    async def test_streams_tokens_and_final_result(self):
+        chunks = ['{"response": "Hel', 'lo!", "score": 0.9, "field": "ok"}']
+
+        llm = Mock()
+        llm.call_stream = Mock(return_value=iter(chunks))
+        agent = TestableAgent(llm)
+
+        events = []
+        async for ev in agent.execute_stream(make_context()):
+            events.append(ev)
+
+        # Tokens come first, then the parsed model
+        token_text = "".join(d for kind, d in events if kind == "token")
+        results = [d for kind, d in events if kind == "result"]
+
+        assert token_text == "Hello!"
+        assert len(results) == 1
+        assert isinstance(results[0], SomeModel)
+        assert results[0].field == "ok"
+
+    @pytest.mark.asyncio
+    async def test_stream_with_invalid_final_json_raises(self):
+        # Stream ends with malformed JSON — validate_agent_output should raise
+        # AgentOutputError because no fields can be parsed.
+        chunks = ['{"response": "ok"', ", broken"]
+
+        llm = Mock()
+        llm.call_stream = Mock(return_value=iter(chunks))
+        agent = TestableAgent(llm)
+
+        with pytest.raises((AgentExecutionError, AgentOutputError)):
+            async for _ in agent.execute_stream(make_context()):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_stream_propagates_llm_exception(self):
+        def _raising_iter():
+            yield '{"response": "partial"'
+            raise RuntimeError("upstream LLM crashed")
+
+        llm = Mock()
+        llm.call_stream = Mock(return_value=_raising_iter())
+        agent = TestableAgent(llm)
+
+        with pytest.raises(AgentExecutionError):
+            async for _ in agent.execute_stream(make_context()):
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Use-fast-model branch in _execute_with_prompt
+# ---------------------------------------------------------------------------
+
+class TestExecuteFastModelBranch:
+    """The use_fast_model flag routes through llm.call_fast instead of llm.call."""
+
+    @pytest.mark.asyncio
+    async def test_fast_model_uses_call_fast(self):
+        llm = Mock()
+        llm.call_fast.return_value = {"output_text": '{"field": "v"}'}
+        agent = TestableAgent(llm, use_fast_model=True)
+
+        result = await agent.execute(make_context())
+        assert isinstance(result, SomeModel)
+        assert llm.call_fast.called is True
+        assert llm.call.called is False

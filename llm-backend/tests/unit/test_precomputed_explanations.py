@@ -396,8 +396,15 @@ class TestExplanationGeneratorService:
             MockLLMCls.make_schema_strict = MagicMock(side_effect=lambda x: x)
             svc = ExplanationGeneratorService(db, llm)
 
-        # Replace repo with a mock to avoid real DB calls
+        # Replace repo with a mock to avoid real DB calls.
+        # generate_for_guideline uses repo.get_variant to decide whether to
+        # skip an existing variant; default to None so generation proceeds.
         svc.repo = MagicMock()
+        svc.repo.get_variant.return_value = None
+        # _refresh_db_session() is called between LLM rounds and would otherwise
+        # construct a real DB engine via database.get_db_manager(). Stub it to
+        # be a no-op so our mocked repo survives the round-trip.
+        svc._refresh_db_session = MagicMock()
         return svc, llm
 
     def _good_generation_output(self, num_cards=5):
@@ -408,15 +415,20 @@ class TestExplanationGeneratorService:
                     "card_idx": i + 1,
                     "card_type": "concept",
                     "title": f"Card {i + 1}",
-                    "content": f"Content {i + 1}",
+                    "lines": [
+                        {
+                            "display": f"Display line {i + 1}.",
+                            "audio": f"Audio line {i + 1}",
+                        },
+                    ],
                     "visual": None,
-                    "audio_text": f"Audio for card {i + 1}",
                 }
                 for i in range(num_cards)
             ],
             "summary": {
                 "key_analogies": ["pizza analogy"],
                 "key_examples": ["sharing example"],
+                "teaching_notes": "Two-sentence summary of what was taught.",
             },
         }
 
@@ -727,8 +739,8 @@ class TestSessionServiceCardPhase:
 
     @patch("tutor.services.session_service.get_settings")
     @patch("tutor.services.session_service.ExplanationRepository")
-    def test_card_action_clear_transitions(self, MockExplRepo, mock_settings):
-        """complete_card_phase('clear') completes card phase, advances past explain steps."""
+    def test_card_action_clear_completes_teach_me(self, MockExplRepo, mock_settings):
+        """complete_card_phase('clear') ends the Teach Me session via the new completion path."""
         mock_settings.return_value = MagicMock(
             openai_api_key="fake", gemini_api_key=None, anthropic_api_key=None,
         )
@@ -757,8 +769,12 @@ class TestSessionServiceCardPhase:
 
         result = svc.complete_card_phase("test-session-card", "clear")
 
-        assert result["action"] == "transition_to_interactive"
-        assert "precomputed_summary" in result
+        # Teach Me / Practice split: 'clear' now ends the Teach Me session
+        # with no bridge turn or v2 plan; the frontend shows a summary CTA.
+        assert result["action"] == "teach_me_complete"
+        assert result["is_complete"] is True
+        assert "message" in result
+        assert "audio_text" in result
         svc._persist_session_state.assert_called_once()
 
     @patch("tutor.services.session_service.get_settings")
@@ -803,7 +819,7 @@ class TestSessionServiceCardPhase:
     @patch("tutor.services.session_service.get_settings")
     @patch("tutor.services.session_service.ExplanationRepository")
     def test_card_action_explain_differently_exhausted(self, MockExplRepo, mock_settings):
-        """When all variants seen, explain_differently falls back to dynamic."""
+        """When all variants seen, explain_differently ends the session with a gentle nudge."""
         mock_settings.return_value = MagicMock(
             openai_api_key="fake", gemini_api_key=None, anthropic_api_key=None,
         )
@@ -831,12 +847,13 @@ class TestSessionServiceCardPhase:
 
         svc._persist_session_state = MagicMock()
 
-        with patch("asyncio.run", return_value=("Let me explain differently...", "audio text")):
-            result = svc.complete_card_phase("test-session-card", "explain_differently")
+        result = svc.complete_card_phase("test-session-card", "explain_differently")
 
-        assert result["action"] == "fallback_dynamic"
-        assert result["message"] == "Let me explain differently..."
-        assert result["audio_text"] == "audio text"
+        # Teach Me / Practice split: when variants are exhausted the session
+        # is finalized (no bridge turn) with a custom "let's practice" message.
+        assert result["action"] == "teach_me_complete"
+        assert result["is_complete"] is True
+        assert "practice" in result["message"].lower()
         svc._persist_session_state.assert_called_once()
 
     @patch("tutor.services.session_service.get_settings")

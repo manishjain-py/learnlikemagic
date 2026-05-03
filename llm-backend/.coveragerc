@@ -7,9 +7,24 @@ omit =
     */venv/*
     */migrations/*
     scripts/*
-    autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py
     db.py
     database.py
+    # Autoresearch is offline experiment / CLI tooling, not production runtime.
+    # The runners, email reports, and report generators are end-to-end driven
+    # and tested via integration runs, not unit tests.
+    autoresearch/**/run_experiment.py
+    autoresearch/**/email_report.py
+    autoresearch/**/evaluation/run_evaluation.py
+    autoresearch/**/evaluation/report_generator.py
+    autoresearch/**/evaluation/session_runner.py
+    autoresearch/**/evaluation/config.py
+    autoresearch/**/evaluation/api.py
+    autoresearch/**/compare_prompts.py
+    autoresearch/**/api_client.py
+    autoresearch/**/email_helper.py
+    # api/test_scenarios.py is a static fixture script seeding test runs,
+    # not application code on the request path.
+    api/test_scenarios.py
 
 [report]
 precision = 2
@@ -22,6 +37,16 @@ omit =
     */venv/*
     */migrations/*
     scripts/*
-    autoresearch/tutor_teaching_quality/evaluation/run_evaluation.py
     db.py
     database.py
+    autoresearch/**/run_experiment.py
+    autoresearch/**/email_report.py
+    autoresearch/**/evaluation/run_evaluation.py
+    autoresearch/**/evaluation/report_generator.py
+    autoresearch/**/evaluation/session_runner.py
+    autoresearch/**/evaluation/config.py
+    autoresearch/**/evaluation/api.py
+    autoresearch/**/compare_prompts.py
+    autoresearch/**/api_client.py
+    autoresearch/**/email_helper.py
+    api/test_scenarios.py

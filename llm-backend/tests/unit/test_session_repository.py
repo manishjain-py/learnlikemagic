@@ -240,3 +240,153 @@ class TestDelete:
     def test_delete_nonexistent_returns_false(self, db_session):
         repo = SessionRepository(db_session)
         assert repo.delete("does-not-exist") is False
+
+
+# ===========================================================================
+# Per-user listing & stats
+# ===========================================================================
+
+def _seed_user_session(
+    db_session,
+    *,
+    session_id: str,
+    user_id: str,
+    subject: str = "Mathematics",
+    mastery: float = 0.5,
+    step_idx: int = 1,
+) -> SessionModel:
+    """Insert a SessionModel directly to test user-scoped queries."""
+    repo = SessionRepository(db_session)
+    state = _make_state(session_id=session_id, mastery_score=mastery, step_idx=step_idx)
+    row = repo.create(session_id, state)
+    row.user_id = user_id
+    row.subject = subject
+    db_session.commit()
+    return row
+
+
+class TestListByUser:
+    def test_list_by_user_returns_only_users_sessions(self, db_session):
+        repo = SessionRepository(db_session)
+        _seed_user_session(db_session, session_id="s1", user_id="u1")
+        _seed_user_session(db_session, session_id="s2", user_id="u2")
+
+        rows = repo.list_by_user("u1")
+        assert [r["session_id"] for r in rows] == ["s1"]
+
+    def test_list_by_user_filters_by_subject(self, db_session):
+        repo = SessionRepository(db_session)
+        _seed_user_session(db_session, session_id="m1", user_id="u1", subject="Mathematics")
+        _seed_user_session(db_session, session_id="s1", user_id="u1", subject="Science")
+
+        math_only = repo.list_by_user("u1", subject="Mathematics")
+        assert {r["session_id"] for r in math_only} == {"m1"}
+
+    def test_list_by_user_paginates(self, db_session):
+        repo = SessionRepository(db_session)
+        for i in range(5):
+            _seed_user_session(db_session, session_id=f"s{i}", user_id="u1")
+
+        page1 = repo.list_by_user("u1", offset=0, limit=2)
+        page2 = repo.list_by_user("u1", offset=2, limit=2)
+        assert len(page1) == 2
+        assert len(page2) == 2
+        # No overlap between pages
+        assert {r["session_id"] for r in page1} & {r["session_id"] for r in page2} == set()
+
+    def test_list_by_user_includes_step_and_mode(self, db_session):
+        repo = SessionRepository(db_session)
+        _seed_user_session(db_session, session_id="s1", user_id="u1", step_idx=4)
+
+        rows = repo.list_by_user("u1")
+        assert rows[0]["step_idx"] == 4
+        # Default mode is "teach_me" via _make_state — coverage key set up
+        assert "mode" in rows[0]
+
+
+class TestCountByUser:
+    def test_count_total(self, db_session):
+        repo = SessionRepository(db_session)
+        _seed_user_session(db_session, session_id="a", user_id="u1")
+        _seed_user_session(db_session, session_id="b", user_id="u1")
+        _seed_user_session(db_session, session_id="c", user_id="u2")
+
+        assert repo.count_by_user("u1") == 2
+        assert repo.count_by_user("u2") == 1
+        assert repo.count_by_user("nobody") == 0
+
+    def test_count_filtered_by_subject(self, db_session):
+        repo = SessionRepository(db_session)
+        _seed_user_session(db_session, session_id="m", user_id="u1", subject="Mathematics")
+        _seed_user_session(db_session, session_id="s", user_id="u1", subject="Science")
+
+        assert repo.count_by_user("u1", subject="Mathematics") == 1
+
+
+class TestGetUserStats:
+    def test_no_sessions_returns_zeros(self, db_session):
+        repo = SessionRepository(db_session)
+        stats = repo.get_user_stats("nobody")
+        assert stats == {
+            "total_sessions": 0,
+            "average_mastery": 0,
+            "topics_covered": [],
+            "total_steps": 0,
+        }
+
+    def test_aggregates_across_sessions(self, db_session):
+        repo = SessionRepository(db_session)
+        _seed_user_session(
+            db_session, session_id="a", user_id="u1", mastery=0.6, step_idx=2,
+            subject="Math",
+        )
+        _seed_user_session(
+            db_session, session_id="b", user_id="u1", mastery=0.8, step_idx=3,
+            subject="Science",
+        )
+
+        stats = repo.get_user_stats("u1")
+        assert stats["total_sessions"] == 2
+        assert stats["average_mastery"] == 0.7
+        assert stats["total_steps"] == 5
+        assert sorted(stats["topics_covered"]) == ["Math", "Science"]
+
+
+class TestComputeCoverage:
+    def test_zero_when_no_canonical_concepts(self):
+        assert SessionRepository._compute_coverage({"a"}, []) == 0.0
+
+    def test_full_coverage(self):
+        result = SessionRepository._compute_coverage({"a", "b"}, ["a", "b"])
+        assert result == 100.0
+
+    def test_partial_coverage(self):
+        result = SessionRepository._compute_coverage({"a"}, ["a", "b", "c", "d"])
+        assert result == 25.0
+
+    def test_extra_covered_concepts_dont_count(self):
+        # Concepts the student covered but that aren't canonical don't change %.
+        result = SessionRepository._compute_coverage({"a", "z"}, ["a", "b"])
+        assert result == 50.0
+
+
+class TestListAllWithMalformedJson:
+    def test_unparseable_state_falls_back_to_empty(self, db_session):
+        repo = SessionRepository(db_session)
+        # Insert a row with garbage state_json to exercise the JSON guard.
+        row = SessionModel(
+            id="bad",
+            student_json="{}",
+            goal_json="{}",
+            state_json="not-valid-json",
+            mastery=0.0,
+            step_idx=0,
+        )
+        db_session.add(row)
+        db_session.commit()
+
+        results = repo.list_all()
+        match = next(r for r in results if r["session_id"] == "bad")
+        # No topic_name (state was unparseable) and message_count is 0.
+        assert match["topic_name"] is None
+        assert match["message_count"] == 0
