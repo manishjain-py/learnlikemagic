@@ -289,6 +289,7 @@ State machine: `pending -> running -> completed | completed_with_errors | failed
 | GET | `.../chapters/{chapter_id}/jobs/{job_id}` | Get specific job |
 | GET | `.../chapters/{chapter_id}/topics` | Get extracted topics |
 | GET | `.../chapters/{chapter_id}/topics/{topic_key}` | Get single topic |
+| DELETE | `.../chapters/{chapter_id}/topics/{topic_id}` | Delete a single extracted topic (pre-sync cleanup) |
 
 ---
 

@@ -29,8 +29,8 @@ Practice-attempt endpoints (`POST /practice/start`, `GET /practice/attempts/*`, 
 
 ### Public Methods
 
-- `get_report_card(user_id)` → Full report card dict (used by `/report-card`)
-- `get_topic_progress(user_id)` → `{user_progress: {guideline_id: {coverage, session_count, status}}}`
+- `get_report_card(user_id)` → Full report card dict (used by `/report-card`). `total_sessions = len(sessions)` counts all sessions (teach_me + clarify_doubts); does NOT count practice attempts.
+- `get_topic_progress(user_id)` → `{user_progress: {guideline_id: {coverage, session_count, status}}}`. teach_me-only.
 
 ### Private Methods
 

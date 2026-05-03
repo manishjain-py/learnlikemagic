@@ -8,7 +8,7 @@ The report card is a student's progress overview. It shows what they have studie
 
 ### Overview
 
-- **Total sessions and chapters studied** — Quick stats at the top
+- **Total sessions and chapters studied** — Quick stats at the top. Session count includes both Teach Me and Clarify Doubts sessions (practice attempts are not counted here)
 - **Subject cards** — One card per subject showing how many chapters it contains; tap a card to see details
 
 ### Subject Detail
