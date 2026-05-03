@@ -125,9 +125,9 @@ Triggers: per-book, per-chapter, or per-topic. Skip-if-exists by default; force 
 
 Inserts quick inline activities between explanation cards so the student practises what they just read before moving on. Each check-in has a title, instruction, hint, success message, and audio text.
 
-Six activity types: **Pick one** (2-3 options), **True/false**, **Fill blank** (2-3 options), **Match pairs** (2-3 pairs), **Sort buckets** (4-6 items into 2 buckets), **Sequence** (3-4 items in order).
+Eleven activity types: **Pick one** (2-3 options), **True/false**, **Fill blank** (2-3 options), **Match pairs** (2-3 pairs), **Sort buckets** (4-6 items into 2 buckets), **Sequence** (3-4 items in order), **Spot the error** (3-5 steps, one wrong), **Odd one out** (3-4 items), **Predict then reveal**, **Swipe classify** (4-8 items into 2 buckets), **Tap to eliminate** (4-5 options).
 
-Check-ins are never inserted before card 3 and are never placed back-to-back. The system decides placement, validates each check-in, and inserts only valid ones. Cannot run while explanation generation or visual enrichment is running on the same chapter.
+Check-ins are never inserted before card 3. Up to two check-ins may sit at the same position (a light-then-heavy pair); different positions must be at least two content cards apart. The system decides placement, validates each check-in, and inserts only valid ones. Cannot run while explanation generation or visual enrichment is running on the same chapter.
 
 ### Step 7.4: Generate Practice Bank
 
