@@ -143,10 +143,15 @@ class TestCreateSession:
 
         mock_svc = MagicMock()
         MockService.return_value = mock_svc
-        mock_svc.create_new_session.return_value = MagicMock(
+        # CreateSessionResponse now also serializes a `teach_me_mode` literal
+        # (one of "explain" / "baatcheet"). Drive the mock with a real
+        # response object so FastAPI's response model validation succeeds.
+        from shared.models.schemas import CreateSessionResponse
+        mock_svc.create_new_session.return_value = CreateSessionResponse(
             session_id="new-session",
             first_turn={"message": "Hello!", "hints": []},
             mode="teach_me",
+            teach_me_mode="explain",
         )
 
         payload = {

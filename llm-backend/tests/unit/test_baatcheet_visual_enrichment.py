@@ -400,8 +400,12 @@ class TestStageStatusV2:
         assert out.state == "done"
         assert "1 extras" in out.summary
 
-    def test_no_required_slots_is_trivially_done(self, db_session):
+    def test_no_required_slots_is_ready_until_run(self, db_session):
         g = _seed_guideline(db_session)
+        # Plan declares no required visuals and the stage has not run yet.
+        # Status is `ready`, not `done` — the selector still picks 12-18
+        # default cards on every run, so we don't pre-declare completion
+        # before any work has happened (would hide the work from admins).
         cards = [
             {"card_idx": 1, "card_type": "welcome", "lines": []},
             self._no_pixi(2),
@@ -411,7 +415,8 @@ class TestStageStatusV2:
             plan=_v2_plan(visual_required_slots=()),
         )
         out = STAGE.status_check(self._ctx(db_session, g.id))
-        assert out.state == "done"
+        assert out.state == "ready"
+        assert "not yet run" in out.summary
 
     def test_blocked_when_no_dialogue(self, db_session):
         g = _seed_guideline(db_session)

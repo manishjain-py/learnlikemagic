@@ -51,11 +51,25 @@ def _make_session(**overrides):
 
 
 def _make_generation_output(teaching_notes="Cards taught fractions via pizza analogy."):
+    def _line(text, audio):
+        # ExplanationCardOutput now stores content as a list of ExplanationLineOutput
+        # (display + audio pair) rather than flat content/audio_text strings.
+        return {"display": text, "audio": audio}
+
     return GenerationOutput(
         cards=[
-            ExplanationCardOutput(card_idx=1, card_type="concept", title="What is a fraction?", content="A fraction is a part of a whole."),
-            ExplanationCardOutput(card_idx=2, card_type="example", title="Pizza slices", content="If you cut a pizza into 4 slices and eat 1, you ate 1/4."),
-            ExplanationCardOutput(card_idx=3, card_type="summary", title="Recap", content="Fractions show parts of a whole."),
+            ExplanationCardOutput(
+                card_idx=1, card_type="concept", title="What is a fraction?",
+                lines=[_line("A fraction is a part of a whole.", "A fraction is a part of a whole.")],
+            ),
+            ExplanationCardOutput(
+                card_idx=2, card_type="example", title="Pizza slices",
+                lines=[_line("If you cut a pizza into 4 slices and eat 1, you ate 1/4.", "If you cut a pizza into four slices and eat one, you ate one quarter.")],
+            ),
+            ExplanationCardOutput(
+                card_idx=3, card_type="summary", title="Recap",
+                lines=[_line("Fractions show parts of a whole.", "Fractions show parts of a whole.")],
+            ),
         ],
         summary=ExplanationSummaryOutput(
             key_analogies=["pizza slices"],

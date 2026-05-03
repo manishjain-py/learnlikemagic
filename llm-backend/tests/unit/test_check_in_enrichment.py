@@ -176,22 +176,42 @@ class TestCheckInValidation:
         result = svc._validate_check_ins([ci], cards)
         assert len(result) == 0
 
-    def test_rejects_insufficient_gap(self):
-        """Two check-ins at same card_idx — second is dropped (gap=0 < MIN_GAP=1)."""
+    def test_pairs_at_same_position_both_kept(self):
+        """Up to PAIR_SIZE check-ins at the same insert position are both kept."""
         svc = self._get_service()
         cards = _sample_cards(8)
         ci1 = _make_check_in_decision(insert_after=3)
-        ci2 = _make_check_in_decision(insert_after=3)  # gap of 0 — too close
+        ci2 = _make_check_in_decision(insert_after=3)  # same position — paired
+        result = svc._validate_check_ins([ci1, ci2], cards)
+        assert len(result) == 2
+        assert all(r.insert_after_card_idx == 3 for r in result)
+
+    def test_third_at_same_position_dropped(self):
+        """A third check-in at the same insert position exceeds PAIR_SIZE and is dropped."""
+        svc = self._get_service()
+        cards = _sample_cards(8)
+        ci1 = _make_check_in_decision(insert_after=3)
+        ci2 = _make_check_in_decision(insert_after=3)
+        ci3 = _make_check_in_decision(insert_after=3)  # exceeds PAIR_SIZE=2
+        result = svc._validate_check_ins([ci1, ci2, ci3], cards)
+        assert len(result) == 2
+
+    def test_rejects_gap_below_min_between_positions(self):
+        """Different positions need gap >= MIN_GAP_BETWEEN_PAIRS=2 — gap=1 dropped."""
+        svc = self._get_service()
+        cards = _sample_cards(8)
+        ci1 = _make_check_in_decision(insert_after=3)
+        ci2 = _make_check_in_decision(insert_after=4)  # gap of 1 — insufficient
         result = svc._validate_check_ins([ci1, ci2], cards)
         assert len(result) == 1
         assert result[0].insert_after_card_idx == 3
 
-    def test_accepts_sufficient_gap(self):
-        """Two check-ins with gap >= 1 — both pass."""
+    def test_accepts_sufficient_gap_between_positions(self):
+        """Different positions with gap >= 2 are both kept."""
         svc = self._get_service()
         cards = _sample_cards(8)
         ci1 = _make_check_in_decision(insert_after=3)
-        ci2 = _make_check_in_decision(insert_after=4)  # gap of 1 — OK (MIN_GAP=1)
+        ci2 = _make_check_in_decision(insert_after=5)  # gap of 2 — OK
         result = svc._validate_check_ins([ci1, ci2], cards)
         assert len(result) == 2
 

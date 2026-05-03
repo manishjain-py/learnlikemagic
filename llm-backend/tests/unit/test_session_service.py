@@ -121,14 +121,19 @@ class TestSessionServiceCreateNewSession:
             svc.create_new_session(request)
 
     @patch("tutor.services.session_service.get_settings")
+    @patch("tutor.services.session_service.ExplanationRepository")
     @patch("tutor.services.session_service.convert_guideline_to_topic")
-    def test_create_session_success(self, mock_convert, mock_settings):
+    def test_create_session_success(self, mock_convert, mock_expl_repo_cls, mock_settings):
         mock_settings.return_value = MagicMock(
             openai_api_key="fake",
             gemini_api_key=None,
             anthropic_api_key=None,
         )
         mock_convert.return_value = _make_topic()
+        # No pre-computed explanations — exercise the dynamic-tutor welcome
+        # path rather than the card-phase branch (which needs a populated
+        # variant + would otherwise build CardPhaseState from Mock values).
+        mock_expl_repo_cls.return_value.get_by_guideline_id.return_value = []
 
         from tutor.services.session_service import SessionService
 
@@ -144,12 +149,17 @@ class TestSessionServiceCreateNewSession:
         svc.guideline_repo.get_guideline_by_id.return_value = _make_guideline_response()
         # no existing study plan
         svc.db.query.return_value.filter.return_value.first.return_value = None
-        # orchestrator returns welcome
-        svc.orchestrator.generate_welcome_message = AsyncMock(return_value="Hello! Let's learn fractions!")
+        # orchestrator returns (welcome_message, audio_text) tuple
+        svc.orchestrator.generate_welcome_message = AsyncMock(
+            return_value=("Hello! Let's learn fractions!", "Hello! Let's learn fractions!"),
+        )
 
         request = _create_request()
 
-        with patch("asyncio.run", return_value="Hello! Let's learn fractions!"):
+        with patch(
+            "asyncio.run",
+            return_value=("Hello! Let's learn fractions!", "Hello! Let's learn fractions!"),
+        ):
             response = svc.create_new_session(request)
 
         assert isinstance(response, CreateSessionResponse)

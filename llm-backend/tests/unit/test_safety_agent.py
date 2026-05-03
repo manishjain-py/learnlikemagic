@@ -1,9 +1,9 @@
 """Unit tests for tutor/agents/safety.py — SafetyAgent."""
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
-from tutor.agents.safety import SafetyAgent, SafetyOutput
+from tutor.agents.safety import SafetyAgent, SafetyOutput, _is_provably_safe
 from tutor.agents.base_agent import AgentContext
 
 
@@ -113,7 +113,9 @@ class TestBuildPrompt:
         ctx = _make_context()
 
         prompt = agent.build_prompt(ctx)
-        assert "Inappropriate language" in prompt
+        # Prompt was rewritten to spell out "Inappropriate or abusive language";
+        # the other categories kept the same nouns.
+        assert "Inappropriate" in prompt
         assert "Harmful content" in prompt
         assert "Personal information" in prompt
         assert "Bullying" in prompt
@@ -146,3 +148,73 @@ class TestSummarizeOutput:
         assert summary["is_safe"] is False
         assert summary["violation_type"] == "off_topic"
         assert summary["should_warn"] is True
+
+
+# ---------------------------------------------------------------------------
+# _is_provably_safe — allow-list pre-filter
+# ---------------------------------------------------------------------------
+
+class TestIsProvablySafe:
+    @pytest.mark.parametrize("text", ["", "5", "?", "ab", " a "])
+    def test_short_messages_are_safe(self, text):
+        assert _is_provably_safe(text) is True
+
+    @pytest.mark.parametrize("text", ["3 + 4 = 7", "42", "1/2", "100 - 50", "(2+3)*4"])
+    def test_pure_math_is_safe(self, text):
+        assert _is_provably_safe(text) is True
+
+    @pytest.mark.parametrize("text", ["yes", "No", "OKAY", "thanks", "haan", "nahi", "Theek hai"])
+    def test_known_safe_answers_case_insensitive(self, text):
+        assert _is_provably_safe(text) is True
+
+    @pytest.mark.parametrize("text", [
+        "I want to talk about something else",
+        "you suck",
+        "tell me a joke please",
+        "1 + 1 = abc",  # math + non-math chars
+    ])
+    def test_unknown_messages_are_not_proved_safe(self, text):
+        assert _is_provably_safe(text) is False
+
+
+# ---------------------------------------------------------------------------
+# execute() — pre-filter + LLM + fail-safe fallback
+# ---------------------------------------------------------------------------
+
+class TestSafetyAgentExecute:
+    @pytest.mark.asyncio
+    async def test_short_message_skips_llm(self):
+        agent = _make_agent()
+        # Spy on super().execute to confirm it isn't called.
+        with patch("tutor.agents.base_agent.BaseAgent.execute", AsyncMock()) as mock_super:
+            ctx = _make_context(student_message="ok")
+            out = await agent.execute(ctx)
+            assert out.is_safe is True
+            assert "pre-filter" in out.reasoning.lower()
+            mock_super.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_complex_message_calls_llm(self):
+        agent = _make_agent()
+        expected = SafetyOutput(is_safe=True, reasoning="LLM said ok")
+        with patch(
+            "tutor.agents.base_agent.BaseAgent.execute",
+            AsyncMock(return_value=expected),
+        ) as mock_super:
+            ctx = _make_context(student_message="I have a long question about fractions")
+            out = await agent.execute(ctx)
+            assert out is expected
+            mock_super.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_fails_safe(self):
+        agent = _make_agent()
+        with patch(
+            "tutor.agents.base_agent.BaseAgent.execute",
+            AsyncMock(side_effect=RuntimeError("safety LLM crashed")),
+        ):
+            ctx = _make_context(student_message="ambiguous question with details")
+            out = await agent.execute(ctx)
+            assert out.is_safe is False
+            assert out.violation_type == "safety_check_error"
+            assert "rephrase" in out.guidance.lower()

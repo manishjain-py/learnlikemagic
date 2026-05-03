@@ -314,6 +314,7 @@ class TestSummarizeOutput:
         agent = _make_agent()
         output = TutorTurnOutput(
             response="Great thinking! A fraction represents a part of a whole.",
+            audio_text="Great thinking. A fraction represents a part of a whole.",
             intent="answer",
             answer_correct=True,
             misconceptions_detected=[],
@@ -337,6 +338,7 @@ class TestSummarizeOutput:
         agent = _make_agent()
         output = TutorTurnOutput(
             response="Let me explain fractions.",
+            audio_text="Let me explain fractions.",
             intent="continuation",
             turn_summary="Explaining fractions",
         )

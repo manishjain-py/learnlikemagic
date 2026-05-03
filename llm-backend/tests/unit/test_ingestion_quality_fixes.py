@@ -204,7 +204,9 @@ class TestSingleGuidelineHeartbeat:
              patch("shared.services.llm_service.LLMService"), \
              patch("config.get_settings"):
             mock_cfg.return_value.get_config.return_value = {
-                "provider": "openai", "model_id": "gpt-4o-mini",
+                "provider": "openai",
+                "model_id": "gpt-4o-mini",
+                "reasoning_effort": "none",
             }
             sync_routes._run_audio_text_review(
                 db=fake_db, job_id="job-xyz",

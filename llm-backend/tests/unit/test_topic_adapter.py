@@ -262,13 +262,13 @@ class TestConvertGuidelineToTopicWithoutStudyPlan:
         """Without a study plan record, a default plan is generated."""
         topic = convert_guideline_to_topic(guideline_with_metadata, study_plan_record=None)
         assert isinstance(topic.study_plan, StudyPlan)
-        assert len(topic.study_plan.steps) == 4
+        assert len(topic.study_plan.steps) == 5
 
     def test_default_plan_step_types(self, guideline_with_metadata):
-        """Default plan follows explain-check-explain-practice pattern."""
+        """Default plan follows explain-explain-check-explain-practice pattern."""
         topic = convert_guideline_to_topic(guideline_with_metadata)
         types = [s.type for s in topic.study_plan.steps]
-        assert types == ["explain", "check", "explain", "practice"]
+        assert types == ["explain", "explain", "check", "explain", "practice"]
 
 
 # ---------------------------------------------------------------------------
@@ -281,21 +281,21 @@ class TestConvertGuidelineToTopicWithInvalidPlan:
     def test_invalid_json_falls_back_to_default(self, guideline_with_metadata, invalid_json_study_plan_record):
         """Invalid JSON in plan_json falls back to the default plan."""
         topic = convert_guideline_to_topic(guideline_with_metadata, invalid_json_study_plan_record)
-        assert len(topic.study_plan.steps) == 4
+        assert len(topic.study_plan.steps) == 5
         types = [s.type for s in topic.study_plan.steps]
-        assert types == ["explain", "check", "explain", "practice"]
+        assert types == ["explain", "explain", "check", "explain", "practice"]
 
     def test_empty_todo_list_falls_back(self, guideline_with_metadata, empty_study_plan_record):
         """An empty todo_list in plan_json falls back to the default plan."""
         topic = convert_guideline_to_topic(guideline_with_metadata, empty_study_plan_record)
-        assert len(topic.study_plan.steps) == 4
+        assert len(topic.study_plan.steps) == 5
 
     def test_none_plan_json_falls_back(self, guideline_with_metadata):
         """A record with plan_json=None falls back to the default plan."""
         record = MagicMock()
         record.plan_json = None
         topic = convert_guideline_to_topic(guideline_with_metadata, record)
-        assert len(topic.study_plan.steps) == 4
+        assert len(topic.study_plan.steps) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -349,21 +349,21 @@ class TestInferStepType:
         """The last step (index == total) defaults to 'practice' when no keywords."""
         assert _infer_step_type({"title": "Final step"}, 3, 3) == "practice"
 
-    def test_even_index_defaults_to_check(self):
-        """Even-index steps default to 'check' when no keywords."""
-        assert _infer_step_type({"title": "Step two"}, 2, 5) == "check"
+    def test_index_two_defaults_to_explain(self):
+        """Index 2 (not last, not divisible by 3) defaults to 'explain'."""
+        assert _infer_step_type({"title": "Step two"}, 2, 5) == "explain"
 
-    def test_odd_index_defaults_to_explain(self):
-        """Odd-index steps default to 'explain' when no keywords."""
+    def test_first_step_defaults_to_explain(self):
+        """The first step (index 1) defaults to 'explain' when no keywords."""
         assert _infer_step_type({"title": "Step one"}, 1, 5) == "explain"
 
-    def test_third_odd_index_defaults_to_explain(self):
-        """Index 3 (odd, not last) defaults to 'explain'."""
-        assert _infer_step_type({"title": "Intro"}, 3, 5) == "explain"
+    def test_third_step_defaults_to_check(self):
+        """Index 3 (divisible by 3, not last) defaults to 'check'."""
+        assert _infer_step_type({"title": "Intro"}, 3, 5) == "check"
 
-    def test_fourth_even_index_defaults_to_check(self):
-        """Index 4 (even, not last) defaults to 'check'."""
-        assert _infer_step_type({"title": "Review"}, 4, 5) == "check"
+    def test_fourth_step_defaults_to_explain(self):
+        """Index 4 (not divisible by 3, not last) defaults to 'explain'."""
+        assert _infer_step_type({"title": "Review"}, 4, 5) == "explain"
 
 
 # ---------------------------------------------------------------------------
@@ -378,22 +378,22 @@ class TestGenerateDefaultPlan:
         plan = _generate_default_plan(guideline_with_metadata)
         assert isinstance(plan, StudyPlan)
 
-    def test_has_four_steps(self, guideline_with_metadata):
-        """Default plan has exactly 4 steps."""
+    def test_has_five_steps(self, guideline_with_metadata):
+        """Default plan has exactly 5 steps."""
         plan = _generate_default_plan(guideline_with_metadata)
-        assert len(plan.steps) == 4
+        assert len(plan.steps) == 5
 
     def test_step_types_pattern(self, guideline_with_metadata):
-        """Default plan follows explain-check-explain-practice."""
+        """Default plan follows explain-explain-check-explain-practice."""
         plan = _generate_default_plan(guideline_with_metadata)
         types = [s.type for s in plan.steps]
-        assert types == ["explain", "check", "explain", "practice"]
+        assert types == ["explain", "explain", "check", "explain", "practice"]
 
     def test_step_ids_sequential(self, guideline_with_metadata):
-        """Step IDs are 1-4."""
+        """Step IDs are 1-5."""
         plan = _generate_default_plan(guideline_with_metadata)
         ids = [s.step_id for s in plan.steps]
-        assert ids == [1, 2, 3, 4]
+        assert ids == [1, 2, 3, 4, 5]
 
     def test_concepts_use_topic(self, guideline_with_metadata):
         """All step concepts use the guideline topic."""
@@ -408,21 +408,23 @@ class TestGenerateDefaultPlan:
         assert "Comparing" in plan.steps[0].content_hint
 
     def test_check_step_has_conceptual_question_type(self, guideline_with_metadata):
-        """Check step has question_type='conceptual'."""
+        """Check step (index 2) has question_type='conceptual'."""
         plan = _generate_default_plan(guideline_with_metadata)
-        check_step = plan.steps[1]
+        check_step = plan.steps[2]
+        assert check_step.type == "check"
         assert check_step.question_type == "conceptual"
 
     def test_practice_step_has_question_count(self, guideline_with_metadata):
-        """Practice step has question_count=2."""
+        """Last practice step has question_count=2."""
         plan = _generate_default_plan(guideline_with_metadata)
-        practice_step = plan.steps[3]
+        practice_step = plan.steps[4]
+        assert practice_step.type == "practice"
         assert practice_step.question_count == 2
 
-    def test_third_step_content_hint(self, guideline_with_metadata):
-        """Third explain step has 'Deepen' in content hint."""
+    def test_second_step_content_hint(self, guideline_with_metadata):
+        """Second explain step has 'Deepen' in content hint."""
         plan = _generate_default_plan(guideline_with_metadata)
-        assert "Deepen" in plan.steps[2].content_hint
+        assert "Deepen" in plan.steps[1].content_hint
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +437,7 @@ class TestConvertStudyPlan:
     def test_none_record_returns_default(self, guideline_with_metadata):
         """None record returns the default plan."""
         plan = _convert_study_plan(None, guideline_with_metadata)
-        assert len(plan.steps) == 4
+        assert len(plan.steps) == 5
 
     def test_valid_record_returns_parsed_plan(self, guideline_with_metadata, valid_study_plan_record):
         """A valid record returns a plan with steps from the todo_list."""
@@ -445,4 +447,4 @@ class TestConvertStudyPlan:
     def test_invalid_json_returns_default(self, guideline_with_metadata, invalid_json_study_plan_record):
         """Invalid JSON returns the default plan."""
         plan = _convert_study_plan(invalid_json_study_plan_record, guideline_with_metadata)
-        assert len(plan.steps) == 4
+        assert len(plan.steps) == 5
