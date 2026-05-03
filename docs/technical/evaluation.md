@@ -71,7 +71,7 @@ Generate Reports (JSON + Markdown artifacts)
 
 **File:** `autoresearch/tutor_teaching_quality/evaluation/evaluator.py`
 
-`ConversationEvaluator` sends full transcript plus persona context to an LLM judge. Uses `config.create_llm_service("evaluator")` for provider-agnostic LLM calls with `reasoning_effort="high"` and `json_mode=True`.
+`ConversationEvaluator` sends full transcript plus persona context to an LLM judge. Uses `config.create_llm_service("evaluator")` for provider-agnostic LLM calls with `reasoning_effort="high"` and `json_mode=True`. The `EvalConfig.evaluator_reasoning_effort` field (default `"high"`) exists but is **not read** -- the value is hardcoded in `evaluator.py`.
 
 The system prompt is loaded at module import time from `prompts/evaluator.txt`; the card-phase dimensions block is loaded from `prompts/card_phase_dimensions.txt` and spliced in via `{card_phase_dimensions}` only when the conversation contains `explanation_card` messages. The schema (scores + analysis fields) is generated dynamically per call based on which dimensions apply.
 

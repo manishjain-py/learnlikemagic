@@ -181,7 +181,7 @@ Most modules follow the layered internal structure:
 └── prompts/          # LLM prompt templates
 ```
 
-**Exception:** All `autoresearch/*/evaluation/` modules use a flat file layout (`evaluator.py`, `session_runner.py`, `config.py`, etc.) rather than subdirectories.
+**Exception:** All `autoresearch/*/evaluation/` modules use a flat file layout (`evaluator.py` / pipeline-specific evaluator name, `config.py`, `report_generator.py`, optional `session_runner.py` / `pipeline_runner.py`) rather than subdirectories. File set varies per pipeline.
 
 ### Routers Registered in `main.py`
 

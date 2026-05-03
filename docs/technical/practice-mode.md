@@ -191,7 +191,7 @@ The worker is a daemon thread with a **fresh DB session** (not `self.db`) and a 
 
 **Service:** `PracticeGradingService` — `llm-backend/tutor/services/practice_grading_service.py`
 
-**Prompts:** `llm-backend/tutor/prompts/practice_grading.py` — two Pydantic output schemas: `FreeFormGradingOutput` (score + rationale) and `PickRationaleOutput` (rationale for wrong picks).
+**Prompts:** `llm-backend/tutor/prompts/practice_grading.py` — `FREE_FORM_GRADING_PROMPT` + `PER_PICK_RATIONALE_PROMPT`. Pydantic output schemas (`FreeFormGradingOutput`, `PickRationaleOutput`) live in the service file alongside `grade_attempt`.
 
 **Entry point:** `grade_attempt(attempt_id)` — idempotent; bails if status != `grading`.
 

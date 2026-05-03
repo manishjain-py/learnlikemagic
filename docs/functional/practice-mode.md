@@ -68,9 +68,8 @@ Below the actions is the **card-by-card review**. Each question card shows:
 
 - The original question.
 - The student's answer (or "not answered" for blanks).
-- The correct answer.
-- A short "why" explaining the correct answer.
-- For wrong/blank answers: a targeted rationale — why YOUR pick was wrong given what the question asked.
+- The correct answer (on wrong picks).
+- For wrong/blank picks and all free-form answers: a 2-3 sentence rationale (≤60 words) — confirms or states the correct idea, names the specific misconception THIS pick reveals, and gives one concrete anchor to remember next time.
 
 The review uses the same interactive components as the runner, but in a disabled/read-only mode with correctness styling applied.
 

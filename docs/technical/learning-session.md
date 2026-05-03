@@ -136,13 +136,13 @@ Refresher topics force `teach_me_mode="explain"` even if Baatcheet was requested
 
 `TeacherOrchestrator.process_turn(session, student_message)`:
 
-1. **Post-completion check** — if `clarify_complete=True`, run safety + translation in parallel, then call `_process_post_completion()` (LLM-generated context-aware reply).
-2. **Translation + Safety (parallel)** — `_translate_to_english()` (fast model, `translation.txt` prompt) + `SafetyAgent.execute()` via `asyncio.gather`. Translation skips empty / pure-number input.
+1. **Post-completion check** — if `is_complete` and `mode=="clarify_doubts"`, OR `is_complete` and (extension disabled or extension_turns > 10), run safety + translation in parallel, then call `_process_post_completion()` (LLM-generated context-aware reply, plain text).
+2. **Translation + Safety (parallel)** — `_translate_to_english()` (fast model via `llm.call_fast`, `translation.txt` prompt) + `SafetyAgent.execute()` via `asyncio.gather`. Translation skips empty / pure-number input.
 3. **Increment turn**, add translated student message to history.
 4. **Safety gate** — unsafe → return guidance.
 5. **`_process_clarify_turn()`** — runs `MasterTutorAgent` with `CLARIFY_DOUBTS_SYSTEM_PROMPT` + `CLARIFY_DOUBTS_TURN_PROMPT`. Tracks concepts via `mastery_updates` (added to `concepts_discussed` and `concepts_covered_set`). Marks `clarify_complete=True` when `intent="done"` or `session_complete=True`.
 6. **Add response** + audio_text to history.
-7. **Optional visual generation** — if `visual_explanation` present and `show_visuals_in_tutor_flow` flag enabled, generate Pixi.js code via `PixiCodeGenerator`. Failures logged and skipped.
+7. **Optional visual generation** — if `visual_explanation` present and `show_visuals_in_tutor_flow` flag enabled (passed to orchestrator as `visuals_enabled`), generate Pixi.js code via `PixiCodeGenerator`. Failures logged and skipped (never raise).
 8. **Return TurnResult**.
 
 `process_turn_stream()` falls back to non-streaming for clarify_doubts (no token-level streaming for Q&A).
@@ -257,7 +257,7 @@ Analyzes avg words/message, emoji usage, question-asking. Detects disengagement 
 
 Auth via `?token=<jwt>` query param. For user-linked sessions, the token must belong to the session owner (validated via Cognito). Anonymous sessions allowed without token for backward compat.
 
-**Connection flow:** auth check → accept connection → send initial `state_update` → if first turn (no history) AND not in card phase, generate welcome via `generate_welcome_message()` → enter main loop.
+**Connection flow:** auth check → accept connection → send initial `state_update` → if first turn (empty conversation_history) AND not in card phase, generate welcome via `generate_welcome_message()` → enter main loop. Baatcheet sessions seed the welcome on session creation, so this path is skipped for them.
 
 **Client → server:** `{"type": "chat" | "get_state" | "card_navigate", "payload": {"message": "...", "card_idx": N}}`. `card_navigate` is preserved for backward compat but the canonical path is now REST `/card-progress`.
 
@@ -459,7 +459,7 @@ Plan resolution order at session creation (clarify only):
 
 | Call | Model | Purpose | Output | Prompt Source |
 |------|-------|---------|--------|---------------|
-| Translation | Fast (DB) | Hinglish/Hindi → English (Clarify only) | JSON `{english}` | `tutor/prompts/translation.txt` |
+| Translation | Fast (DB) | Hinglish/Hindi → English (Clarify only); `llm.call_fast()` skipped on empty/pure-number input | JSON `{english}` | `tutor/prompts/translation.txt` |
 | Safety | Fast (DB) | Content moderation gate (Clarify only) | `SafetyOutput` | `templates.py SAFETY_TEMPLATE` |
 | Master Tutor (clarify) | Tutor (DB) | Doubt-clearing Q&A | `TutorTurnOutput` | `clarify_doubts_prompts.py` |
 | Master Tutor (legacy teach_me) | Tutor (DB) | Structured chat lesson | `TutorTurnOutput` | `master_tutor_prompts.py` |
