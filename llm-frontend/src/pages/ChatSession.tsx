@@ -35,7 +35,7 @@ import VisualExplanationComponent from '../components/VisualExplanation';
 import InteractiveQuestion from '../components/InteractiveQuestion';
 import CheckInDispatcher, { CheckInActivityResult } from '../components/CheckInDispatcher';
 import TypewriterMarkdown from '../components/TypewriterMarkdown';
-import { registerAudioStop, stopAllAudio, prefetchAudio as checkInPrefetchAudio, getCachedBlob } from '../hooks/audioController';
+import { registerAudioStop, stopAllAudio, prefetchAudio as checkInPrefetchAudio, getCachedBlob, getGlobalAudio } from '../hooks/audioController';
 import '../App.css';
 
 interface Message {
@@ -63,37 +63,6 @@ interface Slide {
   checkIn?: CheckInActivity | null;
   simplifications?: ExplanationCard['simplifications'];
 }
-
-// ─── Global audio element + unlock ──────────────────────────────────
-// Module-scope so it survives route changes. The "Teach Me" tap on
-// ModeSelection unlocks the element before ChatSession even mounts.
-let _globalAudio: HTMLAudioElement | null = null;
-let _audioUnlocked = false;
-const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-
-function getGlobalAudio(): HTMLAudioElement {
-  if (!_globalAudio) _globalAudio = new Audio();
-  return _globalAudio;
-}
-
-function _unlockAudio() {
-  if (_audioUnlocked) return;
-  const audio = getGlobalAudio();
-  audio.src = SILENT_WAV;
-  audio.volume = 0;
-  const p = audio.play();
-  if (p) p.then(() => {
-    audio.pause();
-    audio.volume = 1;
-    audio.currentTime = 0;
-    _audioUnlocked = true;
-  }).catch(() => {});
-}
-
-// Register unlock on first load — any tap anywhere in the app unlocks audio
-document.addEventListener('click', _unlockAudio);
-document.addEventListener('touchstart', _unlockAudio);
-document.addEventListener('touchend', _unlockAudio);
 
 export default function ChatSession() {
   const navigate = useNavigate();

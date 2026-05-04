@@ -89,3 +89,53 @@ export function getClientAudioBlob(syntheticKey: string): Blob | null {
 export function clearClientAudioBlobs(): void {
   clientBlobs.clear();
 }
+
+// ─── Global unlocked audio element ────────────────────────────────────────
+//
+// iOS WebKit (Safari + iOS Chrome, which is required to use WebKit by App
+// Store rules) only allows audio.play() outside a user gesture if the audio
+// element was previously activated inside one. Fresh `new Audio()` elements
+// created mid-session are NOT activated, so .play() rejects with
+// NotAllowedError after the gesture window closes. With our `.catch(done)`
+// pattern this looks like silent advancement — exactly the iOS Chrome bug
+// where only the first dialogue line played.
+//
+// Fix: every playback path uses ONE module-scope element that we "unlock"
+// on the very first user tap by playing a silent WAV. Once unlocked, any
+// subsequent .play() on this element succeeds even from purely programmatic
+// code paths. Android Chrome (Blink) is more permissive so the bug doesn't
+// reproduce there, but the unlock is harmless on every browser.
+
+let _globalAudio: HTMLAudioElement | null = null;
+let _audioUnlocked = false;
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+
+export function getGlobalAudio(): HTMLAudioElement {
+  if (!_globalAudio) _globalAudio = new Audio();
+  return _globalAudio;
+}
+
+function _unlockAudio(): void {
+  if (_audioUnlocked) return;
+  const audio = getGlobalAudio();
+  audio.src = SILENT_WAV;
+  audio.volume = 0;
+  const p = audio.play();
+  if (p) {
+    p.then(() => {
+      audio.pause();
+      audio.volume = 1;
+      audio.currentTime = 0;
+      _audioUnlocked = true;
+    }).catch(() => {
+      /* try again on next tap */
+    });
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', _unlockAudio);
+  document.addEventListener('touchstart', _unlockAudio);
+  document.addEventListener('touchend', _unlockAudio);
+}

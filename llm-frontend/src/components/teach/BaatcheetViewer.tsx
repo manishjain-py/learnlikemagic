@@ -43,6 +43,7 @@ import {
 import {
   getCachedBlob,
   getClientAudioBlob,
+  getGlobalAudio,
   prefetchAudio,
   registerAudioStop,
   stopAllAudio,
@@ -239,12 +240,20 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
 
       if (!blob || cancelPlaybackRef.current || audioVersionRef.current !== version) return;
 
+      // Use the module-scope unlocked audio element rather than `new Audio()`.
+      // iOS WebKit (incl. iOS Chrome) blocks .play() on un-activated elements
+      // outside the user-gesture window — fresh-per-line elements would only
+      // play the first line then silently reject every subsequent one. See
+      // hooks/audioController.ts for the unlock dance.
       const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      const unregister = registerAudioStop(() => {
-        try { audio.pause(); } catch { /* ignore */ }
-        URL.revokeObjectURL(url);
-      });
+      const audio = getGlobalAudio();
+      audio.pause();
+      const prevSrc = audio.src;
+      if (prevSrc && prevSrc.startsWith('blob:')) {
+        URL.revokeObjectURL(prevSrc);
+      }
+      audio.src = url;
+      audio.currentTime = 0;
 
       // `speaking` stays true through the whole card delivery, not per-line —
       // toggling it between lines would flicker the parent's audio button
@@ -252,34 +261,44 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
       // start). Cleared by markRevealed / cardIdx-change / stopAudio /
       // performRestart.
       setSpeaking(true);
+
+      let unregister: (() => void) | null = null;
       await new Promise<void>((resolve) => {
         let resolved = false;
+        const onEnded = () => done();
+        const onError = () => done();
         const done = () => {
           if (resolved) return;
           resolved = true;
+          audio.removeEventListener('ended', onEnded);
+          audio.removeEventListener('error', onError);
           window.clearTimeout(safetyTimer);
           resolve();
         };
         // 12s inner safety — keeps us under TypewriterMarkdown's 15s
         // onBlockTyped timeout so TW doesn't advance to the next line while
         // this audio is still playing (which would overlap the next line's
-        // audio). Pausing here triggers the 'pause' listener below, which
-        // calls done() — `resolved` guards re-entry.
+        // audio).
         const safetyTimer = window.setTimeout(() => {
           try { audio.pause(); } catch { /* ignore */ }
           done();
         }, 12_000);
-        audio.addEventListener('ended', done, { once: true });
-        audio.addEventListener('error', done, { once: true });
-        // 'pause' fires when stopAllAudio() pauses this line — without it the
-        // promise hangs and the typewriter waits forever.
-        audio.addEventListener('pause', done, { once: true });
+        // stopAllAudio() interrupts: resolve directly via the registry so we
+        // don't depend on a 'pause' event firing — that listener was unsafe
+        // on the shared element because our own pre-play `audio.pause()`
+        // queues a 'pause' event that would resolve us prematurely.
+        unregister = registerAudioStop(() => {
+          try { audio.pause(); } catch { /* ignore */ }
+          done();
+        });
+        audio.addEventListener('ended', onEnded);
+        audio.addEventListener('error', onError);
         void audio.play().catch(done);
       });
 
-      unregister();
-      try { audio.pause(); } catch { /* ignore */ }
-      URL.revokeObjectURL(url);
+      if (unregister) (unregister as () => void)();
+      // Don't revoke `url` here — it's still set as audio.src. The next call
+      // (or a final cleanup elsewhere) will revoke it when it swaps src.
     },
     [],
   );
