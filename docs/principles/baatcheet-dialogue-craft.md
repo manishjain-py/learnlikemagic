@@ -28,7 +28,12 @@ The card-by-card prose is a *realization* of this plan. The plan is the load-bea
 
 One real-life Indian-household situation threads through the entire dialogue. Not a "soft example" — the *spine*. The opening hook plants it, mid-dialogue cards call back to it, the closing card resolves it.
 
-Examples of spines: a fight with a younger sibling over chocolate; counting money from grandma at Diwali; reading the population number on a milestone sign on a road trip; sharing roti at dinner. One spine per dialogue.
+Must be a situation an Indian Grade-N student directly recognizes from their own life — chapati at dinner, dadi's coin tin, pincode on a parcel, cricket score on TV, electricity bill on the fridge, festival prices in a flyer, autorickshaw fare, pencil-box contents. Reject transplanted Western/American scenes (highway population signs, mall directories, suburban driveways, school cafeteria lines) even if they "fit the topic neatly" — they fail the lived-experience test.
+
+Calibration example (do NOT reuse — illustrative only):
+- *"Fight with younger sister over sharing chocolate."* SPECIFIC (sister, chocolate, fight), REUSABLE (hook → mid-callback → close), EMOTIONAL (fairness anger), HOUSEHOLD (lived at home).
+
+Each dialogue invents its own spine matching these four properties. One spine per dialogue.
 
 Why: a 30-40 card exchange that doesn't reference itself is N disconnected mini-explanations. The spine gives the conversation memory and the student a thread they can hang every concept on.
 
