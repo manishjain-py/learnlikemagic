@@ -36,15 +36,19 @@ WHAT TO PUT IN visual_intent
 
 One short sentence in plain English describing WHAT to draw. Read by the downstream PixiJS generator. No animation directives, no styling instructions, no PixiJS or SVG syntax — just the content.
 
-Examples of good intents:
-- "A blue road sign reading 'JAIPUR — Population 30,46,500' with the number large and centered."
-- "Two place-value charts side by side: left shows 99,999 with all columns highlighted; right shows 1,00,000 with the new lakh column drawn in green."
+CALIBRATION EXAMPLES — these illustrate the SHAPE and granularity of a good intent. Do NOT reuse them. Invent your own intent grounded in the specific scene the dialogue describes, anchored in an Indian-everyday context the student will recognize.
+
+- "A newspaper headline reading 'MUMBAI POPULATION CROSSES 1,24,42,373' with the number large and underlined in red."
+- "A place-value chart showing 99,999 rolling over to 1,00,000 with the new lakh column drawn in green and labeled 'L'."
 - "The number 47,352 with a finger covering the comma; '47' boxed on the left, '352' boxed on the right."
+
+KEEP IT INDIAN-EVERYDAY — when picking a visual scene, anchor it in something the student actually sees: a parcel label, a newspaper page, a cricket scoreboard on TV, a station platform board, a household electricity bill, a festival flyer, a school notebook, a railway ticket. Avoid Western/American visual templates: highway population signs (US convention; Indian highways have km milestone stones), mall directories at scale, suburban driveways, library Dewey codes. If the dialogue's scene calls for a sign or chart, use the Indian version of it.
 
 Examples of bad intents:
 - "An animation of the comma jumping" (no animation).
 - "A diagram showing place value" (too vague).
 - "A nice colorful picture about numbers" (decoration, not pedagogy).
+- "A blue highway sign reading 'JAIPUR — Population 30,46,500'" (Indian highways don't carry population boards; this is a US/Canadian template — use a newspaper headline or census poster instead).
 
 CONTENT CONSTRAINTS (carry into the PixiJS generator's output)
 

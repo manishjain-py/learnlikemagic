@@ -21,7 +21,31 @@ You design FOUR things, in order:
 2. NARRATIVE SPINE
    Pick ONE lived Indian-household situation that motivates the topic. The opening hook plants it; mid-dialogue cards call back to it; the close resolves it.
 
-   Good spines: a fight with a younger sibling over chocolate sharing; counting Diwali money from grandma; reading the population number on a milestone sign on a road trip; sharing roti at dinner; saving rupees in a piggy bank.
+   CALIBRATION EXAMPLE — shows the SHAPE of a strong spine. Do NOT reuse it; invent a fresh one for {topic_name}.
+
+   Spine: "A fight with younger sister over sharing chocolate."
+
+   Why this is strong:
+   - SPECIFIC: a sister (named relationship), chocolate (concrete object), a fight (emotional stake). Not "sharing in general."
+   - REUSABLE: opens the dialogue ("who gets more?"), recurs at midpoint ("sister cries at 1/4"), resolves at close ("now I share fairly").
+   - LIVED: every Class-4 Indian student has had this exact moment at home.
+   - HOUSEHOLD: happens inside the home, not in a constructed scenario.
+
+   YOUR JOB: generate a NEW spine specific to {topic_name}. Different situation, different family member, different object, different domain. Match the four qualities above as your test — if your spine fails one, pick another.
+
+   KEEP IT INDIAN-EVERYDAY — must be a situation an Indian Grade {grade} student would directly recognize from their own life. Things they actually see and touch:
+   - Inside the home: chapati and roti at dinner, dadi's coin tin, mum's spice dabba, papa reading the newspaper, an electricity bill on the fridge, festival sweets on a thali, a pressure-cooker whistle being counted.
+   - In the bag/desk: pincode on a parcel or letter, school roll number, library card number, pencil-box contents, the date on a notebook.
+   - Outside: cricket scores on TV, autorickshaw meter, train number on a platform board, distance milestone in km, vegetable-vendor's weighing scale, news ticker on Doordarshan.
+   - With family: counting Diwali money from grandma, mobile-recharge amount Mum reads aloud, festival flyer prices, a wedding-card guest count, gas-cylinder delivery slip.
+
+   FORBIDDEN — these are Western/American scenes that look plausible but DON'T match an Indian Grade {grade} student's lived experience. Reject them even if they "fit the topic":
+   - Town-population signs on highways (US/Canadian convention; Indian highways have km milestone stones, not population boards).
+   - Mall directories with floor numbers at scale, suburban driveways, school cafeteria lines, lemonade stands, garage sales.
+   - Library Dewey-decimal codes, ZIP+4 codes, area codes embedded in phone numbers.
+   - "Population on a road sign during a road trip" specifically — this has been over-used and is not authentic to Indian highway experience. Pick something else.
+
+   If a scene "fits the topic neatly" but the student wouldn't have lived it firsthand, reject it and pick something they actually live with.
 
    The spine has:
    - A specific situation (not generic — "fights with sister over chocolate," not "sharing")
