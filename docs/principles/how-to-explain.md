@@ -1,60 +1,46 @@
 # Principles: How to Explain a Topic
 
-These principles guide how we craft explanations for AI tutoring. The goal is that a student reads the explanation and thinks "oh, that's simple" — not "what does this mean?"
+A student should read an explanation and think *"oh, that's simple. I got this."* — not *"what does this mean?"*
 
-## 1. Use the Simplest Words That Are Still Accurate
+Audience: [target-audience.md](target-audience.md).
 
-Write for the youngest student who might read this. Prefer "add" over "combine," "part" over "fraction" (on first use), "same" over "equivalent." When a technical term is necessary, introduce it gently: *"When we split something into equal parts, each part is called a fraction."*
+## 1. Simplest Words That Are Still Accurate
 
-## 2. One Idea Per Card
+Prefer "add" over "combine," "part" over "fraction" (on first use), "same" over "equivalent." Introduce technical terms gently: *"When we split something into equal parts, each part is called a fraction."*
 
-Each explanation card should teach exactly one thing. If you need "and" to describe what a card covers, it's two cards. A student should be able to read a card, nod, and move on without holding multiple new concepts in their head.
+## 2. Max One Idea Per Card
 
-## 3. Start with What They Already Know
+Each card teaches **at most one thing**. If you need "and" to describe it, split. A single concept can span multiple cards — better than cramming.
 
-Every new idea should anchor to something the student already understands. *"You know how you share a pizza equally with your friend? Each of you gets a fraction."* Don't start with the definition — start with the experience.
+## 3. Show, Don't Just Tell
 
-## 4. Show, Don't Just Tell
-
-A visual is worth a paragraph. Use diagrams, number lines, tables, step-by-step worked examples, or structured illustrations wherever a concept can be *seen* rather than just *read.* Even simple ASCII representations help:
+A visual beats a paragraph. Diagrams, number lines, tables, worked examples — anywhere a concept can be *seen* not just *read*. ASCII works:
 ```
   1/4 of a pizza:
   [###|   |   |   ]
    ^-- this piece is yours
 ```
 
-## 5. Examples Before Rules
+## 4. Use Concrete Examples
 
-Present a concrete example first, then the general rule. *"2 + 3 = 5, 3 + 2 = 5 — notice something? When you add two numbers, the order doesn't matter. This is called the commutative property."* Students remember examples; they forget rules stated in isolation.
+Students remember examples; they forget isolated rules.
 
-## 6. Use Everyday Analogies — But Make Them Precise
+## 5. Keep It Short
 
-Good analogies make abstract concepts tangible. Bad analogies create misconceptions. Every analogy must map correctly to the concept — if it breaks under scrutiny, don't use it. Test: *"Does this analogy still work when the student applies it to a harder problem?"*
+15–30 seconds per card. 12 short cards beat 4 long ones. Brevity is clarity.
 
-## 7. Keep It Short
+## 6. Build Progressively — No Leaps
 
-Attention spans are measured in seconds, not minutes. Each card should be readable in 15-30 seconds. If an explanation needs 12 cards, that's fine — 12 short cards are better than 4 long ones. Brevity is clarity.
+Each card is a small step from the last. If a student got cards 1–3, card 4 should feel obvious. If not, a card is missing in between. Test: *Could the student guess what's next?*
 
-## 8. Don't Linger — Students Want to Do, Not Read
+## 7. Anticipate Misconceptions
 
-Every explanation card exists in a sequence where the student is waiting for their next chance to interact. Keep cards tight. If a concept can be taught in 3 cards instead of 5, use 3 — the check-in card that follows is where real engagement lives. Explanations set up interaction; they're not the main event.
+Every concept has a common wrong reading. Address it directly: *"You might think 1/4 is bigger than 1/2 because 4 is bigger than 2 — but the more parts, the smaller each one."* Prevent confusion; don't wait for it.
 
-## 9. Build Progressively — No Leaps
+## 8. End with Confidence
 
-Each card should feel like a small, natural step from the previous one. If a student understands cards 1-3, card 4 should feel obvious. If it doesn't, there's a missing card in between. The test: *"Could a student guess what's coming next?"*
+The last card should make the student feel *"I understand this."* Close with a clean summary.
 
-## 10. Anticipate Misconceptions
+## 9. Like a Great Tutor, Not a Textbook
 
-For every concept, there's a common wrong way to think about it. Address it directly: *"You might think 1/4 is bigger than 1/2 because 4 is bigger than 2 — but actually, the more parts you split something into, the smaller each part gets."* Don't wait for confusion; prevent it.
-
-## 11. End with Confidence, Not Complexity
-
-The last card of an explanation should make the student feel "I understand this." Don't end with an edge case or a "but there's more." End with a clean summary or a satisfying example that ties everything together.
-
-## 12. Explain Like a Great Tutor, Not a Textbook
-
-Textbooks are reference material. Explanations are teaching moments. Use a warm, conversational tone. Address the student directly. Be encouraging without being patronizing. *"Let's figure this out together"* beats *"The student will now learn about..."*
-
-## 13. Design Each Variant as a Fresh Perspective
-
-When creating multiple explanation variants for the same topic, each variant should feel like a different tutor teaching the same concept — not the same explanation reworded. Variant A might use pizza analogies, Variant B might use number lines and diagrams, Variant C might walk through a step-by-step procedure. A student who didn't understand Variant A should find Variant B genuinely different, not just rephrased.
+Textbooks are reference; explanations are teaching moments. Warm, conversational, direct, encouraging — not patronizing. *"Let's figure this out together"* beats *"The student will now learn about..."*

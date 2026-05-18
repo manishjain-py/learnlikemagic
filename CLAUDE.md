@@ -14,11 +14,13 @@ learnlikemagic/
 
 ## Principles
 
-The `docs/principles/` folder captures the core vision and philosophy behind how the app works. These are the "why" behind design decisions — they should guide all implementation, even as features evolve or get rewritten. When building or changing any feature, always stay aligned with the relevant principles.
+The `docs/principles/` folder captures the core vision and philosophy of the app. These are the main principles directly added by the founder. These are the "why" behind design decisions — they should guide all implementation, even as features evolve or get rewritten. When building or changing any feature, always stay aligned with the relevant principles. If you see anything not aligned, flag it to the developers of the app explicitly.
+The content of principles docs should be as concise and to the point as possible.
 
 | Principle | Scope |
 |-----------|-------|
-| `docs/principles/how-to-explain.md` | How the tutor explains concepts to students |
+| `docs/principles/target-audience.md` | Who we build for — average Indian ESL student; applies to all student-facing copy |
+| `docs/principles/how-to-explain.md` | How the tutor should explain concepts to students |
 | `docs/principles/breaking-down-chapters-into-topics.md` | How content is structured into teachable units |
 | `docs/principles/interactive-teaching.md` | How the tutor behaves during live sessions (false OK detection, scaffolding, pacing) |
 | `docs/principles/evaluation.md` | How tutor quality is measured (7 dimensions, persona-aware scoring) |
