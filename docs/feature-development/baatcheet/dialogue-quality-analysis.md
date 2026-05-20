@@ -8,7 +8,7 @@
 
 ## 1. Context
 
-Baatcheet V1 is shipped. Pre-scripted dialogue between Mr. Verma (tutor) + Meera (peer) generated at ingestion (Stage 5b), one dialogue per topic, 25–35 cards. Pipeline working end-to-end. **Quality of the conversation itself is the gap.**
+Baatcheet V1 is shipped. Pre-scripted dialogue between Mohan Sir (tutor) + Meera (peer) generated at ingestion (Stage 5b), one dialogue per topic, 25–35 cards. Pipeline working end-to-end. **Quality of the conversation itself is the gap.**
 
 ## 2. Problem
 

@@ -14,7 +14,7 @@ A learning session is a one-on-one experience between a student and the AI tutor
    - **Clarify Doubts** — ask questions and get direct answers.
    - **Let's Practice** — 10-question batch drill (see `docs/functional/practice-mode.md`).
 5. **Pick a Teach Me submode** (after Teach Me) — two cards:
-   - **Baatcheet (recommended)** — listen in on a friendly chat between Mr. Verma (tutor) and Meera (peer) explaining the topic. Available only when a Baatcheet dialogue has been pre-built for that subtopic.
+   - **Baatcheet (recommended)** — listen in on a friendly chat between Mohan Sir (tutor) and Meera (peer) explaining the topic. Available only when a Baatcheet dialogue has been pre-built for that subtopic.
    - **Explain** — read structured explanation cards at your own pace.
    Each card shows availability and a "Continue" CTA with progress when you have an in-progress session for that submode.
 6. **Resume (if available)** — if you have an in-progress Teach Me session for that subtopic, the submode card shows "Continue — N / M". Tap to pick up where you left off.
@@ -29,7 +29,7 @@ The lesson is personalized to your learning profile (interests, attention span, 
 
 ### Teach Me — Baatcheet (Conversational)
 
-A pre-scripted dialogue between Mr. Verma (tutor) and Meera (a student peer who asks the questions you'd ask). You watch + listen. Each card is one beat of the conversation.
+A pre-scripted dialogue between Mohan Sir (tutor) and Meera (a student peer who asks the questions you'd ask). You watch + listen. Each card is one beat of the conversation.
 
 - Cards include tutor turns, peer turns, visuals, embedded check-ins, and a final summary.
 - Each line plays per-line audio synced with a typewriter reveal — the tutor's voice and Meera's voice are different.
@@ -131,7 +131,7 @@ For Clarify Doubts, you steer by what you ask. The tutor answers what you ask, t
 
 In Clarify Doubts, you can speak your question into the microphone instead of typing. Your speech is transcribed to text, which you can edit before sending.
 
-In Teach Me, every card / dialogue line plays its own pre-recorded audio when revealed — Mr. Verma and Meera have distinct voices in Baatcheet, and the Explain cards play a single tutor voice. The audio language matches your language preference.
+In Teach Me, every card / dialogue line plays its own pre-recorded audio when revealed — Mohan Sir and Meera have distinct voices in Baatcheet, and the Explain cards play a single tutor voice. The audio language matches your language preference.
 
 You can write or speak in Hindi or Hinglish (Hindi-English mix) — the tutor understands and translates it automatically.
 

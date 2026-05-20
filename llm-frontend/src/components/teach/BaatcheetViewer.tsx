@@ -1,5 +1,5 @@
 /**
- * BaatcheetViewer — renders a Baatcheet (Mr. Verma + Meera) dialogue.
+ * BaatcheetViewer — renders a Baatcheet (Mohan Sir + Meera) dialogue.
  *
  * Visual chrome inherits from Explain — the card lives inside a
  * `.app.chalkboard-active` shell + `.focus-carousel` provided by ChatSession.
@@ -488,7 +488,7 @@ const BaatcheetViewer = forwardRef<BaatcheetViewerHandle, Props>(function Baatch
             const slideKey = `${card.card_id}-r${restartEpoch}-c${replayEpoch}`;
             const speakerName =
               card.speaker_name ??
-              (card.speaker === 'tutor' ? 'Mr. Verma' : card.speaker === 'peer' ? 'Meera' : null);
+              (card.speaker === 'tutor' ? 'Mohan Sir' : card.speaker === 'peer' ? 'Meera' : null);
             const cardBadge = cardTypeBadge(card.card_type);
 
             // Filter out empty-display lines so TypewriterMarkdown doesn't

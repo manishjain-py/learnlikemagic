@@ -75,7 +75,7 @@ Working names; not final.
 ### 4.4 Welcome Card (Templated)
 
 - **FR-14:** Card 1 of every dialogue uses a single hand-authored template, parameterized at runtime:
-  > "Hi {student_name}! I'm Mr. Verma. Today, Meera is joining us — she wants to learn about {topic_name} too. Let's start!"
+  > "Hi {student_name}! I'm Mohan Sir. Today, Meera is joining us — she wants to learn about {topic_name} too. Let's start!"
 - **FR-15:** Template literal. Same shape every topic. Easy to update once globally.
 - **FR-16:** Always introduces Meera (no global "first-time" tracking).
 

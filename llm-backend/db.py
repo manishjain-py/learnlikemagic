@@ -87,7 +87,7 @@ _LLM_CONFIG_SEEDS = [
         "component_key": "baatcheet_dialogue_generator",
         "provider": "claude_code",
         "model_id": "claude-opus-4-7",
-        "description": "Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera)",
+        "description": "Stage 5b — conversational Baatcheet dialogue generation (Mohan Sir + Meera)",
     },
 ]
 
@@ -905,7 +905,7 @@ def _apply_topic_dialogues_table(db_manager):
         component_key="baatcheet_dialogue_generator",
         provider="claude_code",
         model_id="claude-opus-4-7",
-        description="Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera)",
+        description="Stage 5b — conversational Baatcheet dialogue generation (Mohan Sir + Meera)",
     )
 
 

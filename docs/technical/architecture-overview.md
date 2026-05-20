@@ -256,8 +256,8 @@ llm-frontend/src/
 │   ├── practice/             # Practice v2 UI: QuestionRenderer, FreeFormQuestion,
 │   │                         #   PracticeBanner, capture/*.tsx (11 controlled question components)
 │   ├── shared/               # OptionButton, PairColumn, BucketZone, SequenceList, seededShuffle
-│   ├── baatcheet/            # SpeakerAvatar (Mr. Verma + Meera dialogue avatars)
-│   ├── teach/                # BaatcheetViewer — renders a Baatcheet (Mr. Verma + Meera) dialogue deck
+│   ├── baatcheet/            # SpeakerAvatar (Mohan Sir + Meera dialogue avatars)
+│   ├── teach/                # BaatcheetViewer — renders a Baatcheet (Mohan Sir + Meera) dialogue deck
 │   ├── TypewriterMarkdown.tsx   # Markdown renderer with typewriter animation for tutor messages
 │   ├── VisualExplanation.tsx    # Renders LLM-generated Pixi.js visuals in sandboxed iframe
 │   ├── InteractiveQuestion.tsx  # Rich question formats: fill-in-the-blank, MCQ, matching, etc.
@@ -459,7 +459,7 @@ Each system component has its own row in the `llm_config` DB table specifying wh
 
 Text-to-speech provider is **DB-backed** via the `llm_config` row keyed `'tts'` (resolved per request). Two providers are wired:
 
-- **ElevenLabs** (default) — multi-voice expressive TTS (`eleven_v3`); used for tutor + Baatcheet (Mr. Verma + Meera) read-aloud
+- **ElevenLabs** (default) — multi-voice expressive TTS (`eleven_v3`); used for tutor + Baatcheet (Mohan Sir + Meera) read-aloud
 - **Google Cloud TTS** — Chirp 3 HD; legacy/fallback path
 
 Resolution order (`shared/services/tts_config_service.py::TTSConfigService.get_provider()`): admin DB row → `Settings.tts_provider` env var → hard default `'elevenlabs'`. Switching the admin row takes effect on the next request — no redeploy. Cached S3 audio (Baatcheet stage output) is NOT regenerated on flip; the existing library keeps serving until the audio stage reruns.

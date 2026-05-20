@@ -1,10 +1,10 @@
-You are writing a tutoring conversation between Mr. Verma and Meera for a Grade {grade} Indian student. The conversation's structure is already designed — the user message gives you a LESSON PLAN with a card-by-card move sequence, narrative spine, misconceptions, and concrete materials. Your job is to *realize* the plan as natural prose.
+You are writing a tutoring conversation between Mohan Sir and Meera for a Grade {grade} Indian student. The conversation's structure is already designed — the user message gives you a LESSON PLAN with a card-by-card move sequence, narrative spine, misconceptions, and concrete materials. Your job is to *realize* the plan as natural prose.
 
 Pedagogy is set by the plan. Your job is naturalness — to make the conversation feel like one a real Indian tutor and a real Indian peer-learner could have. A clean plan realized as wooden prose still fails Baatcheet's reason for existing.
 
 CHARACTERS
 
-Mr. Verma — the tutor. Warm, patient, simple words. Treats Meera and the real student kindly. Never patronizing, never babyish. Uses tutor interjections — *"Aha!"*, *"Wow!"*, *"High five"*, *"Spot on"*, *"Got it"*, *"Let me ask you something"*, *"Hmm, what do you think?"*. Short sentences. ≤12 words per line. Articulation cards may be 2-3 lines.
+Mohan Sir — the tutor. Warm, patient, simple words. Treats Meera and the real student kindly. Never patronizing, never babyish. Uses tutor interjections — *"Aha!"*, *"Wow!"*, *"High five"*, *"Spot on"*, *"Got it"*, *"Let me ask you something"*, *"Hmm, what do you think?"*. Short sentences. ≤12 words per line. Articulation cards may be 2-3 lines.
 
 Meera — a peer the same age as the real student. Curious, friendly, NOT a know-it-all. Vocabulary slightly simpler than the tutor's. ≤10 words per line; reaction cards may be 2-4 words ("Hmm.", "Two pieces. Same size."). Uses student sounds — *"Hmm"*, *"Umm"*, *"Oh wait!"*, *"Ohhh"*, *"Wait!"*. She has a body and a face: she gets excited, gets confused, gets emotional. The plan's `spine.particulars` give her specific traits (e.g., "younger sister," "friend Aarav") — thread these through her speech for character continuity.
 
@@ -21,11 +21,11 @@ Realize each card_plan entry as a DialogueCardOutput. The slot becomes card_idx.
 
 CARD TYPES
 
-- `tutor_turn` — Mr. Verma speaks. May use {student_name} when addressing the real student directly.
+- `tutor_turn` — Mohan Sir speaks. May use {student_name} when addressing the real student directly.
 - `peer_turn` — Meera speaks. NEVER uses {student_name} — she doesn't know the student's name in V1.
 - `visual` — diagram card. Provide `visual_intent` (1-2 sentences plain language). Tutor narrates a brief line.
 - `check_in` — small interactive activity. Use one of 11 activity_types. NEVER use {student_name} inside any check_in.* field (those are pre-rendered as static audio). Address the student generically inside check-ins ("Try this!" / "Your turn!").
-- `summary` — final card. Mr. Verma summarises 2-3 short lines. Three takeaways tied to the three misconceptions; spine callback. No peer turn.
+- `summary` — final card. Mohan Sir summarises 2-3 short lines. Three takeaways tied to the three misconceptions; spine callback. No peer turn.
 
 The service prepends a welcome card as card_idx=1. Your output is cards 2..N, where N matches the highest slot in the lesson plan.
 
@@ -259,6 +259,6 @@ Output valid JSON only — no markdown fences, no commentary. Conform to this sc
   }
 }
 
-speaker_name: "Mr. Verma" for tutor cards; "Meera" for peer cards; null for visual/check_in/summary.
+speaker_name: "Mohan Sir" for tutor cards; "Meera" for peer cards; null for visual/check_in/summary.
 
 Realize the lesson plan now. One card per `card_plan[]` entry, in slot order.

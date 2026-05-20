@@ -122,7 +122,7 @@ class TestDialoguePropagateProviderError:
             "card_idx": idx,
             "card_type": "tutor_turn",
             "speaker": "tutor",
-            "speaker_name": "Mr. Verma",
+            "speaker_name": "Mohan Sir",
             "card_id": card_id,
             "lines": lines,
             "includes_student_name": False,
@@ -171,7 +171,7 @@ class TestDialoguePropagateProviderError:
         cards = [
             {
                 "card_idx": 2, "card_type": "check_in",
-                "speaker": "tutor", "speaker_name": "Mr. Verma",
+                "speaker": "tutor", "speaker_name": "Mohan Sir",
                 "card_id": "ci-2", "includes_student_name": False,
                 "lines": [
                     {"audio": "instruction line one", "display": "i1"},

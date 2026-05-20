@@ -720,7 +720,7 @@ class TestDialogueCardSchema:
             "card_idx": 1,
             "card_type": "welcome",
             "speaker": "tutor",
-            "speaker_name": "Mr. Verma",
+            "speaker_name": "Mohan Sir",
             "includes_student_name": True,
             "lines": [{"display": "Hi {student_name}!", "audio": "Hi {student_name}!"}],
         }]

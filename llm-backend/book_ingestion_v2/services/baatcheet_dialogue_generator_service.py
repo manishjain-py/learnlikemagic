@@ -80,7 +80,7 @@ _BANNED_AUDIO_PATTERNS = [
 
 
 WELCOME_CARD_TEMPLATE = (
-    "Hi {student_name}! I'm Mr. Verma. Today, Meera is joining us — "
+    "Hi {student_name}! I'm Mohan Sir. Today, Meera is joining us — "
     "she wants to learn about {topic_name} too. Let's start!"
 )
 
@@ -371,7 +371,7 @@ def _card_output_to_dict(card: DialogueCardOutput) -> dict:
         elif d["card_type"] == "peer_turn":
             d["speaker"] = "peer"
     if d.get("speaker_name") is None:
-        d["speaker_name"] = "Mr. Verma" if d.get("speaker") == "tutor" else (
+        d["speaker_name"] = "Mohan Sir" if d.get("speaker") == "tutor" else (
             "Meera" if d.get("speaker") == "peer" else None
         )
     d.setdefault("card_id", str(uuid4()))
@@ -735,7 +735,7 @@ class BaatcheetDialogueGeneratorService:
         return (
             "PRIOR TOPICS CONTEXT (what the student has seen earlier in this chapter):\n"
             f"{ctx}\n"
-            "Weave natural callbacks where helpful (Mr. Verma can reference these)."
+            "Weave natural callbacks where helpful (Mohan Sir can reference these)."
         )
 
     # ─── Welcome card builder (server-side, never LLM) ─────────────────────
@@ -746,7 +746,7 @@ class BaatcheetDialogueGeneratorService:
             card_idx=1,
             card_type="welcome",
             speaker="tutor",
-            speaker_name="Mr. Verma",
+            speaker_name="Mohan Sir",
             title=None,
             lines=[
                 DialogueLineOutput(

@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Baatcheet adds a conversational variant of the existing pre-computed Teach Me ("Explain") flow. The student watches a pre-scripted dialogue between the tutor (Mr. Verma) and a peer (Meera), card-by-card, with the same carousel + check-in dispatch already used by Explain. Two new ingestion stages produce the dialogue text (5b) and Baatcheet-specific PixiJS visuals (5c). Stage 10 (audio synthesis) is extended to select voice per `card.speaker`. A new `topic_dialogues` table mirrors the `topic_explanations` storage pattern (single row per guideline; cascade-deleted with the guideline). The frontend gains a new `dialogue_phase` sessionPhase, a Teach-Me sub-chooser, server-side resume-from-last-card (also added to Explain), and a runtime TTS pre-fetch for cards flagged `includes_student_name`.
+Baatcheet adds a conversational variant of the existing pre-computed Teach Me ("Explain") flow. The student watches a pre-scripted dialogue between the tutor (Mohan Sir) and a peer (Meera), card-by-card, with the same carousel + check-in dispatch already used by Explain. Two new ingestion stages produce the dialogue text (5b) and Baatcheet-specific PixiJS visuals (5c). Stage 10 (audio synthesis) is extended to select voice per `card.speaker`. A new `topic_dialogues` table mirrors the `topic_explanations` storage pattern (single row per guideline; cascade-deleted with the guideline). The frontend gains a new `dialogue_phase` sessionPhase, a Teach-Me sub-chooser, server-side resume-from-last-card (also added to Explain), and a runtime TTS pre-fetch for cards flagged `includes_student_name`.
 
 **Key architectural decisions in this revision:**
 1. **Baatcheet is a Teach Me submode**, not a top-level mode. Add `sessions.teach_me_mode = "baatcheet" | "explain"`, keep `sessions.mode = "teach_me"`. Avoids ripple through report card / scorecard / coverage logic that already keys off `mode == "teach_me"`.
@@ -72,7 +72,7 @@ Layer 6: audio_synthesis                Layer 6: practice_bank
 | `llm-frontend/src/hooks/useCardProgressPersistence.ts` | POSTs `/card-progress` on advance, handles completion, used by both viewers | new |
 | `llm-frontend/src/hooks/useDeckAudio.ts` | Audio playback rules (auto-play on first visit, no replay on revisit) | extracted from `ChatSession.tsx` |
 | `llm-frontend/src/hooks/usePersonalizedAudio.ts` | Concurrency-capped runtime TTS for `includes_student_name` cards | new (small) |
-| `llm-frontend/public/avatars/tutor.svg` | V1 stylized placeholder for tutor (Mr. Verma) | new |
+| `llm-frontend/public/avatars/tutor.svg` | V1 stylized placeholder for tutor (Mohan Sir) | new |
 | `llm-frontend/public/avatars/peer.svg` | V1 stylized placeholder for peer (Meera) | new |
 
 ### 2.4 Modified modules
@@ -248,7 +248,7 @@ class DialogueCard(BaseModel):
     card_idx: int                               # 1-based
     card_type: DialogueCardType
     speaker: Optional[SpeakerKey] = None        # None for welcome/summary/visual
-    speaker_name: Optional[str] = None          # "Mr. Verma" or "Meera" — UI cue, not voice routing
+    speaker_name: Optional[str] = None          # "Mohan Sir" or "Meera" — UI cue, not voice routing
     title: Optional[str] = None
     lines: list[ExplanationLine] = []           # display + audio pairs (reused)
     audio_url: Optional[str] = None             # Optional card-level audio
@@ -420,7 +420,7 @@ _BANNED_AUDIO_PATTERNS = [
 ]
 
 WELCOME_CARD_TEMPLATE = (
-    "Hi {student_name}! I'm Mr. Verma. Today, Meera is joining us — "
+    "Hi {student_name}! I'm Mohan Sir. Today, Meera is joining us — "
     "she wants to learn about {topic_name} too. Let's start!"
 )
 
@@ -498,7 +498,7 @@ class BaatcheetDialogueGeneratorService:
             card_idx=1,
             card_type="welcome",
             speaker="tutor",
-            speaker_name="Mr. Verma",
+            speaker_name="Mohan Sir",
             title=None,
             lines=[
                 DialogueLineOutput(
@@ -587,7 +587,7 @@ The service's review-refine loop catches `DialogueValidationError`, feeds the is
 
 `prompts/baatcheet_dialogue_generation_system.txt` — static instructions + JSON schema (same `--append-system-prompt-file` pattern as Explain). Contents:
 
-- Persona: Mr. Verma (tutor) and Meera (peer) — describe both, age cue per student grade.
+- Persona: Mohan Sir (tutor) and Meera (peer) — describe both, age cue per student grade.
 - Role mix for Meera: ask / answer correctly / answer incorrectly / react (FR-7).
 - Easy-English rules (stricter for Meera per FR-8).
 - Card structure: **first card you produce is card 2 — the service inserts a welcome card 1 separately**. Last card must be summary. ~24–29 LLM-generated cards (because the service prepends 1 welcome → 25–30 total; cap 35).
@@ -1287,7 +1287,7 @@ interface SpeakerAvatarProps {
 export function SpeakerAvatar({ speaker, speaking }: SpeakerAvatarProps) {
   if (!speaker) return null;
   const src = speaker === 'tutor' ? '/avatars/tutor.svg' : '/avatars/peer.svg';
-  const alt = speaker === 'tutor' ? 'Mr. Verma' : 'Meera';
+  const alt = speaker === 'tutor' ? 'Mohan Sir' : 'Meera';
   return (
     <div className={`speaker-avatar ${speaking ? 'speaking' : ''}`} key={speaker}>
       <img src={src} alt={alt} />
@@ -1690,7 +1690,7 @@ The build sequence below is end-to-end testable per step. Each step adds a verti
 | Stage 5b dialogue quality drift on edge-case topics | Medium | Medium | Curriculum reviewer rates first 10 generations (PRD §14.3). Tune prompt + add review-refine rounds at `thorough`. |
 | Subtle TTS defects from Meera's lines that `_BANNED_PATTERNS` regex doesn't catch (stage directions, awkward pacing) | Medium | Medium | Opt-in admin "Review Baatcheet audio" button (§4.6). Listen-test sample dialogues during pilot. V2 default-on if defect rate is high. |
 | Per-topic lock prevents 5b/5c from running parallel with 6a/6b → ingestion latency >30s target | Medium | Low | Sequential layers in V1. Plan a follow-up `lock_channel` schema change to enable parallel branches. PRD §14.4 success criterion may slip in V1. |
-| Meera voice audition picks a voice too similar to Mr. Verma's | Medium | Medium | Audition during step 11 of build sequence. Listen test on ≥3 sample dialogue cards. Pick a Chirp 3 HD voice with distinct pitch/tone. |
+| Meera voice audition picks a voice too similar to Mohan Sir's | Medium | Medium | Audition during step 11 of build sequence. Listen test on ≥3 sample dialogue cards. Pick a Chirp 3 HD voice with distinct pitch/tone. |
 | Variant A regen unexpectedly cascades to Baatcheet (PRD §FR-45 forbids) | Low | Low | No code path triggers 5b automatically. Stale warning is the user-facing signal. Test: regen variant A → confirm `topic_dialogues` row unchanged. |
 | `includes_student_name` flag misused | Low | Medium | Stage 5b validator enforces both directions: flagged → must contain `{student_name}`; contains placeholder → must be flagged. |
 | Refresher topics behave unexpectedly under Baatcheet | Low | Low | V1: force `teach_me_mode = "explain"` for refresher topics. Open question §12 to revisit with product. |

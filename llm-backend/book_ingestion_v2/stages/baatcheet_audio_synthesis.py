@@ -84,7 +84,7 @@ STAGE = Stage(
     status_check=_status,
     description=(
         "Synthesizes Google Cloud Chirp 3 HD audio per dialogue line and "
-        "uploads MP3s to S3. Mr. Verma uses the Orus voice, Meera uses "
+        "uploads MP3s to S3. Mohan Sir uses the Orus voice, Meera uses "
         "Leda. Idempotent — skips lines that already have audio_url."
     ),
 )

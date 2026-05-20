@@ -6,9 +6,9 @@
 Before explaining a concept, the tutor asks the student to **predict** what will happen. Only after the student commits does the tutor reveal the explanation. When the prediction is wrong, the resulting *surprise* triggers significantly deeper cognitive processing.
 
 **Example (Baatcheet):**
-> **Mr. Verma:** If you pour hot water into a cup of cold water, what do you think happens to the temperature? Pick one: (A) It stays the same (B) Hot water wins (C) Something in between  
+> **Mohan Sir:** If you pour hot water into a cup of cold water, what do you think happens to the temperature? Pick one: (A) It stays the same (B) Hot water wins (C) Something in between  
 > **Student:** B  
-> **Mr. Verma:** Good guess! But here's the surprising part — the answer is C...  
+> **Mohan Sir:** Good guess! But here's the surprising part — the answer is C...  
 > *(Explanation now lands on a brain that's actively processing WHY its prediction was wrong)*
 
 ### Why This Is Impactful
@@ -31,7 +31,7 @@ Before explaining a concept, the tutor asks the student to **predict** what will
 
 2. **Card phase:** Insert a prediction card before the first explanation card. Student taps their prediction; the system records it.
 
-3. **Interactive phase:** Mr. Verma references the student's prediction ("You thought B, right? Let's see why..."). When wrong, explicitly surface the *surprise gap* — "Most students think that too! Here's what actually happens."
+3. **Interactive phase:** Mohan Sir references the student's prediction ("You thought B, right? Let's see why..."). When wrong, explicitly surface the *surprise gap* — "Most students think that too! Here's what actually happens."
 
 4. **Tutor prompt addition:** New teaching rule: "When a prediction_prompt exists, always begin by referencing the student's prediction. If wrong, frame the explanation as resolving the surprise. If correct, acknowledge and deepen."
 

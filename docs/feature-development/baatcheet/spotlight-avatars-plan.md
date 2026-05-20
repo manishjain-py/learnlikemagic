@@ -2,14 +2,14 @@
 
 ## Goal
 
-Replace the 44px speaker chip in BaatcheetViewer with a "Spotlight" presenter strip — a 92px square portrait with name, role tag, and animated speaking indicator. Make Mr. Verma and Meera read as a real teacher and a real student, while keeping every existing dialogue feature working unchanged.
+Replace the 44px speaker chip in BaatcheetViewer with a "Spotlight" presenter strip — a 92px square portrait with name, role tag, and animated speaking indicator. Make Mohan Sir and Meera read as a real teacher and a real student, while keeping every existing dialogue feature working unchanged.
 
 ## Reference layout
 
 Picked design: **Variant 2 — Spotlight** from the avatar mockups review.
 
 - Mockup file: `reports/baatcheet-avatar-mockups/variant-2-spotlight.html`
-- Open both phone frames (Frame A = Mr. Verma speaking, Frame B = Meera speaking) for the canonical visual spec.
+- Open both phone frames (Frame A = Mohan Sir speaking, Frame B = Meera speaking) for the canonical visual spec.
 - Shared CSS used in mockups: `reports/baatcheet-avatar-mockups/shared.css` (token names match production `App.css`).
 - Meera redrawn 2026-04-30 — middle-parted hair, two thin front plaits with red ribbon bows, no bangs, no bindi, school bow at collar (use the V2 mockup as the spec).
 
@@ -21,7 +21,7 @@ The card head changes from "card-type badge + small chip" to "card-type badge ab
 ┌───────────────────────────────────────┐
 │ • DIALOGUE                       ☆    │   ← card-type badge (existing)
 ├───────────────────────────────────────┤
-│ ┌────────┐  Mr. Verma                 │
+│ ┌────────┐  Mohan Sir                 │
 │ │ 92×92  │  Your tutor                │   ← NEW: spotlight strip
 │ │portrait│  ▌▌▌▌  speaking            │      (replaces .baatcheet-speaker-chip)
 │ └────────┘                            │
@@ -54,7 +54,7 @@ Every behavior listed below exists today and must work identically after the cha
 | Replay button | inside the card body, below visual | Re-triggers reveal+playback (`replayCurrent()` via ref); per-card replay epoch still bumps |
 | Visual aid (PIXI/SVG) (`VisualExplanationComponent`) | `card.visual_explanation` + `visualPixiCode` | Visual still mounts above dialogue; `visualReady` gating still works |
 | Check-in cards | `card.card_type === 'check_in'` | Spotlight strip still renders ABOVE the CheckInDispatcher; bottom nav still hides; check-in result still completes |
-| Cross-fade on speaker change | `key={speaker}` on the avatar component | When the user navigates Next from a Verma card to a Meera card, portrait crossfades; identity is unambiguous through the transition |
+| Cross-fade on speaker change | `key={speaker}` on the avatar component | When the user navigates Next from a Mohan card to a Meera card, portrait crossfades; identity is unambiguous through the transition |
 | Speaking pulse animation | driven by `speaking` prop | Halo + equalizer animate while audio plays; settle when audio ends |
 | Carousel navigation (Back / Restart / Next) | `.focus-track` translateX | Horizontal slide swap works; nav disabled while typewriter running (`activeCardAnimating`) |
 | Card-type badge (`DIALOGUE` / `VISUAL` / `CHECK-IN` / `SUMMARY`) | `cardTypeBadge()` | Badge still renders on cards that have one |
@@ -97,8 +97,8 @@ None. The new SVGs replace existing files in-place; the spotlight component repl
 | State | Visual |
 |---|---|
 | `speaker === null` | Spotlight hidden entirely; body content centers as today |
-| `speaker === 'tutor'`, `speaking === false` | Verma portrait, gold name, role tag, no equalizer, no halo |
-| `speaker === 'tutor'`, `speaking === true` | Verma portrait, gold halo + 3px outer glow, equalizer pill animating |
+| `speaker === 'tutor'`, `speaking === false` | Mohan portrait, gold name, role tag, no equalizer, no halo |
+| `speaker === 'tutor'`, `speaking === true` | Mohan portrait, gold halo + 3px outer glow, equalizer pill animating |
 | `speaker === 'peer'`, `speaking === false` | Meera portrait, pink name, role tag, no equalizer |
 | `speaker === 'peer'`, `speaking === true` | Meera portrait, gold halo, equalizer animating |
 | Speaker change between cards | 320ms opacity crossfade (existing `key={speaker}` pattern) |
@@ -120,7 +120,7 @@ None. The new SVGs replace existing files in-place; the spotlight component repl
 Implementation is done when:
 
 - [ ] Visual matches `variant-2-spotlight.html` Frame A and Frame B at iPhone-sized viewport
-- [ ] Mr. Verma and Meera SVGs in `public/avatars/` updated to the new portraits
+- [ ] Mohan Sir and Meera SVGs in `public/avatars/` updated to the new portraits
 - [ ] All seven existing capabilities in the "What MUST keep working" table verified by hand on at least one dialogue topic end-to-end (ingest → Baatcheet → completion)
 - [ ] All seven state-coverage rows in the "State coverage" table verified visually
 - [ ] No new TypeScript errors; no new lint warnings
@@ -138,7 +138,7 @@ Implementation is done when:
 
 ## Resolved decisions (locked 2026-04-30)
 
-1. **Role tag copy** — `Your tutor` for Verma, `Classmate` for Meera. Warm, instantly legible.
+1. **Role tag copy** — `Your tutor` for Mohan, `Classmate` for Meera. Warm, instantly legible.
 2. **Crossfade duration** — 220ms (was 320ms). Fade only fires on actual speaker change; 220ms reads as a soft swap without lag.
 3. **Speaking-pill copy** — lowercase `speaking`, no ellipsis. The animated equalizer carries the in-progress signal. Pill is also hidden when the global audio toggle is off — pill reflects actual playback, not just speaker identity.
 4. **Card-type badge** — hidden on `dialogue` cards (the spotlight already names the speaker). Kept on `visual` / `check_in` / `summary` cards because those signal a shift in interaction shape.

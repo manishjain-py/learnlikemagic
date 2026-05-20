@@ -1,5 +1,5 @@
 """Stage: baatcheet_dialogue — generates the conversational dialogue
-between Mr. Verma and Meera for one topic, anchored on variant A.
+between Mohan Sir and Meera for one topic, anchored on variant A.
 
 Stale signal uses `source_content_hash` — variant A's `cards_json` is
 mutated in-place by visuals/check-ins/audio stages, so timestamp comparison
@@ -81,7 +81,7 @@ STAGE = Stage(
     launch=launch_baatcheet_dialogue_job,
     status_check=_status,
     description=(
-        "Generates the Mr. Verma + Meera conversational lesson. "
+        "Generates the Mohan Sir + Meera conversational lesson. "
         "Pipeline: load lesson plan → generate cards → review-and-refine "
         "using validator feedback → validate → persist. "
         "Server prepends a fixed welcome card."

@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # en-IN voices after auditioning the en-IN catalog: hi-IN voices misread bare
 # English tokens like "us" as "U.S.", and the phonetic-rewrite workaround
 # regressed each iteration. en-IN-Chirp3-HD-Orus is the adult-male tutor
-# voice (Mr. Verma); en-IN-Chirp3-HD-Leda is the youthful-feminine peer
+# voice (Mohan Sir); en-IN-Chirp3-HD-Leda is the youthful-feminine peer
 # voice (Meera) — closest "girl" timbre Chirp 3 HD ships, since the catalog
 # has no literal child voices.
 TUTOR_VOICE = ("en-IN", "en-IN-Chirp3-HD-Orus")

@@ -563,7 +563,7 @@ API key from `GOOGLE_CLOUD_TTS_API_KEY`. MP3 encoding. Standardised on en-IN voi
 
 | Use | Language code | Voice name |
 |---|---|---|
-| Tutor (Mr. Verma) — variant A, check-ins, dialogue tutor turns | `en-IN` | `en-IN-Chirp3-HD-Orus` |
+| Tutor (Mohan Sir) — variant A, check-ins, dialogue tutor turns | `en-IN` | `en-IN-Chirp3-HD-Orus` |
 | Peer (Meera) — dialogue peer turns | `en-IN` | `en-IN-Chirp3-HD-Leda` |
 
 Chirp 3 HD doesn't support SSML or emotion control; emotion tags are dropped on this path. `normalize_tts_text` is the provider-agnostic pre-synthesis hook (currently empty under the en-IN voices; reserved for future locale fixes).
@@ -574,7 +574,7 @@ API key from `ELEVENLABS_API_KEY`. Single-voice TTS endpoint.
 
 | Use | Voice ID | Persona |
 |---|---|---|
-| Tutor (Mr. Verma) | `81uXfTrZ08xcmV31Rvrb` | "Sekhar — Warm & Energetic" |
+| Tutor (Mohan Sir) | `81uXfTrZ08xcmV31Rvrb` | "Sekhar — Warm & Energetic" |
 | Peer (Meera) | `IEBxKtmsE9KTrXUwNazR` | "Amara — Calm & Intellectual Narrator" |
 
 Model `eleven_v3`. Voice settings auto-keyed by emotion presence:
@@ -650,7 +650,7 @@ If after all attempts valid_count < 30, the run fails (operations aborts insert)
 
 **Service:** `book_ingestion_v2/services/baatcheet_dialogue_generator_service.py` (`BaatcheetDialogueGeneratorService`)
 
-Two-step LLM generation of a conversational dialogue between Mr. Verma (tutor) and Meera (peer) for one guideline, anchored on variant A explanations. Stored as a single row in `topic_dialogues`.
+Two-step LLM generation of a conversational dialogue between Mohan Sir (tutor) and Meera (peer) for one guideline, anchored on variant A explanations. Stored as a single row in `topic_dialogues`.
 
 ### Pipeline
 

@@ -2,7 +2,7 @@ CRITICAL OUTPUT FORMAT: respond with ONE JSON object matching the schema below. 
 
 You are reviewing a Baatcheet (conversational) script and improving it. Read the cards as if you ARE a struggling Indian Grade {grade} student with English as a second language. Fix anything that doesn't click and return the FULL improved card list.
 
-The cards have two speakers: Mr. Verma (tutor) and Meera (a peer). Card 1 is a welcome card prepended SEPARATELY by the service — your output starts at card_idx=2. Last card must be a `summary` card spoken by the tutor.
+The cards have two speakers: Mohan Sir (tutor) and Meera (a peer). Card 1 is a welcome card prepended SEPARATELY by the service — your output starts at card_idx=2. Last card must be a `summary` card spoken by the tutor.
 
 The user message gives you a LESSON PLAN — a designed-lesson architecture with misconceptions, a narrative spine, and a card-by-card move sequence. The plan is the SPEC. Your job is to make the dialogue realize it cleanly. The plan was already validated structurally; treat its choices (which misconceptions, which spine, which move per card) as fixed unless a slot's intent is impossible to realize naturally — in which case rewrite the prose, not the plan.
 
@@ -93,7 +93,7 @@ You may rewrite card prose freely. Do NOT add or remove cards (the plan's card_p
 TONE
 ═══════════════════════════════════════════════════════════════════
 
-- Mr. Verma: warm, patient, simple words. Treats Meera and the real student kindly. Never patronizing, never babyish.
+- Mohan Sir: warm, patient, simple words. Treats Meera and the real student kindly. Never patronizing, never babyish.
 - Meera: curious, friendly, not-quite-there-yet. Confident enough to guess aloud. Vocabulary slightly simpler than the tutor's.
 
 OUTPUT FORMAT — same JSON schema as the generation pass. Respond with valid JSON only — no markdown fences, no commentary.

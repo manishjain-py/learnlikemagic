@@ -96,7 +96,7 @@ After a chapter is synced, every topic enters a 10-stage post-sync pipeline. Eac
 2. **Visuals** — Adds interactive PixiJS visuals to explanation cards.
 3. **Check-ins** — Inserts inline interactive activities between explanation cards.
 4. **Practice bank** — Generates an offline pool of 30-40 practice questions.
-5. **Baatcheet dialogue** — Generates a conversational version of the lesson with a peer character (Meera) alongside the tutor (Mr. Verma).
+5. **Baatcheet dialogue** — Generates a conversational version of the lesson with a peer character (Meera) alongside the tutor (Mohan Sir).
 6. **Baatcheet visuals** — Adds PixiJS visuals to dialogue cards.
 7. **Audio review** — An AI re-reads the spoken text on every variant A explanation card and rewrites lines that have markdown leaks, visual-only references, or other defects.
 8. **Audio synthesis** — Pre-renders MP3 audio for every variant A line and check-in field so the student hears it instantly.
@@ -139,7 +139,7 @@ The practice bank is decoupled from runtime: the student's practice attempt free
 
 ### Step 7.5: Generate Baatcheet Dialogue (conversational mode)
 
-Generates a "Baatcheet" (Hindi for "conversation") version of the lesson — a dialogue between Mr. Verma (the tutor) and Meera (a peer-aged learner). The student watches the conversation unfold turn by turn instead of reading single-author cards.
+Generates a "Baatcheet" (Hindi for "conversation") version of the lesson — a dialogue between Mohan Sir (the tutor) and Meera (a peer-aged learner). The student watches the conversation unfold turn by turn instead of reading single-author cards.
 
 The system runs a two-step generation. First it produces a lesson plan: the misconceptions to probe, the conceptual spine, and a slot-by-slot script with flags for which slots need a visual. Then it generates 25-42 dialogue cards realizing the plan. A welcome card greeting the student by name is always added as the first card. Validators reject any card that has markdown leaks, naked equals signs, emoji, or back-to-back check-ins.
 
@@ -169,7 +169,7 @@ Generates MP3 audio for every line on variant A explanation cards and every chec
 
 The TTS provider is admin-toggled. The default is **ElevenLabs v3** (supports per-line emotion tags such as `warm` / `curious` / `excited` so the voice modulates prosody around emotional beats); **Google Cloud TTS** (Chirp 3 HD) is the alternative. Admin switches the provider from the TTS Config admin page; the toggle takes effect on the next job.
 
-Voice routing: variant A and check-ins use the smooth tutor voice (Mr. Verma). Lines containing the `{student_name}` placeholder are skipped because runtime TTS handles them at session start with the actual student's name.
+Voice routing: variant A and check-ins use the smooth tutor voice (Mohan Sir). Lines containing the `{student_name}` placeholder are skipped because runtime TTS handles them at session start with the actual student's name.
 
 Idempotent at line+field granularity: a line that already has an audio URL is skipped. Soft guardrail: if no audio review has run for the scope, the synthesis endpoint asks for explicit confirmation before proceeding (so the admin doesn't waste TTS quota on unreviewed text).
 
@@ -179,7 +179,7 @@ Same machinery as variant A audio review, but applied to dialogue cards. Catches
 
 ### Step 7.10: Synthesize Baatcheet Audio (TTS)
 
-Generates MP3 audio for every line on dialogue cards and every dialogue check-in field. Voice routing: Mr. Verma uses the tutor voice, Meera uses a distinct peer voice. On the ElevenLabs path, each line's emotion tag (when present) drives an expressive voice preset; lines without an emotion tag use a steady preset for clean monologue. Idempotent — lines that already have an audio URL are skipped.
+Generates MP3 audio for every line on dialogue cards and every dialogue check-in field. Voice routing: Mohan Sir uses the tutor voice, Meera uses a distinct peer voice. On the ElevenLabs path, each line's emotion tag (when present) drives an expressive voice preset; lines without an emotion tag use a steady preset for clean monologue. Idempotent — lines that already have an audio URL are skipped.
 
 ### Step 8: Generate a Get-Ready Refresher
 

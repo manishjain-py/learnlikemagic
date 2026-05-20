@@ -9,7 +9,7 @@ Two related issues, fixed together.
 Re-triggering `audio_synthesis` from the admin DAG dashboard for an already-synthesized topic was effectively a no-op: the stage iterated every line, saw `audio_url` populated, marked the line "skipped", and finished without writing any new MP3s. The same predicate was preventing audio_review from being meaningful on re-run — only lines the LLM happened to revise got their `audio_url` cleared, so a re-run of audio_review followed by audio_synthesis left most clips frozen.
 
 Triggering needs:
-- **TTS voice swap** (e.g. moving Mr. Verma + Meera off `hi-IN-Chirp3-HD-*` onto `en-IN-Chirp3-HD-Orus`/`Leda`, commit `9682363`).
+- **TTS voice swap** (e.g. moving Mohan Sir + Meera off `hi-IN-Chirp3-HD-*` onto `en-IN-Chirp3-HD-Orus`/`Leda`, commit `9682363`).
 - **Pre-synthesis text rewrite changes** (e.g. dropping the bad `us`→`uhs` hack).
 - **Audio_text edits** that bypassed the audio-review path.
 - Any future TTS-config change that should propagate to existing topics.

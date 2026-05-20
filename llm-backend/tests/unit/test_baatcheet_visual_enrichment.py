@@ -494,14 +494,14 @@ class TestSelectorParsing:
     def test_slim_cards_only_keeps_essentials(self):
         cards = [
             {"card_idx": 2, "card_type": "tutor_turn", "speaker": "tutor",
-             "speaker_name": "Mr. Verma",
+             "speaker_name": "Mohan Sir",
              "lines": [{"display": "X", "audio": "X."}],
              "visual_intent": "old intent", "extra_garbage": True},
         ]
         slim = BaatcheetVisualEnrichmentService._slim_cards_for_prompt(cards)
         assert slim == [{
             "card_idx": 2, "card_type": "tutor_turn", "speaker": "tutor",
-            "speaker_name": "Mr. Verma",
+            "speaker_name": "Mohan Sir",
             "lines": [{"display": "X"}],
             "existing_visual_intent": "old intent",
         }]

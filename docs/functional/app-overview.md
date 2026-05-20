@@ -22,7 +22,7 @@ Every student learns differently. LearnLikeMagic gives each student a personal t
 |---------|-------------|
 | **Learning Sessions** | Interactive tutoring conversations on any topic in the curriculum |
 | **Learning Modes** | Three ways to learn: Teach Me (structured lesson), Clarify Doubts (Q&A), and Let's Practice (batch drill) |
-| **Teach Me Sub-Mode** | Within Teach Me, students pick between **Baatcheet** (recommended — Mr. Verma + Meera conversational dialogue) and **Explain** (step-by-step explanation cards). No memory of last choice — picked every entry |
+| **Teach Me Sub-Mode** | Within Teach Me, students pick between **Baatcheet** (recommended — Mohan Sir + Meera conversational dialogue) and **Explain** (step-by-step explanation cards). No memory of last choice — picked every entry |
 | **Voice Input** | Students can speak their answers instead of typing |
 | **Voice Output** | The tutor can read responses aloud (text-to-speech) in English, Hindi, or Hinglish via ElevenLabs (default) or Google Cloud TTS |
 | **Practice Results** | After a practice set, students see fractional scores and per-question rationale explaining why each pick was right or wrong |
@@ -63,7 +63,7 @@ After choosing a subtopic, students pick how they want to learn:
 
 | Mode | What It Does |
 |------|-------------|
-| **Teach Me** | The tutor teaches the topic step-by-step from scratch. After picking Teach Me, students pick a sub-mode: **Baatcheet** (recommended — Mr. Verma + Meera dialogue) or **Explain** (explanation cards). Tracks progress and coverage. Can be paused and resumed later. |
+| **Teach Me** | The tutor teaches the topic step-by-step from scratch. After picking Teach Me, students pick a sub-mode: **Baatcheet** (recommended — Mohan Sir + Meera dialogue) or **Explain** (explanation cards). Tracks progress and coverage. Can be paused and resumed later. |
 | **Clarify Doubts** | The student asks their own questions about the topic. The tutor answers and tracks which concepts were discussed. |
 | **Let's Practice** | A 10-question batch drill with no hints or tutor-in-the-loop. Students submit once and see per-question results with a rationale. Available on topics that have a question bank ready. See `docs/functional/practice-mode.md`. |
 

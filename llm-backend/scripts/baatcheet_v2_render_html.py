@@ -437,7 +437,7 @@ def build_html(run_dir: Path) -> str:
         move = plan_slot.get("move", "?")
         target = plan_slot.get("target", "")
         speaker = c.get("speaker") or "system"
-        speaker_name = c.get("speaker_name") or ("Mr. Verma" if speaker == "tutor" else ("Meera" if speaker == "peer" else "Summary"))
+        speaker_name = c.get("speaker_name") or ("Mohan Sir" if speaker == "tutor" else ("Meera" if speaker == "peer" else "Summary"))
         ctype = c.get("card_type", "")
 
         phase = phase_for_slot(slot, macro, card_plan)

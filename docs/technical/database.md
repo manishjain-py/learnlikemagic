@@ -196,7 +196,7 @@ Centralized model configuration per component. Single source of truth for which 
 | `check_in_enrichment` | claude_code | claude-opus-4-7 | Check-in card generation (match-the-pairs activities) |
 | `practice_bank_generator` | claude_code | claude-opus-4-7 | Practice question bank generation + correctness review |
 | `practice_grader` | openai | gpt-4o-mini | Practice free-form grading + per-pick wrong-answer rationales |
-| `baatcheet_dialogue_generator` | claude_code | claude-opus-4-7 | Stage 5b — conversational Baatcheet dialogue generation (Mr. Verma + Meera) |
+| `baatcheet_dialogue_generator` | claude_code | claude-opus-4-7 | Stage 5b — conversational Baatcheet dialogue generation (Mohan Sir + Meera) |
 
 Existing deployments (table non-empty) get individual seeds injected via `_ensure_llm_config()` from per-feature migration steps (e.g. `_apply_topic_explanations_table`, `_apply_topic_dialogues_table`, `_apply_practice_tables`).
 
