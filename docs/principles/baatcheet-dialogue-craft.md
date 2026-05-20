@@ -1,8 +1,8 @@
 # Principles: Baatcheet Dialogue Craft
 
-How we author conversational teaching dialogues for Baatcheet — the pre-scripted exchange between Mr. Verma (tutor) and Meera (peer learner) generated at ingestion time.
+How we author conversational teaching dialogues for Baatcheet — the pre-scripted exchange between Mohan Sir (tutor) and Meera (peer learner) generated at ingestion time.
 
-Pairs with `interactive-teaching.md` (live tutoring), `how-to-explain.md` (variant A explanations), `easy-english.md` (language). Visual chrome inherited from Explain — see `typography.md` §4 and `ux-design.md`. This doc covers content authoring only.
+Pairs with `check-in-cards.md` (embedded check-ins), `how-to-explain.md` (variant A explanations), `easy-english.md` (language). Visual chrome inherited from Explain — see `typography.md` §4 and `ux-design.md`. This doc covers content authoring only.
 
 **V2 framing (2026-04-27):** the dialogue is a *designed lesson with disguised structure*, not a free-form conversation about concepts. Surface rules (curiosity gap, examples-before-rules) are necessary but insufficient. Architecture comes first — Part I — then surface rules — Part II — then voice — Part III. See `feature-development/baatcheet/dialogue-quality-v2-designed-lesson.md` for the V2 working doc and `gold-example-fractions-class4.md` for the benchmark.
 
@@ -116,7 +116,7 @@ Banned: ending cards with `{student_name}, your turn now!` — that's a stage di
 
 ### 14. Tone Calibration
 
-- **Mr. Verma:** warm, patient, simple words. Treats Meera and the real student kindly. Never patronizing, never babyish. Uses tutor interjections — *"Aha"*, *"Wow"*, *"High five"*, *"Spot on"*, *"Got it"*, *"Let me ask you something"*.
+- **Mohan Sir:** warm, patient, simple words. Treats Meera and the real student kindly. Never patronizing, never babyish. Uses tutor interjections — *"Aha"*, *"Wow"*, *"High five"*, *"Spot on"*, *"Got it"*, *"Let me ask you something"*.
 - **Meera:** curious, friendly, not-quite-there-yet. Confident enough to guess aloud — sometimes right, sometimes wrong. Vocabulary slightly simpler than the tutor's. Uses student sounds — *"Hmm"*, *"Umm"*, *"Oh wait"*, *"Ohhh"*, *"Wait!"*. She has a body and a face: she gets excited, gets tired, gets confused.
 
 ### 15. Character Particulars

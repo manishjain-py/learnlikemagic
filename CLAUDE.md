@@ -22,7 +22,8 @@ The content of principles docs should be as concise and to the point as possible
 | `docs/principles/target-audience.md` | Who we build for — average Indian ESL student; applies to all student-facing copy |
 | `docs/principles/how-to-explain.md` | How the tutor should explain concepts to students |
 | `docs/principles/breaking-down-chapters-into-topics.md` | How content is structured into teachable units |
-| `docs/principles/interactive-teaching.md` | How the tutor behaves during live sessions (false OK detection, scaffolding, pacing) |
+| `docs/principles/live-chat.md` | (Placeholder) Live chat tutor — dormant; only Clarify Doubts uses live chat today |
+| `docs/principles/check-in-cards.md` | Pre-computed interactive activities inserted between explanation cards (Baatcheet + Explain) |
 | `docs/principles/evaluation.md` | How tutor quality is measured (7 dimensions, persona-aware scoring) |
 | `docs/principles/ux-design.md` | UX principles for all interfaces (mobile-first, warm language, minimal typing) |
 | `docs/principles/scorecard.md` | How student progress is tracked (deterministic metrics only) |
@@ -33,7 +34,7 @@ The content of principles docs should be as concise and to the point as possible
 | `docs/principles/easy-english.md` | Language accessibility for Indian ESL students (no idioms, simple grammar, Indian contexts) |
 | `docs/principles/practice-mode.md` | How Let's Practice works (offline bank, no hints during set, evaluation-as-learning) |
 | `docs/principles/typography.md` | Research-backed typography strategy for student-facing UI (fonts, sizes, weights, line-heights, role tokens) |
-| `docs/principles/baatcheet-dialogue-craft.md` | Craft rules for Baatcheet conversational dialogues (Mr. Verma + Meera; pedagogy first, naturalness as quality bar) |
+| `docs/principles/baatcheet-dialogue-craft.md` | Craft rules for Baatcheet conversational dialogues (Mohan Sir + Meera; pedagogy first, naturalness as quality bar) |
 
 ## Documentation Index
 
