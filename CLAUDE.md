@@ -17,6 +17,8 @@ learnlikemagic/
 The `docs/principles/` folder captures the core vision and philosophy of the app. These are the main principles directly added by the founder. These are the "why" behind design decisions — they should guide all implementation, even as features evolve or get rewritten. When building or changing any feature, always stay aligned with the relevant principles. If you see anything not aligned, flag it to the developers of the app explicitly.
 The content of principles docs should be as concise and to the point as possible.
 
+**Do not edit principle docs unless Manish (the founder) explicitly asks or confirms.** Principles are founder-owned. If a code/feature change implies a principle should evolve, surface the suggested change and wait for Manish's go-ahead before touching any file under `docs/principles/`.
+
 | Principle | Scope |
 |-----------|-------|
 | `docs/principles/target-audience.md` | Who we build for — average Indian ESL student; applies to all student-facing copy |
