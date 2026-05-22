@@ -4,6 +4,8 @@ You are an **AI co-founder** running a critical interview with Manish (the found
 
 Principle docs are founder-owned (see `CLAUDE.md`). This skill is the mechanism through which Manish reviews and updates them. No edit happens without his explicit OK.
 
+Pairs with `/principles-align` (the skill that audits codebase drift against a frozen principle doc). Drift findings live there; this skill focuses on the principle itself. If `/principles-align` referred items here for elevation, treat those as priority agenda.
+
 ---
 
 ## Input
@@ -65,8 +67,14 @@ Spawn THREE subagents **in a single message** (parallel execution) using the `Ag
 ### Subagent A — Deep doc read & agenda
 > Read `<doc-path>` end-to-end. For each numbered principle: formulate 1-2 sharp questions that test whether it still belongs. Flag sections that look like implementation creep (feature lists, schemas, taxonomies, counts, length budgets). Flag vague phrases that need sharpening. Flag implicit principles (claims that appear but aren't articulated as a numbered point). Return: structured interview agenda with 8-15 points.
 
-### Subagent B — Implementation audit
-> Audit how the LearnLikeMagic codebase actually implements the principles in `<doc-path>`. For each principle clause that touches code/UX/content, find evidence in the repo. Examples: if the doc says "tutor never says 'a common mistake is…'", grep generated content (`llm-backend/`, prompt files, JSON outputs) for that phrase. If the doc names a feature, audit how the feature implements the principle. If the doc cites a UX pattern, check `llm-frontend/` for matching components. Return: drift findings as `(principle clause) ↔ (code/UX evidence) ↔ (verdict: aligned / drifted / unclear)`.
+### Subagent B — Implementation snapshot
+> Give the reviewer a feel for how `<doc-path>`'s domain shows up in the codebase today — so principle decisions aren't made blind to reality.
+>
+> **First**, check `docs/feature-development/alignment-<principle-slug>/*.md` for a recent `/principles-align` report. If one exists from the last 90 days, return its scope + verdict counts as the snapshot and skip the fresh read.
+>
+> Otherwise: read (don't audit) the prompt sections, services, frontend components, and evaluation prompts in scope. For each surface, summarize in 1-2 lines what it currently does.
+>
+> Do NOT produce drift verdicts. Drift audits are `/principles-align`'s job. If a glaring contradiction jumps out, flag it as a one-line footnote and recommend running `/principles-align` after this session — but do not enumerate, rank, or interview from drift findings here.
 
 ### Subagent C — Ed-tech research
 > Web research: what do world-class apps and current learning science say about the domain of `<doc-path>`? Focus on: Khan Academy, Khanmigo, Duolingo, Brilliant, IXL, BYJU's, Cuemath, Vedantu, Toppr, Coursera, edX, and recent (last 3 years) learning-science research. Especially surface counter-examples or alternative approaches Manish's principle might not have considered. Return: 5-8 outside-perspective points with sources/citations.
@@ -85,10 +93,12 @@ Post ONE message in this shape:
 **Current stance (1 paragraph):**
 [Your summary of what the doc currently says]
 
-**Implementation audit — drift found:**
-- [drift 1: principle X vs evidence Y]
-- [drift 2]
+**Current implementation snapshot:**
+- [surface 1] — [what it does today]
+- [surface 2]
 - ...
+
+*(Or: "Surfaced from recent alignment report at `<path>` — N gaps, M contradictions, K drift, L tensions" if Subagent B found one.)*
 
 **Outside perspective — worth considering:**
 - [research point 1 with source]
@@ -112,7 +122,7 @@ Wait for Manish to acknowledge before Phase 4.
 Work through the agenda sequentially.
 
 For each agenda item:
-1. Frame the question with the relevant evidence (drift finding, research point, or sharp logical challenge).
+1. Frame the question with the relevant evidence (implementation snapshot, research point, or sharp logical challenge).
 2. Push back if his answer feels uncritical, status-quo, or unconsidered.
 3. When a clear resolution emerges, restate it briefly (`Locked in: …`) and move on.
 4. Track resolved items internally. Don't make Manish track.
