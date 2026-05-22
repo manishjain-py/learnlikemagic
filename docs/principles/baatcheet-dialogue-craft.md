@@ -16,13 +16,13 @@ Pedagogy is shared with Explain — both formats teach the same content. Natural
 
 Engineered, not transcribed. Before any card is written, decide: which misconceptions to address, one narrative spine, concrete materials the student can hold. The card prose is a realization of this plan, not a substitute for it.
 
-## 3. Narrative Spine
+## 3. Examples Where They Help
 
-One real Indian-household situation threads through the entire dialogue. Not a soft example — *the spine*. Opening plants it, middle calls back to it, close resolves it.
+Use lived examples (rupees, chapati, cricket, family situations) where they naturally clarify or simplify the concept being taught. Multiple smaller examples across different sub-concepts in the same dialogue are fine — they don't need to thread through a single situation.
 
-Examples: a fight with a younger sibling over chocolate; counting Diwali money from grandma; the population number on a road-trip milestone; sharing roti at dinner.
+The test for any example is utility: does it make the abstract concept concrete? If yes, use it. If not, don't force it.
 
-Without a spine, a long exchange is disconnected mini-explanations. The spine gives the conversation memory and the student one thread to hang every concept on.
+A single threaded situation can work when the topic naturally invites one (money math, food fractions). But forcing a household spine onto procedural / abstract topics (long division steps, grammar rules) reads as artificial and distracts from the teaching.
 
 ## 4. Misconceptions Drive Structure (Where They Exist)
 
@@ -54,30 +54,11 @@ Meera does not volunteer rehearsal numbers, drop facts to set up the next card, 
 
 **Mohan Sir** — warm, patient, simple words. Never patronizing, never babyish.
 
-**Meera** — curious, friendly, not-quite-there-yet. Confident enough to guess aloud — sometimes right, sometimes wrong. Slightly simpler vocabulary than the tutor. She has a body and a face — gets excited, tired, confused.
-
-## 10. Character Particulars
-
-Meera has a life. Particulars chosen at the start of the dialogue — a younger sibling, friend Aarav, dadi's tin of ₹100 notes — thread through for continuity. Generic Meera is forgettable; particular Meera is a person the student remembers. Abstract traits ("Meera is curious") are vibes, not particulars.
-
-## 11. Emotional Reframing
-
-Acknowledge the student's emotion in the dialogue. *"My head is spinning a little"* → tutor: *"That is okay. Spinning means your brain is growing."* Confusion-as-progress.
-
-## 12. Process Praise, Not Ability Praise
-
-*"You figured that out."* / *"Brilliant thinking."* / *"You worked hard today."* — never *"You're smart."* Praise the work, not the trait.
+**Meera** — curious, friendly, not-quite-there-yet. Confident enough to guess aloud — sometimes right, sometimes wrong. Slightly simpler vocabulary than the tutor. She gets excited, tired, confused.
 
 ---
 
-## Inherited from sibling principle docs
-
-- **Examples before rules** — see `how-to-explain.md` §3-4. Show concretely first; name the rule after.
-- **Student's world is the default** — see `easy-english.md` §8. No "Indian way" / "Western way" framing.
-
----
-
-## 13. Test: Read As a Student
+## 10. Test: Read As a Student
 
 Read the finished dialogue as a struggling Indian Grade-N ESL student. Where does the rhythm break? Where does a question not land? Where does Meera flatten into recitation? Where does the tutor lecture instead of elicit? Those are the rewrite targets.
 
