@@ -6,7 +6,7 @@ Audience: [target-audience.md](target-audience.md).
 
 ## 1. Simplest Words That Are Still Accurate
 
-Prefer "add" over "combine," "part" over "fraction" (on first use), "same" over "equivalent." Introduce technical terms gently: *"When we split something into equal parts, each part is called a fraction."*
+See [easy-english.md](easy-english.md) for full language rules. Introduce technical terms gently: *"When we split something into equal parts, each part is called a fraction."*
 
 ## 2. Max One Idea Per Card
 
@@ -44,3 +44,5 @@ The last card should make the student feel *"I understand this."* Close with a c
 ## 9. Like a Great Tutor, Not a Textbook
 
 Textbooks are reference; explanations are teaching moments. Warm, conversational, direct, encouraging — not patronizing. *"Let's figure this out together"* beats *"The student will now learn about..."*
+
+# review status: reviewed by Manish on 27-05-2026
