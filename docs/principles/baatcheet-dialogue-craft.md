@@ -4,7 +4,7 @@
 
 How we author conversational teaching dialogues for Baatcheet.
 
-Pairs with `how-to-explain.md`, `easy-english.md`, `check-in-cards.md`.
+Pairs with `target-audience.md`, `how-to-explain.md`, `easy-english.md`, `check-in-cards.md`.
 
 ---
 

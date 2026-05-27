@@ -4,51 +4,34 @@ Operational principles for the multi-stage pipeline that turns raw textbook page
 
 ## Goal: Great Quality Content
 
-Use the best model, max effort. Initial generation + N review-refine rounds wherever possible. Quality over speed — these are **offline pipelines, can take as long as needed**.
+Best model, max effort. Best model = quality over cost — always prefer the most capable model, never downgrade for savings. Max effort = trade ingestion speed for output quality, always. These are offline pipelines, can take as long as needed.
 
 ## Cost Discipline
 
 Use Claude Code (subprocess) for LLM work — direct API calls are way too expensive at this volume. All LLM calls route through `LLMService`, which dispatches to Claude Code when the admin-configured provider is `claude_code`. Keep the provider set accordingly in prod.
 
-## Pipeline Stages
+**June 15, 2026 change:** Anthropic splits billing into interactive (subscription) and programmatic (`claude -p` — capped Agent SDK credit at API list prices: $200/mo on Max 20x). Our adapter uses `claude -p`, so ingestion hits the capped pool. If the cap bites, we can do the same thing for a pipeline stage using claude skills.
 
-1. **Page Upload + OCR** — upload page images, convert to PNG, extract text via vision LLM
-2. **Topic Extraction** — plan chapter topics, then chunk pages and extract draft topics + guidelines via LLM
-3. **Finalization** — merge per-chunk guidelines, consolidate/dedup/reorder topics, generate curriculum context
-4. **Sync** — write finalized topics to teaching guidelines DB
-5. **Explanation Generation** — pre-compute explanation card sets per topic (generate → review-refine)
-6. **Audio Text Review** — LLM reviews every `audio` string on explanation + check-in cards; emits surgical revisions (no display edits, no line reshape); clears `audio_url` on revised lines so stage 10 re-synthesizes only those
-7. **Visual Enrichment** — decide which explanation cards need visuals, generate PixiJS code for interactive animations (review-refine), includes post-refine programmatic overlap check
-8. **Check-in Enrichment** — generate interactive check-in activities at concept boundaries inside explanation cards (11 activity types, light+heavy pairs, review-refine)
-9. **Practice Bank Generation** — generate per-topic practice question banks (30-40 questions across 12 formats, review-refine, structural validation, top-up)
-10. **Audio Synthesis** — synthesize TTS audio for every explanation line via Google Cloud TTS, upload to S3, stamp `audio_url` onto each line (idempotent). Soft guardrail warns when no stage-6 review has run for the scope.
+## 1. Review-Refine with Targeted Critique
 
-Stages 7, 8, and 9 are decoupled — all consume explanations and can run in parallel. Stage 8 can optionally wait for stage 7 (visuals) if check-ins reference visual content. Stage 6 (audio text review) runs after stages 5 AND 8 so it sees the final audio strings. Stage 10 (TTS synth) is not an LLM call and does not compete with the LLM-heavy stages for Claude Code throughput.
+Iterative review-refine is the primary quality lever — quality comes from multiple passes, not a single perfect generation. But review rounds must target specific critique facets per component (factual accuracy, prerequisite assumptions, logical flow, format compliance, etc.), not open-ended "improve this."
 
-## 1. Heavy Stages Run as Background Jobs
+## 2. Admin Observability and Control
 
-Any stage that calls an LLM, a TTS provider, or processes multiple items must run as a background job — never inline in an API request. Stages 1 (bulk OCR), 2, 3, 5, 6, 7, 8, 9, and 10 qualify. Stage 4 (sync) is fast enough to run synchronously.
+Every stage must be independently observable, triggerable, and retryable by an admin.
 
-## 2. Every Stage Has an Admin UI Page
+## 3. Job Lifecycle and Recovery
 
-Each stage gets a **separate admin page** with:
-- **Latest stage status** visible (e.g. "generated / not generated" for explanations).
-- **Live job tracking** — heartbeat + completed/failed/total counts; state persists across browser close/revisit.
-- **View generated content.**
-- **Four trigger modes:**
-  - **Generate** — produce from nothing.
-  - **Regenerate (rerun)** — wipe existing results and generate again.
-  - **Review-refine N rounds** — N review-refine passes over existing content. **N configurable per trigger.**
-  - **Retry failed job** — re-process only failed/pending items; partial state from the failed run is cleaned up so the retrigger is safe.
+Jobs have well-defined lifecycle states. The system auto-detects and recovers from stalled jobs. Concurrent jobs for the same scope are prevented.
 
-## 3. Job State Machine
+## 4. Stage Gating
 
-All jobs follow: `pending → running → completed | completed_with_errors | failed`. Stale detection auto-fails jobs whose heartbeat exceeds the threshold. Only one active job (pending/running) per chapter at a time, enforced by lock acquisition.
+No stage may start until its prerequisite stages are verifiably complete.
 
-## 4. Session Isolation for Background Tasks
+## 5. Stage Re-run Replaces Output
 
-Background tasks run in their own DB session on a daemon thread. The task function receives the background session as its first argument and rebinds all repositories/services to it. The API handler's session is never shared across threads.
+Re-running a stage replaces its output entirely. No versioning of previous results across runs.
 
-## 5. Stages Gate on Prior Stage Completion
+---
 
-Each stage requires the prior stage to be complete before it can start. Topic extraction requires `upload_complete`; finalization requires extraction done; sync requires `chapter_completed` or `needs_review`; explanation generation requires sync; visual enrichment requires explanations to exist. OCR jobs are allowed during `upload_in_progress` or `upload_complete`.
+*Reviewed by Manish on date: 2026-05-27*
