@@ -26,12 +26,11 @@ The content of principles docs should be as concise and to the point as possible
 | `docs/principles/breaking-down-chapters-into-topics.md` | How content is structured into teachable units |
 | `docs/principles/live-chat.md` | (Placeholder) Live chat tutor — dormant; only Clarify Doubts uses live chat today |
 | `docs/principles/check-in-cards.md` | Pre-computed interactive activities inserted between explanation cards (Baatcheet + Explain) |
-| `docs/principles/evaluation.md` | How tutor quality is measured (7 dimensions, persona-aware scoring) |
 | `docs/principles/ux-design.md` | UX principles for all interfaces (mobile-first, warm language, minimal typing) |
 | `docs/principles/scorecard.md` | How student progress is tracked (deterministic metrics only) |
 | `docs/principles/content-extraction-from-books.md` | What to extract from books (full coverage, no copyrighted expression) |
 | `docs/principles/book-ingestion-pipeline.md` | Operational principles for the multi-stage ingestion pipeline |
-| `docs/principles/autoresearch.md` | How autonomous prompt optimization works |
+| `docs/principles/autoresearch.md` | How autonomous prompt optimization works (includes evaluation scoring principles) |
 | `docs/principles/prerequisites.md` | How prerequisite knowledge gaps are handled (refresher topics, warm-up framing) |
 | `docs/principles/easy-english.md` | Language accessibility for Indian ESL students (no idioms, simple grammar, Indian contexts) |
 | `docs/principles/practice-mode.md` | How Let's Practice works (offline bank, no hints during set, evaluation-as-learning) |

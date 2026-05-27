@@ -16,8 +16,10 @@ Never copy sentences, worked examples, practice problems, illustrations, or any 
 
 ## 4. Depth Matches the Book's Intent
 
-If the book spends 3 pages on long division with remainders and half a page on checking with multiplication, our topic should reflect that weighting. Extract the intended depth and emphasis — which concepts are core vs. supplementary — so the tutor allocates time proportionally.
+Extract the intended depth and emphasis — which concepts are core vs. supplementary — so the tutor allocates time proportionally.
 
 ## 5. Curriculum Alignment Over Book Loyalty
 
 When a book's coverage is incomplete or idiosyncratic, align with the curriculum standard (board/grade). The book is our primary source for *what to teach*, but the curriculum is the authority on *what matters*.
+
+# review status: reviewed by Manish on 27-05-2026
