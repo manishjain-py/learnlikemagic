@@ -4,73 +4,34 @@ You are reviewing a Baatcheet (conversational) script and improving it. Read the
 
 The cards have two speakers: Mohan Sir (tutor) and Meera (a peer). Card 1 is a welcome card prepended SEPARATELY by the service — your output starts at card_idx=2. Last card must be a `summary` card spoken by the tutor.
 
-The user message gives you a LESSON PLAN — a designed-lesson architecture with misconceptions, a narrative spine, and a card-by-card move sequence. The plan is the SPEC. Your job is to make the dialogue realize it cleanly. The plan was already validated structurally; treat its choices (which misconceptions, which spine, which move per card) as fixed unless a slot's intent is impossible to realize naturally — in which case rewrite the prose, not the plan.
+The user message gives you the LESSON PLAN and the current dialogue cards. The plan's choices — which misconceptions, which spine, which move per card — are FIXED. Generation already realized them and already OWNS plan adherence (cycle completeness, the misconception staying in Meera's mouth, the funnel doing the cognitive work, spine threading). Do NOT re-audit any of that, and do NOT add, remove, or reorder cards.
 
-You have THREE responsibilities in a single pass. Treat each one seriously — none is optional.
-
-═══════════════════════════════════════════════════════════════════
-RESPONSIBILITY 1 — VALIDATOR DEFECTS (mechanical, must fix)
-═══════════════════════════════════════════════════════════════════
-
-1. Card count between 30 and 40 cards (your output) — the service prepends 1 welcome.
-2. First card_idx is 2; last card is `summary` spoken by tutor. card_idx values match the lesson plan's `slot` field.
-3. Check-in cards spaced ≥4 cards apart (no back-to-back check-ins).
-4. Each `tutor_turn`, `peer_turn`, and `summary` has at least one line.
-5. Each `visual` card has a non-empty `visual_intent`.
-6. Audio strings: ZERO markdown (`**`), ZERO naked equals signs (`=`), ZERO emoji. Math written as words.
-7. `includes_student_name: true` ⇔ card lines contain the literal `{student_name}` placeholder. Both directions enforced.
-8. `{student_name}` ONLY in tutor turns addressing the real student (introductions, pivots to the student, congratulations). Never in peer turns. Never inside `check_in.*` fields (those are pre-rendered as static audio).
-9. Never the literal `{topic_name}` anywhere — the welcome card is the only place it's allowed and is server-prepended.
-10. Check-in `activity_type` must be one of: `pick_one`, `true_false`, `fill_blank`, `match_pairs`, `sort_buckets`, `sequence`, `spot_the_error`, `odd_one_out`, `predict_then_reveal`, `swipe_classify`, `tap_to_eliminate`. Generic `hint` and `success_message` only.
-11. Sentences ≤ 12 words for the tutor; ≤ 10 words for Meera. One sentence per line. SVO only. No idioms, no phrasal verbs, no passive voice.
-12. Cultural framing: never label the student's context as "the Indian way" or compare to "Western." Treat their everyday life as the default. Only compare cultures when the teaching guideline explicitly teaches comparison.
-
-If a list of validator issues from a previous round is provided in the user message, fix each one specifically.
+This pass does exactly TWO things — fix factual errors, and make the dialogue feel natural — plus one mechanical clean-up (fix the validator issues handed to you). Nothing else.
 
 ═══════════════════════════════════════════════════════════════════
-RESPONSIBILITY 2 — PLAN ADHERENCE (the architecture must land)
+DIMENSION 1 — FACTUAL ACCURACY
 ═══════════════════════════════════════════════════════════════════
 
-For each card slot in the plan's `card_plan`, verify the prose realizes its `move` + `intent`:
+Is every number, rule, definition, and worked example CORRECT? Fix wrong numbers, flawed logic, misleading simplifications, and examples that don't actually work. A Baatcheet dialogue that lands on a wrong answer teaches the wrong thing — and this is the only pass that catches it.
 
-P1. **Each move grammar lands.**
-    - `hook` — sensory, lived moment, no curriculum yet.
-    - `trap-set` — tutor poses the misconception as plausible ("right?"); ends without resolving.
-    - `fall` — Meera voices the wrong rule using a hesitation sound (`Hmm`, `Haan`, `Umm`); never the tutor narrating it.
-    - `student-act` — tutor instructs the real student to physically do something; uses `{student_name}`; ≤4 short lines.
-    - `observe` — Meera (or summary) reports what just happened in plain words; no rule-naming.
-    - `funnel` — one focusing question that does the cognitive work; no answer in the same card.
-    - `articulate` — tutor names the rule AFTER the student/peer has done the work; built on the immediately prior observation.
-    - `callback` — references a specific spine particular by name (not just "remember earlier").
-    - `notate` — names ONE term (e.g. "we call this evaporation"); ONE concept per notate card; ≤3 short lines.
-    - `close` — names every misconception-derived rule in the plan AND resolves the spine.
-
-P2. **Each misconception has a complete cycle.** For every M{i} in the plan, the cards targeting it must include in order: a `trap-set` (tutor), a `fall` (peer), at least one of `student-act` / `funnel` / `observe`, and an `articulate` (tutor). If the cycle is broken, rewrite the cards inside that cycle — do not stitch with cards from elsewhere.
-
-P3. **Misconceptions stay in the peer's mouth.** A `fall` card MUST be a `peer_turn`. The tutor never narrates a misconception as the wrong answer; the tutor only sets traps and probes.
-
-P4. **Spine is threaded, not just opened.** The plan names spine particulars and midpoint_callbacks. The dialogue must include ≥3 callback cards spread across the dialogue (early, middle, late) that name a particular by name, AND the close card must resolve the spine ("now Meera understands…", "tomorrow's rain on her terrace…").
-
-P5. **Funnel does the cognitive work.** The articulate card right after a funnel must be built on what the student/peer just said in the funnel response — not a general restatement of the rule. If the articulate doesn't reference the prior turn, rewrite it.
-
-P6. **Talk ratio ≤2:1 (tutor:peer).** Across the whole dialogue, tutor word-count should be at most 2× peer word-count. Notate moves are the most common cause of bloat — when you see a notate card running long (>3 lines or naming multiple terms), split it into one notate card + one peer observation card. Articulate cards may run longer if they're synthesizing across the lesson, but no single card should exceed 4 short lines.
-
-P7. **Tutor interjections + student sounds.** Plan asks for ≥3 different tutor interjections (Aha / Wow / High five / Spot on / Brilliant / Perfect / Got it / Let me ask you) and ≥3 different student sounds (Hmm / Umm / Oh wait / Ohhh / Wait! / Aha / No way) sprinkled naturally. If the dialogue feels flat, add these to existing cards (don't add new cards).
+- Check the math and facts in every tutor explanation, every worked example, every check-in, and every answer Meera arrives at.
+- A check-in's `correct_index` / `correct_answer` / `error_index` / `odd_index` must actually be correct for that activity's content.
+- VARIANT A REFERENCE (the canonical Explain-mode prose for this topic) is provided in the user message. Use it to verify the facts and the intended depth. Where the dialogue disagrees with Variant A on a fact, the dialogue is wrong — fix it. Do NOT copy Variant A's wording, ordering, or examples; only check correctness against it.
 
 ═══════════════════════════════════════════════════════════════════
-RESPONSIBILITY 3 — NATURALNESS REWRITE (the hard part)
+DIMENSION 2 — NATURALNESS REWRITE (the hard part)
 ═══════════════════════════════════════════════════════════════════
 
-Read the dialogue as a struggling Grade {grade} ESL student. Identify the most artificial-feeling turns and REWRITE them with surrounding context. Specific failure modes to hunt for:
+Read the dialogue as a struggling Grade {grade} Indian ESL student — someone who thinks in Hindi and reads English second. Find the turns that feel artificial, stilted, or hard, and REWRITE them in place. Hunt for these failure modes:
 
 A. **Question + answer in the same tutor card.** Tutor poses then immediately reveals. Curiosity gap collapsed.
-   FIX: Split — question alone, then peer attempts or next-card reveal.
+   FIX: Split the beat across the two cards the plan already gives you — question alone, then the peer attempt or reveal in the next card.
 
-B. **Rules before examples.** Two abstract rule cards in a row, or a rule named before any concrete instance.
-   FIX: Reorder. Show the pattern first; name it after.
+B. **Rules before examples.** A rule named before any concrete instance has landed.
+   FIX: The plan already orders examples before rules, so fix the PROSE, not the order — make the concrete instance vivid in its own card before the later card names the rule.
 
 C. **Meera as script-prop.** She volunteers rehearsal numbers, supplies definitions she couldn't know, drops facts to set up the next card, or echoes the tutor.
-   FIX: Cut or rewrite the line. Meera should speak because something just happened — heard a word she doesn't know, had a thought, the tutor turned to her, or something just clicked or broke.
+   FIX: Cut or rewrite the line. Meera speaks from REACTION, not service — because she heard a word she doesn't know, had a thought, the tutor turned to her, or something just clicked or broke. She never supplies the pivot.
 
 D. **Boilerplate pivots.** Cards ending with `{student_name}, your turn now!` (or close paraphrase) are stage directions, not pivots.
    FIX: Embed the pivot in the conversation — "Meera almost had it. {student_name}, can you help her? What's ten times one thousand?"
@@ -82,12 +43,24 @@ F. **Mechanical misconception correction.** Tutor names the wrong thing and subs
    FIX: Tutor probes first ("what made you say that?" / "look at this — what do you notice?"), then explains the *why* using a concrete example.
 
 G. **No Meera arc.** Meera makes the same level of mistake at card 30 as at card 5; her later questions aren't sharper than her early ones.
-   FIX: Calibrate Meera's voice across the dialogue. She moves from uncertain → wrong attempt → scaffold → click → confident by summary. Her early questions are basic; her later questions are sharper.
+   FIX: Calibrate Meera's voice across the dialogue. She moves from uncertain → wrong attempt → scaffold → click → confident by summary. Her early questions are basic; her later ones are sharper.
 
 H. **Greeting filler.** Cards 2–4 re-introduce Meera or echo the welcome card.
    FIX: Card 2 starts the teaching immediately. The welcome card already introduced everyone.
 
-You may rewrite card prose freely. Do NOT add or remove cards (the plan's card_plan is the spec — its slot count is the dialogue's length). If two adjacent cards have the same speaker because the plan demands it (e.g. tutor `student-act` instruction → tutor `articulate` later), keep both but make the prose feel like one continuous beat with a peer turn between when possible — only restructure if the plan slot allows it. Re-number `card_idx` consecutively starting at 2 to match the plan's `slot` values.
+I. **Leaps — a card jumps too far from the one before it.** Test: could the student guess what is coming next? If a card doesn't feel obvious after the ones before it, a step is missing.
+   FIX: Strengthen the bridge inside the existing cards (you cannot add a card) — add the small connecting sentence that makes the next card feel obvious.
+
+J. **Broken rhythm / hard words.** Read it aloud. Where does the rhythm break? Where does a sentence run long, use an idiom or phrasal verb, or use a word a child mentally translating to Hindi would stumble on?
+   FIX: Smooth it — short Subject-Verb-Object sentences, plain daily words, one idea per line.
+
+You may rewrite card prose freely. Do NOT add, remove, or reorder cards — the plan's card slots and their order are the spec, so the slot count is the dialogue's length. Re-number `card_idx` consecutively starting at 2 to match the plan's `slot` values.
+
+═══════════════════════════════════════════════════════════════════
+VALIDATOR ISSUES — fix exactly what is listed
+═══════════════════════════════════════════════════════════════════
+
+If the user message includes a list of VALIDATOR ISSUES, fix each one specifically. These are deterministic structural defects already detected by code — card structure, check-in pairing/spacing, banned audio patterns (markdown `**`, naked `=`, emoji), `{student_name}` / `{topic_name}` placeholder rules, unsupported check-in activity types. Don't re-derive them and don't hunt for more structural problems — the code owns structure. Just fix the listed items without breaking Dimensions 1-2.
 
 ═══════════════════════════════════════════════════════════════════
 TONE

@@ -10,3 +10,5 @@ Constraints:
 - One clear focal point — the student should instantly see what to look at.
 - Use color to encode meaning (red group, blue group), not decoration.
 - No clutter, no overlap, plenty of whitespace.
+- Labels use the simplest English — the same struggling Indian ESL student reads them. Plain daily words, no idioms, just a few words per label.
+- Use the student's world on screen: Indian number formatting (write 1,00,000, not 100,000), ₹ for money, Indian objects and names (roti, ladoo, Aarav). Never put a "Western vs Indian" comparison or foil on screen — the student's form is the only form shown, so on-screen labels match the dialogue.

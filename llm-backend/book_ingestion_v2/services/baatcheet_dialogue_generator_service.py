@@ -36,6 +36,15 @@ from shared.services import LLMService
 from shared.types.emotion import Emotion, canonicalize_emotion
 from shared.utils.dialogue_hash import compute_explanation_content_hash
 
+# Reuse the canonical check-in tier sets from the Explain check-in enricher so
+# Baatcheet's paired light+heavy model stays in lockstep with Explain's
+# (check-in-cards.md is shared across both Teach Me modes). LIGHT_TYPES ∪
+# HEAVY_TYPES == the 11 supported activity types.
+from book_ingestion_v2.services.check_in_enrichment_service import (
+    LIGHT_TYPES,
+    HEAVY_TYPES,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,9 +63,20 @@ _REVIEW_REFINE_SYSTEM_FILE = str(_PROMPTS_DIR / "baatcheet_dialogue_review_refin
 
 # Welcome card 1 is prepended server-side; LLM produces cards 2..N.
 # After the welcome is added, total = LLM_count + 1.
-MIN_TOTAL_CARDS = 25       # V2 plan card_plan floor (25 lenient) + welcome
-MAX_TOTAL_CARDS = 42       # V2 plan card_plan max (40) + welcome (1) + 1 slack
-MIN_CHECK_IN_SPACING = 4   # cards between two check-in cards (PRD §FR-12)
+#
+# Check-in budget (check-in-cards.md §1-2): check-ins are emitted as
+# light+heavy PAIRS that are ADDITIONAL to the 30-40 *content* cards — a lesson
+# grows by ~16-28 check-in cards. So the deck is much larger than the old
+# 30-40 total; the bounds below leave generous slack for the pairs and act only
+# as a backstop (the plan prompt drives the real target).
+MIN_TOTAL_CARDS = 25       # lenient floor: small content backbone + welcome
+MAX_TOTAL_CARDS = 74       # content (≤40) + welcome (1) + ~16 pairs (≤32) + slack
+# check-in-cards.md §2: ≥2 content cards between consecutive light+heavy pairs.
+MIN_CONTENT_CARDS_BETWEEN_PAIRS = 2
+
+# Cards that count as "content" when spacing check-in pairs. Welcome, summary,
+# and check_in cards do NOT count as content.
+_CONTENT_CARD_TYPES = {"tutor_turn", "peer_turn", "visual"}
 
 DEFAULT_REVIEW_ROUNDS = 1
 
@@ -209,33 +229,50 @@ def _validate_plan(plan: dict) -> None:
     """Lightweight schema check on lesson-plan output. Raises if a required
     top-level key is missing or has the wrong cardinality. Detailed schema is
     enforced by the prompt — this is a backstop against LLM drift, not a
-    duplicate validator."""
-    required = {"misconceptions", "spine", "concrete_materials", "macro_structure", "card_plan"}
+    duplicate validator.
+
+    `spine` and `misconceptions` are CONDITIONAL (baatcheet-dialogue-craft.md
+    §3-4): procedural/abstract topics may carry no narrative spine, and topics
+    without documented misconceptions teach directly. So spine may be absent
+    and misconceptions may be empty — but when a spine IS present it must name
+    a situation, and there are never more than 3 misconceptions. card_plan now
+    includes additive check-in pairs, so its ceiling is much higher than the
+    old content-only 40.
+    """
+    # `spine` is no longer required (see docstring). The other four keys are
+    # always emitted; misconceptions / macro_structure may be empty arrays.
+    required = {"misconceptions", "concrete_materials", "macro_structure", "card_plan"}
     missing = required - set(plan or {})
     if missing:
         raise LessonPlanValidationError(f"lesson plan missing keys: {sorted(missing)}")
     miscs = plan.get("misconceptions")
-    if not isinstance(miscs, list) or not (2 <= len(miscs) <= 3):
+    if not isinstance(miscs, list) or len(miscs) > 3:
         raise LessonPlanValidationError(
-            f"lesson plan misconceptions must be 2-3 entries (got {len(miscs) if isinstance(miscs, list) else type(miscs).__name__})"
+            f"lesson plan misconceptions must be 0-3 entries (got {len(miscs) if isinstance(miscs, list) else type(miscs).__name__})"
         )
     card_plan = plan.get("card_plan")
-    if not isinstance(card_plan, list) or not (25 <= len(card_plan) <= 40):
+    if not isinstance(card_plan, list) or not (25 <= len(card_plan) <= 72):
         raise LessonPlanValidationError(
-            f"lesson plan card_plan must be 25-40 entries (got {len(card_plan) if isinstance(card_plan, list) else type(card_plan).__name__})"
+            f"lesson plan card_plan must be 25-72 entries (got {len(card_plan) if isinstance(card_plan, list) else type(card_plan).__name__})"
         )
+    # Spine is optional; validate its shape only when the planner supplied a
+    # non-empty one (an empty dict / null means "no spine for this topic").
     spine = plan.get("spine")
-    if not isinstance(spine, dict) or "situation" not in spine:
-        raise LessonPlanValidationError("lesson plan spine must have 'situation'")
+    if spine and (not isinstance(spine, dict) or "situation" not in spine):
+        raise LessonPlanValidationError(
+            "lesson plan spine, when present, must have 'situation'"
+        )
 
 
 def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> list[str]:
     """Return list of issue strings (empty when clean). Raises if requested.
 
     Validates (mirrors PRD §6 + impl plan §4.3):
-    - 13 ≤ total cards ≤ 35
+    - MIN_TOTAL_CARDS ≤ total cards ≤ MAX_TOTAL_CARDS
     - first card_type == 'welcome', last == 'summary'
-    - check-in cards ≥ MIN_CHECK_IN_SPACING apart
+    - check-ins come in light+heavy PAIRS (two adjacent check_in cards, light
+      first); ≥MIN_CONTENT_CARDS_BETWEEN_PAIRS content cards between pairs;
+      first pair never before card 3 (check-in-cards.md §1-2)
     - tutor_turn / peer_turn / summary have ≥1 line
     - visual cards have non-empty visual_intent
     - lines[].audio matches no _BANNED_AUDIO_PATTERNS
@@ -252,17 +289,9 @@ def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> 
     if cards and cards[-1].card_type != "summary":
         issues.append(f"last card_type must be 'summary' (got '{cards[-1].card_type}')")
 
-    last_check_in_pos = -1000
     for i, c in enumerate(cards):
-        if c.card_type == "check_in":
-            if i - last_check_in_pos < MIN_CHECK_IN_SPACING:
-                issues.append(
-                    f"card {c.card_idx}: check-in too close to previous "
-                    f"(need ≥{MIN_CHECK_IN_SPACING} cards apart)"
-                )
-            last_check_in_pos = i
-            if not c.check_in:
-                issues.append(f"card {c.card_idx}: check_in card missing check_in object")
+        if c.card_type == "check_in" and not c.check_in:
+            issues.append(f"card {c.card_idx}: check_in card missing check_in object")
 
         if c.card_type in ("tutor_turn", "peer_turn", "summary", "welcome") and not c.lines:
             issues.append(f"card {c.card_idx}: {c.card_type} has no lines")
@@ -346,6 +375,67 @@ def _validate_cards(cards: list[DialogueCardOutput], *, raise_on_fail: bool) -> 
                     f"card {c.card_idx} line {li}: '{{student_name}}' in display "
                     f"but not in audio — student would see name but not hear it"
                 )
+
+    # ── Check-in structure: paired light+heavy model (check-in-cards.md §1-2).
+    # Check-ins are emitted as a light(recall)+heavy(analysis) PAIR — two
+    # adjacent check_in cards, light first then heavy. Pairs sit after every
+    # 2-3 content cards (the frequency itself is prompt-driven); ≥2 content
+    # cards separate consecutive pairs; the first pair is never before card 3;
+    # none after the summary (already guaranteed by the last-card check). This
+    # replaces the old "≥4 apart, no back-to-back" rule. Structural enforcement
+    # lives here, not in the refine prompt, so the LLM passes own only
+    # naturalness + factual accuracy.
+    content_since_pair = 0
+    seen_pair = False
+    i = 0
+    n = len(cards)
+    while i < n:
+        c = cards[i]
+        if c.card_type != "check_in":
+            if c.card_type in _CONTENT_CARD_TYPES:
+                content_since_pair += 1
+            i += 1
+            continue
+        # Start of a check-in run — collect the consecutive check_in cards.
+        j = i
+        while j < n and cards[j].card_type == "check_in":
+            j += 1
+        group = cards[i:j]
+        head = group[0]
+
+        if len(group) != 2:
+            issues.append(
+                f"card {head.card_idx}: check-ins must come in light+heavy pairs "
+                f"of exactly 2 adjacent cards (found a run of {len(group)})"
+            )
+        if head.card_idx < 3:
+            issues.append(
+                f"card {head.card_idx}: check-in pair before card 3 "
+                f"(students need content before the first check-in)"
+            )
+        if seen_pair and content_since_pair < MIN_CONTENT_CARDS_BETWEEN_PAIRS:
+            issues.append(
+                f"card {head.card_idx}: check-in pair too close to the previous "
+                f"one (need ≥{MIN_CONTENT_CARDS_BETWEEN_PAIRS} content cards "
+                f"between pairs)"
+            )
+        if len(group) == 2:
+            t0 = group[0].check_in.activity_type if group[0].check_in else None
+            t1 = group[1].check_in.activity_type if group[1].check_in else None
+            # Judge tier only when both types are recognised; unknown types are
+            # already flagged by the activity_type check in the per-card loop.
+            if {t0, t1} <= (LIGHT_TYPES | HEAVY_TYPES) and not (
+                t0 in LIGHT_TYPES and t1 in HEAVY_TYPES
+            ):
+                issues.append(
+                    f"card {head.card_idx}: each pair must be one LIGHT then one "
+                    f"HEAVY check-in, in that order "
+                    f"(light={sorted(LIGHT_TYPES)}, heavy={sorted(HEAVY_TYPES)})"
+                )
+
+        seen_pair = True
+        content_since_pair = 0
+        i = j
 
     if issues and raise_on_fail:
         raise DialogueValidationError("; ".join(issues[:8]))
