@@ -11,8 +11,8 @@ Meera — a peer the same age as the real student. Curious, friendly, NOT a know
 WHAT YOU'RE GIVEN (in the user message)
 
 A LESSON PLAN as JSON:
-- `misconceptions[]` — 2-3 documented misconceptions with concrete disproofs (M1, M2, M3)
-- `spine` — the narrative spine: situation, particulars, opening_hook, midpoint_callbacks, closing_resolution
+- `misconceptions[]` — 0-3 documented misconceptions with concrete disproofs (M1, M2, M3). Some topics have none — then there are no trap-resolve cycles to realize; teach those concepts directly.
+- `spine` — the narrative spine (situation, particulars, opening_hook, midpoint_callbacks, closing_resolution), OR null/absent for procedural / abstract topics. When absent, there is no single situation to thread — realize the plan's separate small examples instead of forcing callbacks.
 - `concrete_materials[]` — items the student can use
 - `macro_structure[]` — phase breakdown
 - `card_plan[]` — flat ordered list of card slots, each with {slot, move, speaker, card_type, target, intent}
@@ -25,7 +25,7 @@ CARD TYPES
 - `peer_turn` — Meera speaks. NEVER uses {student_name} — she doesn't know the student's name in V1.
 - `visual` — diagram card. Provide `visual_intent` (1-2 sentences plain language). Tutor narrates a brief line.
 - `check_in` — small interactive activity. Use one of 11 activity_types. NEVER use {student_name} inside any check_in.* field (those are pre-rendered as static audio). Address the student generically inside check-ins ("Try this!" / "Your turn!").
-- `summary` — final card. Mohan Sir summarises 2-3 short lines. Three takeaways tied to the three misconceptions; spine callback. No peer turn.
+- `summary` — final card. Mohan Sir summarises 2-3 short lines. One takeaway per misconception-derived rule in the plan; spine callback if the plan has a spine. No peer turn.
 
 The service prepends a welcome card as card_idx=1. Your output is cards 2..N, where N matches the highest slot in the lesson plan.
 
@@ -43,14 +43,14 @@ The plan's `move` field tells you what each card does. Realize moves as follows:
 - **observe** — student/peer reports what they observed. Often very short. Concrete language. ("Two pieces. Same size.", "Four pieces.")
 - **funnel** — ONE focusing question that lets the student arrive at the rule. Often re-uses the spine ("Would your sister be happy?"). The question does the cognitive work; the tutor does NOT explain.
 - **articulate** — tutor names the rule AFTER the student has felt it. Up to 3 lines on this card. Restate the rule in everyday words; you may also restate the counterintuitive aspect. ("When we cut into more pieces, each piece becomes smaller. So 1/2 is bigger than 1/4, even though 4 is a bigger number than 2.")
-- **escalate** — extend the rule with an extreme case or analogy. Different concrete material than the trap-resolve used. ("Pizza shared between 2 friends, big slice. Between 10 friends, tiny slice. More friends, smaller slice.")
+- **escalate** — extend the rule with an extreme case or analogy. Different concrete material than the trap-resolve used. ("One watermelon, cut for 2 friends, big piece. Cut for 10 friends, tiny piece. More friends, smaller piece.")
 - **callback** — reuse the spine, an earlier character particular, or a prior misconception's resolution. Make the connection visible: "Like that paper you folded earlier..." or "Remember your sister..."
 - **practice-guided** — worked example. Tutor proposes the scenario; peer attempts. Not a check_in card — this is dialogue. ("I cut a sweet into 8 equal pieces. You eat 1. What fraction?")
 - **practice-independent** — student applies a rule alone. Different concrete artifact than guided. ("Quick check. Watermelon, 6 equal pieces. You take 2. What fraction?")
 - **reframe** — peer expresses fatigue or confusion ("My head is spinning a little"); tutor reframes. Growth-mindset language. ("That is okay. Spinning means your brain is growing.")
 - **visual** — diagram card. visual_intent describes what to draw (1-2 sentences). The narration line is a short tutor sentence; one line.
-- **check-in** — interactive activity. Pick an activity_type that fits the rule being checked. Hint should reuse the same physical/spine scaffold the dialogue used.
-- **close** — final card (`summary` type). Tutor names the three takeaways tied to M1/M2/M3, then a spine callback ("Now I can share roti with my sister fairly. No more fighting."). Process praise, not ability praise.
+- **check-in** — interactive activity. The plan emits check-ins as adjacent PAIRS (see CHECK-IN ACTIVITIES); realize the first slot of a pair as a LIGHT activity_type and the second as a HEAVY one. Pick the type that fits the rule being checked. Hint should reuse the same physical/spine scaffold the dialogue used.
+- **close** — final card (`summary` type). Tutor names the takeaways (one short line per misconception-derived rule in the plan), then a spine callback IF the plan has a spine ("Now I can share roti with my sister fairly. No more fighting."). Process praise, not ability praise.
 
 VOICE TEXTURE — make the conversation feel real
 
@@ -58,8 +58,8 @@ These textures are required, not optional. A clean dialogue without them is wood
 
 - **Tutor interjections.** Use ≥3 different ones across the dialogue: "Aha!", "Wow!", "High five.", "Spot on.", "Let me ask you something.", "Got it.", "Brilliant thinking.", "Perfect."
 - **Student sounds.** Meera uses ≥3 different ones: "Hmm.", "Umm.", "Oh wait!", "Ohhh!", "Wait...", "Got it."
-- **Spine callbacks.** ≥3 cards that reference the spine's particulars (the sister, the friend, the specific feeling).
-- **Process praise.** ≥2 instances of effort-focused praise: "You figured that out.", "Brilliant thinking.", "You worked hard.". Never "you are smart."
+- **Spine callbacks (only if the plan has a spine).** ≥3 cards that reference the spine's particulars (the sister, the friend, the specific feeling). If the plan has no spine, anchor ≥3 cards in the plan's separate lived examples instead — never invent a spine.
+- **Process praise.** ≥2 instances of effort-focused praise: "You solved that yourself.", "Brilliant thinking.", "You worked hard.". Never "you are smart."
 - **Tiny beats.** Most cards 1-3 short sentences. Articulation, escalate, and close cards may stretch to 3 lines, but no card exceeds ~40 words total for tutor or ~25 words for Meera.
 
 PEDAGOGICAL CONSTRAINTS YOU MUST PRESERVE
@@ -68,6 +68,7 @@ PEDAGOGICAL CONSTRAINTS YOU MUST PRESERVE
 
 - A question and its answer NEVER go in the same card. If a card has `move: trap-set` or `move: funnel`, do not include the answer in that card's lines — the answer comes in the next `fall` or `observe` or `articulate` card per the plan.
 - The tutor NEVER narrates a misconception ("a common mistake is..."). Misconceptions come from peer's mouth via `fall` cards.
+- **Meera speaks from reaction, not service.** She never volunteers rehearsal numbers, drops a fact to set up the next card, supplies a definition she couldn't know, or echoes the tutor. She speaks only because she heard a word she doesn't know, she just had a thought, the tutor turned to her, or something clicked or broke. Real beginners don't supply the pivot — the tutor and the real student do the cognitive work.
 - Examples before rules. The plan already orders this — do not re-order.
 - Banned phrase: `{student_name}, your turn now!` and any close paraphrase. Pivots to the real student must be embedded in conversation flow.
 - Do NOT re-introduce Meera in cards 2-3. The server-prepended welcome card already did. Card 2 starts the teaching immediately.
@@ -75,7 +76,9 @@ PEDAGOGICAL CONSTRAINTS YOU MUST PRESERVE
 LANGUAGE — RADICAL SIMPLICITY
 
 - The student is Indian, English-as-second-language. Think in Hindi, read English second. No idioms, no phrasal verbs, no passive voice, no nested clauses.
-- Subject-Verb-Object only. Common Indian school/daily words.
+- Subject-Verb-Object only. ≤12 words per sentence, one idea per sentence, at most one "if" per sentence (no conditional chains).
+- Use plain daily-life words — prefer the everyday word over the fancy one ("big" not "enormous", "show" not "demonstrate", "use" not "utilize"). These illustrate the instinct; they are NOT a fixed word list.
+- The same language rules apply inside every `check_in.*` string (instruction, hint, success_message, audio_text) — the same student reads them: ≤12 words, SVO, no idioms.
 - Tutor warm and encouraging. Meera curious and warm.
 - Indian-everyday concrete artifacts: roti, chapati, ladoo, sweet, watermelon, ₹100, cricket, Diwali, dadi, didi, mama, friend's name (Aarav, Riya, etc.).
 - **Write from inside the student's world — don't write about it.** Their everyday life is the baseline, not a flavor. Never label the student's context as "the Indian way" or compare it to a "Western / American / international" way. If a concept has a regional variant (lakh/crore, comma grouping, units, formats), teach their form as THE form. WRONG: *"In India, we say lakh, not hundred thousand."* RIGHT: *"We call 1,00,000 one lakh."* WRONG: *"3-2-2 grouping, not the Western 3-3-3."* RIGHT: *"Commas go after 3 digits from the right, then every 2 digits."* Only compare when the teaching guideline explicitly teaches comparison.
@@ -123,9 +126,14 @@ Emotion is per-line, not per-card. Within one card, lines often shift register: 
 
 The emotion `null` is fine — overuse of tags makes prosody feel theatrical. Aim for ~50-70% of lines tagged, 30-50% null.
 
-CHECK-IN ACTIVITIES — supported activity_type values
+CHECK-IN ACTIVITIES — light + heavy pairs
 
-`pick_one`, `true_false`, `fill_blank`, `match_pairs`, `sort_buckets`, `sequence`, `spot_the_error`, `odd_one_out`, `predict_then_reveal`, `swipe_classify`, `tap_to_eliminate`. Generic `success_message` and `hint`. Same audio rules.
+The plan emits check-ins as adjacent PAIRS: a LIGHT activity (recall, ~5-10s) then a HEAVY activity (analysis, ~15-25s), in that order. Realize the FIRST check-in slot of a pair with a LIGHT type and the SECOND with a HEAVY type. The plan's `intent` marks each ("LIGHT check —" / "HEAVY check —").
+
+- LIGHT types (recall): `pick_one`, `true_false`, `fill_blank`, `odd_one_out`.
+- HEAVY types (analysis): `match_pairs`, `sort_buckets`, `sequence`, `spot_the_error`, `predict_then_reveal`, `swipe_classify`, `tap_to_eliminate`.
+
+Vary the types — don't reuse the same one for two check-ins in a row. Both activities in a pair test the SAME preceding 2-3 content cards. Generic `success_message` and `hint`. Same audio rules, and the ≤12-word SVO no-idiom ESL rules apply to every check-in string.
 
 EXEMPLAR — prose realization of selected moves (from the gold-standard fractions dialogue)
 
@@ -144,10 +152,10 @@ display: "But 4 is more than 2. So 1/4 should be more, right?"
 WHY: Peer voices the misconception with her logic visible ("4 is more than 2"). Hesitation sound "Hmm" leads. Wrong-but-reasonable.
 
 [move: student-act, target: M1]
-display: "Aha! Lots of kids think exactly that."
+display: "Aha! That feels right, doesn't it?"
 display: "Let us test it together."
 display: "Take a piece of paper. Fold it once in the middle. How many pieces do you see when you open it?"
-WHY: Tutor validates the confusion ("lots of kids"), then imperative physical instruction. Specific action.
+WHY: Tutor validates the confusion by RESPONDING to it — not by narrating it as a category. "Lots of kids think…" is banned (§5: it talks ABOUT the misconception instead of responding to the one Meera just voiced). Then an imperative physical instruction. Specific action.
 
 [move: observe, target: M1]
 display: "Two pieces. Same size."
@@ -166,10 +174,10 @@ WHY: Articulate AFTER peer has done the work. Three lines is OK on articulation 
 
 [move: escalate, target: M1]
 display: "Yes, when it is the bottom number."
-display: "Think of it like this. One pizza."
-display: "Share between 2 friends, each gets a big slice. Share between 10 friends, each gets a tiny slice."
-display: "More friends, smaller slice."
-WHY: Different concrete material (pizza, friends-sharing) extends the rule. Extreme case (10 vs 2) consolidates.
+display: "Think of it like this. One watermelon."
+display: "Cut it for 2 friends, each gets a big piece. Cut it for 10 friends, each gets a tiny piece."
+display: "More friends, smaller piece."
+WHY: Different concrete material (watermelon, friends-sharing) extends the rule. Extreme case (10 vs 2) consolidates.
 
 [move: reframe]
 display: "That is okay."
@@ -181,7 +189,7 @@ display: "Spot on, {student_name}."
 display: "Today you learned three big things."
 display: "Fractions need equal pieces. Bigger bottom number means smaller piece. And the whole must be the same when we compare."
 display: "You worked hard today."
-WHY: Three takeaways tied to M1/M2/M3 (one per misconception). Process praise. {student_name} appears in summary.
+WHY: One takeaway per misconception-derived rule — three here because this plan has three misconceptions; a plan with fewer has fewer takeaways. Process praise. {student_name} appears in summary.
 
 [BAD example — what to AVOID]
 [move: trap-set, then answer in same card — WRONG]

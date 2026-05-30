@@ -25,7 +25,7 @@ If a card sits between two visuals on the same artifact (e.g., student-act → o
 2. **Place-value chart**: a row of labeled columns (O, T, H, Th, TTh, L), each holding one digit, with the focal column highlighted.
 3. **Side-by-side comparison**: two artifacts (numbers, fractions, charts) with a clear "vs" between them and the correct one ticked.
 4. **Number line**: horizontal line with tick marks and one position highlighted.
-5. **Object cut into parts**: a circle (chapati / pizza) with division lines and one piece shaded.
+5. **Object cut into parts**: a circle (chapati / roti) with division lines and one piece shaded.
 6. **Road / context sign**: a labeled sign with the number large.
 7. **Process diagram**: 2–3 small panels showing before / during / after of a transformation (e.g., 99,999 + 1).
 8. **Three-icon takeaway**: for the close card, three small icons in a row, each captioned with one rule.

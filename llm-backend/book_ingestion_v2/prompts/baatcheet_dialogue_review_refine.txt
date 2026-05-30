@@ -1,10 +1,10 @@
 TOPIC: {topic_name}
 SUBJECT: {subject}, Grade {grade}
 
-LESSON PLAN (the spec — every card slot's `move`+`intent`+`speaker`+`target` must be realized):
+LESSON PLAN (context — the FIXED architecture generation already realized; use it to understand each card's role and which slots are check-ins, NOT to re-audit realization):
 {lesson_plan_json}
 
-VARIANT A REFERENCE (the canonical Explain-mode prose for content fidelity check only — do NOT inherit ordering or copy examples):
+VARIANT A REFERENCE (canonical Explain-mode prose — CHECK every fact, number, and worked example in the dialogue against this and fix any disagreement; do NOT inherit its ordering or copy its examples):
 {variant_a_cards_json}
 
 CURRENT DIALOGUE CARDS (cards 2..N — card 1 is welcome and is prepended separately):
