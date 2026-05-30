@@ -296,7 +296,7 @@ This is the lesson plan that would have produced the gold-standard dialogue. Stu
     {
       "phase": "cycle_M1",
       "card_count": 9,
-      "purpose": "Trap (sister cries at 1/4) → fall (4>2) → fold paper → observe → articulate (more pieces = smaller) → escalate (pizza 2 vs 10 friends)"
+      "purpose": "Trap (sister cries at 1/4) → fall (4>2) → fold paper → observe → articulate (more pieces = smaller) → escalate (watermelon 2 vs 10 friends)"
     },
     {
       "phase": "cycle_M2",
@@ -354,10 +354,10 @@ This is the lesson plan that would have produced the gold-standard dialogue. Stu
     {"slot": 23, "move": "observe", "speaker": "peer", "card_type": "peer_turn", "target": "M1", "intent": "Meera: oh wait! half is much bigger", "visual_required": false},
     {"slot": 24, "move": "articulate", "speaker": "tutor", "card_type": "tutor_turn", "target": "M1", "intent": "Articulate the rule: more pieces = smaller; 1/2 > 1/4 even though 4>2", "visual_required": true},
     {"slot": 25, "move": "fall", "speaker": "peer", "card_type": "peer_turn", "target": "M1", "intent": "Meera: bigger number means smaller piece? (puzzlement at counterintuitive)", "visual_required": false},
-    {"slot": 26, "move": "escalate", "speaker": "tutor", "card_type": "tutor_turn", "target": "M1", "intent": "Pizza analogy: 2 friends vs 10 friends — extreme case consolidates", "visual_required": true},
+    {"slot": 26, "move": "escalate", "speaker": "tutor", "card_type": "tutor_turn", "target": "M1", "intent": "Watermelon analogy: 2 friends vs 10 friends — extreme case consolidates", "visual_required": true},
     {"slot": 27, "move": "observe", "speaker": "peer", "card_type": "peer_turn", "target": "M1", "intent": "Meera in own words: more people, less for each", "visual_required": false},
     {"slot": 28, "move": "check-in", "speaker": "system", "card_type": "check_in", "target": "M1", "intent": "LIGHT check — recall: which piece is bigger, 1/2 or 1/4? (pick one)", "visual_required": false},
-    {"slot": 29, "move": "check-in", "speaker": "system", "card_type": "check_in", "target": "M1", "intent": "HEAVY check — analysis: a worked pizza claim has one wrong step ('10 friends each get a bigger slice') — spot the error", "visual_required": false},
+    {"slot": 29, "move": "check-in", "speaker": "system", "card_type": "check_in", "target": "M1", "intent": "HEAVY check — analysis: a worked watermelon claim has one wrong step ('10 friends each get a bigger piece') — spot the error", "visual_required": false},
     {"slot": 30, "move": "trap-set", "speaker": "tutor", "card_type": "tutor_turn", "target": "M2", "intent": "Praise; new trap: 4 pieces but unequal sizes — still 1/4?", "visual_required": true},
     {"slot": 31, "move": "fall", "speaker": "peer", "card_type": "peer_turn", "target": "M2", "intent": "Meera: umm, 4 pieces, so yes 1/4? (tentative trap fall)", "visual_required": false},
     {"slot": 32, "move": "callback", "speaker": "tutor", "card_type": "tutor_turn", "target": "M2", "intent": "Funnel via spine: if sister got smallest, you got biggest, would she be happy?", "visual_required": false},

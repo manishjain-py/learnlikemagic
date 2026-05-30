@@ -502,6 +502,90 @@ class TestValidatorCheckInPairs:
         assert any("before card 3" in i for i in self._checkin_issues(cards))
 
 
+class TestRefineSeededWithGenerationIssues:
+    """Finding-1 regression: the raw generation is validated BEFORE the refine
+    loop, so the FIRST refine round (the only one at the default
+    review_rounds=1) is handed the structural validator issues to repair.
+    Before this fix the first round always ran with an empty issue list, and
+    Step 4's raise_on_fail=True hard-failed any topic whose generation missed
+    the paired check-in structure — the validator feedback never reached the
+    refine LLM at the default round count."""
+
+    def _models(self):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            DialogueCardOutput, DialogueLineOutput, CheckInActivityOutput,
+        )
+        return DialogueCardOutput, DialogueLineOutput, CheckInActivityOutput
+
+    def _service_with_mocks(self, gen_cards, refined_cards, refine_calls):
+        from book_ingestion_v2.services.baatcheet_dialogue_generator_service import (
+            BaatcheetDialogueGeneratorService, DialogueCardOutput, DialogueLineOutput,
+        )
+        # Bypass __init__ DB wiring; set only what generate_for_guideline touches.
+        svc = BaatcheetDialogueGeneratorService.__new__(BaatcheetDialogueGeneratorService)
+        svc.llm = MagicMock()
+        svc.llm.model_id = "test-model"
+        svc.repo = MagicMock()
+        svc.repo.has_dialogue.return_value = False
+        svc.exp_repo = MagicMock()
+        svc.exp_repo.get_variant.return_value = SimpleNamespace(
+            id="exp-A",
+            cards_json=[{"card_type": "concept", "title": "T", "lines": []}],
+            summary_json={"k": "v"},
+        )
+        svc.guideline_repo = MagicMock()
+        svc.guideline_repo._parse_metadata.return_value = None
+        svc._refresh_db_session = lambda: None
+        svc._generate_lesson_plan = lambda guideline, variant_a, misconceptions: {"card_plan": []}
+        svc._generate_dialogue = lambda plan, guideline, variant_a: SimpleNamespace(cards=gen_cards)
+        svc._build_welcome_card_pydantic = lambda guideline: DialogueCardOutput(
+            card_idx=1, card_type="welcome", speaker="tutor", includes_student_name=True,
+            lines=[DialogueLineOutput(display="Hi {student_name}!", audio="Hi {student_name}!")],
+        )
+
+        def fake_refine(cards, plan, guideline, variant_a, validator_issues):
+            refine_calls.append(list(validator_issues))   # snapshot what this round saw
+            return SimpleNamespace(cards=refined_cards)
+
+        svc._review_and_refine = fake_refine
+        return svc
+
+    @staticmethod
+    def _guideline():
+        return SimpleNamespace(
+            id="g-1", topic_title="Fractions", topic="Fractions", subject="Math",
+            grade=4, guideline="g", description="d", metadata_json=None,
+            prior_topics_context=None,
+        )
+
+    def test_first_refine_round_receives_generation_issues(self):
+        C, L, CI = self._models()
+        content = lambda: C(card_idx=0, card_type="tutor_turn", speaker="tutor",
+                            lines=[L(display="x.", audio="x.")])
+        summary = lambda: C(card_idx=0, card_type="summary", speaker="tutor",
+                            lines=[L(display="Done.", audio="Done.")])
+        lone_ci = C(card_idx=0, card_type="check_in",
+                    check_in=CI(activity_type="pick_one", instruction="i", hint="h",
+                                success_message="s", audio_text="a",
+                                options=["a", "b"], correct_index=0))
+        # Generation deck carries a LONE check-in (a run of 1) — a structural
+        # pairing defect the validator must surface to the refine LLM.
+        gen_cards = ([content() for _ in range(11)] + [lone_ci]
+                     + [content() for _ in range(11)] + [summary()])
+        # Refine returns a structurally clean deck (no check-ins) so the loop
+        # ends clean and Step 4's raise_on_fail=True passes.
+        refined_cards = [content() for _ in range(24)] + [summary()]
+
+        refine_calls: list = []
+        svc = self._service_with_mocks(gen_cards, refined_cards, refine_calls)
+        dialogue = svc.generate_for_guideline(self._guideline(), review_rounds=1)
+
+        assert dialogue is not None                       # Step 4 did not hard-fail
+        assert len(refine_calls) == 1                     # exactly one round at the default
+        assert refine_calls[0], "first refine round must be seeded with the generation's validator issues"
+        assert any("pair" in i for i in refine_calls[0]), refine_calls[0]
+
+
 class TestValidatorBannedEmojiRangeMiscTechnical:
     """F9: regex must hit U+2300-U+27BF (was U+2600 onwards) so symbols like
     ▶ (U+25B6) and ⏰ (U+23F0) are rejected in lines[].audio too. Without this

@@ -479,9 +479,10 @@ class BaatcheetDialogueGeneratorService:
       2. LLM generates a structured lesson plan (misconceptions, spine,
          macro_structure, card_plan).
       3. LLM generates cards 2..N realizing the plan.
-      4. Review-refine N rounds against the plan. The refine prompt receives
-         the validator's issue list and the plan so the LLM targets both
-         mechanical fixes and plan-adherence in one pass.
+      4. Validate the raw generation, then review-refine N rounds. The refine
+         prompt receives the validator's issue list (seeded from the generation
+         so the first round can repair structure too) plus the plan, and targets
+         factual + naturalness fixes alongside any flagged structural defects.
       5. Prepend the literal welcome card 1 server-side.
       6. Re-index card_idx 1..N.
       7. Final validation with raise_on_fail=True. No silent truncation.
@@ -509,6 +510,25 @@ class BaatcheetDialogueGeneratorService:
         self.repo = DialogueRepository(self.db)
         self.exp_repo = ExplanationRepository(self.db)
         self.guideline_repo = TeachingGuidelineRepository(self.db)
+
+    def _prepend_welcome_and_validate(
+        self,
+        cards: list[DialogueCardOutput],
+        guideline: TeachingGuideline,
+        *,
+        raise_on_fail: bool,
+    ) -> tuple[list[DialogueCardOutput], list[str]]:
+        """Prepend the server-side welcome card, re-index card_idx 1..N, and run
+        the structural validator. Returns the (welcome-prepended, re-indexed)
+        deck plus its issue list, so callers can both feed the issues back into
+        the refine LLM and persist the final deck. Re-indexing must happen first:
+        the check-in-pairing, card-3-floor, and pair-spacing checks all key off
+        card_idx.
+        """
+        deck = [self._build_welcome_card_pydantic(guideline)] + list(cards)
+        for i, c in enumerate(deck, start=1):
+            c.card_idx = i
+        return deck, _validate_cards(deck, raise_on_fail=raise_on_fail)
 
     def generate_for_guideline(
         self,
@@ -573,8 +593,17 @@ class BaatcheetDialogueGeneratorService:
                 "timestamp": datetime.utcnow().isoformat(),
             })
 
-        # Step 3: Review-refine N rounds against the plan, feeding validator issues
-        last_issues: list[str] = []
+        # Step 3: Validate the raw generation, THEN review-refine N rounds.
+        # _validate_cards owns every structural rule (paired check-ins, pair
+        # spacing, the card-3 floor). Validating the generation up front seeds
+        # the FIRST refine round with its issues — so a structural miss gets a
+        # repair pass even at the default review_rounds=1. (Each refine call is
+        # validated only after it returns; without this seed the first round
+        # would always run with an empty issue list and Step 4 would hard-fail
+        # the topic with no chance to fix it.)
+        _, last_issues = self._prepend_welcome_and_validate(
+            cards, guideline, raise_on_fail=False,
+        )
         for round_num in range(1, review_rounds + 1):
             refined_output = self._review_and_refine(
                 cards, plan, guideline, variant_a, validator_issues=last_issues,
@@ -591,27 +620,20 @@ class BaatcheetDialogueGeneratorService:
                     "timestamp": datetime.utcnow().isoformat(),
                 })
 
-            # Pre-prepend validation: pass the welcome+summary checks against
-            # the LLM output by simulating the prepend so issue list reflects
-            # what the *final* deck will look like.
-            sim_cards = [self._build_welcome_card_pydantic(guideline)] + list(cards)
-            for i, c in enumerate(sim_cards, start=1):
-                c.card_idx = i
-            last_issues = _validate_cards(sim_cards, raise_on_fail=False)
+            _, last_issues = self._prepend_welcome_and_validate(
+                cards, guideline, raise_on_fail=False,
+            )
             if not last_issues:
                 logger.info(
                     f"Refine round {round_num}: validators clean, stopping early"
                 )
                 break
 
-        # Step 4: Prepend welcome card 1, re-index, final validation
-        final_cards: list[DialogueCardOutput] = (
-            [self._build_welcome_card_pydantic(guideline)] + list(cards)
+        # Step 4: Prepend welcome card 1, re-index, final validation. Raises on
+        # any remaining issue — no silent truncation.
+        final_cards, _ = self._prepend_welcome_and_validate(
+            cards, guideline, raise_on_fail=True,
         )
-        for i, c in enumerate(final_cards, start=1):
-            c.card_idx = i
-
-        _validate_cards(final_cards, raise_on_fail=True)  # No silent truncation
 
         # Step 5: Persist with content hash + plan
         cards_dicts = [_card_output_to_dict(c) for c in final_cards]

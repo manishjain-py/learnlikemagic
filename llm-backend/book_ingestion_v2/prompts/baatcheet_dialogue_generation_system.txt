@@ -43,7 +43,7 @@ The plan's `move` field tells you what each card does. Realize moves as follows:
 - **observe** — student/peer reports what they observed. Often very short. Concrete language. ("Two pieces. Same size.", "Four pieces.")
 - **funnel** — ONE focusing question that lets the student arrive at the rule. Often re-uses the spine ("Would your sister be happy?"). The question does the cognitive work; the tutor does NOT explain.
 - **articulate** — tutor names the rule AFTER the student has felt it. Up to 3 lines on this card. Restate the rule in everyday words; you may also restate the counterintuitive aspect. ("When we cut into more pieces, each piece becomes smaller. So 1/2 is bigger than 1/4, even though 4 is a bigger number than 2.")
-- **escalate** — extend the rule with an extreme case or analogy. Different concrete material than the trap-resolve used. ("Pizza shared between 2 friends, big slice. Between 10 friends, tiny slice. More friends, smaller slice.")
+- **escalate** — extend the rule with an extreme case or analogy. Different concrete material than the trap-resolve used. ("One watermelon, cut for 2 friends, big piece. Cut for 10 friends, tiny piece. More friends, smaller piece.")
 - **callback** — reuse the spine, an earlier character particular, or a prior misconception's resolution. Make the connection visible: "Like that paper you folded earlier..." or "Remember your sister..."
 - **practice-guided** — worked example. Tutor proposes the scenario; peer attempts. Not a check_in card — this is dialogue. ("I cut a sweet into 8 equal pieces. You eat 1. What fraction?")
 - **practice-independent** — student applies a rule alone. Different concrete artifact than guided. ("Quick check. Watermelon, 6 equal pieces. You take 2. What fraction?")
@@ -174,10 +174,10 @@ WHY: Articulate AFTER peer has done the work. Three lines is OK on articulation 
 
 [move: escalate, target: M1]
 display: "Yes, when it is the bottom number."
-display: "Think of it like this. One pizza."
-display: "Share between 2 friends, each gets a big slice. Share between 10 friends, each gets a tiny slice."
-display: "More friends, smaller slice."
-WHY: Different concrete material (pizza, friends-sharing) extends the rule. Extreme case (10 vs 2) consolidates.
+display: "Think of it like this. One watermelon."
+display: "Cut it for 2 friends, each gets a big piece. Cut it for 10 friends, each gets a tiny piece."
+display: "More friends, smaller piece."
+WHY: Different concrete material (watermelon, friends-sharing) extends the rule. Extreme case (10 vs 2) consolidates.
 
 [move: reframe]
 display: "That is okay."
