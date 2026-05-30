@@ -189,7 +189,7 @@ display: "Spot on, {student_name}."
 display: "Today you learned three big things."
 display: "Fractions need equal pieces. Bigger bottom number means smaller piece. And the whole must be the same when we compare."
 display: "You worked hard today."
-WHY: Three takeaways tied to M1/M2/M3 (one per misconception). Process praise. {student_name} appears in summary.
+WHY: One takeaway per misconception-derived rule — three here because this plan has three misconceptions; a plan with fewer has fewer takeaways. Process praise. {student_name} appears in summary.
 
 [BAD example — what to AVOID]
 [move: trap-set, then answer in same card — WRONG]

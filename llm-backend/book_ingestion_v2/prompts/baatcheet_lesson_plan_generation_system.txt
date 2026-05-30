@@ -58,14 +58,12 @@ Only frame the misconception or its disproof as a "your way vs their way" compar
    - `intent`: one short line describing what this card does pedagogically. Not the prose itself.
 
    The card-plan is constrained by the macro-structure:
-   - Phase A: hook + activate + concretize + notate (~5-9 cards)
-   - Phase B: trap-resolve cycle for M1 (~6-8 cards) — pattern: trap-set → fall → student-act OR funnel → articulate → optional escalate/callback
-   - Phase C: trap-resolve cycle for M2 (~6-8 cards)
-   - Phase D: guided practice — worked example with the established rules (~2-3 cards)
-   - Phase E: trap-resolve cycle for M3 (~6-8 cards)
-   - Phase F: reframe (~1-2 cards) — acknowledge the cognitive load, normalize confusion
-   - Phase G: independent check — student applies a rule alone (~2 cards)
-   - Phase H: close — three takeaways tied to M1/M2/M3 + spine callback (~2 cards)
+   - Open: hook + activate + concretize + notate (~5-9 cards)
+   - Trap-resolve cycles: ONE per misconception you picked — so 0-3 cycles, NOT always three (~6-8 cards each) — pattern: trap-set → fall → student-act OR funnel → articulate → optional escalate/callback. A concept with no documented misconception is taught directly instead (concretize → notate → practice) — never a fabricated cycle. (The exemplar below has three because Class-4 fractions genuinely carries three; match the count to your topic.)
+   - Guided practice: worked example with the established rules, slotted partway through the cycles (~2-3 cards)
+   - Reframe (~1-2 cards): acknowledge the cognitive load, normalize confusion
+   - Independent check (~2 cards): student applies a rule alone
+   - Close (~2 cards): one short takeaway per misconception-derived rule in your plan (as many as you have, not always three); add a spine callback ONLY if the plan has a spine
    - Check-in pairs are interleaved between the content cards above (see CHECK-IN PAIRS) — they are ADDITIONAL to the 30-40 content cards, not part of any single phase.
 
 CHECK-IN PAIRS (interactive activities — where real engagement lives)
@@ -99,7 +97,7 @@ MOVE GRAMMAR (vocabulary for the `move` field)
 | reframe | Acknowledge student's emotion (confusion, fatigue) and normalize |
 | visual | A diagram card (visual_intent will be filled later) |
 | check-in | One activity of a light+heavy PAIR (see CHECK-IN PAIRS) — two adjacent check-in slots, light type first then heavy |
-| close | Final card: three takeaways + spine resolution |
+| close | Final card: one takeaway per misconception-derived rule + spine resolution if the plan has a spine |
 
 CRAFT CONSTRAINTS YOUR PLAN MUST HONOR
 
@@ -386,6 +384,6 @@ This is the lesson plan that would have produced the gold-standard dialogue. Stu
   ]
 }
 
-Note this exemplar is a 53-card output (slots 2-54): 39 content cards with 7 check-in pairs (14 check-in cards) interleaved at cycle boundaries. The macro_structure card_counts describe the content backbone; the check-in pairs are additional. Your plans may vary in length — keep 30-40 content cards plus the check-in pairs.
+Note this exemplar is a 53-card output (slots 2-54): 39 content cards with 7 check-in pairs (14 check-in cards) interleaved at cycle boundaries. The macro_structure card_counts describe the content backbone; the check-in pairs are additional. Your plans may vary in length — keep 30-40 content cards plus the check-in pairs. It has three trap-resolve cycles, three takeaways, and a spine because Class-4 fractions genuinely carries all three; a topic with one misconception gets one cycle and one takeaway, and a procedural / abstract topic with none gets zero cycles and no spine. Match the structure to the topic — never pad to three.
 
 Now generate the lesson plan for the topic provided in the user message. Output valid JSON only, no markdown fences.

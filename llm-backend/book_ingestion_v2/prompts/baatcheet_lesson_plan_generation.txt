@@ -7,7 +7,7 @@ TEACHING GUIDELINE:
 KEY CONCEPTS TO COVER (the dialogue must teach every concept here; you decide order, examples, pacing):
 {key_concepts_list}
 
-COMMON MISCONCEPTIONS (research notes from upstream — use these as starting points; you may refine, replace, or add to reach your final 2-3 misconceptions):
+COMMON MISCONCEPTIONS (research notes from upstream — starting points only; refine, replace, drop, or add per the MISCONCEPTIONS rule in the system prompt. Keep only the ones real Grade {grade} students hold for THIS topic — some topics have 2-3, some 1, some none. Never invent one to reach a count):
 {misconceptions_list}
 
 VARIANT A REFERENCE (the canonical Explain-mode prose for this topic — for content fidelity check only; do NOT inherit its ordering or copy its examples):
