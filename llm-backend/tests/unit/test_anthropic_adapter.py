@@ -8,6 +8,7 @@ from shared.services.anthropic_adapter import (
     AnthropicAdapter,
     DEFAULT_CLAUDE_MODEL,
     CLAUDE_HAIKU_MODEL,
+    ADAPTIVE_EFFORT_MAP,
     THINKING_BUDGET_MAP,
 )
 
@@ -31,12 +32,23 @@ def adapter():
 
 class TestConstants:
     def test_default_model(self):
-        assert DEFAULT_CLAUDE_MODEL == "claude-opus-4-6"
+        assert DEFAULT_CLAUDE_MODEL == "claude-opus-4-8"
 
     def test_haiku_model(self):
         assert CLAUDE_HAIKU_MODEL == "claude-haiku-4-5-20251001"
 
+    def test_adaptive_effort_map(self):
+        # Effort levels for adaptive-thinking models (Opus 4.5+/Sonnet 4.6).
+        assert ADAPTIVE_EFFORT_MAP["low"] == "low"
+        assert ADAPTIVE_EFFORT_MAP["medium"] == "medium"
+        assert ADAPTIVE_EFFORT_MAP["high"] == "high"
+        assert ADAPTIVE_EFFORT_MAP["xhigh"] == "xhigh"
+        assert ADAPTIVE_EFFORT_MAP["max"] == "max"
+        # "none" means no thinking — deliberately absent.
+        assert "none" not in ADAPTIVE_EFFORT_MAP
+
     def test_thinking_budget_map(self):
+        # Legacy manual extended-thinking budgets — only used for Haiku 4.5.
         assert THINKING_BUDGET_MAP["none"] == 0
         assert THINKING_BUDGET_MAP["low"] == 5_000
         assert THINKING_BUDGET_MAP["medium"] == 10_000
@@ -67,11 +79,14 @@ class TestBuildKwargs:
         assert "system" not in kwargs
 
     def test_with_thinking(self, adapter):
+        # Default model is Opus 4.8 → adaptive thinking + effort, not budget_tokens
+        # (manual extended thinking returns a 400 on Opus 4.7+).
         kwargs = adapter._build_kwargs("Hello", reasoning_effort="high", json_mode=False)
 
         assert "thinking" in kwargs
-        assert kwargs["thinking"]["type"] == "enabled"
-        assert kwargs["thinking"]["budget_tokens"] == 20_000
+        assert kwargs["thinking"]["type"] == "adaptive"
+        assert "budget_tokens" not in kwargs["thinking"]
+        assert kwargs["output_config"]["effort"] == "high"
 
     def test_with_json_schema(self, adapter):
         schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
@@ -106,6 +121,62 @@ class TestBuildKwargs:
         kwargs = adapter._build_kwargs("Hello", reasoning_effort="unknown_level")
         # Should not add thinking block for unknown budget (defaults to 0)
         assert "thinking" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# Tests — model-aware thinking API
+# ---------------------------------------------------------------------------
+
+class TestModelAwareThinking:
+    """Opus 4.5+/Sonnet 4.6 use adaptive thinking + the effort parameter;
+    Claude Haiku 4.5 has no effort support and keeps the legacy budget-token
+    extended-thinking API."""
+
+    def _adapter(self, model):
+        with patch("shared.services.anthropic_adapter.anthropic") as mock_anthropic:
+            mock_anthropic.Anthropic.return_value = MagicMock()
+            mock_anthropic.AsyncAnthropic.return_value = MagicMock()
+            return AnthropicAdapter(api_key="test-key-fake", model=model)
+
+    def test_opus_uses_adaptive_thinking(self):
+        ad = self._adapter("claude-opus-4-8")
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="high", json_mode=False)
+        assert kwargs["thinking"] == {"type": "adaptive"}
+        assert kwargs["output_config"] == {"effort": "high"}
+
+    def test_opus_max_effort_maps_through(self):
+        ad = self._adapter("claude-opus-4-8")
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="max", json_mode=False)
+        assert kwargs["thinking"] == {"type": "adaptive"}
+        assert kwargs["output_config"] == {"effort": "max"}
+
+    def test_opus_none_effort_no_thinking(self):
+        ad = self._adapter("claude-opus-4-8")
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="none", json_mode=False)
+        assert "thinking" not in kwargs
+        assert "output_config" not in kwargs
+
+    def test_haiku_uses_legacy_budget(self):
+        ad = self._adapter(CLAUDE_HAIKU_MODEL)
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="high", json_mode=False)
+        assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": 20_000}
+        # Haiku must NOT receive the effort parameter (unsupported → would error).
+        assert "output_config" not in kwargs
+
+    def test_haiku_none_effort_no_thinking(self):
+        ad = self._adapter(CLAUDE_HAIKU_MODEL)
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="none", json_mode=False)
+        assert "thinking" not in kwargs
+
+    def test_opus_schema_with_thinking_uses_auto_tool_choice(self):
+        ad = self._adapter("claude-opus-4-8")
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="high", json_schema={"type": "object"})
+        assert kwargs["tool_choice"]["type"] == "auto"
+
+    def test_haiku_schema_with_thinking_uses_auto_tool_choice(self):
+        ad = self._adapter(CLAUDE_HAIKU_MODEL)
+        kwargs = ad._build_kwargs("Hi", reasoning_effort="high", json_schema={"type": "object"})
+        assert kwargs["tool_choice"]["type"] == "auto"
 
 
 # ---------------------------------------------------------------------------

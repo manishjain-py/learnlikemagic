@@ -238,7 +238,7 @@ class LLMConfig(Base):
 
     component_key = Column(String, primary_key=True)  # e.g. "tutor", "book_ingestion_v2"
     provider = Column(String, nullable=False)           # "openai", "anthropic", "google"
-    model_id = Column(String, nullable=False)           # "gpt-5.2", "claude-opus-4-6", etc.
+    model_id = Column(String, nullable=False)           # "gpt-5.2", "claude-opus-4-8", etc.
     description = Column(String, nullable=True)         # Human-readable description
     reasoning_effort = Column(String, nullable=False, default="max")  # low|medium|high|xhigh|max
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

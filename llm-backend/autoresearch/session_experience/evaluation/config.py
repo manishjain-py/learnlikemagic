@@ -79,9 +79,9 @@ class SessionExperienceConfig:
     analyzer_provider: str = ""
 
     # Anthropic models
-    anthropic_evaluator_model: str = "claude-opus-4-6"
-    anthropic_simulator_model: str = "claude-opus-4-6"
-    anthropic_analyzer_model: str = "claude-opus-4-6"
+    anthropic_evaluator_model: str = "claude-opus-4-8"
+    anthropic_simulator_model: str = "claude-opus-4-8"
+    anthropic_analyzer_model: str = "claude-opus-4-8"
     anthropic_evaluator_thinking_budget: int = 20000
 
     # Tutor model (display only)
@@ -98,7 +98,7 @@ class SessionExperienceConfig:
 
     PROVIDER_LABELS = {
         "openai": "GPT-5.2",
-        "anthropic": "Claude Opus 4.6",
+        "anthropic": "Claude Opus 4.8",
         "anthropic-haiku": "Claude Haiku 4.5",
     }
 

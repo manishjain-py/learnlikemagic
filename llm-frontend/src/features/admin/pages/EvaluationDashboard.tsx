@@ -293,7 +293,7 @@ const RunDetailView: React.FC<{
               fontSize: '11px',
               fontWeight: 500,
             }}>
-              ⚡ Tutor: {({'openai': 'GPT-5.2', 'anthropic': 'Claude Opus 4.6', 'anthropic-haiku': 'Claude Haiku 4.5'} as Record<string, string>)[run.config.tutor_llm_provider] || run.config.tutor_llm_provider}
+              ⚡ Tutor: {({'openai': 'GPT-5.2', 'anthropic': 'Claude Opus 4.8', 'anthropic-haiku': 'Claude Haiku 4.5'} as Record<string, string>)[run.config.tutor_llm_provider] || run.config.tutor_llm_provider}
             </span>
           )}
           {run.config?.eval_llm_provider && (
@@ -305,7 +305,7 @@ const RunDetailView: React.FC<{
               fontSize: '11px',
               fontWeight: 500,
             }}>
-              🔍 Evaluator: {({'openai': 'GPT-5.2', 'anthropic': 'Claude Opus 4.6'} as Record<string, string>)[run.config.eval_llm_provider] || run.config.eval_llm_provider}
+              🔍 Evaluator: {({'openai': 'GPT-5.2', 'anthropic': 'Claude Opus 4.8'} as Record<string, string>)[run.config.eval_llm_provider] || run.config.eval_llm_provider}
             </span>
           )}
         </div>

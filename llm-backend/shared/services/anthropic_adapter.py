@@ -19,9 +19,24 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLAUDE_MODEL = "claude-opus-4-6"
+DEFAULT_CLAUDE_MODEL = "claude-opus-4-8"
 CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
+# Opus 4.5/4.6/4.7/4.8 and Sonnet 4.6 steer thinking depth with adaptive
+# thinking (`thinking={"type": "adaptive"}`) plus an `effort` level, not a
+# manual token budget. Manual extended thinking
+# (`thinking={"type": "enabled", "budget_tokens": N}`) is REJECTED with a 400
+# on Opus 4.7 and later, so these models must use this effort map.
+ADAPTIVE_EFFORT_MAP = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "xhigh",
+    "max": "max",
+}
+
+# Legacy manual extended-thinking budgets. Used only for models that do NOT
+# support the effort parameter / adaptive thinking — currently Claude Haiku 4.5.
 THINKING_BUDGET_MAP = {
     "none": 0,
     "low": 5_000,
@@ -38,6 +53,15 @@ class AnthropicAdapter:
         self.model = model
         self.client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
         self.async_client = anthropic.AsyncAnthropic(api_key=api_key, timeout=timeout)
+
+    def _uses_adaptive_thinking(self) -> bool:
+        """Whether this model uses adaptive thinking + the effort parameter.
+
+        Opus 4.5/4.6/4.7/4.8 and Sonnet 4.6 do (and Opus 4.7+ REJECT the legacy
+        budget-token API with a 400). Claude Haiku 4.5 does not support the
+        effort parameter, so it falls back to manual extended thinking.
+        """
+        return "haiku" not in self.model
 
     def _build_kwargs(
         self,
@@ -60,9 +84,22 @@ class AnthropicAdapter:
             "max_tokens": 16384,
         }
 
-        budget = THINKING_BUDGET_MAP.get(reasoning_effort, 0)
-        if budget > 0:
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        # Enable thinking based on the model family. Opus 4.7+ reject manual
+        # extended thinking with a 400, so Opus/Sonnet use adaptive thinking
+        # steered by `effort`; Haiku 4.5 (no effort support) keeps the legacy
+        # budget-token API.
+        thinking_on = False
+        if self._uses_adaptive_thinking():
+            effort = ADAPTIVE_EFFORT_MAP.get(reasoning_effort)
+            if effort:
+                kwargs["thinking"] = {"type": "adaptive"}
+                kwargs["output_config"] = {"effort": effort}
+                thinking_on = True
+        else:
+            budget = THINKING_BUDGET_MAP.get(reasoning_effort, 0)
+            if budget > 0:
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                thinking_on = True
 
         if json_schema:
             kwargs["tools"] = [
@@ -72,7 +109,9 @@ class AnthropicAdapter:
                     "input_schema": json_schema,
                 }
             ]
-            if budget > 0:
+            # When thinking is enabled, the model must be free to think before
+            # acting, so a specific tool cannot be forced — use auto.
+            if thinking_on:
                 kwargs["tool_choice"] = {"type": "auto"}
             else:
                 kwargs["tool_choice"] = {"type": "tool", "name": schema_name}
