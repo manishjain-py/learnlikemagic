@@ -174,7 +174,7 @@ Centralized model configuration per component. Single source of truth for which 
 |--------|------|-------------|
 | `component_key` | VARCHAR | Primary key (e.g. `tutor`, `book_ingestion_v2`) |
 | `provider` | VARCHAR | LLM provider: `openai`, `anthropic`, `google`, `claude_code` |
-| `model_id` | VARCHAR | Model identifier (e.g. `gpt-5.2`, `claude-opus-4-7`) |
+| `model_id` | VARCHAR | Model identifier (e.g. `gpt-5.2`, `claude-opus-4-8`) |
 | `description` | VARCHAR | Human-readable description |
 | `reasoning_effort` | VARCHAR | Reasoning effort: `low`/`medium`/`high`/`xhigh`/`max` (default `max`) |
 | `updated_at` | DATETIME | Last update timestamp |
@@ -193,10 +193,10 @@ Centralized model configuration per component. Single source of truth for which 
 | `personality_derivation` | openai | gpt-5.2 | Kid personality derivation from enrichment profile |
 | `explanation_generator` | openai | gpt-5.2 | Pre-computed explanation generation for topics |
 | `fast_model` | openai | gpt-4o-mini | Lightweight model for safety checks, translation, fast tasks |
-| `check_in_enrichment` | claude_code | claude-opus-4-7 | Check-in card generation (match-the-pairs activities) |
-| `practice_bank_generator` | claude_code | claude-opus-4-7 | Practice question bank generation + correctness review |
+| `check_in_enrichment` | claude_code | claude-opus-4-8 | Check-in card generation (match-the-pairs activities) |
+| `practice_bank_generator` | claude_code | claude-opus-4-8 | Practice question bank generation + correctness review |
 | `practice_grader` | openai | gpt-4o-mini | Practice free-form grading + per-pick wrong-answer rationales |
-| `baatcheet_dialogue_generator` | claude_code | claude-opus-4-7 | Stage 5b — conversational Baatcheet dialogue generation (Mohan Sir + Meera) |
+| `baatcheet_dialogue_generator` | claude_code | claude-opus-4-8 | Stage 5b — conversational Baatcheet dialogue generation (Mohan Sir + Meera) |
 
 Existing deployments (table non-empty) get individual seeds injected via `_ensure_llm_config()` from per-feature migration steps (e.g. `_apply_topic_explanations_table`, `_apply_topic_dialogues_table`, `_apply_practice_tables`).
 

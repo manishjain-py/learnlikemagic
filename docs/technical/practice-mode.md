@@ -109,7 +109,7 @@ enrich_guideline(guideline_id)
 
 If final valid count < 30, the guideline is marked failed — no partial bank is inserted.
 
-**LLM config:** `practice_bank_generator` (seeded to `claude_code/claude-opus-4-7`, medium reasoning). Admin/offline pipelines use `claude_code` per project rule — this matches sibling services (`check_in_enrichment`, `explanation_generator`, `book_ingestion_v2`). The chosen model id is stamped into each row's `generator_model` column for audit.
+**LLM config:** `practice_bank_generator` (seeded to `claude_code/claude-opus-4-8`, medium reasoning). Admin/offline pipelines use `claude_code` per project rule — this matches sibling services (`check_in_enrichment`, `explanation_generator`, `book_ingestion_v2`). The chosen model id is stamped into each row's `generator_model` column for audit.
 
 **Admin API** (registered on the existing `/admin/v2/books/{book_id}` router):
 
@@ -380,7 +380,7 @@ The legacy `latest_exam_score` / `latest_exam_total` fields were dropped in Step
 
 | Component Key | Provider | Model | Purpose |
 |---|---|---|---|
-| `practice_bank_generator` | claude_code | claude-opus-4-7 | Offline bank generation + refine (admin path) |
+| `practice_bank_generator` | claude_code | claude-opus-4-8 | Offline bank generation + refine (admin path) |
 | `practice_grader` | openai | gpt-4o-mini | Runtime free-form grading + per-pick rationales |
 
 **Admin override:** both are configurable via `/admin/llm-config` UI.
@@ -398,7 +398,7 @@ See `docs/feature-development/lets-practice-v2/impl-progress.md` for the full li
 - **Concurrent-tab start race** handled via IntegrityError catch on the partial unique index + re-read.
 - **Half-point rounding at write-time** on `total_score`; per-question `score` in `grading_json` stays raw fractional.
 - **Ingestion position** — after explanation generation (not just topic decomposition). Bank prompt consumes explanation cards for concept grounding.
-- **Bank generator LLM** — `claude_code/claude-opus-4-7` (matches all sibling ingestion components, never `openai` for admin/offline pipelines).
+- **Bank generator LLM** — `claude_code/claude-opus-4-8` (matches all sibling ingestion components, never `openai` for admin/offline pipelines).
 - **Grader LLM** — `openai/gpt-4o-mini`, one call per wrong answer (not batched — batching would leak cross-question context), ThreadPool parallelism cuts wall-clock to ~1s.
 - **`visual_explanation_code` pre-wired** in `grading_json[q_idx]` as nullable — reserved slot, no migration needed when FR-43 is enabled.
 - **Practice runs outside the chat orchestrator** — REST CRUD + threaded worker. Not shoehorned into `session_service` / `orchestrator.py`.

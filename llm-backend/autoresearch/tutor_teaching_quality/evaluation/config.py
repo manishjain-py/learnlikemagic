@@ -61,8 +61,8 @@ class EvalConfig:
     simulator_provider: str = ""
 
     # Anthropic models
-    anthropic_evaluator_model: str = "claude-opus-4-6"
-    anthropic_simulator_model: str = "claude-opus-4-6"
+    anthropic_evaluator_model: str = "claude-opus-4-8"
+    anthropic_simulator_model: str = "claude-opus-4-8"
     anthropic_evaluator_thinking_budget: int = 20000
 
     # Tutor model (read from env, for display/reporting only — actual model is set on the server)
@@ -80,7 +80,7 @@ class EvalConfig:
 
     PROVIDER_LABELS = {
         "openai": "GPT-5.2",
-        "anthropic": "Claude Opus 4.6",
+        "anthropic": "Claude Opus 4.8",
         "anthropic-haiku": "Claude Haiku 4.5",
     }
 

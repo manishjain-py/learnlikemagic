@@ -51,7 +51,7 @@ class SimplificationConfig:
     )
     evaluator_provider: str = ""
     evaluator_model_id: str = "gpt-5.2"
-    anthropic_evaluator_model: str = "claude-opus-4-6"
+    anthropic_evaluator_model: str = "claude-opus-4-8"
 
     # API Keys
     openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))

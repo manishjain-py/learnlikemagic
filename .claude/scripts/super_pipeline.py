@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
-"""Run the 6-stage topic post-sync pipeline (super pipeline) for one topic.
+"""Run the full topic post-sync pipeline (super pipeline) for one topic.
+
+This is the complete topic DAG — all 10 stages: explanations; baatcheet
+dialogue, visuals, audio-review, audio-synthesis; visuals; check-ins;
+practice bank; and audio-review, audio-synthesis. The server runs them in
+dependency order (everything hangs off explanations); this script resolves
+IDs, kicks off with force=true, and streams status.
 
 Resolves subject+grade -> book_id, chapter_number -> chapter_id, topic_number
 -> topic_key via the localhost admin API, kicks off the pipeline with
 force=true, then polls status until all stages are done or any fails.
+
+`run --stage <stage_id>` instead re-runs a SINGLE DAG stage and cascades to
+its descendants (via the guideline-keyed cascade API) — e.g. refresh
+`baatcheet_audio_review` (which also re-runs `baatcheet_audio_synthesis`)
+without rebuilding the other stages. The stage's upstream deps must already
+be `done`, or the rerun is rejected.
 
 Each event is printed as a single stdout line so callers can stream/parse
 incrementally. Human-readable log lines go to stderr.
@@ -12,8 +24,8 @@ Exit codes:
     0 = all stages completed (possibly with warnings)
     1 = one or more stages failed
     2 = polling hit the max-runtime cap (pipeline may still be running server-side)
-    3 = resolution error (book/chapter/topic not found, or ambiguous)
-    4 = kickoff error (HTTP non-2xx from /run-pipeline)
+    3 = resolution error (book/chapter/topic/stage not found, or ambiguous)
+    4 = kickoff error (HTTP non-2xx from /run-pipeline or the stage-rerun endpoint)
     5 = backend unreachable
 """
 from __future__ import annotations
@@ -31,8 +43,15 @@ BASE = "http://localhost:8000"
 POLL_INTERVAL_SEC = 20
 MAX_RUNTIME_SEC = 60 * 60  # 1 hour cap
 
+# Display order for the STATE heartbeat — matches the canonical DAG declaration
+# order in book_ingestion_v2/dag/topic_pipeline_dag.py (explanations is the root;
+# every other stage depends on it directly or transitively).
 STAGE_ORDER = [
     "explanations",
+    "baatcheet_dialogue",
+    "baatcheet_visuals",
+    "baatcheet_audio_review",
+    "baatcheet_audio_synthesis",
     "visuals",
     "check_ins",
     "practice_bank",
@@ -84,6 +103,27 @@ def http_post(path: str, body: dict, timeout: int = 30) -> dict:
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
+
+
+STAGE_INPUT_ALIASES = {
+    # Free-form phrasings that don't normalize cleanly to a canonical id.
+    # ("baatcheet review" has no "audio" token, so spell the mapping out.)
+    "baatcheet_review": "baatcheet_audio_review",
+    "baatcheet_synthesis": "baatcheet_audio_synthesis",
+}
+
+
+def normalize_stage(raw: str) -> str | None:
+    """Map a free-form stage name to a canonical DAG stage_id, or None.
+
+    Accepts spaces/hyphens ("Baatcheet Audio Review", "audio-synthesis")
+    plus a few aliases; validates against STAGE_ORDER (the DAG stages).
+    """
+    n = raw.strip().lower().replace(" ", "_").replace("-", "_")
+    while "__" in n:
+        n = n.replace("__", "_")
+    n = STAGE_INPUT_ALIASES.get(n, n)
+    return n if n in STAGE_ORDER else None
 
 
 def _norm(s: str) -> str:
@@ -218,6 +258,11 @@ def format_state_line(stages: list[dict]) -> str:
             parts.append(f"{sid}=?")
         else:
             parts.append(f"{sid}={s['state']}")
+    # Surface any server-reported stage not in STAGE_ORDER, so a newly added
+    # DAG stage is never silently hidden from the heartbeat.
+    for sid, s in by_id.items():
+        if sid not in STAGE_ORDER:
+            parts.append(f"{sid}={s['state']}")
     return "STATE " + " ".join(parts)
 
 
@@ -266,6 +311,129 @@ def poll_loop(book_id: str, chapter_id: str, topic_key: str) -> int:
         time.sleep(POLL_INTERVAL_SEC)
 
 
+def resolve_guideline_id(book_id: str, chapter_id: str, topic_key: str) -> str:
+    """Look up the topic's guideline_id (the key the cascade API uses)."""
+    status = fetch_status(book_id, chapter_id, topic_key)
+    gid = status.get("guideline_id")
+    if not gid:
+        log(f"Could not resolve guideline_id for topic {topic_key!r}.")
+        sys.exit(3)
+    return gid
+
+
+def kickoff_stage(guideline_id: str, stage_id: str, quality: str) -> dict:
+    """POST the single-stage cascade rerun (force=true)."""
+    path = (
+        f"/admin/v2/topics/{urllib.parse.quote(guideline_id)}"
+        f"/stages/{urllib.parse.quote(stage_id)}/rerun"
+    )
+    try:
+        return http_post(path, {"quality_level": quality, "force": True})
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        # 409 = cascade already active / upstream not done / stage running;
+        # 400 = unknown stage; 404 = guideline missing.
+        log(f"Stage rerun failed: HTTP {e.code} — {body}")
+        sys.exit(4)
+
+
+def fetch_dag(guideline_id: str) -> dict:
+    path = f"/admin/v2/topics/{urllib.parse.quote(guideline_id)}/dag"
+    return http_get(path, timeout=15)
+
+
+def _stage_errors(
+    book_id: str, chapter_id: str, topic_key: str, failed_ids: set[str]
+) -> dict:
+    """Best-effort error text for failed stages — DAG rows carry none, so
+    read /pipeline, which surfaces last_job_error."""
+    try:
+        status = fetch_status(book_id, chapter_id, topic_key)
+    except Exception:
+        return {}
+    return {
+        s["stage_id"]: s["last_job_error"]
+        for s in status.get("stages", [])
+        if s["stage_id"] in failed_ids and s.get("last_job_error")
+    }
+
+
+def poll_cascade(
+    guideline_id: str,
+    cascade_set: set[str],
+    book_id: str,
+    chapter_id: str,
+    topic_key: str,
+) -> int:
+    """Poll the DAG endpoint until the rerun cascade settles.
+
+    The server drops the cascade object the moment it ends (success OR
+    halt), so completion is judged from per-stage state: every cascade-set
+    stage done/warning and not stale -> success; any cascade-set stage
+    failed -> failure. The live `cascade` field drives the heartbeat and
+    surfaces non-stage halt reasons (lock collision, etc.) while it lasts.
+    """
+    start = time.time()
+    last_states: dict[str, str] = {}
+    first = True
+    active_seen = False
+    while True:
+        if time.time() - start > MAX_RUNTIME_SEC:
+            emit(f"TIMEOUT after {int(time.time() - start)}s — cascade may still be running server-side")
+            return 2
+        try:
+            dag = fetch_dag(guideline_id)
+        except urllib.error.HTTPError as e:
+            log(f"DAG fetch failed: HTTP {e.code}; retrying in {POLL_INTERVAL_SEC}s")
+            time.sleep(POLL_INTERVAL_SEC)
+            continue
+        except Exception as e:
+            log(f"DAG fetch error: {e}; retrying in {POLL_INTERVAL_SEC}s")
+            time.sleep(POLL_INTERVAL_SEC)
+            continue
+
+        stages = dag.get("stages", [])
+        cascade = dag.get("cascade")
+        cur = {s["stage_id"]: s["state"] for s in stages}
+        stale = {s["stage_id"]: bool(s.get("is_stale")) for s in stages}
+        if first or cur != last_states:
+            emit(format_state_line(stages))
+            last_states = cur
+            first = False
+
+        # Failure — any cascade-set stage ended `failed`.
+        failed = sorted(sid for sid in cascade_set if cur.get(sid) == "failed")
+        if failed:
+            errs = _stage_errors(book_id, chapter_id, topic_key, set(failed))
+            for sid in failed:
+                if sid in errs:
+                    emit(f"ERROR stage={sid} msg={errs[sid]!r}")
+            emit(f"FAILED stages={','.join(failed)} duration_sec={int(time.time() - start)}")
+            return 1
+
+        if cascade is not None:
+            active_seen = True
+            # Non-stage halt: lock_collision / internal_error / no_ready_stages.
+            halt = cascade.get("halted_at")
+            if halt and halt not in cascade_set:
+                emit(f"FAILED stages={halt} duration_sec={int(time.time() - start)}")
+                return 1
+        else:
+            done = all(cur.get(sid) in ("done", "warning") for sid in cascade_set)
+            none_stale = not any(stale.get(sid) for sid in cascade_set)
+            if done and none_stale:
+                emit(f"DONE duration_sec={int(time.time() - start)}")
+                return 0
+            if active_seen:
+                # Cascade vanished without every stage settling — a halt we
+                # didn't catch live. Report instead of hanging to the cap.
+                emit(f"FAILED stages=cascade_halted_incomplete duration_sec={int(time.time() - start)}")
+                return 1
+            # else: pre-registration window — keep polling.
+
+        time.sleep(POLL_INTERVAL_SEC)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     check_backend()
 
@@ -290,6 +458,32 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"sequence_order={topic.get('sequence_order')}"
     )
 
+    # Single-stage cascade rerun (--stage): re-run one DAG stage and let the
+    # cascade engine refresh its downstream descendants. Goes through the
+    # guideline-keyed cascade API, not the full-pipeline orchestrator.
+    if getattr(args, "stage", None):
+        stage_id = normalize_stage(args.stage)
+        if stage_id is None:
+            log(f"Unknown stage {args.stage!r}. Valid stages: {', '.join(STAGE_ORDER)}")
+            sys.exit(3)
+        guideline_id = resolve_guideline_id(book["id"], chapter["id"], topic["topic_key"])
+        emit(f"GUIDELINE id={guideline_id}")
+        emit(f"KICKOFF stage={stage_id} quality={args.quality} force=true")
+        resp = kickoff_stage(guideline_id, stage_id, args.quality)
+        running = resp.get("running")
+        pending = resp.get("pending", [])
+        if not running and not pending:
+            emit(f"NOTHING_TO_RUN msg={resp.get('message', 'nothing to run')!r}")
+            return 0
+        cascade_set = set(pending) | ({running} if running else set()) or {stage_id}
+        emit(
+            f"RERUN cascade_id={resp.get('cascade_id')} running={running} "
+            f"pending={','.join(sorted(pending))}"
+        )
+        return poll_cascade(
+            guideline_id, cascade_set, book["id"], chapter["id"], topic["topic_key"]
+        )
+
     emit(f"KICKOFF quality={args.quality} force=true")
     resp = kickoff(book["id"], chapter["id"], topic["topic_key"], args.quality)
     run_id = resp.get("pipeline_run_id")
@@ -309,7 +503,7 @@ def cmd_poll_only(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Run the 6-stage topic post-sync pipeline.")
+    p = argparse.ArgumentParser(description="Run the full topic post-sync pipeline (all 10 DAG stages).")
     sub = p.add_subparsers(dest="mode", required=True)
 
     run = sub.add_parser("run", help="Resolve, kick off, and poll until done.")
@@ -318,6 +512,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--book-id", help="Skip subject+grade lookup; use this book id directly.")
     run.add_argument("--chapter", type=int, required=True, help="1-based chapter number")
     run.add_argument("--topic", type=int, required=True, help="1-based topic index within chapter")
+    run.add_argument(
+        "--stage",
+        help=(
+            "Re-run ONLY this DAG stage and cascade to its descendants "
+            "(e.g. baatcheet_audio_review). Omit to run the full pipeline."
+        ),
+    )
     run.add_argument(
         "--quality",
         choices=["fast", "balanced", "thorough"],

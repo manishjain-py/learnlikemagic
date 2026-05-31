@@ -412,9 +412,9 @@ The backend supports multiple LLM providers via an adapter pattern. Provider and
 | Provider | Config Value | Available Models | Usage |
 |----------|-------------|------------------|-------|
 | OpenAI | `openai` | gpt-5.4, gpt-5.4-nano, gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-4o, gpt-4o-mini | Tutor, ingestion, transcription (Whisper) |
-| Anthropic | `anthropic` | claude-opus-4-6, claude-haiku-4-5-20251001 | Tutor, evaluation |
+| Anthropic | `anthropic` | claude-opus-4-8, claude-haiku-4-5-20251001 | Tutor, evaluation |
 | Google | `google` | gemini-3-pro-preview | Alternative provider |
-| Claude Code | `claude_code` | claude-code (admin UI label); CLI invokes `claude-opus-4-7` | Local/admin workflows via CLI subprocess (Baatcheet dialogue, check-in enrichment, practice bank, etc.) |
+| Claude Code | `claude_code` | claude-code (admin UI label); CLI invokes `claude-opus-4-8` | Local/admin workflows via CLI subprocess (Baatcheet dialogue, check-in enrichment, practice bank, etc.) |
 
 ### LLM Configuration (DB-Backed)
 

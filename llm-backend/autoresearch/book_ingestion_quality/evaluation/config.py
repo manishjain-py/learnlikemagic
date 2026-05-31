@@ -32,7 +32,7 @@ class IngestionEvalConfig:
     )
     evaluator_model: str = "gpt-5.2"
     evaluator_reasoning_effort: str = "high"
-    anthropic_evaluator_model: str = "claude-opus-4-6"
+    anthropic_evaluator_model: str = "claude-opus-4-8"
     anthropic_evaluator_thinking_budget: int = 20000
 
     # API Keys

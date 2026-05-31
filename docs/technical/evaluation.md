@@ -130,7 +130,7 @@ Both evaluator and simulator use `config.create_llm_service(component)` which ro
 | Provider | Default Model | Config |
 |----------|---------------|--------|
 | `openai` | gpt-5.2 | reasoning effort: `high`, JSON output mode |
-| `anthropic` | claude-opus-4-6 | extended thinking (20,000 token budget) |
+| `anthropic` | claude-opus-4-8 | adaptive thinking, effort `high` |
 | `anthropic-haiku` | (model id from DB) | requires DB config to set haiku model id |
 | `claude_code` | claude-code | no API key needed |
 
@@ -139,7 +139,7 @@ Both evaluator and simulator use `config.create_llm_service(component)` which ro
 | Provider | Default Model | Config |
 |----------|---------------|--------|
 | `openai` | gpt-4o | reasoning effort: `low` |
-| `anthropic` | claude-opus-4-6 | reasoning effort: `low` |
+| `anthropic` | claude-opus-4-8 | reasoning effort: `low` |
 | `anthropic-haiku` | (model id from DB) | requires DB config to set haiku model id |
 | `claude_code` | claude-code | no API key needed |
 
@@ -226,7 +226,7 @@ Evaluator and simulator models can be set independently via two mechanisms:
 - `EVAL_LLM_PROVIDER` -- fallback provider for both evaluator and simulator when DB config is not used
 - CLI `--provider` flag overrides both evaluator and simulator provider
 
-Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.6), `anthropic-haiku` (Claude Haiku 4.5), `claude_code` (no API key needed). When sourced via `EvalConfig.from_db()`, the haiku model id from the DB `llm_config` row is written into `evaluator_model`/`simulator_model` (the `anthropic` branch is only taken for the `"anthropic"` provider string), and `LLMService.call()` routes `anthropic-haiku` through the Anthropic client using that model id. The CLI default-constructed `EvalConfig` (without `from_db`) does not have a haiku model id set, so selecting `--provider anthropic-haiku` from the CLI will misroute (Anthropic client called with the default `gpt-5.2` model id). Prefer DB config (admin LLM config page) when using haiku.
+Supported providers: `openai` (GPT-5.2), `anthropic` (Claude Opus 4.8), `anthropic-haiku` (Claude Haiku 4.5), `claude_code` (no API key needed). When sourced via `EvalConfig.from_db()`, the haiku model id from the DB `llm_config` row is written into `evaluator_model`/`simulator_model` (the `anthropic` branch is only taken for the `"anthropic"` provider string), and `LLMService.call()` routes `anthropic-haiku` through the Anthropic client using that model id. The CLI default-constructed `EvalConfig` (without `from_db`) does not have a haiku model id set, so selecting `--provider anthropic-haiku` from the CLI will misroute (Anthropic client called with the default `gpt-5.2` model id). Prefer DB config (admin LLM config page) when using haiku.
 
 ---
 
@@ -414,7 +414,7 @@ The `EvaluationDashboard` component provides the full evaluation UI:
 - **Detail view** -- full scores, expandable dimension analysis, overall summary, problems with evidence, conversation transcript with markdown rendering
 - **Status polling** -- 2-second polling interval while evaluation is running, auto-refreshes runs list on completion
 
-The frontend `DIMENSIONS` constant hardcodes the 5 core evaluation dimensions: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Card-phase dimensions (card_to_session_coherence, transition_quality) are **not shown** in the dashboard even when present in evaluation data. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. Note that `eval_llm_provider` is the legacy provider field (default from `EVAL_LLM_PROVIDER` env var), not the per-component `evaluator_provider` field -- when evaluator and simulator providers are set independently via DB config, the badge may show the legacy default rather than the actual evaluator provider. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.6", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.6" (no `anthropic-haiku` or `claude_code` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
+The frontend `DIMENSIONS` constant hardcodes the 5 core evaluation dimensions: responsiveness, explanation_quality, emotional_attunement, pacing, authenticity. Card-phase dimensions (card_to_session_coherence, transition_quality) are **not shown** in the dashboard even when present in evaluation data. Model badges in the detail view read from `tutor_llm_provider` and `eval_llm_provider` fields in the run's saved `config.json` and map them to display labels. Note that `eval_llm_provider` is the legacy provider field (default from `EVAL_LLM_PROVIDER` env var), not the per-component `evaluator_provider` field -- when evaluator and simulator providers are set independently via DB config, the badge may show the legacy default rather than the actual evaluator provider. The tutor badge maps `openai` to "GPT-5.2", `anthropic` to "Claude Opus 4.8", and `anthropic-haiku` to "Claude Haiku 4.5". The evaluator badge maps only `openai` to "GPT-5.2" and `anthropic` to "Claude Opus 4.8" (no `anthropic-haiku` or `claude_code` mapping). The backend retry-evaluation endpoint (`POST /runs/{id}/retry-evaluation`) exists but is **not wired** to the frontend -- re-evaluation can only be triggered via direct API call.
 
 ---
 

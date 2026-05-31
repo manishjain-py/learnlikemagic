@@ -94,7 +94,7 @@ def call_claude(prompt: str, system_file: Path, effort: str, label: str, log_dir
         "--dangerously-skip-permissions",
         "--no-session-persistence",
         "--max-turns", "1",
-        "--model", "claude-opus-4-7",
+        "--model", "claude-opus-4-8",
         "--effort", effort,
         "--append-system-prompt-file", str(system_file),
     ]

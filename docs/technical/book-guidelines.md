@@ -934,7 +934,7 @@ Automated evaluation pipeline that scores topic extraction quality using an LLM 
 
 - **Evaluator provider:** OpenAI (default), Anthropic, or `claude_code`, set via `EVAL_LLM_PROVIDER` env var or `--provider` flag. Can also be read from DB via `IngestionEvalConfig.from_db()` using the `eval_evaluator` LLM config key.
 - **OpenAI evaluator:** `gpt-5.2` with `reasoning_effort="high"` and JSON output mode
-- **Anthropic evaluator:** `claude-opus-4-6` with extended thinking (budget: 20000 tokens)
+- **Anthropic evaluator:** `claude-opus-4-8` with adaptive thinking (effort: `high`)
 - **claude_code provider:** Delegates to Claude Code as the evaluator
 - **API keys:** Read from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` environment variables
 

@@ -27,7 +27,7 @@ The eval pipeline lives in `llm-backend/autoresearch/tutor_teaching_quality/eval
 | `config.py` | Dataclass `EvalConfig` — all settings (server, models, persona file, turn limits). Loads `.env`. Defines `RUNS_DIR`, `PERSONAS_DIR`. |
 | `student_simulator.py` | `StudentSimulator` — builds a system prompt from a persona JSON, then generates student responses via OpenAI or Anthropic. |
 | `session_runner.py` | `SessionRunner` — starts the tutor server, creates a session via REST, runs a WebSocket conversation loop (student ↔ tutor), captures all messages. |
-| `evaluator.py` | `ConversationEvaluator` — sends full transcript + rubric to a judge LLM (GPT-5.2 or Claude Opus 4.6 with extended thinking), gets back scores + problems as JSON. |
+| `evaluator.py` | `ConversationEvaluator` — sends full transcript + rubric to a judge LLM (GPT-5.2 or Claude Opus 4.8 with adaptive thinking), gets back scores + problems as JSON. |
 | `report_generator.py` | `ReportGenerator` — writes `conversation.md`, `conversation.json`, `evaluation.json`, `review.md`, `problems.md` into the run directory. |
 | `run_evaluation.py` | CLI entry point — wires everything together: config → persona → simulator → session → evaluate → report. |
 | `api.py` | FastAPI router (`/api/evaluation/*`) — same pipeline but triggered via HTTP, runs in background thread, exposes status polling. Also supports evaluating existing real sessions from DB. |

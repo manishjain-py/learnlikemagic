@@ -117,7 +117,7 @@ class TestEvalConfig:
         assert config.tutor_model_label == "GPT-5.2"
 
         config2 = _make_config(tutor_llm_provider="anthropic")
-        assert config2.tutor_model_label == "Claude Opus 4.6"
+        assert config2.tutor_model_label == "Claude Opus 4.8"
 
     def test_evaluator_model_label(self):
         config = _make_config(eval_llm_provider="openai")
